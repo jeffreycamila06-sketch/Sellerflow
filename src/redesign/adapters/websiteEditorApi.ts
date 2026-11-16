@@ -3,7 +3,7 @@
 import type { ShopDesign, ShopProduct } from "../../website/shopApi";
 import {
   loadMyWebsite, saveMyWebsite, saveWebsiteSettings, publishWebsite, subdomainFree, loadWebsiteOrders, loadBlockedPhones,
-  websiteOrderAction, receiptUrl,
+  websiteOrderAction, websiteOrderShip, receiptUrl,
   type MyWebsite, type PublishResult, type SaveResult, type WebsiteSettings, type WebsiteOrder, type OrderAction, type WebsiteOrderStatus,
 } from "./websiteSeller";
 import { uploadSitePicture } from "./websitePhotos";
@@ -36,8 +36,10 @@ export interface OrdersApi {
   act: (id: string, a: OrderAction) => Promise<{ ok: true; status: WebsiteOrderStatus; blocked: boolean } | { ok: false }>;
   receipt: (path: string) => Promise<string | null>;
   shopSub: () => Promise<string | null>;
+  /** v2 (sql/165): ship with an optional courier + tracking (or change them). Absent → the plain 'shipped' action. */
+  ship?: (id: string, courier: string, tracking: string) => Promise<{ ok: true; courier: string | null; tracking: string | null } | { ok: false }>;
 }
 export const realOrdersApi: OrdersApi = {
-  load: loadWebsiteOrders, blocked: loadBlockedPhones, act: websiteOrderAction, receipt: receiptUrl,
+  load: loadWebsiteOrders, blocked: loadBlockedPhones, act: websiteOrderAction, receipt: receiptUrl, ship: websiteOrderShip,
   shopSub: async () => { const w = await loadMyWebsite(); return w && w !== "error" ? w.subdomain : null; },
 };

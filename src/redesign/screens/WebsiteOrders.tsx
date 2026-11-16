@@ -70,6 +70,14 @@ export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToas
     if (a !== "block" && a !== "unblock") onToast(t.rd_wor_updated);
     return true;
   };
+  const doShip = async (o: WebsiteOrder, courier: string, tracking: string): Promise<boolean> => {
+    if (!api.ship) return doAction(o, "shipped");
+    const r = await api.ship(o.id, courier, tracking);
+    if (r.ok === false) { onToast(t.rd_wor_act_failed); return false; }
+    patch(o.id, { status: "shipped", shippedAt: o.shippedAt || new Date().toISOString(), courier: r.courier, tracking: r.tracking });
+    onToast(t.rd_wor_updated);
+    return true;
+  };
   const chip = (on: boolean): CSSProperties => ({ flexShrink: 0, minHeight: 36, padding: "0 12px", borderRadius: 999, border: `1px solid ${on ? "var(--accent)" : "var(--border)"}`, background: on ? "var(--accent)" : "var(--surface)", color: on ? "var(--accent-text)" : "var(--text)", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", display: "inline-flex", alignItems: "center", gap: 5 });
   return (
     <div>
@@ -103,7 +111,7 @@ export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToas
           ))}
         </div>
       </div>
-      {open && <Detail o={open} t={t} cur={cur} blocked={blocked.has(open.buyerPhone)} link={sub ? `${shareUrl(sub, subdomainReady)}/o/${open.token}` : ""} api={api} onClose={() => setOpenId(null)} onAction={(a) => doAction(open, a)} onToast={onToast} />}
+      {open && <Detail o={open} t={t} cur={cur} blocked={blocked.has(open.buyerPhone)} link={sub ? `${shareUrl(sub, subdomainReady)}/o/${open.token}` : ""} api={api} onClose={() => setOpenId(null)} onAction={(a) => doAction(open, a)} onShip={api.ship ? (c, tr) => doShip(open, c, tr) : undefined} onToast={onToast} />}
     </div>
   );
 }
@@ -113,9 +121,16 @@ function StatusPill({ o, t }: { o: WebsiteOrder; t: Record<string, string> }) {
   return <span data-testid="wor-status" style={{ fontSize: 11, fontWeight: 800, background: tone[0], color: tone[1], borderRadius: 999, padding: "2px 8px" }}>{o.status === "cancelled" && o.cancelReason === "auto" ? t.rd_wor_cancel_auto : t[`rd_wor_st_${o.status}`]}</span>;
 }
 
-function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onToast }: {
-  o: WebsiteOrder; t: Record<string, string>; cur: string; blocked: boolean; link: string; api: OrdersApi; onClose: () => void; onAction: (a: OrderAction) => Promise<boolean>; onToast: (m: string) => void;
+function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onToast }: {
+  o: WebsiteOrder; t: Record<string, string>; cur: string; blocked: boolean; link: string; api: OrdersApi; onClose: () => void; onAction: (a: OrderAction) => Promise<boolean>;
+  onShip?: (courier: string, tracking: string) => Promise<boolean>; onToast: (m: string) => void;
 }) {
+  const [shipForm, setShipForm] = useState(false);
+  const [courier, setCourier] = useState(o.courier || "");
+  const [tracking, setTracking] = useState(o.tracking || "");
+  const [shipBusy, setShipBusy] = useState(false);
+  const openShip = () => { setCourier(o.courier || ""); setTracking(o.tracking || ""); setShipForm(true); };
+  const confirmShip = async () => { setShipBusy(true); const ok = await onShip!(courier, tracking); setShipBusy(false); if (ok) setShipForm(false); };
   const [busy, setBusy] = useState<OrderAction | "">("");
   const [receipt, setReceipt] = useState<string | null | "loading">(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -171,10 +186,31 @@ function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onToast }: {
           </div>
         )}
 
-        {acts.length > 0 && (
+        {o.status === "shipped" && (o.courier || o.tracking || onShip) && !shipForm && (
+          <div style={{ ...card, marginTop: 10, padding: 12, display: "flex", flexDirection: "column", gap: 5 }} data-testid="wor-ship-info">
+            {o.courier && <KV k={t.rd_wor_courier} v={o.courier} />}
+            {o.tracking && <KV k={t.rd_wor_tracking} v={o.tracking} />}
+            {onShip && <button type="button" data-testid="wor-edit-tracking" onClick={openShip} style={{ ...secBtn, marginTop: 4 }}>{o.courier || o.tracking ? t.rd_wor_edit_tracking : t.rd_wor_add_tracking}</button>}
+          </div>
+        )}
+        {shipForm && onShip && (
+          <div style={{ ...card, marginTop: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }} data-testid="wor-ship-form">
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{o.status === "shipped" ? t.rd_wor_edit_tracking : t.rd_wor_shipped}</div>
+            <label style={lbl}>{t.rd_wor_courier} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>({t.rd_wor_optional})</span>
+              <input data-testid="wor-courier" value={courier} maxLength={40} onChange={(e) => setCourier(e.target.value)} placeholder={t.rd_wor_courier_ph} style={inp} /></label>
+            <label style={lbl}>{t.rd_wor_tracking} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>({t.rd_wor_optional})</span>
+              <input data-testid="wor-tracking" value={tracking} maxLength={60} onChange={(e) => setTracking(e.target.value)} style={inp} /></label>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_wor_tracking_hint}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" style={{ ...secBtn, flex: 1 }} onClick={() => setShipForm(false)}>{t.rd_shop_back}</button>
+              <button type="button" data-testid="wor-ship-confirm" disabled={shipBusy} style={{ ...mainBtn, flex: 1 }} onClick={() => void confirmShip()}>{shipBusy ? "…" : t.rd_wor_ship_confirm}</button>
+            </div>
+          </div>
+        )}
+        {acts.length > 0 && !shipForm && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
             {acts.filter((a) => a !== "cancel").map((a) => (
-              <button key={a} type="button" data-testid={`wor-act-${a}`} disabled={!!busy} onClick={() => void run(a)}
+              <button key={a} type="button" data-testid={`wor-act-${a}`} disabled={!!busy} onClick={() => (a === "shipped" && onShip ? openShip() : void run(a))}
                 style={a === "not_received" ? secBtn : mainBtn}>{busy === a ? "…" : label[a]}</button>
             ))}
             {acts.includes("cancel") && (confirmCancel
@@ -199,6 +235,8 @@ function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onToast }: {
   );
 }
 const mainBtn: CSSProperties = { minHeight: 46, borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "var(--font-ui)", padding: "0 10px" };
+const lbl: CSSProperties = { display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, fontWeight: 700 };
+const inp: CSSProperties = { minHeight: 44, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "0 12px", fontSize: 16, fontFamily: "var(--font-ui)", boxSizing: "border-box", width: "100%" };
 const secBtn: CSSProperties = { minHeight: 46, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "var(--font-ui)", padding: "0 10px" };
 function KV({ k, v }: { k: string; v: ReactNode }) { return <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13.5 }}><span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{k}</span><span style={{ fontWeight: 700, textAlign: "right", overflowWrap: "anywhere" }}>{v}</span></div>; }
 const fmtN = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });

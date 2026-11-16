@@ -17,6 +17,9 @@
 --   today's stock history (CREATE TRIGGER locks stock_movements until commit, so nothing slips between).
 --   The trigger can never fail a stock-history write (any error inside it is swallowed). The 90-day purge
 --   of stock_movements doesn't touch the totals. The shop shows "N sold" = the product + its options.
+-- PART 13 — courier + tracking number: website_orders.courier / tracking_no (optional). website_order_ship
+--   (seller, own rows): paid / confirmed → shipped with them, or edits them on a shipped order. The buyer's
+--   order link (website_order) shows them once shipped.
 -- Proof: scripts/sql165-behaviour.mjs (PGlite).
 -- ============================================================================
 begin;
@@ -85,6 +88,19 @@ select user_id, product_local_id, greatest(0, sum(-delta))
  group by user_id, product_local_id
 on conflict (user_id, product_local_id) do nothing;
 
+
+-- ── PART 13 — courier + tracking number (columns) ────────────────────────────
+alter table public.website_orders
+  add column if not exists courier     text null,
+  add column if not exists tracking_no text null;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'website_orders_courier_len') then
+    alter table public.website_orders add constraint website_orders_courier_len check (courier is null or char_length(courier) <= 40);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'website_orders_tracking_len') then
+    alter table public.website_orders add constraint website_orders_tracking_len check (tracking_no is null or char_length(tracking_no) <= 60);
+  end if;
+end $$;
 
 -- ── the public product list + place-order (PARTS 8 + 9) ──────────────────────
 create or replace function public.website_products_of(p_user uuid)
@@ -229,5 +245,60 @@ end;
 $$;
 revoke all on function public.website_place_order(text, jsonb, text) from public;
 grant execute on function public.website_place_order(text, jsonb, text) to anon, authenticated;
+
+
+-- ── PART 13 — the seller ships with a courier + tracking; the buyer sees them ──
+create or replace function public.website_order_ship(p_id uuid, p_courier text, p_tracking text)
+returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare me uuid := auth.uid(); o public.website_orders; c text; tr text;
+begin
+  if me is null then raise exception 'not_signed_in' using errcode = '42501'; end if;
+  select * into o from public.website_orders where id = p_id and user_id = me for update;
+  if not found then raise exception 'not_found' using errcode = '22023'; end if;
+  c := nullif(left(btrim(coalesce(p_courier, '')), 40), '');
+  tr := nullif(left(btrim(coalesce(p_tracking, '')), 60), '');
+  if o.status in ('paid', 'confirmed') then
+    -- the same step as website_order_action('shipped') + what the seller typed
+    update public.website_orders set status = 'shipped', shipped_at = now(), courier = c, tracking_no = tr,
+           seen_at = coalesce(seen_at, now()), updated_at = now() where id = o.id;
+  elsif o.status = 'shipped' then
+    update public.website_orders set courier = c, tracking_no = tr, updated_at = now() where id = o.id;
+  else
+    raise exception 'wrong_status' using errcode = '22023';
+  end if;
+  return jsonb_build_object('ok', true, 'status', 'shipped', 'courier', c, 'tracking', tr);
+end;
+$$;
+revoke all on function public.website_order_ship(uuid, text, text) from public, anon;
+grant execute on function public.website_order_ship(uuid, text, text) to authenticated;
+
+create or replace function public.website_order(p_token text)
+returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare o public.website_orders; w public.seller_websites; ck jsonb; d jsonb;
+begin
+  if coalesce(p_token, '') !~ '^[A-Za-z0-9_-]{32,128}$' then return jsonb_build_object('found', false); end if;
+  select * into o from public.website_orders where token = p_token;
+  if not found then return jsonb_build_object('found', false); end if;
+  select * into w from public.seller_websites where user_id = o.user_id;
+  ck := public.website_checkout_public(coalesce(w.settings, '{}'::jsonb));
+  d := public.website_public_fields(coalesce(w.published, w.draft, '{}'::jsonb));
+  return jsonb_strip_nulls(jsonb_build_object(
+    'found', true, 'orderNo', 'W-' || lpad(o.order_no::text, 4, '0'), 'status', o.status, 'paymentIssue', o.payment_issue,
+    'items', o.items, 'subtotal', o.subtotal, 'shipFee', o.ship_fee, 'total', o.total,
+    'delivery', o.delivery, 'storeId', o.store_id, 'storeName', o.store_name, 'address', o.address,
+    'payment', o.payment, 'buyerName', o.buyer_name, 'phoneTail', right(o.buyer_phone, 3), 'note', o.note,
+    'receipt', o.receipt_at is not null, 'receiptAt', o.receipt_at, 'createdAt', o.created_at,
+    'autoCancelAt', case when o.status = 'awaiting_payment' then o.auto_cancel_at end,
+    'paidAt', o.paid_at, 'shippedAt', o.shipped_at, 'cancelledAt', o.cancelled_at, 'cancelReason', o.cancel_reason,
+    -- v2 (item 13): what the seller typed when shipping
+    'courier', case when o.status = 'shipped' then o.courier end, 'tracking', case when o.status = 'shipped' then o.tracking_no end,
+    'shop', jsonb_build_object('sub', lower(w.subdomain), 'name', d->>'name', 'logo', d->>'logo', 'color', d->>'color', 'chats', d->'chats', 'currency', d->>'currency'),
+    'country', (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id),
+    'pay', case when o.status in ('awaiting_payment','payment_sent') then
+             case o.payment when 'bank' then jsonb_build_object('bank', ck->'bank') when 'qr' then jsonb_build_object('qr', ck->'qr') end end));
+end;
+$$;
+revoke all on function public.website_order(text) from public;
+grant execute on function public.website_order(text) to anon, authenticated;
 
 commit;

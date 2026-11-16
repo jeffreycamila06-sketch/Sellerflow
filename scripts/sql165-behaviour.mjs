@@ -134,6 +134,33 @@ await db.exec(src("165_seller_website_v2.sql"));
   await q(`delete from public.products where local_id = 60`);
 }
 
+// ── PART 13 — courier + tracking ─────────────────────────────────────────────
+const orderView = async (token) => (await as(null, "anon", () => q(`select public.website_order($1) r`, [token]))).rows[0].r;
+const ship = (id, c, t, uid = SELLER) => as(uid, "authenticated", () => q(`select public.website_order_ship($1, $2, $3) r`, [id, c, t]));
+{
+  const r = await place({ ...buyer(30), items: [{ pid: 1, vid: null, qty: 1 }] });
+  const id = (await q(`select id from public.website_orders where token = $1`, [r.token])).rows[0].id;
+  ok(String(await err(ship(id, "J&T", "JT123"))).includes("wrong_status"), "can't ship an unpaid order");
+  await as(SELLER, "authenticated", () => q(`select public.website_order_action($1, 'paid')`, [id]));
+  ok(String(await err(ship(id, "J&T", "JT123", OTHER))).includes("not_found"), "another seller can't ship it");
+  ok((await err(as(null, "anon", () => q(`select public.website_order_ship($1, 'a', 'b')`, [id])))) !== null, "a buyer (anon) can't call it");
+  await ship(id, "  J&T Express  ", "JT123456");
+  const o = (await q(`select status, courier, tracking_no, shipped_at from public.website_orders where id = $1`, [id])).rows[0];
+  ok(o.status === "shipped" && o.courier === "J&T Express" && o.tracking_no === "JT123456" && o.shipped_at !== null, "paid → shipped with courier + tracking");
+  const v = await orderView(r.token);
+  ok(v.status === "shipped" && v.courier === "J&T Express" && v.tracking === "JT123456", "the buyer's order link shows them");
+  await ship(id, "LBC", "");
+  const v2 = await orderView(r.token);
+  ok(v2.courier === "LBC" && v2.tracking === undefined, "edit after shipping; an empty tracking is cleared");
+  ok((await err(ship(id, "x".repeat(41), "y".repeat(61)))) === null && (await q(`select char_length(courier) c, char_length(tracking_no) t from public.website_orders where id = $1`, [id])).rows[0].c === 40, "long text is cut to 40 / 60");
+  // shipping without tracking still works (as before)
+  const r2 = await place({ ...buyer(31), delivery: "s711", payment: "cod", items: [{ pid: 1, vid: null, qty: 1 }] });
+  const id2 = (await q(`select id from public.website_orders where token = $1`, [r2.token])).rows[0].id;
+  await as(SELLER, "authenticated", () => q(`select public.website_order_action($1, 'shipped')`, [id2]));
+  const v3 = await orderView(r2.token);
+  ok(v3.status === "shipped" && v3.courier === undefined && v3.tracking === undefined, "the old 'shipped' action still works, no courier shown");
+}
+
 // ── rollback ─────────────────────────────────────────────────────────────────
 await db.exec(src("165_seller_website_v2_rollback.sql"));
 {
@@ -143,6 +170,7 @@ await db.exec(src("165_seller_website_v2_rollback.sql"));
   ok(noStock(s.products) === noStock(shopBefore.products), "rollback: the shop answer is sql/163's again");
   const r = await place({ ...buyer(9), items: [{ pid: 1, vid: null, qty: 1 }] });
   ok(r.ok === true, "rollback: orders still work");
+  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('courier', 'tracking_no')`)).rows[0].n === 0 && (await q(`select count(*)::int n from pg_proc where proname = 'website_order_ship'`)).rows[0].n === 0, "rollback: courier / tracking gone");
   ok((await q(`select to_regclass('public.product_sold_totals') t`)).rows[0].t === null && (await q(`select count(*)::int n from pg_trigger where tgname = 'trg_stock_movements_sold'`)).rows[0].n === 0, "rollback: totals table + trigger gone");
   ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]))) === null, "rollback: stock history still written as before");
   const fn = (await q(`select prosrc from pg_proc where proname = 'website_place_order'`)).rows[0].prosrc;

@@ -4,6 +4,37 @@
 begin;
 set local lock_timeout = '2s';
 
+-- PART 13: courier + tracking
+drop function if exists public.website_order_ship(uuid, text, text);
+create or replace function public.website_order(p_token text)
+returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare o public.website_orders; w public.seller_websites; ck jsonb; d jsonb;
+begin
+  if coalesce(p_token, '') !~ '^[A-Za-z0-9_-]{32,128}$' then return jsonb_build_object('found', false); end if;
+  select * into o from public.website_orders where token = p_token;
+  if not found then return jsonb_build_object('found', false); end if;
+  select * into w from public.seller_websites where user_id = o.user_id;
+  ck := public.website_checkout_public(coalesce(w.settings, '{}'::jsonb));
+  d := public.website_public_fields(coalesce(w.published, w.draft, '{}'::jsonb));
+  return jsonb_strip_nulls(jsonb_build_object(
+    'found', true, 'orderNo', 'W-' || lpad(o.order_no::text, 4, '0'), 'status', o.status, 'paymentIssue', o.payment_issue,
+    'items', o.items, 'subtotal', o.subtotal, 'shipFee', o.ship_fee, 'total', o.total,
+    'delivery', o.delivery, 'storeId', o.store_id, 'storeName', o.store_name, 'address', o.address,
+    'payment', o.payment, 'buyerName', o.buyer_name, 'phoneTail', right(o.buyer_phone, 3), 'note', o.note,
+    'receipt', o.receipt_at is not null, 'receiptAt', o.receipt_at, 'createdAt', o.created_at,
+    'autoCancelAt', case when o.status = 'awaiting_payment' then o.auto_cancel_at end,
+    'paidAt', o.paid_at, 'shippedAt', o.shipped_at, 'cancelledAt', o.cancelled_at, 'cancelReason', o.cancel_reason,
+    'shop', jsonb_build_object('sub', lower(w.subdomain), 'name', d->>'name', 'logo', d->>'logo', 'color', d->>'color', 'chats', d->'chats', 'currency', d->>'currency'),
+    'country', (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id),
+    'pay', case when o.status in ('awaiting_payment','payment_sent') then
+             case o.payment when 'bank' then jsonb_build_object('bank', ck->'bank') when 'qr' then jsonb_build_object('qr', ck->'qr') end end));
+end;
+$$;
+revoke all on function public.website_order(text) from public;
+grant execute on function public.website_order(text) to anon, authenticated;
+alter table public.website_orders drop constraint if exists website_orders_courier_len, drop constraint if exists website_orders_tracking_len;
+alter table public.website_orders drop column if exists courier, drop column if exists tracking_no;
+
 -- PART 9: the sold totals (stock history itself is untouched)
 drop trigger if exists trg_stock_movements_sold on public.stock_movements;
 drop function if exists public.product_sold_count_move();

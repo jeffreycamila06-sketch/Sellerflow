@@ -335,6 +335,8 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontWeight: 800, fontSize: 16 }}><span>{t.rd_shop_co_total}</span><span data-testid="od-total" style={{ color: "var(--sc)" }}>{money(cur, view.total)}</span></div>
         <div style={{ borderTop: "1px solid #F1F1F4", marginTop: 12, paddingTop: 10, display: "flex", flexDirection: "column", gap: 4, fontSize: 13.5 }}>
           <KV k={t.rd_shop_od_ship_to} v={`${deliveryLabel(t, view.delivery)} · ${view.delivery === "home" ? view.address || "" : `${view.storeName || ""} #${view.storeId || ""}`}`} />
+          {view.status === "shipped" && view.courier && <KV k={t.rd_wor_courier} v={<span data-testid="od-courier">{view.courier}</span>} />}
+          {view.status === "shipped" && view.tracking && <KV k={t.rd_wor_tracking} v={<span data-testid="od-tracking">{view.tracking}</span>} copy={() => { void copyText(view.tracking!); say(t.rd_shop_od_copied); }} copyLabel={t.rd_shop_od_copy} />}
           <KV k={t.rd_shop_payment} v={paymentLabel(t, view.payment)} />
           <KV k={t.rd_shop_msg_name} v={`${view.buyerName} · ***${view.phoneTail}`} />
         </div>
@@ -380,7 +382,7 @@ function Choice({ on, onPick, title, sub, right, testid, bad, disabled }: { on: 
   );
 }
 function Row({ a, b }: { a: string; b: string }) { return <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13.5, color: "#4B5563", padding: "3px 0" }}><span>{a}</span><span>{b}</span></div>; }
-function KV({ k, v, copy, copyLabel }: { k: string; v: string; copy?: () => void; copyLabel?: string }) {
+function KV({ k, v, copy, copyLabel }: { k: string; v: ReactNode; copy?: () => void; copyLabel?: string }) {
   return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><span style={{ color: "#6B7280", flexShrink: 0 }}>{k}</span><span style={{ fontWeight: 700, textAlign: "right", overflowWrap: "anywhere", display: "flex", alignItems: "center", gap: 8 }}>{v}{copy && <button type="button" onClick={copy} style={{ ...linkBtn, fontSize: 12.5 }}>{copyLabel}</button>}</span></div>;
 }
 function Note({ tone, children, testid }: { tone: "red" | "grey" | "green"; children: ReactNode; testid: string }) {
