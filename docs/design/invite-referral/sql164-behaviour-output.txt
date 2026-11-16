@@ -8,7 +8,11 @@ PASS: back-fill: free with an expiry whose only log is 'expired seller' → NOT 
 PASS: back-fill: free with an expiry date, never paid → NOT marked
 PASS: back-fill: only ever a trial → NOT marked
 PASS: back-fill: 'basically' is not the plan name basic → NOT marked
-PASS: back-fill marks exactly the 5 expected accounts
+PASS: back-fill: emails matched as lower(btrim()) ('  Spaced@X.test ' ↔ ' spaced@x.test')
+PASS: back-fill marks exactly the 6 expected existing accounts
+PASS: back-fill: deleted accounts with a paid-plan / 'made admin' log → email-only rows (gone.admin, gone.paid; trimmed, lower case)
+PASS: back-fill: deleted accounts with only free / trial / 'expired seller' logs → NOT marked
+PASS: back-fill: one row per email even with several logs
 PASS: own code saved UPPERCASE ('budgetukay' → BUDGETUKAY)
 PASS: code set once, then set again → blocked (already_set)
 PASS: …and the first code is unchanged
@@ -23,7 +27,7 @@ PASS: live availability check: taken / free
 PASS: a reserved word added later with ONE insert is blocked at once
 PASS: full-width input (ｆｕｌｌｗｉｄｅ１, Chinese keyboard) → saved as FULLWIDE1
 PASS: full-width code is found; full-width spaces are trimmed
-PASS: random code: 6 chars, uppercase, no 0/O/1/I (C76W6X)
+PASS: random code: 6 chars, uppercase, no 0/O/1/I (UWXF2J)
 PASS: 300 random codes all match the format
 PASS: check_invite_code works signed out (anon), case-insensitive → found
 PASS: check_invite_code: unknown / null / junk → false, never an error
@@ -114,6 +118,14 @@ PASS: plan name set without an expiry → not active paid yet, nothing happens
 PASS: expiry-only change → first active paid plan → rewarded
 PASS: inviter's expiry update fires the trigger on the inviter row but changes nothing else (Z untouched, A's own invite still linked)
 PASS: an expiry change on an already-active account rewards nobody
+PASS: deleted paid account (back-filled email-only) signs up again → already_paid, no Enter code box
+PASS: delete friend, then inviter → both deletes succeed, history row kept
+PASS: delete inviter, then friend → both deletes succeed, history row kept
+PASS: table check still refuses a row where inviter = invitee
+PASS: friend made admin (master, active) → invite done, no reward (skip_reason admin)
+PASS: …the inviter's plan end is unchanged
+PASS: …and the friend is still marked 'had a paid plan'
+PASS: …removed as admin, then a real paid plan → still no reward
 PASS: browser role: a seller can claim a code
 PASS: browser role: a seller reads their summary
 PASS: browser role: a seller calling an admin function is refused
@@ -121,4 +133,4 @@ PASS: browser role: an admin giving a plan (as authenticated) fires the reward
 PASS: rollback removes every table, function and both triggers
 PASS: after rollback plans are given as before
 
-122 PASS, 0 FAIL
+134 PASS, 0 FAIL

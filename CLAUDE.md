@@ -5392,3 +5392,8 @@ CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
   SUPPORT / OFFICIAL, 'exact' SFL / HELP / TEST / SELLERFLOWLIVE. NFKC in `referral_norm_code` + the app.
   Revoke = `admin_referral_revoke(p_referral)` by row id, UI only on rewarded rows with days, shows current → new expiry.
   Sign-up pending code = {code, email}, claimed only for that email; the sign-up claim gives up after 4 s.
+- **Fix round 2 (same branch):** referrals check is `inviter_user_id <> invitee_user_id` (null/null after both accounts
+  are deleted passes; self-invite still refused). Back-fill also adds email-only `referral_paid_seen` rows (user_id null)
+  for audit-log paid-plan / 'made admin' emails with no seller_profiles row (live 2026-11-16: 21; existing marked 168);
+  emails matched as lower(btrim()), `details::text`. Trigger: `new.role = 'admin'` → still marked "had a paid plan",
+  invite set no_reward / skip_reason 'admin', inviter gets nothing. Behaviour script 134 PASS.

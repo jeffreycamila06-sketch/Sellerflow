@@ -142,6 +142,15 @@ await give(TRIAL_ONLY, "trial", 7);
 await log((await prof(TRIAL_ONLY)).email, "changed plan", "→ trial (1mo, activated)");
 const WORD_ONLY = await newUser();                                               // 'basically' must not count
 await log((await prof(WORD_ONLY)).email, "changed plan", "→ basically nothing");
+const SPACED = await newUser(null, "  Spaced@X.test ");                          // email with spaces both sides
+await log(" spaced@x.test", "changed plan", "→ pro (1mo, activated)");
+// Deleted accounts: logs for emails that have NO seller_profiles row any more.
+await log("  Gone.Paid@X.test ", "changed plan", "→ basic (1mo, activated)");
+await log("gone.paid@x.test", "changed plan", "→ free (1mo, activated)");
+await log("gone.admin@x.test", "made admin", "");
+await log("gone.free@x.test", "changed plan", "→ free (1mo, activated)");
+await log("gone.trial@x.test", "changed plan", "→ trial (1mo, activated)");
+await log("gone.expired@x.test", "expired seller", "");
 
 await db.exec(src("164_invite_referral.sql"));
 ok(await seen(OLD_PAID), "back-fill: on a paid plan now → marked 'had a paid plan'");
@@ -154,7 +163,12 @@ ok(!(await seen(EXPIRED_ONLY)), "back-fill: free with an expiry whose only log i
 ok(!(await seen(FREE_EXPIRY_NEVER)), "back-fill: free with an expiry date, never paid → NOT marked");
 ok(!(await seen(TRIAL_ONLY)), "back-fill: only ever a trial → NOT marked");
 ok(!(await seen(WORD_ONLY)), "back-fill: 'basically' is not the plan name basic → NOT marked");
-ok((await q("select count(*)::int c from referral_paid_seen")).rows[0].c === 5, "back-fill marks exactly the 5 expected accounts");
+ok(await seen(SPACED), "back-fill: emails matched as lower(btrim()) ('  Spaced@X.test ' ↔ ' spaced@x.test')");
+ok((await q("select count(*)::int c from referral_paid_seen where user_id is not null")).rows[0].c === 6, "back-fill marks exactly the 6 expected existing accounts");
+const emailOnly = (await q("select email from referral_paid_seen where user_id is null order by email")).rows.map((x) => x.email);
+ok(JSON.stringify(emailOnly) === JSON.stringify(["gone.admin@x.test", "gone.paid@x.test"]), "back-fill: deleted accounts with a paid-plan / 'made admin' log → email-only rows (gone.admin, gone.paid; trimmed, lower case)");
+ok(!emailOnly.includes("gone.free@x.test") && !emailOnly.includes("gone.trial@x.test") && !emailOnly.includes("gone.expired@x.test"), "back-fill: deleted accounts with only free / trial / 'expired seller' logs → NOT marked");
+ok((await q("select count(*)::int c from referral_paid_seen where email='gone.paid@x.test'")).rows[0].c === 1, "back-fill: one row per email even with several logs");
 
 // ── codes ────────────────────────────────────────────────────────────────────────────────
 const A = await newUser(); await give(A, "pro", 40);
@@ -444,6 +458,42 @@ ok(near(await expMs(A), before + 10 * DAY) && near(await expMs(Z), zExp) && (awa
 before = await expMs(A);
 await as(ADMIN, () => q("update seller_profiles set plan_expiry=plan_expiry + interval '1 day' where auth_user_id=$1", [A]));
 ok(near(await expMs(A), before + DAY) && near(await expMs(Z), zExp) && (await ref(A)).status === "linked", "an expiry change on an already-active account rewards nobody");
+
+// a deleted paid account (back-filled by email only) signs up again with the same email
+const GP = await newUser(null, "Gone.Paid@x.test");
+ok((await claim(GP, "JEFFSHOP")).reason === "already_paid" && (await summary(GP)).can_enter_code === false, "deleted paid account (back-filled email-only) signs up again → already_paid, no Enter code box");
+
+// both sides deleted: the check `inviter <> invitee` lets null/null through (was `is distinct from`)
+const DI1 = await newUser(); await give(DI1, "basic"); await setCode(DI1, "BOTHGO1");
+const DF1 = await newUser(null, "bothgo1@x.test"); await claim(DF1, "BOTHGO1");
+const D1ref = (await ref(DF1)).id;
+let delErr = "";
+try { await q("delete from auth.users where id=$1", [DF1]); await q("delete from auth.users where id=$1", [DI1]); } catch (e) { delErr = e.message; }
+let row = await refById(D1ref);
+ok(delErr === "" && row && row.invitee_user_id === null && row.inviter_user_id === null && row.invitee_email === "bothgo1@x.test", "delete friend, then inviter → both deletes succeed, history row kept");
+const DI2 = await newUser(); await give(DI2, "basic"); await setCode(DI2, "BOTHGO2");
+const DF2 = await newUser(null, "bothgo2@x.test"); await claim(DF2, "BOTHGO2");
+const D2ref = (await ref(DF2)).id;
+delErr = "";
+try { await q("delete from auth.users where id=$1", [DI2]); await q("delete from auth.users where id=$1", [DF2]); } catch (e) { delErr = e.message; }
+row = await refById(D2ref);
+ok(delErr === "" && row && row.invitee_user_id === null && row.inviter_user_id === null && row.invitee_email === "bothgo2@x.test", "delete inviter, then friend → both deletes succeed, history row kept");
+const SELFU = await newUser();
+let selfErr = "";
+try { await q("insert into referrals (invitee_user_id, inviter_user_id, source) values ($1,$1,'settings')", [SELFU]); } catch (e) { selfErr = e.message; }
+ok(selfErr.includes("check"), "table check still refuses a row where inviter = invitee");
+
+// making someone admin is not a payment: marked 'had a paid plan', no reward
+await setMonth(10);
+const FA = await newUser(); await claim(FA, "JEFFSHOP");
+before = await expMs(A);
+await as(ADMIN, () => q("update seller_profiles set role='admin', plan='master', plan_status='active', plan_expiry=now()+interval '120 months' where auth_user_id=$1", [FA]));
+ok((await prof(FA)).role === "admin" && (await ref(FA)).status === "no_reward" && (await ref(FA)).skip_reason === "admin", "friend made admin (master, active) → invite done, no reward (skip_reason admin)");
+ok(near(await expMs(A), before), "…the inviter's plan end is unchanged");
+ok(await seen(FA), "…and the friend is still marked 'had a paid plan'");
+await as(ADMIN, () => q("update seller_profiles set role='seller', plan='free', plan_status='active', plan_expiry=null where auth_user_id=$1", [FA]));
+await give(FA, "basic");
+ok((await ref(FA)).status === "no_reward" && near(await expMs(A), before), "…removed as admin, then a real paid plan → still no reward");
 
 // as the real browser role (authenticated), not the test superuser: seller calls + an admin giving a plan
 await q("grant select, update on public.seller_profiles to authenticated");

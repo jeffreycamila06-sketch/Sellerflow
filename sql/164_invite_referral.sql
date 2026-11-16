@@ -45,8 +45,10 @@
 -- the account is deleted, so delete + sign up again with the same email cannot earn a reward)
 -- OR the current plan is a paid plan name. Back-filled below: current plan in
 -- (basic, plus, pro, master), OR an audit_logs row for that seller with action 'changed plan' to a
--- paid plan name, OR action 'made admin'. (A free account that only has an expiry date is NOT
--- marked — e.g. a seller whose only log is 'expired seller'.)
+-- paid plan name, OR action 'made admin' (emails matched as lower(btrim())). Emails with such a
+-- log but NO seller_profiles row any more (deleted accounts) get an email-only row. (A free account
+-- that only has an expiry date is NOT marked — e.g. a seller whose only log is 'expired seller'.)
+-- Making someone admin is not a payment: the trigger marks "had a paid plan" but gives no reward.
 set lock_timeout = '2s';
 begin;
 
@@ -92,7 +94,8 @@ create table if not exists public.referrals (
   skip_reason     text,
   revoked_at      timestamptz,
   revoked_by      uuid,
-  check (inviter_user_id is distinct from invitee_user_id)
+  -- `<>` (not `is distinct from`): both null after both accounts are deleted must still pass.
+  check (inviter_user_id <> invitee_user_id)
 );
 create unique index if not exists referrals_invitee_uidx on public.referrals (invitee_user_id);
 create index if not exists referrals_inviter_idx on public.referrals (inviter_user_id, created_at desc);
@@ -133,9 +136,24 @@ select sp.auth_user_id, nullif(lower(btrim(coalesce(sp.email, ''))), ''), coales
  where sp.auth_user_id is not null
    and (lower(btrim(coalesce(sp.plan, ''))) in ('basic', 'plus', 'pro', 'master')
         or exists (select 1 from public.audit_logs a
-                    where lower(a.target_email) = lower(sp.email)
-                      and ((a.action = 'changed plan' and a.details ~* '\m(basic|plus|pro|master)\M')
+                    where lower(btrim(coalesce(a.target_email, ''))) = lower(btrim(coalesce(sp.email, '')))
+                      and ((a.action = 'changed plan' and a.details::text ~* '\m(basic|plus|pro|master)\M')
                            or a.action = 'made admin')))
+on conflict do nothing;
+
+-- …and email-only rows (user_id null) for accounts already DELETED: an audit_logs paid plan /
+-- 'made admin' for an email that no longer has a seller_profiles row. Signing up again with that
+-- email then counts as "had a paid plan".
+insert into public.referral_paid_seen (user_id, email, first_paid_at)
+select null, e.email, e.first_at
+  from (select lower(btrim(a.target_email)) as email, min(a.created_at) as first_at
+          from public.audit_logs a
+         where nullif(lower(btrim(coalesce(a.target_email, ''))), '') is not null
+           and ((a.action = 'changed plan' and a.details::text ~* '\m(basic|plus|pro|master)\M')
+                or a.action = 'made admin')
+         group by lower(btrim(a.target_email))) e
+ where not exists (select 1 from public.seller_profiles sp
+                    where lower(btrim(coalesce(sp.email, ''))) = e.email)
 on conflict do nothing;
 
 -- ── small helpers ─────────────────────────────────────────────────────────────────────────
@@ -384,6 +402,11 @@ begin
     if not found or v_ref.status <> 'linked' then return null; end if;
     if v_first < 0 then raise exception 'paid_seen_failed'; end if;
     v_month := public.referral_taipei_month(now());
+    if lower(btrim(coalesce(new.role, ''))) = 'admin' then   -- made admin = not a payment (still marked above)
+      update public.referrals set status = 'no_reward', skip_reason = 'admin', reward_month = v_month, rewarded_at = now()
+       where id = v_ref.id;
+      return null;
+    end if;
     if v_first = 0 then
       update public.referrals set status = 'no_reward', skip_reason = 'not_first_plan', reward_month = v_month, rewarded_at = now()
        where id = v_ref.id;
@@ -511,8 +534,8 @@ begin
     with base as (
       select r.id, r.invitee_user_id, r.inviter_user_id, r.source, r.status, r.reward_days, r.reward_month,
              r.rewarded_at, r.skip_reason, r.created_at, r.revoked_at,
-             coalesce(nullif(lower(ie.email), ''), r.invitee_email) as invitee_email,
-             coalesce(nullif(lower(ir.email), ''), r.inviter_email) as inviter_email,
+             coalesce(nullif(lower(btrim(ie.email)), ''), r.invitee_email) as invitee_email,
+             coalesce(nullif(lower(btrim(ir.email)), ''), r.inviter_email) as inviter_email,
              ir.plan_expiry as inviter_expiry,
              rc.code as inviter_code
         from public.referrals r
