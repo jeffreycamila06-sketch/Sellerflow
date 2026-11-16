@@ -1,0 +1,138 @@
+<title>Order Tracking Preview</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap">
+<style>
+:root{--bg:#eef0f5;--fg:#16181d;--mut:#666b7a;--card:#fff;--line:#dcdfe8;--acc:#4f46e5;--on:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101216;--fg:#eef0f4;--mut:#9aa0ae;--card:#1a1d24;--line:#2c303a;--acc:#8b85ff;--on:#111;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#101216;--fg:#eef0f4;--mut:#9aa0ae;--card:#1a1d24;--line:#2c303a;--acc:#8b85ff;--on:#111;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 Inter,system-ui,sans-serif}
+.page{max-width:1100px;margin:0 auto;padding-block:16px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:12px}
+h1{font:700 20px "Space Grotesk",Inter,sans-serif;margin:0}
+.sub{color:var(--mut);margin:0;font-size:13px}
+.ctl{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 18px}
+.ctl>div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ctl b{font:600 11.5px Inter;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 11px;font:600 12.5px Inter;cursor:pointer}
+.seg button.on{background:var(--acc);color:var(--on);border-color:var(--acc)}
+.stage{display:flex;justify-content:center}
+.dev{border:8px solid #0b0c0f;border-radius:30px;overflow:hidden;background:#fff;width:390px;max-width:100%;box-shadow:0 14px 40px rgba(0,0,0,.18)}
+.dev.android{width:412px;border-radius:22px}.dev.laptop{width:1000px;border-radius:14px}
+/* ---- inside the device: the buyer's shop (its own colours, not the page theme) ---- */
+.vp{container:vp/inline-size;--s-bg:#fff;--s-fg:#17181c;--s-mut:#6c7080;--s-card:#fff;--s-line:#e6e7ec;--s-acc:#111;--s-on:#fff;--s-ok:#16a34a;--s-warn:#b45309;--s-warnbg:#fff7ed;--s-bad:#dc2626;--s-badbg:#fef2f2;background:var(--s-bg);color:var(--s-fg);font:14px/1.45 Inter,sans-serif;height:720px;overflow:auto}
+.vp.dark{--s-bg:#0e0f12;--s-fg:#f3f4f6;--s-mut:#9a9eaa;--s-card:#191b21;--s-line:#2a2d36;--s-acc:#d7ff3e;--s-on:#111;--s-ok:#5fe08a;--s-warn:#fbbf24;--s-warnbg:#2a2110;--s-bad:#fb7185;--s-badbg:#2a1418}
+.hd{background:var(--s-card);border-bottom:1px solid var(--s-line);padding:12px 16px;display:flex;align-items:center;gap:10px;font:700 16px "Space Grotesk",sans-serif;position:sticky;top:0;z-index:2}
+.hd i{width:30px;height:30px;border-radius:50%;background:var(--s-acc);color:var(--s-on);display:grid;place-items:center;font:700 13px Inter;font-style:normal}
+.wrap{padding:16px;display:flex;flex-direction:column;gap:14px;max-width:980px;margin:0 auto}
+.hero{text-align:center;padding:6px 0 2px}
+.hero .ck{width:54px;height:54px;border-radius:50%;margin:0 auto 8px;display:grid;place-items:center;font-size:26px;background:color-mix(in srgb,var(--s-ok) 16%,var(--s-bg));color:var(--s-ok)}
+.hero.bad .ck{background:var(--s-badbg);color:var(--s-bad)}
+.hero h2{font:700 23px "Space Grotesk",sans-serif;margin:0}
+.hero p{margin:4px 0 0;color:var(--s-mut);font-size:13px}
+.box{background:var(--s-card);border:1px solid var(--s-line);padding:16px;display:flex;flex-direction:column;gap:12px}
+.bh{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bh b{font:700 16px "Space Grotesk",sans-serif}
+.pill{font:700 12px Inter;padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--s-ok) 16%,var(--s-bg));color:var(--s-ok);white-space:nowrap}
+.pill.warn{background:var(--s-warnbg);color:var(--s-warn)}.pill.bad{background:var(--s-badbg);color:var(--s-bad)}
+.note{padding:12px 14px;font-size:13.5px;display:flex;flex-direction:column;gap:2px;border:1px solid}
+.note.warn{background:var(--s-warnbg);color:var(--s-warn);border-color:color-mix(in srgb,var(--s-warn) 35%,transparent)}
+.note.bad{background:var(--s-badbg);color:var(--s-bad);border-color:color-mix(in srgb,var(--s-bad) 35%,transparent)}
+.note b{font-size:15px}.note span{color:var(--s-fg)}
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tl li{display:flex;gap:12px;position:relative;padding-bottom:14px;color:var(--s-mut)}
+.tl li:last-child{padding-bottom:0}
+.tl li::before{content:"";flex:0 0 14px;height:14px;border-radius:50%;border:2px solid var(--s-line);background:var(--s-card);margin-top:3px;z-index:1}
+.tl li::after{content:"";position:absolute;left:6px;top:17px;bottom:-3px;width:2px;background:var(--s-line)}
+.tl li:last-child::after{display:none}
+.tl li.done{color:var(--s-fg)}.tl li.done::before{background:var(--s-ok);border-color:var(--s-ok)}.tl li.done::after{background:var(--s-ok)}
+.tl li.now{color:var(--s-fg);font-weight:700}.tl li.now::before{background:var(--s-acc);border-color:var(--s-acc);box-shadow:0 0 0 4px color-mix(in srgb,var(--s-acc) 22%,transparent)}
+.tl li.badn::before{background:var(--s-bad);border-color:var(--s-bad);box-shadow:0 0 0 4px color-mix(in srgb,var(--s-bad) 22%,transparent)}
+.tl small{display:block;font-weight:500;color:var(--s-mut);font-size:12.5px}
+.upd{font-size:12px;color:var(--s-mut);border-top:1px solid var(--s-line);padding-top:10px}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:13.5px}.kv span:first-child{color:var(--s-mut)}.kv span:last-child{font-weight:600;text-align:right}
+.kv a{color:var(--s-acc);font-weight:700;margin-left:8px;cursor:pointer}
+.vp.dark .kv a{color:var(--s-acc)}
+.lk{font-size:12.5px;color:var(--s-mut)}
+.cols{display:flex;flex-direction:column;gap:14px}
+@container vp (min-width:760px){.cols{flex-direction:row;align-items:flex-start}.cols>*{flex:1;min-width:0}.hero h2{font-size:28px}}
+/* seller side */
+.sv{--s-bg:#f5f5f7;background:#f5f5f7;color:#17181c}
+.sh{background:#4f46e5;color:#fff;padding:14px 16px;font:700 18px Inter}
+.sh small{display:block;font-weight:500;opacity:.85;font-size:12px}
+.so{background:#fff;border:1px solid #e6e7ec;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.so .r{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.so .m{color:#6c7080;font-size:12.5px}
+.chip{font:700 11.5px Inter;padding:3px 9px;border-radius:999px;background:#eef2ff;color:#3730a3;white-space:nowrap}
+.chip.g{background:#dcfce7;color:#166534}.chip.w{background:#ffedd5;color:#9a3412}.chip.b{background:#fee2e2;color:#991b1b}.chip.n{background:#f1f2f6;color:#555b6b}
+.pk{border-top:1px solid #e6e7ec;padding-top:8px;display:flex;flex-direction:column;gap:4px}
+.btnl{align-self:flex-start;border:1px solid #c7c9d6;background:#fff;border-radius:9px;padding:6px 10px;font:600 12.5px Inter;color:#3730a3}
+.why{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:13px;color:var(--mut)}
+.why b{color:var(--fg)}
+</style>
+<div class="page">
+  <h1>Order tracking: preview</h1>
+  <p class="sub">Preview lang ito, wala pang nabago sa totoong website. Pumili sa ibaba para makita ang bawat lagay ng parcel.</p>
+  <div class="ctl">
+    <div><b>Sino ang tumitingin</b><div class="seg" data-k="who"><button data-v="buyer">Buyer (order page)</button><button data-v="seller">Seller (Website orders)</button></div></div>
+    <div><b>Screen</b><div class="seg" data-k="dev"><button data-v="iphone">iPhone</button><button data-v="android">Android</button><button data-v="laptop">Laptop</button></div></div>
+    <div><b>Lagay ng parcel</b><div class="seg" data-k="st"><button data-v="shipped">Shipped</button><button data-v="transit">In transit</button><button data-v="store">Dumating sa store</button><button data-v="picked">Nakuha na</button><button data-v="returned">Ibinalik</button></div></div>
+    <div><b>Padala</b><div class="seg" data-k="ship"><button data-v="cvs">7-11 / FamilyMart</button><button data-v="other">Home delivery / ibang bansa</button></div></div>
+    <div><b>Bayad</b><div class="seg" data-k="pay"><button data-v="cod">Bayad sa pickup</button><button data-v="first">Bayad muna</button></div></div>
+    <div><b>Itsura ng shop</b><div class="seg" data-k="dark"><button data-v="0">Maliwanag</button><button data-v="1">Madilim</button></div></div>
+  </div>
+  <div class="stage"><div class="dev" id="dev"><div class="vp" id="vp"></div></div></div>
+  <div class="why" id="why"></div>
+</div>
+<script>
+const S={who:"buyer",dev:"iphone",st:"store",ship:"cvs",pay:"cod",dark:0};
+const $=s=>document.querySelector(s);
+const ORDER=["shipped","transit","store","picked"];
+const T={shipped:["Your order has shipped","The shop sent your parcel."],transit:["Your order is on the way","It is travelling to your pickup store."],store:["Ready for pickup","Your parcel is waiting at the store."],picked:["Picked up. Thank you!","We hope you love it."],returned:["Parcel returned to the shop","It was not picked up in time."]};
+function buyer(){
+  const cvs=S.ship=="cvs", st=cvs?S.st:"shipped", ret=st=="returned", idx=ret?2:ORDER.indexOf(st);
+  const step=(label,i,sub)=>`<li class="${i<idx||(st=="picked"&&i==idx)?"done":i==idx?"now":""}">${`<span>${label}${sub&&i<=idx?`<small>${sub}</small>`:""}</span>`}</li>`;
+  let tl=`<li class="done"><span>Order placed<small>Nov 16, 10:07 PM</small></span></li><li class="done"><span>The shop is packing your order</span></li>`;
+  tl+=`<li class="${idx>0||st=="picked"?"done":"now"}"><span>Shipped<small>Nov 17, 2:15 PM</small></span></li>`;
+  if(cvs){
+    tl+=step("In transit",1,"On the way to the store");
+    tl+=`<li class="${ret?"done":idx>2||st=="picked"?"done":idx==2?"now":""}"><span>Arrived at the store${idx>=2?`<small>Nov 19, 9:30 AM · FamilyMart #151003</small>`:""}</span></li>`;
+    tl+=ret?`<li class="now badn"><span>Returned to the shop<small>Nov 27, 8:00 AM</small></span></li>`:step("Picked up",3,"Nov 21, 6:42 PM");
+  }
+  const pill=ret?`<span class="pill bad">Returned</span>`:st=="store"?`<span class="pill warn">Ready for pickup</span>`:`<span class="pill">${{shipped:"Shipped",transit:"In transit",picked:"Picked up"}[st]}</span>`;
+  const note=st=="store"?`<div class="note warn"><b>Pick up by Nov 26</b><span>7 days left · FamilyMart #151003${S.pay=="cod"?" · Pay NT$83.7 at pickup":""}</span></div>`
+    :ret?`<div class="note bad"><b>This parcel went back to the shop</b><span>Message the shop to arrange a new delivery.</span></div>`:"";
+  return `<div class="hd"><i>B</i>Budgetukay</div><div class="wrap">
+   <div class="hero ${ret?"bad":""}"><div class="ck">${ret?"↩":st=="store"?"📦":"✓"}</div><h2>${T[st][0]}</h2><p>${T[st][1]}</p></div>
+   <div class="cols"><div class="box"><div class="bh"><b>Order W-0001</b>${pill}</div>${note}<ul class="tl">${tl}</ul>
+    ${cvs&&st!="shipped"?`<div class="upd">Last updated: Nov ${ret?27:st=="picked"?21:19}, 9:40 AM</div>`:cvs?`<div class="upd">Tracking updates will appear here.</div>`:""}</div>
+   <div class="box"><div class="bh"><b>Order summary</b></div>
+    <div class="kv"><span>Total</span><span>NT$83.7</span></div>
+    <div class="kv"><span>Ship to</span><span>${cvs?"FamilyMart · #151003":"Home delivery"}</span></div>
+    ${cvs?"":`<div class="kv"><span>Courier</span><span>Black Cat</span></div>`}
+    <div class="kv"><span>Tracking number</span><span>${cvs?"12345678901":"TW8842001"}<a>Copy</a></span></div>
+    <div class="kv"><span>Payment</span><span>${S.pay=="cod"?"Pay at pickup":"Bank transfer · Paid"}</span></div>
+    <div class="lk">${S.pay=="first"?"Keep this link to check your order and upload your receipt.":"Keep this link to check your order."}</div></div></div></div>`;
+}
+function seller(){
+  const cvs=S.ship=="cvs", st=cvs?S.st:"shipped";
+  const chip={shipped:`<span class="chip n">Wala pang update</span>`,transit:`<span class="chip">In transit</span>`,store:`<span class="chip w">Nasa store · kunin bago Nov 26</span>`,picked:`<span class="chip g">Nakuha na</span>`,returned:`<span class="chip b">Ibinalik</span>`}[st];
+  return `<div class="sv" style="min-height:100%"><div class="sh">Orders<small>Website</small></div><div class="wrap">
+   <div class="so"><div class="r"><b>W-0001 · j*** · ***782</b><span class="chip g">Shipped</span></div>
+    <div class="m">TSHIRT ONEPIECE ×3 · NT$83.7 · ${cvs?"FamilyMart #151003":"Home delivery"} · ${S.pay=="cod"?"Bayad sa pickup":"Bayad na"}</div>
+    <div class="m">Tracking: <b style="color:#17181c">${cvs?"12345678901":"TW8842001 · Black Cat"}</b></div>
+    ${cvs?`<div class="pk"><div class="r"><span class="m">Lagay ng parcel</span>${chip}</div>
+      <div class="m">${st=="shipped"?"Lalabas dito ang lagay kapag nakita na ang tracking number sa Pickup Status at nag-Check now ka.":"Huling check: Nov "+(st=="returned"?27:st=="picked"?21:19)+", 9:40 AM · ganito rin ang nakikita ng buyer"}</div>
+      ${st=="shipped"?"":`<span class="btnl">Buksan sa Pickup Status</span>`}</div>`
+     :`<div class="pk"><div class="m">Home delivery / ibang bansa: courier at tracking number lang ang ipinapakita sa buyer.</div></div>`}</div></div></div>`;
+}
+const WHY={shipped:"<b>Shipped:</b> ganito ngayon. Mananatili rito ang order hangga't walang tugmang parcel sa Pickup Status. Walang masisira kapag mali ang na-type na numero.",transit:"<b>In transit:</b> lalabas kapag nakita ng Check now na umalis na ang parcel.",store:"<b>Dumating sa store:</b> ang pinakamahalaga. Kita ng buyer ang deadline at ilang araw na lang, para hindi maibalik ang parcel.",picked:"<b>Nakuha na:</b> tapos ang order. Wala nang deadline na ipinapakita.",returned:"<b>Ibinalik:</b> malinaw sa buyer na bumalik sa shop, at sinasabihan siyang i-message ang shop."};
+function render(){
+  document.querySelectorAll(".seg").forEach(g=>g.querySelectorAll("button").forEach(b=>b.classList.toggle("on",String(S[g.dataset.k])==b.dataset.v)));
+  $("#dev").className="dev "+S.dev;
+  const v=$("#vp");v.className="vp"+(+S.dark&&S.who=="buyer"?" dark":"");
+  v.innerHTML=S.who=="buyer"?buyer():seller();v.scrollTop=0;
+  $("#why").innerHTML=(S.ship=="other"?"<b>Home delivery / ibang bansa:</b> walang kusang update. Hanggang Shipped lang, kasama ang courier at tracking number, gaya ngayon.":WHY[S.st])+(S.who=="buyer"?" · Ang salitang “upload your receipt” ay lalabas lang kapag <b>Bayad muna</b>.":"");
+}
+document.querySelector(".ctl").addEventListener("click",e=>{const b=e.target.closest(".seg button");if(!b)return;const k=b.parentNode.dataset.k;S[k]=k=="dark"?+b.dataset.v:b.dataset.v;render()});
+render();
+</script>
