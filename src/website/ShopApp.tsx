@@ -125,6 +125,8 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   const brand = look?.layout === "brand";
   // Brand store: after adding, the cart opens as a panel; everywhere else Build 1's "Added" note
   const added = () => { if (brand) setPanel(true); else say(t.rd_shop_added); };
+  // the cart icon (header + bottom bar): the panel in the Brand store, as the preview; the full cart page stays at its link
+  const openCart = () => (brand ? setPanel(true) : go({ page: "cart" }));
   // quick add: straight into the cart when there's nothing to choose, else open the product to choose
   const quick = (id: number) => {
     const p = shop.products.find((x) => x.id === id);
@@ -167,7 +169,7 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
     <div className={ls ? `sfl-v2 ${ls.className} sfl-shop` : `sfl-v2 ${themeClass(k)} sfl-shop`} data-testid="shop-root" data-theme-key={ls ? `look-${look!.layout}` : k}
       style={(ls ? ls.vars : accentVars(shop.shop, k)) as CSSProperties}>
       <style>{ls ? V2_CSS + SHOP_CSS + V3_CSS : V2_CSS + SHOP_CSS}</style>
-      <Header shop={shop} active={navActive} overBand={brand && route.page === "home"} onBack={onBack} onHome={home} cartCount={count} onCart={() => go({ page: "cart" })}
+      <Header shop={shop} active={navActive} overBand={brand && route.page === "home"} onBack={onBack} onHome={home} cartCount={count} onCart={openCart}
         query={query} onQuery={(q) => setFilter({ ...filter, q })} onSearch={(q) => toShop({ q })} cats={cats} onCat={(c) => toShop({ cat: c })}
         savedCount={saved.length} onSaved={() => go({ page: "saved" })} onTrack={() => go({ page: "orders" })} />
       <main className="v-main"><LayoutCtx.Provider value={look?.layout ?? null}><BrandActionsCtx.Provider value={brand ? brandActions : null}>{body}</BrandActionsCtx.Provider></LayoutCtx.Provider></main>
@@ -175,7 +177,7 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
         [{ label: t.rd_shop_all_products, go: () => toShop() }, { label: t.rd_shop_new_arrivals, go: () => toShop({ sort: "new" }) }, { label: t.rd_shop_best_sellers, go: () => toShop({ sort: "best" }) }, { label: t.rd_shop_on_sale, go: () => toShop({ sale: true }) }],
         [{ label: t.rd_shop_f_how, go: () => setInfo("how") }, { label: t.rd_shop_track, go: () => go({ page: "orders" }) }, { label: t.rd_shop_f_shipping, go: () => setInfo("ship") }, ...(shop.shop.policy ? [{ label: t.rd_shop_returns, go: () => setInfo("returns") }] : [])],
       ]} />}
-      {showNav && <BottomNav active={navActive} cartCount={count} onHome={home} onShop={() => toShop()} onCart={() => go({ page: "cart" })} onOrders={() => go({ page: "orders" })} onChat={() => setChat(true)} />}
+      {showNav && <BottomNav active={navActive} cartCount={count} onHome={home} onShop={() => toShop()} onCart={openCart} onOrders={() => go({ page: "orders" })} onChat={() => setChat(true)} />}
       {(route.page === "home" || route.page === "shop" || route.page === "saved" || route.page === "orders") && <Fab onClick={() => setChat(true)} />}
       {chat && <ChatSheet shop={shop} onClose={() => setChat(false)} />}
       {info && (

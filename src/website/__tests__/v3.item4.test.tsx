@@ -76,7 +76,7 @@ describe("Brand store quick add", () => {
     fireEvent.click(within(cardOf("Linen button shirt")).getByTestId("card-quick"));
     expect(screen.getByTestId("brand-cart-panel")).toHaveTextContent("Linen button shirt");
   });
-  it("the panel: quantity (never above stock), remove, free-shipping progress, subtotal, Checkout, Keep shopping; the full cart page still exists", () => {
+  it("the panel: quantity (never above stock), remove, free-shipping progress, subtotal, Checkout, Keep shopping", () => {
     render(<ShopApp preview={BRAND} nowMs={NOW} startRoute={{ page: "shop" }} />);
     fireEvent.click(within(cardOf("Mini shoulder bag")).getByTestId("card-quick")); // stock 2
     const panel = () => screen.getByTestId("brand-cart-panel");
@@ -90,10 +90,9 @@ describe("Brand store quick add", () => {
     expect(within(panel()).getByTestId("panel-qty")).toHaveTextContent("1");
     fireEvent.click(within(panel()).getByTestId("panel-keep"));
     expect(screen.queryByTestId("brand-cart-panel")).toBeNull();
-    // the cart icon still opens the full cart page
+    // the cart icon opens the panel again (the full cart page is at its link — v3.cartIcon.test.tsx)
     fireEvent.click(screen.getAllByTestId("shop-cart-btn")[0]);
-    expect(screen.getByTestId("cart-page")).toBeInTheDocument();
-    expect(screen.getByTestId("cart-line")).toHaveTextContent("Mini shoulder bag");
+    expect(within(panel()).getByTestId("panel-line")).toHaveTextContent("Mini shoulder bag");
   });
   it("Remove empties the panel; Checkout goes to checkout", () => {
     render(<ShopApp preview={BRAND} nowMs={NOW} startRoute={{ page: "shop" }} />);

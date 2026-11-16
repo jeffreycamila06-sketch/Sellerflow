@@ -38,19 +38,26 @@ describe("Brand store pages = Build 1's structure", () => {
       }
     });
   }
-  it("cart with a line + checkout: same page as Build 1", () => {
-    const fill = (s: Shop) => {
-      const r = render(<ShopApp preview={s} nowMs={NOW} startRoute={{ page: "product", id: 2 }} />);
-      fireEvent.click(screen.getByTestId("pd-add"));
-      fireEvent.click(screen.getAllByTestId("shop-cart-btn")[0]);
+  it("cart with a line + checkout: same page as Build 1", async () => {
+    // the full cart page at its link (/s/<shop>/cart) of a real shop with a line in the device's cart — in the
+    // Brand store the cart icon opens the panel instead, so the page is opened by its address here
+    const fill = async (s: Shop) => {
+      vi.resetModules();
+      vi.doMock("../shopApi", async (orig) => ({ ...(await orig<typeof import("../shopApi")>()), loadShop: vi.fn(async () => s) }));
+      const { default: App } = await import("../ShopApp");
+      localStorage.setItem("sfl_shop_cart_budgetukay", JSON.stringify([{ pid: 2, vid: null, qty: 1 }]));
+      const r = render(<App host="www.sellerflowlive.com" path="/s/budgetukay/cart" nowMs={NOW} />);
+      await screen.findByTestId("cart-line");
       const cart = page(r.container);
       fireEvent.click(screen.getByTestId("cart-checkout"));
       const co = page(r.container);
       r.unmount();
+      vi.doUnmock("../shopApi");
+      localStorage.clear();
       return [cart, co];
     };
-    const want = fill(B1);
-    for (const l of looks) expect(fill(l.shop), l.name).toEqual(want);
+    const want = await fill(B1);
+    for (const l of looks) expect(await fill(l.shop), l.name).toEqual(want);
   });
   it("order page: same page as Build 1", async () => {
     // the order page counts down from the real clock: freeze it so every render is at the same moment
