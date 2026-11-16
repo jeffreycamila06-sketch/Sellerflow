@@ -127,6 +127,7 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { useApprovedPrinters } from "./adapters/printerTesters";
 import { sellerWebsiteVisible, websiteTeaserVisible } from "./adapters/sellerWebsiteGate";
+import OrdersMinersTabs, { type OrdersTab } from "./components/OrdersMinersTabs";
 import { websiteNewOrdersCount, loadWebsiteSales } from "./adapters/websiteSeller";
 import { useWebsiteOrdersLive } from "./adapters/websiteOrdersLive";
 // Seller Website screens load only when opened (the switch is off for almost every seller).
@@ -188,18 +189,6 @@ const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
-type OrdersTab = "orders" | "miners" | "website";
-function OrdersMinersTabs({ tab, onTab, ordersLabel, website }: { tab: OrdersTab; onTab: (t: OrdersTab) => void; ordersLabel: string; website?: { label: string; count: number } }) {
-  const seg = (on: boolean) => ({ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", fontWeight: 800 as const, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--font-ui)", background: on ? "#fff" : "transparent", color: on ? "var(--accent-fg)" : "var(--on-header)" });
-  return (
-    <div style={{ display: "flex", gap: 4, marginTop: 11, background: "rgba(255,255,255,.16)", borderRadius: 10, padding: 3 }}>
-      <button data-testid="orders-tab-orders" onClick={() => onTab("orders")} style={seg(tab === "orders")}>{ordersLabel}</button>
-      <button data-testid="orders-tab-miners" onClick={() => onTab("miners")} style={seg(tab === "miners")}>Miners</button>
-      {website && <button data-testid="orders-tab-website" onClick={() => onTab("website")} style={seg(tab === "website")}>{website.label}{website.count > 0 && <span style={{ marginLeft: 5, fontSize: 10.5, fontWeight: 800, background: "var(--danger)", color: "#fff", borderRadius: 999, padding: "1px 6px" }}>{website.count}</span>}</button>}
-    </div>
-  );
-}
-
 // A pending session-first connect (awaiting the picker / owner-Start length choice).
 // tt = a TikTok/FB account connect (register = append a NEW @username to the profile
 // after connect); shopee = a shop connect with its Live session id. Both funnel into
@@ -895,6 +884,7 @@ export default function RedesignApp() {
   // Seller Website teaser (sql/169): "Soon" card / Sales row for sellers without the website (never admins)
   const websiteTeaserOn = websiteTeaserVisible({ switchOn: featureSw.websiteTeaser, hasWebsite: sellerWebsiteOn, isAdmin });
   const websiteTeaserSalesOn = websiteTeaserVisible({ switchOn: featureSw.websiteTeaserSales, hasWebsite: sellerWebsiteOn, isAdmin });
+  const websiteTeaserOrdersOn = websiteTeaserVisible({ switchOn: featureSw.websiteTeaserOrders, hasWebsite: sellerWebsiteOn, isAdmin });
   // New website orders: ONE read when the app opens (and the Website tab updates it) — no polling.
   const [webNew, setWebNew] = useState(0);
   const classicShown = classicTextCardShown(classicAllowed, printerFlowV2, hasGenericPrinterBridge());
@@ -2860,12 +2850,12 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post") => { if (source === "post") return postItemStock(postSales?.sales ?? [], code); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} />}
+            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
             tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
             pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
             sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(postSales ? { posts: postSales } : {})} />}
-          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} />} />}
+          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />} />}
           {screen === "orders" && ordersTab === "website" && sellerWebsiteOn && (
             <Suspense fallback={null}><WebsiteOrders cur={cur} liveTick={webLiveTick} subdomainReady={featureSw.websiteSubdomainReady} onNewCount={setWebNew} onToast={(msg) => setToast({ msg, kind: "ok" })} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={{ label: tApp.rd_wor_tab, count: webNew }} />} /></Suspense>
           )}
