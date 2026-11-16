@@ -33,7 +33,7 @@ const OK = (i: { kind: string }) => ({ verdict: i.kind === "phone" ? "ok" : "ope
 const RESTRICTED = () => ({ verdict: "restricted", http: 200, ms: 900, kind: "", raw: "Status:false-restricted", steps: [] });
 const REFUSE = () => ({ verdict: "unknown", http: 429, ms: 300, kind: "http", steps: [{ step: "phone.token", http: 429, ms: 300, ok: false, note: "kind=http" }] });
 
-function harness(o: { queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (i: Record<string, string>) => unknown; awaitingRows?: () => Row[]; parcels?: Record<string, Row | null>; start?: number } = {}) {
+function harness(o: { saveFails?: () => boolean; updateFails?: () => boolean; queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (i: Record<string, string>) => unknown; awaitingRows?: () => Row[]; parcels?: Record<string, Row | null>; start?: number } = {}) {
   let t = o.start ?? NOW;
   const logs: string[] = [], oldRows: Row[] = [], evRows: Row[] = [], updates: [unknown, Row][] = [];
   const settings: Record<string, string> = { pc711_shadow_enabled: "true", [MIRROR_SWITCH]: o.mirror ? "true" : "false" };
@@ -63,8 +63,8 @@ function harness(o: { queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (
       return { shadow: true, ...q, mirror, reasks: (await part.reasksDue(new Date(t).toISOString())).slice(0, reaskLimit), awaiting: await part.awaiting(),
         mirrorQueue: mirror && mirrorAllowed ? await part.mirrorPending() : null };
     }),
-    insert: req("ev.insert", async (r: Row) => { evRows.push({ ...r, id: evRows.length + 1, reask_n: 0 }); }),
-    update: req("ev.update", async (rid: unknown, p: Row) => { updates.push([rid, p]); const x = evRows.find((r) => r.id === rid); if (x) Object.assign(x, p); }),
+    insert: req("ev.insert", async (r: Row) => { if (o.saveFails?.()) throw new Error("db down"); evRows.push({ ...r, id: evRows.length + 1, reask_n: 0 }); }),
+    update: req("ev.update", async (rid: unknown, p: Row) => { if (o.updateFails?.()) throw new Error("db down"); updates.push([rid, p]); const x = evRows.find((r) => r.id === rid); if (x) Object.assign(x, p); }),
     parcelForReask: req("ev.parcelForReask", async (sid: string) => (o.parcels && sid in o.parcels ? o.parcels[sid] : { phone: PHONE, customer_name: NAME, store_id: STORE })),
   };
   const check = vi.fn(async (i: Record<string, string>) => { t += 900; return o.check ? o.check(i) : OK(i as { kind: string }); });
@@ -345,6 +345,66 @@ describe("the shadow switch comes back in the same call", () => {
       pc711: { status: () => st }, readSetting: vi.fn(), now: () => NOW, log: () => {}, sleep: async () => {} });
     expect(await j2.tick()).toEqual({ skipped: "not_connected" });
     expect(h.requests).toEqual([]);
+  });
+});
+
+describe("a failed evidence save never causes repeat checks", () => {
+  const drive = async (h: ReturnType<typeof harness>, minutes: number) => { for (let i = 0; i < minutes * 12; i++) { h.advance(5000); await h.job.tick(); } };
+  it("after-mode re-check: not asked again for 10 min, at most 3 tries, then left — one line each, no data", async () => {
+    const at = ago(10);
+    const re = pend("phone", { input: NEW_PHONE, phone: NEW_PHONE, at, prev_input: PHONE, prev_ext_at: ago(20), round: 2 });
+    const h = harness({ queue: [re], saveFails: () => true });
+    await h.job.tick();
+    expect(h.check).toHaveBeenCalledTimes(1);
+    await drive(h, 9);                       // the queue offers it every pass (nothing was saved) …
+    expect(h.check).toHaveBeenCalledTimes(1); // … but 7-11 is not asked again for 10 minutes
+    await drive(h, 2);
+    expect(h.check).toHaveBeenCalledTimes(2); // try 2
+    await drive(h, 11);
+    expect(h.check).toHaveBeenCalledTimes(3); // try 3
+    await drive(h, 60);
+    expect(h.check).toHaveBeenCalledTimes(3); // left
+    const lines = h.logs.filter((l) => l.includes("evidence save failed"));
+    expect(lines).toEqual([
+      "[PC711_SHADOW] evidence save failed kind=phone mode=after try=1/3 next=600s",
+      "[PC711_SHADOW] evidence save failed kind=phone mode=after try=2/3 next=600s",
+      "[PC711_SHADOW] evidence save failed kind=phone mode=after try=3/3 left",
+    ]);
+    expect(noPhoneIn(h.logs)).toBe(true);
+  });
+  it("a save that works again clears the block (the next value is checked normally)", async () => {
+    let fail = true;
+    const h = harness({ queue: [pend("store")], saveFails: () => fail });
+    await h.job.tick();
+    fail = false;
+    await drive(h, 11);
+    expect(h.check).toHaveBeenCalledTimes(2);
+    expect(h.evRows).toHaveLength(1);
+    await drive(h, 5);
+    expect(h.check).toHaveBeenCalledTimes(2); // saved → no job any more
+  });
+  it("mirror: the same rule (the mirror queue offers it again every pass)", async () => {
+    const h = harness({ mirror: true, mqueue: [mpend("phone")], saveFails: () => true });
+    await h.job.tick();
+    expect(h.check).toHaveBeenCalledTimes(1);
+    await drive(h, 9);
+    expect(h.check).toHaveBeenCalledTimes(1);
+    await drive(h, 25);
+    expect(h.check).toHaveBeenCalledTimes(3);
+    await drive(h, 60);
+    expect(h.check).toHaveBeenCalledTimes(3);
+    expect(h.logs.filter((l) => l.includes("evidence save failed kind=phone mode=mirror"))).toHaveLength(3);
+  });
+  it("a re-ask whose answer can't be saved is not asked again every pass", async () => {
+    let failUpdates = false;
+    const h = harness({ queue: [pend("phone", { ext: "restricted" })], updateFails: () => failUpdates });
+    await h.job.tick();
+    failUpdates = true;
+    h.advance(31_000); await h.job.tick();
+    expect(h.check).toHaveBeenCalledTimes(2);
+    await drive(h, 9);
+    expect(h.check).toHaveBeenCalledTimes(2);
+    expect(h.logs.some((l) => l === "[PC711_SHADOW] evidence save failed kind=phone mode=reask try=1/3 next=600s")).toBe(true);
   });
 });
 

@@ -18,7 +18,7 @@
 // RPC (sql/162 pc711_shadow_pending) — an empty pass costs a few bytes.
 // Log, one line per check: [PC711_SHADOW] kind=… match=1|0|err step=… http=… ms=… gap=… — no data.
 import { randomUUID } from "node:crypto";
-import { MIRROR_SWITCH, evidenceJobs, evidenceRow, pairPatch, oldRowFromPair, reaskWord, nextReaskAt } from "./pc711Evidence.js";
+import { MIRROR_SWITCH, EVIDENCE_SAVE_TRIES, EVIDENCE_SAVE_RETRY_MS, evidenceJobs, evidenceRow, pairPatch, oldRowFromPair, reaskWord, nextReaskAt } from "./pc711Evidence.js";
 
 // ── mirrored from chrome-extension/background.js (test-pinned) ─────────────────
 export const SHADOW_POLL_MS = 5000;                      // PC_POLL_MS
@@ -290,7 +290,20 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     return true;
   }
 
-  const evInsert = async (row) => { if (!evidence) return; try { await evidence.insert(row); } catch { /* the next pass tries again */ } };
+  // sql/172: a failed evidence save must not make the queue offer the same value again every pass (nothing
+  // else marks it checked): that parcel + kind + value is not asked again for 10 min, at most 3 tries, then left.
+  const saveFails = new Map(); // key → { fails, nextAt, seenAt }
+  const saveBlocked = (key, t) => { const f = saveFails.get(key); if (f) f.seenAt = t; return Boolean(f && t < f.nextAt); };
+  function noteSave(key, ok, kind, mode) {
+    if (ok) { saveFails.delete(key); return; }
+    const f = saveFails.get(key) || { fails: 0, nextAt: 0, seenAt: now() };
+    f.fails += 1; f.seenAt = now();
+    f.nextAt = f.fails >= EVIDENCE_SAVE_TRIES ? Infinity : now() + EVIDENCE_SAVE_RETRY_MS;
+    saveFails.set(key, f);
+    say(`${TAG} evidence save failed kind=${kind} mode=${mode} try=${f.fails}/${EVIDENCE_SAVE_TRIES} ${f.fails >= EVIDENCE_SAVE_TRIES ? "left" : `next=${EVIDENCE_SAVE_RETRY_MS / 1000}s`}`);
+  }
+  const jobKey = (job) => `${job.scanId}:${job.kind}:${job.value}`;
+  const evInsert = async (row) => { if (!evidence) return true; try { await evidence.insert(row); return true; } catch { return false; } };
   const tagOf = (job) => (evidence ? ` mode=${job.mode || "after"} round=${job.round || 1}` : "");
 
   // one parcel job (after-mode or mirror) → "next" | "stop" | "pause"
@@ -301,7 +314,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     const key = `${mirror ? "m:" : ""}${job.scanId}:${job.kind}`;
     const maint = inShadowMaint(end);
     const isErr = row.match === null && Boolean(row.fail_reason);
-    const ev = () => evInsert(evidenceRow(job, row, r, t0, end, queued, seenAt));
+    const ev = async () => { const ok = await evInsert(evidenceRow(job, row, r, t0, end, queued, seenAt)); if (evidence) noteSave(jobKey(job), ok, job.kind, mirror ? "mirror" : "after"); };
     if (loggedOut) {
       if (!mirror) { try { await db.insert(row); } catch { /* the next pass tries again */ } }
       await ev();
@@ -367,7 +380,9 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     if (p === undefined) return "next"; // the read failed: try on the next pass
     if (!p || String(p.phone ?? "") !== String(x.phone ?? "")) {
       // the parcel is gone or its phone changed: nothing to ask; no further re-asks
-      try { await evidence.update(x.id, { [`reask${n}_at`]: at, [`reask${n}_word`]: p ? "phone_changed" : "parcel_gone", reask_n: n, reask_next_at: null }); } catch { /* next pass */ }
+      let saved = true;
+      try { await evidence.update(x.id, { [`reask${n}_at`]: at, [`reask${n}_word`]: p ? "phone_changed" : "parcel_gone", reask_n: n, reask_next_at: null }); } catch { saved = false; }
+      noteSave(`reask:${x.id}`, saved, "phone", "reask");
       return "next";
     }
     const input = { kind: "phone", phone: String(p.phone ?? ""), name: String(p.customer_name ?? ""), storeId: String(p.store_id ?? "") };
@@ -375,9 +390,11 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     const row = shadowRow({ scanId: x.scan_id, kind: "phone", ext: null, at: NaN, input }, r, t0);
     const isErr = loggedOut || (row.match === null && Boolean(row.fail_reason));
     const w = reaskWord(row.srv_verdict, loggedOut ? "needs_login" : isErr ? row.fail_reason : null);
+    let saved = true;
     try {
       await evidence.update(x.id, { [`reask${n}_at`]: new Date(end).toISOString(), [`reask${n}_word`]: w, reask_n: n, reask_next_at: nextReaskAt(x, n, end) });
-    } catch { /* the next pass asks again */ }
+    } catch { saved = false; }
+    noteSave(`reask:${x.id}`, saved, "phone", "reask");
     say(`${TAG} reask kind=phone n=${n} word=${w} ms=${row.srv_ms}`);
     if (loggedOut) { stoppedSince = st.since ?? null; return "stop"; }
     if (!isErr) { streak = 0; return "next"; }
@@ -410,12 +427,14 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     if (mirrorOn !== mirrorOnLast) { mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`); }
     await noteWaiting(p.waiting, t);
     for (const [k, b] of backoff) if (t - b.seenAt > SHADOW_LOOKBACK_MS) backoff.delete(k); // gone for 6 h (the extension's rule)
+    for (const [k, f] of saveFails) if (t - f.seenAt > SHADOW_LOOKBACK_MS) saveFails.delete(k);
     await pairMirror(t, p.awaiting);
     let checked = 0;
     let budget = SHADOW_LIMIT;
     // 1. re-asks that are due
     for (const x of p.reasks) {
       if (budget <= 0) break;
+      if (saveBlocked(`reask:${x.id}`, t)) continue;
       budget -= 1; checked += 1;
       const out = await runReask(x, st, t);
       if (out !== "next") return { checked, waiting: p.waiting, stopped: out };
@@ -424,7 +443,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     if (mirrorOn && budget > 0 && p.mirrorQueue) {
       const mall = evidenceJobs(p.mirrorQueue.jobs, "mirror");
       for (const j of mall) { const b = backoff.get(`m:${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
-      const mjobs = mall.filter((j) => { const b = backoff.get(`m:${j.scanId}:${j.kind}`); return !(b && t < b.nextAt); }).slice(0, budget);
+      const mjobs = mall.filter((j) => { const b = backoff.get(`m:${j.scanId}:${j.kind}`); return !(b && t < b.nextAt) && !saveBlocked(jobKey(j), t); }).slice(0, budget);
       for (const job of mjobs) {
         budget -= 1; checked += 1;
         const out = await runJob(job, st, t, p.mirrorQueue.waiting);
@@ -432,7 +451,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       }
     }
     // 3. after-mode: parcels the extension already answered
-    const all = evidenceJobs(p.jobs, "after");
+    const all = evidenceJobs(p.jobs, "after").filter((j) => !saveBlocked(jobKey(j), t));
     for (const j of all) { const b = backoff.get(`${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
     for (const job of selectJobs(all, backoff, t, budget)) {
       checked += 1;
