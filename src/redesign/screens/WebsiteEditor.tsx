@@ -4,14 +4,13 @@
 // and the own-domain (Master) row is hidden (App Store rule). Preview = the real shop pages with the
 // draft, in memory (no network, no order can be placed).
 import WebsiteHomeEditor from "../components/WebsiteHomeEditor";
+import WebsiteLookEditor from "../components/WebsiteLookEditor";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
 import type { ShopDesign, ShopProduct, SocialKey, ChatKey } from "../../website/shopApi";
-import { SHOP_COLORS } from "../../website/shopStyle";
-import { THEMES, THEME_LOOK, themeOf, onColor } from "../../website/v2/theme";
 import { BrandIcon, type BrandKey } from "../../website/brandIcons";
 import { shopUrl, shareUrl } from "../../website/route";
 import { productImageUrl } from "../adapters/productImages";
@@ -113,8 +112,9 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     if (path) set({ [kind]: path } as Partial<ShopDesign>); else onToast(t.rd_wed_pic_failed);
   };
   // the seller's categories (for the category pictures + the slide / promo links), read once
-  const [cats, setCats] = useState<string[]>([]);
-  useEffect(() => { let live = true; void api.loadProducts().then((ps) => { if (live) setCats([...new Set(ps.map((p) => p.category).filter((c): c is string => !!c))]); }).catch(() => {}); return () => { live = false; }; }, [api]);
+  const [prods, setProds] = useState<ShopProduct[]>([]);
+  useEffect(() => { let live = true; void api.loadProducts().then((ps) => { if (live) setProds(ps); }).catch(() => {}); return () => { live = false; }; }, [api]);
+  const cats = useMemo(() => [...new Set(prods.map((p) => p.category).filter((c): c is string => !!c))], [prods]);
   const openPreview = async () => { setPreview(await api.loadProducts()); };
   const closePreview = useCallback(() => setPreview(null), []);
   // The link the seller sees + copies: the subdomain only once it really opens (sql/164 switch);
@@ -191,30 +191,12 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
         </button>
 
         <Section title={t.rd_wed_look}>
-          <Label text={t.rd_wed_theme} />
-          <div role="radiogroup" aria-label={t.rd_wed_theme} style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
-            {THEMES.map((k) => {
-              const on = themeOf(draft) === k;
-              const L = THEME_LOOK[k];
-              return (
-                <button key={k} type="button" role="radio" aria-checked={on} data-testid={`wed-theme-${k}`} onClick={() => set({ theme: k })}
-                  style={{ minHeight: 84, borderRadius: 12, border: on ? "2px solid var(--accent)" : "1px solid var(--border)", background: L.bg, color: L.fg, padding: 8, cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column", gap: 6, fontFamily: k === "boutique" ? "Fraunces, Georgia, serif" : k === "bold" ? "'Space Grotesk', system-ui, sans-serif" : "'Plus Jakarta Sans', system-ui, sans-serif" }}>
-                  <span style={{ display: "flex", gap: 4 }}><i style={{ width: 22, height: 22, borderRadius: k === "pop" ? 11 : 4, background: L.acc }} /><i style={{ flex: 1, height: 22, borderRadius: k === "pop" ? 8 : 3, background: L.card, border: "1px solid rgba(128,128,128,.25)" }} /></span>
-                  <b style={{ fontSize: 14 }}>{t[`rd_wed_theme_${k}`]}{on ? " ✓" : ""}</b>
-                </button>
-              );
-            })}
-          </div>
+          <WebsiteLookEditor draft={draft} set={set} t={t} cats={cats}
+            preview={<Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, prods, country, plan || "")} /></Suspense>} />
+          <div style={{ height: 6 }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <PicField label={t.rd_wed_logo} path={draft.logo} round busy={busy === "logo"} onFile={(f) => void pic("logo", f)} t={t} testid="wed-logo" />
             <PicField label={t.rd_wed_cover} path={draft.cover} busy={busy === "cover"} onFile={(f) => void pic("cover", f)} t={t} testid="wed-cover" />
-          </div>
-          <Label text={t.rd_wed_color} />
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }} role="radiogroup">
-            <button type="button" role="radio" aria-checked={!draft.color} aria-label={t.rd_wed_color_theme} data-testid="wed-color-theme" onClick={() => set({ color: undefined })}
-              style={{ height: 44, borderRadius: 22, padding: "0 12px", background: THEME_LOOK[themeOf(draft)].acc, border: !draft.color ? "3px solid var(--text)" : "3px solid transparent", cursor: "pointer", color: onColor(THEME_LOOK[themeOf(draft)].acc), fontSize: 12.5, fontWeight: 800, fontFamily: "var(--font-ui)" }}>{!draft.color ? "✓ " : ""}{t.rd_wed_color_theme}</button>
-            {SHOP_COLORS.map((c) => <button key={c} type="button" role="radio" aria-checked={draft.color === c} aria-label={c} data-testid={`wed-color-${c.slice(1)}`} onClick={() => set({ color: c })}
-              style={{ width: 44, height: 44, borderRadius: 22, background: c, backgroundClip: "padding-box", border: draft.color === c ? "3px solid var(--text)" : "3px solid transparent", cursor: "pointer", color: "#fff", fontSize: 18, fontWeight: 800 }}>{draft.color === c ? "✓" : ""}</button>)}
           </div>
         </Section>
 

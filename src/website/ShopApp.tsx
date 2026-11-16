@@ -60,9 +60,11 @@ export default function ShopApp({ host, path, preview, nowMs, orderApi, startRou
 
   // the editor preview runs inside the seller app: load the themes' fonts there once (shop.html has them)
   useEffect(() => { if (preview) ensureThemeFonts(); }, [preview]);
-  const shop = result && result !== "loading" && result.online ? result : null;
+  // the editor's live preview passes a new shop on every change: follow it (a real shop = the loaded one)
+  const res = preview ?? result;
+  const shop = res && res !== "loading" && res.online ? res : null;
   const lang = shopLang(shop, picked);
-  if (result === "loading") return <div style={{ minHeight: "100vh", background: "#F5F5F7" }} />;
+  if (res === "loading") return <div style={{ minHeight: "100vh", background: "#F5F5F7" }} />;
   return (
     <TProvider lang={lang}>
       {shop ? <ShopBody shop={shop} route={route} go={go} lang={lang} onLang={(l) => { setPicked(l); if (!preview) savePickedLang(l); }} preview={!!preview} nowMs={nowMs} orderApi={orderApi}
