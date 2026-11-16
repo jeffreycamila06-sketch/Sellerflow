@@ -1,9 +1,10 @@
 // Seller Website — the editor / Payment & shipping / orders data calls bundled as injectable objects
 // (the screens take them as a prop so tests and the screenshot harness can pass fakes).
 import type { ShopDesign, ShopProduct } from "../../website/shopApi";
+import type { ParcelView } from "../../website/parcelView";
 import {
   loadMyWebsite, saveMyWebsite, saveWebsiteSettings, publishWebsite, subdomainFree, loadWebsiteOrders, loadBlockedPhones,
-  websiteOrderAction, websiteOrderShip, receiptUrl,
+  websiteOrderAction, websiteOrderShip, receiptUrl, loadWebsiteParcels,
   type MyWebsite, type PublishResult, type SaveResult, type WebsiteSettings, type WebsiteOrder, type OrderAction, type WebsiteOrderStatus,
 } from "./websiteSeller";
 import { uploadSitePicture } from "./websitePhotos";
@@ -38,8 +39,10 @@ export interface OrdersApi {
   shopSub: () => Promise<string | null>;
   /** v2 (sql/167): ship with an optional courier + tracking (or change them). Absent → the plain 'shipped' action. */
   ship?: (id: string, courier: string, tracking: string) => Promise<{ ok: true; courier: string | null; tracking: string | null } | { ok: false }>;
+  /** sql/171: the parcel state of the seller's own shipped 7-ELEVEN / FamilyMart orders, by order id (one call). */
+  parcels?: () => Promise<Map<string, ParcelView>>;
 }
 export const realOrdersApi: OrdersApi = {
-  load: loadWebsiteOrders, blocked: loadBlockedPhones, act: websiteOrderAction, receipt: receiptUrl, ship: websiteOrderShip,
+  load: loadWebsiteOrders, blocked: loadBlockedPhones, act: websiteOrderAction, receipt: receiptUrl, ship: websiteOrderShip, parcels: loadWebsiteParcels,
   shopSub: async () => { const w = await loadMyWebsite(); return w && w !== "error" ? w.subdomain : null; },
 };

@@ -3,7 +3,9 @@
 // picture (signed link, "Check your bank app first"), and one action at a time:
 // Money received / Not received / Mark as shipped / Cancel (stock goes back) / Block buyer.
 // Every step shows on the buyer's order link. Opening an order clears its "New" badge.
-import { deliveryLabel, deliveryWhere, paymentLabel } from "../../website/orderText";
+import { deliveryLabel, deliveryWhere, paymentLabel, parcelPill } from "../../website/orderText";
+import { parcelWhen, parcelDay, type ParcelView } from "../../website/parcelView";
+import { useLang } from "../i18n/langContext";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
@@ -14,8 +16,10 @@ import { shareUrl } from "../../website/route";
 
 const FILTERS: OrderFilter[] = ["new", "check", "unpaid", "ship", "done", "cancelled", "all"];
 
-export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToast, api = realOrdersApi, liveTick = 0, subdomainReady = false }: {
+export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToast, api = realOrdersApi, liveTick = 0, subdomainReady = false, onOpenPickup }: {
   cur?: string; topTabs?: ReactNode; onNewCount?: (n: number) => void; onToast: (m: string) => void; api?: OrdersApi;
+  /** order tracking item 10: opens Pickup Status — passed only for sellers who have it */
+  onOpenPickup?: () => void;
   liveTick?: number; // bumped by Realtime when an own website order is added / changed → re-read the list
   subdomainReady?: boolean; // app_settings website_subdomain_ready (sql/164): order links on <sub>.sellerflowlive.com only when true
 }) {
@@ -49,6 +53,14 @@ export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToas
     });
     return () => { live = false; };
   }, [liveTick, fetchAll, onNewCount]);
+  // order tracking (sql/171): the parcel state of the shipped 7-ELEVEN / FamilyMart orders — one call per (re)load, no poll
+  const [parcels, setParcels] = useState<Map<string, ParcelView>>(new Map());
+  useEffect(() => {
+    if (!api.parcels) return;
+    let live = true;
+    void api.parcels().then((m) => { if (live) setParcels(m); });
+    return () => { live = false; };
+  }, [api, liveTick]);
   const list = useMemo(() => (Array.isArray(orders) ? orders : []), [orders]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f, list.filter((o) => matchesFilter(o, f)).length])) as Record<OrderFilter, number>, [list]);
   const shown = list.filter((o) => matchesFilter(o, filter));
@@ -104,6 +116,7 @@ export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToas
                   <b style={{ fontSize: 14.5 }}>{wNo(o.orderNo)}</b>
                   {!o.seenAt && o.status !== "cancelled" && <span data-testid="wor-new" style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: "var(--danger)", borderRadius: 999, padding: "1px 7px" }}>{t.rd_wor_f_new}</span>}
                   <StatusPill o={o} t={t} />
+                  {parcelShown(o) && parcels.get(o.id) && <ParcelChip p={parcels.get(o.id)!} t={t} />}
                 </span>
                 <span style={{ display: "block", fontSize: 12.5, color: "var(--text-muted)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.buyerName} · ×{o.items.reduce((a, i) => a + i.qty, 0)} · {timeOf(o.createdAt)}</span>
               </span>
@@ -112,7 +125,7 @@ export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToas
           ))}
         </div>
       </div>
-      {open && <Detail o={open} t={t} cur={cur} blocked={blocked.has(open.buyerPhone)} link={sub ? `${shareUrl(sub, subdomainReady)}/o/${open.token}` : ""} api={api} onClose={() => setOpenId(null)} onAction={(a) => doAction(open, a)} onShip={api.ship ? (c, tr) => doShip(open, c, tr) : undefined} onToast={onToast} />}
+      {open && <Detail o={open} t={t} cur={cur} blocked={blocked.has(open.buyerPhone)} link={sub ? `${shareUrl(sub, subdomainReady)}/o/${open.token}` : ""} api={api} parcel={parcels.get(open.id)} onOpenPickup={onOpenPickup} onClose={() => setOpenId(null)} onAction={(a) => doAction(open, a)} onShip={api.ship ? (c, tr) => doShip(open, c, tr) : undefined} onToast={onToast} />}
     </div>
   );
 }
@@ -122,9 +135,10 @@ function StatusPill({ o, t }: { o: WebsiteOrder; t: Record<string, string> }) {
   return <span data-testid="wor-status" style={{ fontSize: 11, fontWeight: 800, background: tone[0], color: tone[1], borderRadius: 999, padding: "2px 8px" }}>{o.status === "cancelled" && o.cancelReason === "auto" ? t.rd_wor_cancel_auto : t[`rd_wor_st_${o.status}`]}</span>;
 }
 
-function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onToast }: {
+function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onToast, parcel, onOpenPickup }: {
   o: WebsiteOrder; t: Record<string, string>; cur: string; blocked: boolean; link: string; api: OrdersApi; onClose: () => void; onAction: (a: OrderAction) => Promise<boolean>;
   onShip?: (courier: string, tracking: string) => Promise<boolean>; onToast: (m: string) => void;
+  parcel?: ParcelView; onOpenPickup?: () => void;
 }) {
   const [shipForm, setShipForm] = useState(false);
   const [courier, setCourier] = useState(o.courier || "");
@@ -191,6 +205,7 @@ function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onTo
           <div style={{ ...card, marginTop: 10, padding: 12, display: "flex", flexDirection: "column", gap: 5 }} data-testid="wor-ship-info">
             {o.courier && <KV k={t.rd_wor_courier} v={o.courier} />}
             {o.tracking && <KV k={t.rd_wor_tracking} v={o.tracking} />}
+            {parcelShown(o) && <ParcelLine p={parcel} t={t} onOpenPickup={onOpenPickup} />}
             {onShip && <button type="button" data-testid="wor-edit-tracking" onClick={openShip} style={{ ...secBtn, marginTop: 4 }}>{o.courier || o.tracking ? t.rd_wor_edit_tracking : t.rd_wor_add_tracking}</button>}
           </div>
         )}
@@ -244,4 +259,32 @@ const fmtN = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", 
 function timeOf(s: string): string {
   const d = new Date(s);
   return Number.isFinite(d.getTime()) ? d.toLocaleString("en-CA", { timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).replace(",", "") : "";
+}
+
+// ── order tracking item 10: the parcel line (sql/171) — the same state the buyer sees ──
+/** A shipped 7-ELEVEN / FamilyMart order with a tracking number: the only orders that can match a parcel. */
+function parcelShown(o: WebsiteOrder): boolean {
+  return o.status === "shipped" && (o.delivery === "s711" || o.delivery === "fm") && !!o.tracking;
+}
+function parcelTone(p: ParcelView): [string, string] {
+  return p.state === "at_store" ? ["rgba(234,88,12,.14)", "#C2410C"] : p.state === "returned" ? ["rgba(225,29,72,.13)", "#BE123C"] : p.state === "picked_up" ? ["rgba(16,185,129,.15)", "#047857"] : ["rgba(37,99,235,.14)", "#1D4ED8"];
+}
+function ParcelChip({ p, t }: { p: ParcelView; t: Record<string, string> }) {
+  const [bg, fg] = parcelTone(p);
+  return <span data-testid="wor-parcel-chip" data-state={p.state} style={{ fontSize: 11, fontWeight: 800, background: bg, color: fg, borderRadius: 999, padding: "2px 8px" }}>{parcelPill(t, p).text}</span>;
+}
+function ParcelLine({ p, t, onOpenPickup }: { p?: ParcelView; t: Record<string, string>; onOpenPickup?: () => void }) {
+  const lang = useLang();
+  if (!p) return <div data-testid="wor-parcel-none" style={{ borderTop: "1px solid var(--border)", marginTop: 6, paddingTop: 8, fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_wor_parcel_none}</div>;
+  const extra = p.state === "at_store" && p.deadline ? tpl(t.rd_pk_by, { date: parcelDay(p.deadline, lang) }) : "";
+  return (
+    <div data-testid="wor-parcel" style={{ borderTop: "1px solid var(--border)", marginTop: 6, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+        <span style={{ color: "var(--text-muted)" }}>{t.rd_wor_parcel}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}><ParcelChip p={p} t={t} />{extra && <span style={{ fontSize: 12, fontWeight: 700, color: "#C2410C" }}>{extra}</span>}</span>
+      </div>
+      {p.checkedAt && <div data-testid="wor-parcel-checked" style={{ fontSize: 12, color: "var(--text-muted)" }}>{tpl(t.rd_wor_parcel_checked, { time: parcelWhen(p.checkedAt, lang) })}</div>}
+      {onOpenPickup && <button type="button" data-testid="wor-parcel-open" onClick={onOpenPickup} style={{ ...secBtn, alignSelf: "flex-start" }}>{t.rd_wor_parcel_open}</button>}
+    </div>
+  );
 }
