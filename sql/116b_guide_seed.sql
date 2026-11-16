@@ -24,9 +24,9 @@ The app works in English, Filipino, Bahasa Indonesia, Tiếng Việt, 中文 (�
 - **Settings** — shop tools and your account (see the "Settings screen" section).
 
 Every other screen has **‹ Back** at the top left. It takes you back to where you came from. Tapping a button in the bottom bar always starts fresh from that tab.'),
-  ('settings-tiles', 'The Settings screen', '2026-11-11'::date, 'settings, tiles, shop tools, account, general settings, customers, log out, setting, ayos, 设置, 設定, 账号', 'Tap **Settings** in the bottom bar. You will see tiles:
+  ('settings-tiles', 'The Settings screen', '2026-11-15'::date, 'settings, tiles, shop tools, account, general settings, customers, log out, setting, ayos, 设置, 設定, 账号', 'Tap **Settings** in the bottom bar. You will see tiles:
 
-- **Invite friends** — share the app link with other sellers.
+- **Invite friends** — your invite code, the friends you invited, and a place to add a friend''s code.
 - **General Settings** — profile, live setup options, look, language, channels, printer, subscription, support, delete account.
 - **Customers** — your buyers list with search.
 - **Parcel Scan** (7-11 / FamilyMart), **Customer Details**, **Pickup Status** — Taiwan tools. Parcel Scan tiles may show **Soon**. Customer Details and Pickup Status open or show 🔒.
@@ -427,8 +427,9 @@ There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan
 5. Log in with the new password.
 
 No code? Tap "Didn''t get the code? Message us on Telegram".'),
-  ('signup', 'Create an account and phone number format', '2026-10-15'::date, 'sign up, signup, register, create account, phone number, invalid phone, country code, gumawa ng account, numero, 注册, 註冊, 手机号码', '1. On the login screen tap **Create account**.
+  ('signup', 'Create an account and phone number format', '2026-11-15'::date, 'sign up, signup, register, create account, phone number, invalid phone, country code, gumawa ng account, numero, 注册, 註冊, 手机号码', '1. On the login screen tap **Create account**.
 2. Fill in **Shop name**, **Owner name**, **Phone**, email, password (at least 6 characters) and **Confirm password**.
+   **Invite code (optional)**: if a friend gave you a code, type it. You see **Code found ✓** or **Code not found**. You can leave it empty.
 3. Tap **Create account**. You may need to confirm your email, then log in.
 
 **Phone number:** first choose your **Country** (flag + code) from the list, then type your number the normal local way, for example 0912 345 678 for Taiwan. If you see "Enter a valid phone number for the selected country.", check that the country matches your number and that no digits are missing.
@@ -436,6 +437,21 @@ No code? Tap "Didn''t get the code? Message us on Telegram".'),
 Other messages: "That email is already registered. Try logging in." / "Passwords do not match."
 
 The login box says "Phone or email", but log in with your **email** and password. A phone number does not work.'),
+  ('invite-friends', 'Invite friends and invite codes', '2026-11-15'::date, 'invite, invite code, referral, friend code, free days, reward, share code, imbita, kaibigan, code ng kaibigan, libreng araw, 邀请码, 邀請碼, 邀请朋友, 邀請朋友', 'Tap **Settings** → **Invite friends**.
+
+**Your code**
+- The first time, choose your code: type your own word (4–12 letters or numbers) or tap **Give me a random code**. Tap **Save code**, then **Yes, save it**.
+- After you save it, your code can''t be changed. If you really need a new one, message Admin on Telegram @SellerFlowLive.
+- Tap **Copy** or **Share** to send your code. Your friend types it when they create their account.
+
+**Free days**
+- When a friend you invited gets their first paid plan, free days are added to your plan. The line "This month: +N free days …" shows how many. No line = no free days this month.
+- Free days only go to sellers who are on an active paid plan at that moment.
+- **Your invites** shows each friend: **Signed up**, **+N days**, **Paid · no reward** (on iPhone: **No reward**) or **Removed** (the free days were taken back).
+
+**Got a code from a friend?**
+- Type it in **Invite code (optional)** when you create your account, or later in **Invited by a friend? Enter code** on this screen and tap **Add code**.
+- You can add one code only, and it can''t be changed. The box is only there for accounts that haven''t had a paid plan yet.'),
   ('delete-account', 'Delete your account', '2026-10-11'::date, 'delete account, remove account, close account, erase data, burahin account, tanggalin, 删除账号, 刪除帳號, 注销', '1. Go to **Settings → Delete Account** (or General Settings → Delete account).
 2. Read the warning: it **permanently erases** your login, profile and all data, including order and billing history. It **cannot be undone**.
 3. Type your email to confirm and tap **Delete my account**. Or tap **Keep my account**.
@@ -505,5 +521,5 @@ on conflict (id) do update set
   body = excluded.body, updated_at = now()
 where (support_guide.title, support_guide.checked, support_guide.keywords, support_guide.body)
   is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body);
-delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
+delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'invite-friends', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
 commit;

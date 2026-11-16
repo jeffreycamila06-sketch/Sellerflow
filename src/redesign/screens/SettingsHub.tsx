@@ -77,8 +77,9 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false, onWebsite,
+  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false, onWebsite,
 }: {
+  onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
   onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
   helpBot?: boolean; // help bot preview (switch on + preview list / admin): bubble instead of the "Need help?" tile
   onGeneral: () => void; onCustomers: () => void;
@@ -115,7 +116,7 @@ export default function SettingsHub({
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {/* Share-the-app card — first thing seen; full-width, lightly tinted */}
-          <InviteFriendsCard />
+          <InviteFriendsCard onOpen={onInvite} />
           {/* Seller Website — one full-width row, so the tile pairs below stay as they are. */}
           {onWebsite && (
             <button onClick={onWebsite} style={{ ...tile, gridColumn: "1 / -1" }} data-testid="tile-website">

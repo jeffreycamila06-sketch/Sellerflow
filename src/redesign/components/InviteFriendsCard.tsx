@@ -1,9 +1,9 @@
 // "Invite friends" — a small share-the-app card pinned to the TOP of the Settings
 // hub grid (full-width, lightly tinted so it's noticed first). Native share sheet
 // (navigator.share, works in iOS/Android WebView + mobile browsers) with a
-// copy-to-clipboard + inline "copied" fallback for desktop. NO referral codes,
-// NO rewards, NO network calls. Copy is deliberately payment-free (iOS 3.1.1-safe)
-// — pure "invite a friend to try the app", so no isIOS() gating is needed.
+// copy-to-clipboard + inline "copied" fallback for desktop. Copy is deliberately
+// payment-free (iOS 3.1.1-safe). With `onOpen` (the Settings hub, sql/165) a tap opens the
+// Invite friends screen (invite code + invites) instead; without it the card shares the app.
 import { useState, type CSSProperties } from "react";
 import { useT } from "../i18n";
 import { INVITE_URL, copyText } from "./inviteShare";
@@ -15,7 +15,7 @@ const megaphone = (
   </svg>
 );
 
-export default function InviteFriendsCard() {
+export default function InviteFriendsCard({ onOpen }: { onOpen?: () => void } = {}) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false); // U5 — honest feedback when copy can't happen
@@ -23,6 +23,7 @@ export default function InviteFriendsCard() {
   const full = `${message} ${INVITE_URL}`;
 
   const onShare = async () => {
+    if (onOpen) { onOpen(); return; }
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
         await navigator.share({ text: message, url: INVITE_URL });
@@ -60,7 +61,7 @@ export default function InviteFriendsCard() {
   };
 
   return (
-    <button onClick={onShare} style={cardStyle}>
+    <button onClick={onShare} style={cardStyle} data-testid="invite-card">
       <span style={{ width: 38, height: 38, borderRadius: 11, background: "var(--accent)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{megaphone}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.rd_inv_title}</span>

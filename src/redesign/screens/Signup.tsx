@@ -11,6 +11,8 @@ import { BackButton } from "../components/BackButton";
 import { useLang } from "../i18n/langContext";
 import PasswordInput from "../components/PasswordInput";
 import CountryPhoneField from "../components/CountryPhoneField";
+import { checkInviteCode, typedInviteCode } from "../adapters/invite";
+import { useInviteCodeCheck } from "../adapters/useInviteCodeCheck";
 
 const PHONE_COUNTRY_KEY = "sfl_rd_phone_country";
 const readCountry = () => { try { return localStorage.getItem(PHONE_COUNTRY_KEY) || DEFAULT_COUNTRY; } catch { return DEFAULT_COUNTRY; } };
@@ -30,6 +32,10 @@ export default function Signup({ onBack, onLegal, onRegister }: {
   const t = useT();
   const lang = useLang();
   const [form, setForm] = useState({ storeName: "", fullName: "", phone: "", email: "", password: "", confirm: "" });
+  // Invite code (optional, sql/165). Live "Code found / Not found" — NEVER blocks the sign-up:
+  // it is not part of `complete`, and a wrong code is simply not linked.
+  const [invite, setInvite] = useState("");
+  const inviteCheck = useInviteCodeCheck(invite, checkInviteCode);
   const [phoneCountry, setPhoneCountry] = useState(readCountry);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -63,6 +69,7 @@ export default function Signup({ onBack, onLegal, onRegister }: {
     const fields: RegisterFields = {
       email: form.email, password: form.password, confirm: form.confirm,
       fullName: form.fullName, storeName: form.storeName, phone: form.phone, phoneCountry,
+      ...(invite.trim() ? { inviteCode: invite.trim() } : {}),
     };
     const code = registrationErrorCode(fields);
     if (code) { setErr((t as unknown as Record<string, string>)[REG_ERROR_KEYS[code]]); return; }
@@ -98,6 +105,19 @@ export default function Signup({ onBack, onLegal, onRegister }: {
         <div style={groupCard}>
           <div><label style={label}>{t.rd_login_password}</label><PasswordInput value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={t.rd_su_pw_ph} autoComplete="new-password" style={input} /></div>
           <div><label style={label}>{t.rd_su_confirm}</label><PasswordInput value={form.confirm} onChange={(e) => set("confirm", e.target.value)} placeholder={t.rd_su_confirm_ph} autoComplete="new-password" style={input} /></div>
+        </div>
+
+        <div style={{ ...groupCard, marginTop: 16 }}>
+          <div>
+            <label style={label} htmlFor="su-invite">{t.rd_ref_su_label}</label>
+            <input id="su-invite" value={invite} onChange={(e) => setInvite(typedInviteCode(e.target.value))} placeholder={t.rd_ref_code_ph} aria-label={t.rd_ref_su_label} autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} maxLength={12} data-testid="su-invite" style={{ ...input, fontFamily: "var(--font-mono, monospace)", letterSpacing: ".06em" }} />
+            <div data-testid="su-invite-state" style={{ fontSize: 11.5, fontWeight: 600, marginTop: 6, lineHeight: 1.4, color: inviteCheck.kind === "done" && inviteCheck.value === true ? "var(--ok)" : inviteCheck.kind === "done" && inviteCheck.value === false ? "var(--danger)" : "var(--text-muted)" }}>
+              {inviteCheck.kind === "checking" ? t.rd_ref_checking
+                : inviteCheck.kind === "done" && inviteCheck.value === true ? t.rd_ref_found
+                : inviteCheck.kind === "done" && inviteCheck.value === false ? t.rd_ref_not_found
+                : t.rd_ref_su_hint}
+            </div>
+          </div>
         </div>
 
         {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginTop: 14 }}>{err}</div>}
