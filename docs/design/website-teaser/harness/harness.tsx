@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- a screenshot harness page, not an app module */
 // Website teaser — screenshot harness (NOT part of the app build). Renders the REAL Settings and Sales
 // screens with the props RedesignApp passes for each case, computed by the same gates:
 //   ?who=nontester&sw=on | ?who=nontester&sw=off | ?who=tester   (&screen=settings|sales)
