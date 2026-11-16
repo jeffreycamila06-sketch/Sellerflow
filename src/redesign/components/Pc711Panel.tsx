@@ -3,6 +3,7 @@
 // (no polling). The password is sent once and cleared from this screen right after.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
+import Pc711EvidenceBlock from "./Pc711Evidence";
 import { pc711Api, usePc711Status, fillSmsBoxes, hhmm, taipeiStamp, taipeiDayKey, type Pc711Status, type Pc711Shadow, type Pc711ShadowHistory, type Pc711ShadowDay, type Pc711ShadowFilter, type Pc711ShadowKindFilter, type Pc711ShadowRow } from "../adapters/pc711Login";
 
 type View = "status" | "step1" | "step2";
@@ -394,6 +395,7 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
         <button type="button" data-testid="pc711-disconnect" disabled={busy || testing} onClick={() => void disconnect()} style={{ ...ghost, flex: 1, color: "var(--danger)" }}>{t.rd_pc711_disconnect}</button>
       </div>
       <ShadowBlock />
+      <Pc711EvidenceBlock />
     </div>
   );
 }
