@@ -52,7 +52,8 @@ import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow
 import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
 import { runPcLoginWalk } from "./server/pcLoginWalk.js";
 import { createPc711Login, createPc711Handlers, createPc711Store } from "./server/pc711Login.js";
-import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory } from "./server/pc711Shadow.js";
+import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipeiDay } from "./server/pc711Shadow.js";
+import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Evidence.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1280,11 +1281,31 @@ const pc711ShadowCheck = async (input) => {
 };
 if (serviceSb) {
   const pc711ShadowDb = createShadowDb(serviceSb);
-  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, check: pc711ShadowCheck, pc711, readSetting });
+  // sql/172: full evidence + re-checks + re-asks + mirror (pc711_mirror_enabled, off) — admin-only table
+  const pc711EvidenceDb = createEvidenceDb(serviceSb);
+  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting });
   pc711ShadowJob.start();
   app.get("/admin/pc711/shadow", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
     try { return res.json(await shadowSummary(pc711ShadowDb, readSetting, Date.now(), pc711ShadowJob.state())); } catch { return res.status(500).json({ error: "failed" }); }
+  });
+  // sql/172 evidence (Admin only): totals, one page of checks, one check's full details (the phone is
+  // shown to the admin here; it is never logged)
+  app.get("/admin/pc711/evidence/totals", requireAuth, requireAdmin, async (req, res) => {
+    if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
+    try { return res.json(await evidenceTotals(pc711EvidenceDb, readSetting, { day: String(req.query.day || "") }, Date.now(), taipeiDay(Date.now()).startMs)); } catch { return res.status(500).json({ error: "failed" }); }
+  });
+  app.get("/admin/pc711/evidence", requireAuth, requireAdmin, async (req, res) => {
+    if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
+    try {
+      return res.json(await evidenceList(pc711EvidenceDb, { day: String(req.query.day || ""), filter: String(req.query.filter || ""), page: Number(req.query.page) || 0 }, Date.now(), taipeiDay(Date.now()).startMs));
+    } catch { return res.status(500).json({ error: "failed" }); }
+  });
+  app.get("/admin/pc711/evidence/:id", requireAuth, requireAdmin, async (req, res) => {
+    if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "bad_id" });
+    try { const row = await pc711EvidenceDb.detail(id); return row ? res.json({ row }) : res.status(404).json({ error: "not_found" }); } catch { return res.status(500).json({ error: "failed" }); }
   });
   app.get("/admin/pc711/shadow/history", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });

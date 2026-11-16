@@ -18,6 +18,7 @@
 // RPC (sql/162 pc711_shadow_pending) — an empty pass costs a few bytes.
 // Log, one line per check: [PC711_SHADOW] kind=… match=1|0|err step=… http=… ms=… gap=… — no data.
 import { randomUUID } from "node:crypto";
+import { MIRROR_SWITCH, evidenceJobs, evidenceRow, pairPatch, oldRowFromPair, reaskWord, nextReaskAt } from "./pc711Evidence.js";
 
 // ── mirrored from chrome-extension/background.js (test-pinned) ─────────────────
 export const SHADOW_POLL_MS = 5000;                      // PC_POLL_MS
@@ -232,18 +233,20 @@ export function createShadowDb(sb) {
 
 // The job. check(input) → { verdict, http, ms, kind, raw, steps } (one server check; server.js runs
 // the probe's target mode). pc711 = the login module (status()). Never throws.
-export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createPc711Shadow({ db, evidence = null, check, pc711, readSetting, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   let running = false;
   let lastEnd = -Infinity;     // when the last 7-11 check finished (2 s between parcels)
   let day = "";                // the Taipei day the purge last ran for
   let stoppedSince = null;     // the connect (status.since) the job stopped on (needs_login)
   let timer = null, stopped = false;
-  const backoff = new Map();   // "scanId:kind" → { fails, nextAt, seenAt } (the extension's pcBackoff)
+  const backoff = new Map();   // "scanId:kind" (mirror: "m:scanId:kind") → { fails, nextAt, seenAt } (the extension's pcBackoff)
   let streak = 0;              // refusals in a row (safety brake)
   let pausedUntil = 0;
   let waiting = null, waitingAt = 0;
   const dayMax = new Map();    // Taipei day → highest Waiting seen (loaded from pc711_shadow_days first)
   let lastPendingFail = 0;
+  let awaitingSeen = true;     // sql/172: mirror rows may be waiting for the extension (checked while any were seen)
+  let mirrorOnLast = false;
   const say = (line) => { try { log(line); } catch { /* a log never stops the job */ } };
 
   async function noteWaiting(n, t) {
@@ -258,6 +261,131 @@ export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.no
       dayMax.set(key, n);
       try { await db.saveDayMax(key, n); } catch { /* the next higher count writes again */ }
     }
+  }
+
+  // ONE 7-11 check: the 2 s gap, the check, needs_login. Every request to 7-11 goes through here.
+  async function ask(input) {
+    const wait = SHADOW_ROW_GAP_MS - (now() - lastEnd);
+    if (wait > 0) await sleep(wait);
+    const t0 = now();
+    let r;
+    try { r = await check(input); } catch { r = null; }
+    if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [] };
+    lastEnd = now();
+    const after = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
+    const loggedOut = r.kind === "login_not_accepted" || r.kind === "no_session" || Boolean(after && after.state === "needs_login");
+    return { r: { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut }, t0, end: lastEnd, loggedOut };
+  }
+
+  // the safety brake after a server error; true = paused now (ONE paused_http row)
+  async function brakeAfter(row, kind) {
+    streak = isRefusal(row) ? streak + 1 : 0;
+    if (streak < SHADOW_BRAKE_ERRORS) return false;
+    pausedUntil = lastEnd + SHADOW_BRAKE_PAUSE_MS;
+    streak = 0;
+    // ONE row for the pause (its own id — never a parcel's, so no parcel is marked checked)
+    const pause = { scan_id: randomUUID(), kind, ext_verdict: null, srv_verdict: "unknown", srv_ms: 0, srv_http: row.fail_http ?? 0,
+      match: null, note: "paused_15m", fail_step: row.fail_step, fail_http: row.fail_http ?? 0, fail_reason: "paused_http", steps: [], gap_s: null, raw: null };
+    try { await db.insert(pause); } catch { /* the pause still holds */ }
+    say(`${TAG} pause ${SHADOW_BRAKE_PAUSE_MS / 60000}m after ${SHADOW_BRAKE_ERRORS} refusals http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
+    return true;
+  }
+
+  const evInsert = async (row) => { if (!evidence) return; try { await evidence.insert(row); } catch { /* the next pass tries again */ } };
+  const tagOf = (job) => (evidence ? ` mode=${job.mode || "after"} round=${job.round || 1}` : "");
+
+  // one parcel job (after-mode or mirror) → "next" | "stop" | "pause"
+  async function runJob(job, st, seenAt, queued) {
+    const { r, t0, end, loggedOut } = await ask(job.input);
+    const row = shadowRow(job, r, t0);
+    const mirror = job.mode === "mirror";
+    const key = `${mirror ? "m:" : ""}${job.scanId}:${job.kind}`;
+    const maint = inShadowMaint(end);
+    const isErr = row.match === null && Boolean(row.fail_reason);
+    const ev = () => evInsert(evidenceRow(job, row, r, t0, end, queued, seenAt));
+    if (loggedOut) {
+      if (!mirror) { try { await db.insert(row); } catch { /* the next pass tries again */ } }
+      await ev();
+      say(shadowLogLine(row, maint, true) + tagOf(job));
+      stoppedSince = st.since ?? null;
+      backoff.delete(key);
+      return "stop";
+    }
+    if (!isErr) {
+      // a real answer (or the extension's own frozen unknown): the comparison row, the ladder is cleared
+      if (!mirror) { try { await db.insert(row); } catch { /* the next pass tries again */ } }
+      await ev();
+      say(shadowLogLine(mirror ? { ...row, match: null } : row, maint) + tagOf(job)); // mirror: no pair yet (match=skip)
+      backoff.delete(key);
+      streak = 0;
+      return "next";
+    }
+    // a server error — the extension's ladder
+    const b = backoff.get(key) || { fails: 0, nextAt: 0, seenAt: seenAt };
+    b.seenAt = seenAt;
+    if (maint) {
+      b.nextAt = lastEnd + SHADOW_MAINT_RETRY_MS; // maintenance: not counted, slow retry
+      backoff.set(key, b);
+      say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=1 next=${SHADOW_MAINT_RETRY_MS / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
+      return "next";
+    }
+    b.fails += 1;
+    const ladder = ladderFor(job.kind);
+    if (b.fails > ladder.length) {
+      if (!mirror) { try { await db.insert(row); } catch { /* the next pass tries again */ } }
+      await ev();
+      say(shadowLogLine(row, maint) + tagOf(job));
+      backoff.delete(key);
+    } else {
+      b.nextAt = lastEnd + ladder[b.fails - 1]; // from the END of the failed attempt
+      backoff.set(key, b);
+      say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=0 next=${ladder[b.fails - 1] / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
+    }
+    return (await brakeAfter(row, job.kind)) ? "pause" : "next";
+  }
+
+  // sql/172 mirror: pair the server's answers with the extension's (database only, no 7-11 request)
+  async function pairMirror(t) {
+    let rows = [];
+    try { rows = await evidence.awaiting(50); } catch { return; }
+    awaitingSeen = rows.length > 0;
+    for (const x of rows) {
+      const patch = pairPatch(x, t);
+      if (!patch) continue;
+      try { await evidence.update(x.id, patch); } catch { continue; }
+      if (patch.ext_verdict && Number(x.round) === 1) {
+        try { await db.insert(oldRowFromPair(x, patch)); } catch { /* the totals miss one row */ }
+      }
+      say(patch.ext_verdict
+        ? `${TAG} mirror pair kind=${x.kind} match=${patch.match === null ? "err" : patch.match ? "1" : "0"} first=${patch.first || "-"} by=${patch.first_by_ms ?? "-"}ms late=${patch.ext_late ? 1 : 0}`
+        : `${TAG} mirror closed kind=${x.kind} why=${patch.flag}`);
+    }
+  }
+
+  // sql/172 re-asks (a real phone mismatch): ~30 s and ~5 min after the check → "next" | "stop" | "pause"
+  async function runReask(x, st, t) {
+    let p = null;
+    try { p = await evidence.parcelForReask(x.scan_id); } catch { p = undefined; }
+    const n = (Number(x.reask_n) || 0) + 1;
+    const at = new Date(now()).toISOString();
+    if (p === undefined) return "next"; // the read failed: try on the next pass
+    if (!p || String(p.phone ?? "") !== String(x.phone ?? "")) {
+      // the parcel is gone or its phone changed: nothing to ask; no further re-asks
+      try { await evidence.update(x.id, { [`reask${n}_at`]: at, [`reask${n}_word`]: p ? "phone_changed" : "parcel_gone", reask_n: n, reask_next_at: null }); } catch { /* next pass */ }
+      return "next";
+    }
+    const input = { kind: "phone", phone: String(p.phone ?? ""), name: String(p.customer_name ?? ""), storeId: String(p.store_id ?? "") };
+    const { r, t0, end, loggedOut } = await ask(input);
+    const row = shadowRow({ scanId: x.scan_id, kind: "phone", ext: null, at: NaN, input }, r, t0);
+    const isErr = loggedOut || (row.match === null && Boolean(row.fail_reason));
+    const w = reaskWord(row.srv_verdict, loggedOut ? "needs_login" : isErr ? row.fail_reason : null);
+    try {
+      await evidence.update(x.id, { [`reask${n}_at`]: new Date(end).toISOString(), [`reask${n}_word`]: w, reask_n: n, reask_next_at: nextReaskAt(x, n, end) });
+    } catch { /* the next pass asks again */ }
+    say(`${TAG} reask kind=phone n=${n} word=${w} ms=${row.srv_ms}`);
+    if (loggedOut) { stoppedSince = st.since ?? null; return "stop"; }
+    if (!isErr) { streak = 0; return "next"; }
+    return (await brakeAfter(row, "phone")) ? "pause" : "next";
   }
 
   async function tick() {
@@ -279,76 +407,58 @@ export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.no
         try { await db.purgeBefore(new Date(t - SHADOW_KEEP_DAYS * DAY_MS).toISOString()); } catch { /* next day */ }
         for (const k of [...dayMax.keys()]) if (k < taipeiDay(t - 3 * DAY_MS).key) dayMax.delete(k);
       }
+      const since = new Date(t - SHADOW_LOOKBACK_MS).toISOString();
+      // sql/172: mirror (outside 01:00–05:00 Taipei) — the switch is read on EVERY pass
+      let mirrorOn = false;
+      if (evidence) {
+        let m = "";
+        try { m = String((await readSetting(MIRROR_SWITCH)) ?? ""); } catch { m = ""; }
+        mirrorOn = m === "true" && !inShadowMaint(t);
+        if (mirrorOn !== mirrorOnLast) { mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`); }
+        if (mirrorOn || awaitingSeen) await pairMirror(t);
+      }
       let q;
-      try { q = await db.pending(new Date(t - SHADOW_LOOKBACK_MS).toISOString(), SHADOW_FETCH_LIMIT); }
+      try { q = evidence ? await evidence.pending(since, SHADOW_FETCH_LIMIT) : await db.pending(since, SHADOW_FETCH_LIMIT); }
       catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
       await noteWaiting(q.waiting, t);
       for (const [k, b] of backoff) if (t - b.seenAt > SHADOW_LOOKBACK_MS) backoff.delete(k); // gone for 6 h (the extension's rule)
-      const all = jobsFromPending(q.jobs);
-      for (const j of all) { const b = backoff.get(`${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
-      const jobs = selectJobs(all, backoff, t, SHADOW_LIMIT);
       let checked = 0;
+      let budget = SHADOW_LIMIT;
+      if (evidence) {
+        // 1. re-asks that are due
+        let due = [];
+        try { due = await evidence.reasksDue(new Date(t).toISOString(), budget); } catch { due = []; }
+        for (const x of due) {
+          if (budget <= 0) break;
+          budget -= 1; checked += 1;
+          const out = await runReask(x, st, t);
+          if (out !== "next") return { checked, waiting: q.waiting, stopped: out };
+        }
+        // 2. mirror: parcels still waiting for the extension
+        if (mirrorOn && budget > 0) {
+          let mq = null;
+          try { mq = await evidence.mirrorPending(since, SHADOW_FETCH_LIMIT); } catch { mq = null; }
+          if (mq) {
+            const mall = evidenceJobs(mq.jobs, "mirror");
+            for (const j of mall) { const b = backoff.get(`m:${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
+            const mjobs = mall.filter((j) => { const b = backoff.get(`m:${j.scanId}:${j.kind}`); return !(b && t < b.nextAt); }).slice(0, budget);
+            for (const job of mjobs) {
+              budget -= 1; checked += 1;
+              const out = await runJob(job, st, t, mq.waiting);
+              if (out === "stop" || out === "pause") return { checked, waiting: q.waiting };
+            }
+            if (mjobs.length) awaitingSeen = true;
+          }
+        }
+      }
+      // 3. after-mode: parcels the extension already answered
+      const all = evidence ? evidenceJobs(q.jobs, "after") : jobsFromPending(q.jobs);
+      for (const j of all) { const b = backoff.get(`${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
+      const jobs = selectJobs(all, backoff, t, budget);
       for (const job of jobs) {
-        const wait = SHADOW_ROW_GAP_MS - (now() - lastEnd);
-        if (wait > 0) await sleep(wait);
-        const t0 = now();
-        let r;
-        try { r = await check(job.input); } catch { r = null; }
-        if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [] };
-        lastEnd = now();
         checked += 1;
-        const after = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
-        const loggedOut = r.kind === "login_not_accepted" || r.kind === "no_session" || Boolean(after && after.state === "needs_login");
-        const row = shadowRow(job, { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut }, t0);
-        const key = `${job.scanId}:${job.kind}`;
-        const maint = inShadowMaint(lastEnd);
-        const isErr = row.match === null && Boolean(row.fail_reason);
-        if (loggedOut) {
-          try { await db.insert(row); } catch { /* the next pass tries again */ }
-          say(shadowLogLine(row, maint, true));
-          stoppedSince = st.since ?? null;
-          backoff.delete(key);
-          break;
-        }
-        if (!isErr) {
-          // a real answer (or the extension's own frozen unknown): the comparison row, the ladder is cleared
-          try { await db.insert(row); } catch { /* the next pass tries again */ }
-          say(shadowLogLine(row, maint));
-          backoff.delete(key);
-          streak = 0;
-          continue;
-        }
-        // a server error — the extension's ladder
-        const b = backoff.get(key) || { fails: 0, nextAt: 0, seenAt: t };
-        b.seenAt = t;
-        if (maint) {
-          b.nextAt = lastEnd + SHADOW_MAINT_RETRY_MS; // maintenance: not counted, slow retry
-          backoff.set(key, b);
-          say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=1 next=${SHADOW_MAINT_RETRY_MS / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
-          continue;
-        }
-        b.fails += 1;
-        const ladder = ladderFor(job.kind);
-        if (b.fails > ladder.length) {
-          try { await db.insert(row); } catch { /* the next pass tries again */ }
-          say(shadowLogLine(row, maint));
-          backoff.delete(key);
-        } else {
-          b.nextAt = lastEnd + ladder[b.fails - 1]; // from the END of the failed attempt
-          backoff.set(key, b);
-          say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=0 next=${ladder[b.fails - 1] / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
-        }
-        streak = isRefusal(row) ? streak + 1 : 0;
-        if (streak >= SHADOW_BRAKE_ERRORS) {
-          pausedUntil = lastEnd + SHADOW_BRAKE_PAUSE_MS;
-          streak = 0;
-          // ONE row for the pause (its own id — never a parcel's, so no parcel is marked checked)
-          const pause = { scan_id: randomUUID(), kind: job.kind, ext_verdict: null, srv_verdict: "unknown", srv_ms: 0, srv_http: row.fail_http ?? 0,
-            match: null, note: "paused_15m", fail_step: row.fail_step, fail_http: row.fail_http ?? 0, fail_reason: "paused_http", steps: [], gap_s: null, raw: null };
-          try { await db.insert(pause); } catch { /* the pause still holds */ }
-          say(`${TAG} pause ${SHADOW_BRAKE_PAUSE_MS / 60000}m after ${SHADOW_BRAKE_ERRORS} refusals http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
-          break;
-        }
+        const out = await runJob(job, st, t, q.waiting);
+        if (out === "stop" || out === "pause") break;
       }
       return { checked, waiting: q.waiting };
     } catch {
