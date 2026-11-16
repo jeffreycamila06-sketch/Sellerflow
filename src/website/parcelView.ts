@@ -19,3 +19,9 @@ export function cleanParcel(raw: unknown): ParcelView | undefined {
   if (c) p.checkedAt = c;
   return p;
 }
+
+/** Item 2: the parcel the order page may show — only for a shipped 7-ELEVEN / FamilyMart order with a tracking
+ *  number (the database already checks this; the page checks again). Otherwise undefined → the page as today. */
+export function orderParcel(v: { status: string; delivery: string; tracking?: string; parcel?: ParcelView }): ParcelView | undefined {
+  return v.status === "shipped" && (v.delivery === "s711" || v.delivery === "fm") && !!v.tracking ? v.parcel : undefined;
+}
