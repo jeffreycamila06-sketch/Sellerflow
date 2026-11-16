@@ -172,9 +172,16 @@ export function createEvidenceDb(sb) {
     return { waiting: Math.max(0, Number(x.waiting) || 0), jobs: Array.isArray(x.jobs) ? x.jobs : [] };
   };
   return {
-    async pending(sinceIso, limit) { return queue(await rpc("pc711_evidence_pending", { p_since: sinceIso, p_limit: limit })); },
-    async mirrorPending(sinceIso, limit) { return queue(await rpc("pc711_mirror_pending", { p_since: sinceIso, p_limit: limit })); },
-    async awaiting(limit) { const d = await rpc("pc711_mirror_awaiting", { p_limit: limit }); return Array.isArray(d) ? d : []; },
+    // ONE call per pass (sql/172 pc711_shadow_pass): queue + re-asks due + mirror switch + mirror queue + waiting pairs
+    async pass(sinceIso, limit, reaskLimit, mirrorAllowed) {
+      const o = await rpc("pc711_shadow_pass", { p_since: sinceIso, p_limit: limit, p_reask_limit: reaskLimit, p_mirror_allowed: Boolean(mirrorAllowed) });
+      const x = o && typeof o === "object" ? o : {};
+      return {
+        ...queue(x), mirror: x.mirror === true,
+        reasks: Array.isArray(x.reasks) ? x.reasks : [], awaiting: Array.isArray(x.awaiting) ? x.awaiting : [],
+        mirrorQueue: x.mirror_queue ? queue(x.mirror_queue) : null,
+      };
+    },
     async insert(row) {
       const { error } = await sb.from("pc711_shadow_evidence").upsert(row, { onConflict: "scan_id,kind,input", ignoreDuplicates: true });
       if (error) throw error;
@@ -182,13 +189,6 @@ export function createEvidenceDb(sb) {
     async update(id, patch) {
       const { error } = await sb.from("pc711_shadow_evidence").update(patch).eq("id", id);
       if (error) throw error;
-    },
-    // due re-asks: the partial index on reask_next_at
-    async reasksDue(nowIso, limit) {
-      const { data, error } = await sb.from("pc711_shadow_evidence").select("id,scan_id,kind,phone,store_id,reask_n,srv_finished_at")
-        .not("reask_next_at", "is", null).lte("reask_next_at", nowIso).order("reask_next_at", { ascending: true }).limit(Math.max(1, Math.min(limit, 10)));
-      if (error) throw error;
-      return data || [];
     },
     // the parcel's CURRENT phone + name for a re-ask (one primary-key read; the name never leaves the server)
     async parcelForReask(scanId) {

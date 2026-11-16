@@ -178,12 +178,34 @@ ok(pair("mirror", "phone", "fresh")?.compared === 1 && pair("mirror", "phone", "
 ok(tot.restricted.agree === 6 && tot.restricted.disagree === 2, `totals: the "restricted" line = 6 agree, 2 disagree (${JSON.stringify(tot.restricted)})`);
 ok(tot.mirror.n === 5 && tot.mirror.serverFirst === 1 && tot.mirror.timeout >= 1, `totals: mirror n / who was first / timeouts (${JSON.stringify(tot.mirror)})`);
 
+// ── ONE call per pass ──
+const onePass = async (allowed) => (await svc(() => q(`select public.pc711_shadow_pass(now() - interval '6 hours', 25, 5, $1) r`, [allowed]))).rows[0].r;
+await q(`update public.app_settings set value = 'false' where key = 'pc711_mirror_enabled'`);
+let ps = await onePass(true);
+ok(ps.mirror === false && !("mirror_queue" in ps) && Array.isArray(ps.jobs) && Number.isInteger(ps.waiting) && Array.isArray(ps.reasks) && Array.isArray(ps.awaiting),
+  `pass, mirror off: queue + waiting + re-asks + waiting pairs + the switch, NO mirror queue (${Object.keys(ps).sort()})`);
+await q(`update public.app_settings set value = 'true' where key = 'pc711_mirror_enabled'`);
+ps = await onePass(true);
+ok(ps.mirror === true && ps.mirror_queue && Array.isArray(ps.mirror_queue.jobs), "pass, mirror on: + the mirror queue");
+ps = await onePass(false);
+ok(ps.mirror === true && !("mirror_queue" in ps), "pass, mirror on but 01:00–05:00 Taipei (not allowed): no mirror queue");
+await q(`update public.app_settings set value = 'false' where key = 'pc711_mirror_enabled'`);
+const rq = (await ins({ scan_id: P(300), kind: "phone", input: "0900000300", phone: "0900000300", srv_finished_at: await at(1) })).rows[0].id;
+await svc(() => q(`update public.pc711_shadow_evidence set reask_next_at = now() - interval '1 second' where id = $1`, [rq]));
+const rq2 = (await ins({ scan_id: P(301), kind: "phone", input: "0900000301", phone: "0900000301", srv_finished_at: await at(1) })).rows[0].id;
+await svc(() => q(`update public.pc711_shadow_evidence set reask_next_at = now() + interval '1 minute' where id = $1`, [rq2]));
+ps = await onePass(true);
+ok(ps.reasks.length === 1 && ps.reasks[0].id === rq && ps.reasks[0].phone === "0900000300", "pass: the re-asks that are due (not the ones still to come)");
+await svc(() => q(`update public.pc711_shadow_evidence set reask_next_at = null where id in ($1, $2)`, [rq, rq2]));
+const pending0 = (await svc(() => q(`select public.pc711_evidence_pending(now() - interval '6 hours', 25) r`))).rows[0].r;
+ok(JSON.stringify(ps.jobs) === JSON.stringify(pending0.jobs) && ps.waiting === pending0.waiting, "pass: the after-mode queue = pc711_evidence_pending's");
+
 // ── who can read ──
 for (const [role, uid, who] of [["anon", null, "anon"], ["authenticated", A, "a seller"]]) {
   let e = null;
   try { await as(role, uid, () => q(`select * from public.pc711_shadow_evidence`)); } catch (x) { e = x.message; }
   ok(e && /permission denied/i.test(e), `${who} cannot read the evidence table (${e})`);
-  for (const fn of ["pc711_evidence_pending(now(), 5)", "pc711_mirror_pending(now(), 5)", "pc711_mirror_awaiting(5)", "pc711_evidence_totals(now(), now())", "pc711_evidence_purge()"]) {
+  for (const fn of ["pc711_shadow_pass(now(), 5, 5, true)", "pc711_evidence_pending(now(), 5)", "pc711_mirror_pending(now(), 5)", "pc711_mirror_awaiting(5)", "pc711_evidence_totals(now(), now())", "pc711_evidence_purge()"]) {
     e = null;
     try { await as(role, uid, () => q(`select public.${fn}`)); } catch (x) { e = x.message; }
     ok(e && /permission denied/i.test(e), `${who} cannot call ${fn.split("(")[0]}`);

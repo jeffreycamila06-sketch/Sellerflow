@@ -39,26 +39,39 @@ function harness(o: { queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (
   const settings: Record<string, string> = { pc711_shadow_enabled: "true", [MIRROR_SWITCH]: o.mirror ? "true" : "false" };
   const written = (r: Row) => evRows.some((x) => x.scan_id === r.scan_id && x.kind === r.kind && x.input === r.input);
   const queue = o.queue ?? [], mqueue = o.mqueue ?? [];
+  // every database request the job makes (the parts INSIDE pc711_shadow_pass are not requests)
+  const requests: string[] = [];
+  const req = <A extends unknown[], R>(name: string, f: (...a: A) => R) => vi.fn((...a: A) => { requests.push(name); return f(...a); });
   const db = {
-    pending: vi.fn(async () => ({ waiting: 0, jobs: [] })), dayMax: async () => ({}), saveDayMax: async () => {},
-    insert: vi.fn(async (r: Row) => { oldRows.push(r); }), purgeBefore: async () => {},
+    pending: req("db.pending", async () => ({ waiting: 0, jobs: [] })), dayMax: req("db.dayMax", async () => ({})), saveDayMax: req("db.saveDayMax", async () => {}),
+    insert: req("db.insert", async (r: Row) => { oldRows.push(r); }), purgeBefore: req("db.purgeBefore", async () => {}),
   };
-  const ev = {
+  // the parts of the one pass call (sql/172 pc711_shadow_pass), each a fake of its SQL function
+  const part = {
     pending: vi.fn(async () => { const w = queue.filter((r) => !written(r)); return { waiting: w.length, jobs: w }; }),
     mirrorPending: vi.fn(async () => { const w = mqueue.filter((r) => !written(r)); return { waiting: w.length, jobs: w }; }),
     awaiting: vi.fn(async () => (o.awaitingRows ? o.awaitingRows() : [])),
-    insert: vi.fn(async (r: Row) => { evRows.push({ ...r, id: evRows.length + 1, reask_n: 0 }); }),
-    update: vi.fn(async (rid: unknown, p: Row) => { updates.push([rid, p]); const x = evRows.find((r) => r.id === rid); if (x) Object.assign(x, p); }),
     reasksDue: vi.fn(async (nowIso: string) => evRows.filter((r) => r.reask_next_at && Date.parse(String(r.reask_next_at)) <= Date.parse(nowIso))
       .map((r) => ({ id: r.id, scan_id: r.scan_id, kind: r.kind, phone: r.phone, store_id: r.store_id, reask_n: r.reask_n, srv_finished_at: r.srv_finished_at }))),
-    parcelForReask: vi.fn(async (sid: string) => (o.parcels && sid in o.parcels ? o.parcels[sid] : { phone: PHONE, customer_name: NAME, store_id: STORE })),
+  };
+  const ev = {
+    ...part,
+    pass: req("ev.pass", async (_since: string, _limit: number, reaskLimit: number, mirrorAllowed: boolean) => {
+      const q = await part.pending();
+      const mirror = settings[MIRROR_SWITCH] === "true";
+      return { ...q, mirror, reasks: (await part.reasksDue(new Date(t).toISOString())).slice(0, reaskLimit), awaiting: await part.awaiting(),
+        mirrorQueue: mirror && mirrorAllowed ? await part.mirrorPending() : null };
+    }),
+    insert: req("ev.insert", async (r: Row) => { evRows.push({ ...r, id: evRows.length + 1, reask_n: 0 }); }),
+    update: req("ev.update", async (rid: unknown, p: Row) => { updates.push([rid, p]); const x = evRows.find((r) => r.id === rid); if (x) Object.assign(x, p); }),
+    parcelForReask: req("ev.parcelForReask", async (sid: string) => (o.parcels && sid in o.parcels ? o.parcels[sid] : { phone: PHONE, customer_name: NAME, store_id: STORE })),
   };
   const check = vi.fn(async (i: Record<string, string>) => { t += 900; return o.check ? o.check(i) : OK(i as { kind: string }); });
   const job = createPc711Shadow({
     db, evidence: ev, check, pc711: { status: () => ({ state: "connected", since: "c1" }) },
-    readSetting: async (k: string) => settings[k] ?? null, now: () => t, log: (l: string) => logs.push(l), sleep: async (ms: number) => { t += ms; },
+    readSetting: req("readSetting", async (k: string) => settings[k] ?? null), now: () => t, log: (l: string) => logs.push(l), sleep: async (ms: number) => { t += ms; },
   });
-  return { job, db, ev, check, logs, oldRows, evRows, updates, settings, at: () => t, advance: (ms: number) => { t += ms; } };
+  return { job, db, ev, check, logs, oldRows, evRows, updates, settings, requests, at: () => t, advance: (ms: number) => { t += ms; } };
 }
 const noPhoneIn = (lines: string[]) => lines.every((l) => !/09\d{8}/.test(l) && !l.includes(NAME));
 
@@ -262,9 +275,9 @@ describe("Part 2 — mirror mode", () => {
     expect(off.ev.mirrorPending).not.toHaveBeenCalled();
     expect(off.evRows.every((r) => r.mode === "after")).toBe(true);
     expect(off.check.mock.calls.map((c) => c[0])).toEqual(q.map((r) => r.kind === "phone" ? { kind: "phone", phone: PHONE, name: NAME, storeId: STORE } : { kind: "store", storeId: STORE }));
-    // the only mirror trace while off: one read for rows left waiting from an earlier mirror run (none → never again)
-    off.advance(6000); await off.job.tick(); off.advance(6000); await off.job.tick();
-    expect(off.ev.awaiting).toHaveBeenCalledTimes(1);
+    // rows left waiting from an earlier mirror run are read INSIDE the one pass call (no extra request)
+    off.advance(6000); await off.job.tick();
+    expect(off.ev.mirrorPending).not.toHaveBeenCalled();
   });
   it("switching off takes effect on the next poll", async () => {
     const h = harness({ mirror: true, mqueue: [mpend("phone"), mpend("phone", { phone: "0933333333", input: "0933333333" })] });
@@ -289,6 +302,19 @@ describe("Part 2 — mirror mode", () => {
     expect(starts).toHaveLength(3);
     for (let i = 1; i < starts.length; i++) expect(starts[i] - starts[i - 1]).toBeGreaterThanOrEqual(900 + SHADOW_ROW_GAP_MS - 900);
   });
+});
+
+describe("database requests per idle pass", () => {
+  for (const mirror of [false, true]) {
+    it(`mirror ${mirror ? "on" : "off"}: an idle pass = the shadow switch + ONE pass call (queue, re-asks, mirror switch, mirror queue, waiting pairs)`, async () => {
+      const h = harness({ mirror });
+      await h.job.tick(); // the first pass of a Taipei day also purges + loads the day's highest Waiting (once a day)
+      h.requests.length = 0;
+      for (let i = 0; i < 3; i++) { h.advance(5000); await h.job.tick(); }
+      expect(h.requests).toEqual(["readSetting", "ev.pass", "readSetting", "ev.pass", "readSetting", "ev.pass"]);
+      expect(h.ev.mirrorPending).toHaveBeenCalledTimes(mirror ? 4 : 0); // inside the pass call only
+    });
+  }
 });
 
 describe("logs and privacy", () => {

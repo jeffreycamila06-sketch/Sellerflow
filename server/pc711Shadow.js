@@ -245,7 +245,6 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   let waiting = null, waitingAt = 0;
   const dayMax = new Map();    // Taipei day → highest Waiting seen (loaded from pc711_shadow_days first)
   let lastPendingFail = 0;
-  let awaitingSeen = true;     // sql/172: mirror rows may be waiting for the extension (checked while any were seen)
   let mirrorOnLast = false;
   const say = (line) => { try { log(line); } catch { /* a log never stops the job */ } };
 
@@ -345,11 +344,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   }
 
   // sql/172 mirror: pair the server's answers with the extension's (database only, no 7-11 request)
-  async function pairMirror(t) {
-    let rows = [];
-    try { rows = await evidence.awaiting(50); } catch { return; }
-    awaitingSeen = rows.length > 0;
-    for (const x of rows) {
+  async function pairMirror(t, rows) {
+    for (const x of rows || []) {
       const patch = pairPatch(x, t);
       if (!patch) continue;
       try { await evidence.update(x.id, patch); } catch { continue; }
@@ -388,10 +384,69 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     return (await brakeAfter(row, "phone")) ? "pause" : "next";
   }
 
+  // sql/172: the evidence pass — ONE queue call (pc711_shadow_pass) brings everything a pass needs.
+  async function tickEvidence() {
+    let on = "";
+    try { on = String((await readSetting(SHADOW_SWITCH)) ?? ""); } catch { on = ""; }
+    if (on !== "true") return { skipped: "off" };
+    const st = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
+    if (!st || st.state !== "connected") return { skipped: "not_connected" };
+    if (stoppedSince !== null && stoppedSince === (st.since ?? null)) return { skipped: "stopped" };
+    stoppedSince = null;
+    const t = now();
+    if (pausedUntil > t) return { skipped: "paused" };
+    const d = taipeiDay(t);
+    if (d.key !== day) {
+      day = d.key;
+      try { await db.purgeBefore(new Date(t - SHADOW_KEEP_DAYS * DAY_MS).toISOString()); } catch { /* next day */ }
+      for (const k of [...dayMax.keys()]) if (k < taipeiDay(t - 3 * DAY_MS).key) dayMax.delete(k);
+    }
+    const since = new Date(t - SHADOW_LOOKBACK_MS).toISOString();
+    const mirrorAllowed = !inShadowMaint(t);
+    let p;
+    try { p = await evidence.pass(since, SHADOW_FETCH_LIMIT, SHADOW_LIMIT, mirrorAllowed); }
+    catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
+    const mirrorOn = p.mirror && mirrorAllowed;
+    if (mirrorOn !== mirrorOnLast) { mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`); }
+    await noteWaiting(p.waiting, t);
+    for (const [k, b] of backoff) if (t - b.seenAt > SHADOW_LOOKBACK_MS) backoff.delete(k); // gone for 6 h (the extension's rule)
+    await pairMirror(t, p.awaiting);
+    let checked = 0;
+    let budget = SHADOW_LIMIT;
+    // 1. re-asks that are due
+    for (const x of p.reasks) {
+      if (budget <= 0) break;
+      budget -= 1; checked += 1;
+      const out = await runReask(x, st, t);
+      if (out !== "next") return { checked, waiting: p.waiting, stopped: out };
+    }
+    // 2. mirror: parcels still waiting for the extension
+    if (mirrorOn && budget > 0 && p.mirrorQueue) {
+      const mall = evidenceJobs(p.mirrorQueue.jobs, "mirror");
+      for (const j of mall) { const b = backoff.get(`m:${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
+      const mjobs = mall.filter((j) => { const b = backoff.get(`m:${j.scanId}:${j.kind}`); return !(b && t < b.nextAt); }).slice(0, budget);
+      for (const job of mjobs) {
+        budget -= 1; checked += 1;
+        const out = await runJob(job, st, t, p.mirrorQueue.waiting);
+        if (out === "stop" || out === "pause") return { checked, waiting: p.waiting };
+      }
+    }
+    // 3. after-mode: parcels the extension already answered
+    const all = evidenceJobs(p.jobs, "after");
+    for (const j of all) { const b = backoff.get(`${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
+    for (const job of selectJobs(all, backoff, t, budget)) {
+      checked += 1;
+      const out = await runJob(job, st, t, p.waiting);
+      if (out === "stop" || out === "pause") break;
+    }
+    return { checked, waiting: p.waiting };
+  }
+
   async function tick() {
     if (running) return { skipped: "running" };
     running = true;
     try {
+      if (evidence) return await tickEvidence();
       let on = "";
       try { on = String((await readSetting(SHADOW_SWITCH)) ?? ""); } catch { on = ""; }
       if (on !== "true") return { skipped: "off" };
@@ -407,54 +462,15 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
         try { await db.purgeBefore(new Date(t - SHADOW_KEEP_DAYS * DAY_MS).toISOString()); } catch { /* next day */ }
         for (const k of [...dayMax.keys()]) if (k < taipeiDay(t - 3 * DAY_MS).key) dayMax.delete(k);
       }
-      const since = new Date(t - SHADOW_LOOKBACK_MS).toISOString();
-      // sql/172: mirror (outside 01:00–05:00 Taipei) — the switch is read on EVERY pass
-      let mirrorOn = false;
-      if (evidence) {
-        let m = "";
-        try { m = String((await readSetting(MIRROR_SWITCH)) ?? ""); } catch { m = ""; }
-        mirrorOn = m === "true" && !inShadowMaint(t);
-        if (mirrorOn !== mirrorOnLast) { mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`); }
-        if (mirrorOn || awaitingSeen) await pairMirror(t);
-      }
       let q;
-      try { q = evidence ? await evidence.pending(since, SHADOW_FETCH_LIMIT) : await db.pending(since, SHADOW_FETCH_LIMIT); }
+      try { q = await db.pending(new Date(t - SHADOW_LOOKBACK_MS).toISOString(), SHADOW_FETCH_LIMIT); }
       catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
       await noteWaiting(q.waiting, t);
       for (const [k, b] of backoff) if (t - b.seenAt > SHADOW_LOOKBACK_MS) backoff.delete(k); // gone for 6 h (the extension's rule)
-      let checked = 0;
-      let budget = SHADOW_LIMIT;
-      if (evidence) {
-        // 1. re-asks that are due
-        let due = [];
-        try { due = await evidence.reasksDue(new Date(t).toISOString(), budget); } catch { due = []; }
-        for (const x of due) {
-          if (budget <= 0) break;
-          budget -= 1; checked += 1;
-          const out = await runReask(x, st, t);
-          if (out !== "next") return { checked, waiting: q.waiting, stopped: out };
-        }
-        // 2. mirror: parcels still waiting for the extension
-        if (mirrorOn && budget > 0) {
-          let mq = null;
-          try { mq = await evidence.mirrorPending(since, SHADOW_FETCH_LIMIT); } catch { mq = null; }
-          if (mq) {
-            const mall = evidenceJobs(mq.jobs, "mirror");
-            for (const j of mall) { const b = backoff.get(`m:${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
-            const mjobs = mall.filter((j) => { const b = backoff.get(`m:${j.scanId}:${j.kind}`); return !(b && t < b.nextAt); }).slice(0, budget);
-            for (const job of mjobs) {
-              budget -= 1; checked += 1;
-              const out = await runJob(job, st, t, mq.waiting);
-              if (out === "stop" || out === "pause") return { checked, waiting: q.waiting };
-            }
-            if (mjobs.length) awaitingSeen = true;
-          }
-        }
-      }
-      // 3. after-mode: parcels the extension already answered
-      const all = evidence ? evidenceJobs(q.jobs, "after") : jobsFromPending(q.jobs);
+      const all = jobsFromPending(q.jobs);
       for (const j of all) { const b = backoff.get(`${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
-      const jobs = selectJobs(all, backoff, t, budget);
+      const jobs = selectJobs(all, backoff, t, SHADOW_LIMIT);
+      let checked = 0;
       for (const job of jobs) {
         checked += 1;
         const out = await runJob(job, st, t, q.waiting);

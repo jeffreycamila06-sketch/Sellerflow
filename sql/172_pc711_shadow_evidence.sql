@@ -296,6 +296,35 @@ $$;
 revoke all on function public.pc711_evidence_purge() from public, anon, authenticated;
 grant execute on function public.pc711_evidence_purge() to service_role;
 
+-- ── ONE call per pass (the server's only database request on an idle pass besides the shadow switch):
+-- the after-mode queue + the re-asks that are due + the mirror switch + (mirror on, outside 01:00–05:00
+-- Taipei = p_mirror_allowed) the mirror queue + the mirror rows still waiting for the extension (also
+-- after mirror was switched off, so no pair is dropped). Every part reads its own index.
+create or replace function public.pc711_shadow_pass(p_since timestamptz, p_limit integer, p_reask_limit integer, p_mirror_allowed boolean)
+returns jsonb language plpgsql volatile set search_path = public, pg_temp as $$
+declare v_mirror boolean; v_out jsonb;
+begin
+  select s.value = 'true' into v_mirror from public.app_settings s where s.key = 'pc711_mirror_enabled';
+  v_mirror := coalesce(v_mirror, false);
+  v_out := public.pc711_evidence_pending(p_since, p_limit)
+    || jsonb_build_object(
+         'mirror', v_mirror,
+         'reasks', coalesce((select jsonb_agg(to_jsonb(r) order by r.reask_next_at)
+                               from (select e.id, e.scan_id, e.kind, e.phone, e.store_id, e.reask_n, e.srv_finished_at, e.reask_next_at
+                                       from public.pc711_shadow_evidence e
+                                      where e.reask_next_at is not null and e.reask_next_at <= now()
+                                      order by e.reask_next_at
+                                      limit greatest(0, least(coalesce(p_reask_limit, 0), 10))) r), '[]'::jsonb),
+         'awaiting', public.pc711_mirror_awaiting(50));
+  if v_mirror and coalesce(p_mirror_allowed, false) then
+    v_out := v_out || jsonb_build_object('mirror_queue', public.pc711_mirror_pending(p_since, p_limit));
+  end if;
+  return v_out;
+end;
+$$;
+revoke all on function public.pc711_shadow_pass(timestamptz, integer, integer, boolean) from public, anon, authenticated;
+grant execute on function public.pc711_shadow_pass(timestamptz, integer, integer, boolean) to service_role;
+
 -- the mirror switch (off)
 insert into public.app_settings (key, value) values ('pc711_mirror_enabled', 'false')
   on conflict (key) do nothing;
