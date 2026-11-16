@@ -113,39 +113,50 @@ grant usage, select on sequence public.pc711_shadow_evidence_id_seq to service_r
 -- apply (the look-back). Oldest first; ≤ 50.
 create or replace function public.pc711_evidence_pending(p_since timestamptz, p_limit integer)
 returns jsonb language sql stable set search_path = public, pg_temp as $$
+  -- COST (measured live 2026-11-17 on the same shape): the three partial indexes over the last 6 h
+  -- (~600 parcels), then ONE primary-key-style lookup per parcel in the usual case — the single-row
+  -- LIMIT 1 lookups keep them per parcel (plain EXISTS was turned into whole-table scans). The cache
+  -- lookup, fresh/remembered and the previous row are read for the returned jobs only (≤ 50).
   with j as (
     select s.id as scan_id, 'store'::text as kind, s.store_full_status as ext, s.store_full_at as at,
            s.store_id, null::text as phone, null::text as customer_name, coalesce(s.store_id, '') as input,
-           s.user_id as seller_id, s.created_at, null::text as msg, null::date as until,
-           null::timestamptz as cache_at,
-           case when s.store_full_at = s.phone_check_at then 'fresh'
-                when s.store_full_at < s.created_at then 'remembered' else 'unknown' end as source
+           s.user_id as seller_id, s.created_at, null::text as msg, null::date as until, s.phone_check_at as other_at
       from public.parcel_scans s where s.store_full_status is not null and s.store_full_at >= p_since
     union all
     select s.id, 'phone', s.phone_check_status, s.phone_check_at, s.store_id, s.phone, s.customer_name, coalesce(s.phone, ''),
-           s.user_id, s.created_at, left(s.phone_check_message, 120), s.phone_restricted_until,
-           c.checked_at,
-           case when c.checked_at is null then 'unknown'
-                when c.checked_at = s.phone_check_at then 'fresh'
-                when c.checked_at < s.phone_check_at then 'remembered' else 'unknown' end
-      from public.parcel_scans s left join public.phone_check_cache c on c.phone = s.phone
-     where s.phone_check_status is not null and s.phone_check_at >= p_since
+           s.user_id, s.created_at, left(s.phone_check_message, 120), s.phone_restricted_until, null::timestamptz
+      from public.parcel_scans s where s.phone_check_status is not null and s.phone_check_at >= p_since
     union all
     select s.id, 'frozen', s.frozen_store_status, s.frozen_store_checked_at, s.store_id, null, null, coalesce(s.store_id, ''),
-           s.user_id, s.created_at, null, null, null, 'unknown'
+           s.user_id, s.created_at, null, null, null
       from public.parcel_scans s where s.frozen_store_status is not null and s.frozen_store_checked_at >= p_since
-  ), w as (
+  ), w as materialized (
     select j.* from j
-     where not exists (select 1 from public.pc711_shadow_evidence e where e.scan_id = j.scan_id and e.kind = j.kind and e.input = j.input)
-       and (exists (select 1 from public.pc711_shadow_evidence e where e.scan_id = j.scan_id and e.kind = j.kind)
-            or not exists (select 1 from public.pc711_shadow x where x.scan_id = j.scan_id and x.kind = j.kind))
+     where case
+       -- this exact value already has a row → no job (the usual case: one lookup)
+       when (select 1 from public.pc711_shadow_evidence e where e.scan_id = j.scan_id and e.kind = j.kind and e.input = j.input limit 1) is not null then false
+       -- an earlier value has a row → the value changed → a re-check job
+       when (select 1 from public.pc711_shadow_evidence e where e.scan_id = j.scan_id and e.kind = j.kind limit 1) is not null then true
+       -- never in the evidence table: a job unless pc711_shadow already compared it (before sql/172)
+       else (select 1 from public.pc711_shadow x where x.scan_id = j.scan_id and x.kind = j.kind limit 1) is null
+     end
   )
   select jsonb_build_object(
     'waiting', (select count(*) from w),
     'jobs', coalesce((select jsonb_agg(to_jsonb(t) order by t.at, t.scan_id, t.kind)
-                        from (select w.*, p.input as prev_input, p.ext_at as prev_ext_at, coalesce(p.round, 0) + 1 as round
+                        from (select w.scan_id, w.kind, w.ext, w.at, w.store_id, w.phone, w.customer_name, w.input, w.seller_id, w.created_at, w.msg, w.until,
+                                     c.checked_at as cache_at,
+                                     case w.kind
+                                       when 'phone' then case when c.checked_at is null then 'unknown'
+                                                              when c.checked_at = w.at then 'fresh'
+                                                              when c.checked_at < w.at then 'remembered' else 'unknown' end
+                                       when 'store' then case when w.at = w.other_at then 'fresh'
+                                                              when w.at < w.created_at then 'remembered' else 'unknown' end
+                                       else 'unknown' end as source,
+                                     p.input as prev_input, p.ext_at as prev_ext_at, coalesce(p.round, 0) + 1 as round
                                 from (select * from w order by at, scan_id, kind
                                        limit greatest(0, least(coalesce(p_limit, 0), 50))) w
+                                left join public.phone_check_cache c on w.kind = 'phone' and c.phone = w.phone
                                 left join lateral (select e.input, e.ext_at, e.round from public.pc711_shadow_evidence e
                                                     where e.scan_id = w.scan_id and e.kind = w.kind
                                                     order by e.id desc limit 1) p on true) t), '[]'::jsonb));
@@ -170,9 +181,9 @@ returns jsonb language sql stable set search_path = public, pg_temp as $$
     union all
     select s.id, 'store', s.store_id, null, null, coalesce(s.store_id, ''), s.user_id, s.created_at, s.created_at
       from s where s.store_full_status is null
-  ), w as (
+  ), w as materialized (
     select j.* from j
-     where not exists (select 1 from public.pc711_shadow_evidence e where e.scan_id = j.scan_id and e.kind = j.kind and e.input = j.input)
+     where (select 1 from public.pc711_shadow_evidence e where e.scan_id = j.scan_id and e.kind = j.kind and e.input = j.input limit 1) is null
   )
   select jsonb_build_object(
     'waiting', (select count(*) from w),
