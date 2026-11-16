@@ -346,6 +346,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
             {timeline.map((x, i) => <div key={i} className={x.st ? `v-${x.st}` : ""} data-state={x.st || "next"}>{x.sub ? <span className="v-sub2">{x.label}<small>{x.sub}</small></span> : x.label}</div>)}
           </div>
         )}
+        {parcel?.checkedAt && <div data-testid="od-updated" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--s-line)", fontSize: 12, color: "var(--s-mut)" }}>{tpl(t.rd_pk_updated, { time: parcelWhen(parcel.checkedAt, lang) })}</div>}
         {view.paymentIssue && view.status === "awaiting_payment" && <Note tone="red" testid="od-issue">{t.rd_shop_od_issue}</Note>}
         {view.status === "cancelled" && <Note tone="grey" testid="od-cancelled">{view.cancelReason === "auto" ? t.rd_shop_od_cancel_auto : t.rd_shop_od_cancel_seller}</Note>}
       </div>
