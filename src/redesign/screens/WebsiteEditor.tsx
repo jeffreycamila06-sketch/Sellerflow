@@ -3,14 +3,15 @@
 // "Upgrade to publish your website"; on iOS the Publish button is locked with no price or plan name,
 // and the own-domain (Master) row is hidden (App Store rule). Preview = the real shop pages with the
 // draft, in memory (no network, no order can be placed).
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
 import type { ShopDesign, ShopProduct, SocialKey, ChatKey } from "../../website/shopApi";
 import { SHOP_COLORS } from "../../website/shopStyle";
 import { BrandIcon, type BrandKey } from "../../website/brandIcons";
-import { shopUrl } from "../../website/route";
+import { shopUrl, shareUrl } from "../../website/route";
 import { productImageUrl } from "../adapters/productImages";
 import { subdomainProblem, suggestSubdomain, planCanPublish, isMasterPlan, type MyWebsite, type WebsiteSettings } from "../adapters/websiteSeller";
 import { previewShop, hasUnpublished, DEFAULT_SETTINGS } from "../adapters/websiteEditor";
@@ -24,9 +25,11 @@ const CHATS: ChatKey[] = ["messenger", "line", "whatsapp", "instagram"];
 const CHAT_NAME: Record<ChatKey, string> = { messenger: "Messenger", line: "LINE", whatsapp: "WhatsApp", instagram: "Instagram DM" };
 const SECTIONS = ["announcement", "live", "categories", "about", "policy", "socials"] as const;
 
-export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan, planStatus, planExpiry, country = "TW", onToast, api = realEditorApi, nowMs }: {
+export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan, planStatus, planExpiry, country = "TW", onToast, api = realEditorApi, nowMs, subdomainReady = false }: {
   onBack?: () => void; onPayShip: () => void; onUpgrade?: () => void; ios: boolean;
   plan?: string; planStatus?: string; planExpiry?: string | null; country?: string; onToast: (m: string) => void; api?: EditorApi; nowMs?: number;
+  /** app_settings website_subdomain_ready (sql/164): show / copy <sub>.sellerflowlive.com only when true */
+  subdomainReady?: boolean;
 }) {
   const t = useT() as unknown as Record<string, string>;
   const [site, setSite] = useState<MyWebsite | null | "loading" | "error">("loading");
@@ -36,6 +39,14 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
   const [busy, setBusy] = useState<"" | "save" | "publish" | "logo" | "cover">("");
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "bad" } | null>(null);
   const [preview, setPreview] = useState<ShopProduct[] | null>(null);
+  // Publish feedback: "running" = Publishing… (save + publish), "done" = ✓ Published for PUBLISHED_FLASH_MS
+  const [pub, setPub] = useState<"" | "running" | "done">("");
+  const [pubUpgrade, setPubUpgrade] = useState(false);
+  useEffect(() => {
+    if (pub !== "done") return;
+    const id = setTimeout(() => setPub(""), PUBLISHED_FLASH_MS);
+    return () => clearTimeout(id);
+  }, [pub]);
   useEffect(() => {
     let live = true;
     void api.load().then((w) => {
@@ -52,8 +63,9 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
   const set = (p: Partial<ShopDesign>) => setDraft((d) => ({ ...d, ...p }));
   const settings: WebsiteSettings = exists ? (site as MyWebsite).settings : DEFAULT_SETTINGS;
   const changes = hasUnpublished(draft, published);
+  const upToDate = !!published && !changes && exists && sub === (site as MyWebsite).subdomain;
 
-  const save = async (): Promise<boolean> => {
+  const save = async (o: { quiet?: boolean } = {}): Promise<boolean> => {
     setMsg(null);
     if (!(draft.name || "").trim()) { setMsg({ text: t.rd_wed_need_name, tone: "bad" }); return false; }
     if (subProblem) { setMsg({ text: subText(t, subProblem), tone: "bad" }); return false; }
@@ -62,18 +74,29 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     setBusy("");
     if (r.ok === false) { setMsg({ text: r.reason === "taken" ? t.rd_wed_addr_taken : r.reason === "bad_address" ? t.rd_wed_addr_chars : t.rd_wed_save_failed, tone: "bad" }); if (r.reason === "taken") setSubState("taken"); return false; }
     setSite((s) => (s && s !== "loading" && s !== "error" ? { ...s, subdomain: sub, draft } : { subdomain: sub, draft, published: null, publishedAt: null, settings: DEFAULT_SETTINGS, customDomain: null }));
-    setMsg({ text: t.rd_wed_saved, tone: "ok" });
+    if (!o.quiet) setMsg({ text: t.rd_wed_saved, tone: "ok" });
     return true;
   };
   const publish = async () => {
-    if (!canPublish) return;
-    if (!(await save())) return;
+    if (!canPublish || pub === "running") return;
+    setPubUpgrade(false);
+    setPub("running");
+    if (!(await save({ quiet: true }))) { setPub(""); return; }
     setBusy("publish");
     const r = await api.publish();
     setBusy("");
-    if (r.ok === false) { setMsg({ text: r.reason === "upgrade_required" ? (ios ? t.rd_wed_locked : t.rd_wed_upgrade) : r.reason === "not_available" ? t.rd_wed_not_available : t.rd_wed_save_failed, tone: "bad" }); return; }
+    if (r.ok === false) {
+      setPub("");
+      const text = r.reason === "upgrade_required" ? (ios ? t.rd_wed_locked : t.rd_wed_upgrade) : r.reason === "not_available" ? t.rd_wed_not_available : t.rd_wed_save_failed;
+      setMsg({ text, tone: "bad" });
+      setPubUpgrade(r.reason === "upgrade_required" && !ios && !!onUpgrade);
+      onToast(text);
+      return;
+    }
     setSite((s) => (s && s !== "loading" && s !== "error" ? { ...s, published: draft, publishedAt: r.at } : s));
-    setMsg({ text: t.rd_wed_published_ok, tone: "ok" });
+    setMsg(null);
+    setPub("done");
+    onToast(t.rd_wed_published_ok);
   };
   const checkSub = async () => {
     if (!sub || subProblem) { setSubState(""); return; }
@@ -89,8 +112,12 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     if (path) set({ [kind]: path } as Partial<ShopDesign>); else onToast(t.rd_wed_pic_failed);
   };
   const openPreview = async () => { setPreview(await api.loadProducts()); };
-  const address = sub && !subProblem ? shopUrl(sub, true).replace(/^https:\/\//, "") : "";
-  const fallback = sub && !subProblem ? shopUrl(sub) : "";
+  const closePreview = useCallback(() => setPreview(null), []);
+  // The link the seller sees + copies: the subdomain only once it really opens (sql/164 switch);
+  // until then the path address. The second, smaller line (the path) shows only next to a subdomain.
+  const link = sub && !subProblem ? shareUrl(sub, subdomainReady) : "";
+  const address = link.replace(/^https:\/\//, "");
+  const fallback = sub && !subProblem && subdomainReady ? shopUrl(sub) : "";
 
   if (site === "loading") return <Frame t={t} onBack={onBack}><div style={{ padding: 30, textAlign: "center", color: "var(--text-muted)" }}>…</div></Frame>;
   if (site === "error") return <Frame t={t} onBack={onBack}><div style={{ ...card, margin: 14, color: "var(--danger)" }}>{t.rd_wor_load_failed}</div></Frame>;
@@ -114,7 +141,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           {address && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
               <div data-testid="wed-url" style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "var(--accent-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{address}</div>
-              <button type="button" data-testid="wed-copy" style={smallBtn} onClick={() => { void navigator.clipboard?.writeText(`https://${address}`).catch(() => {}); onToast(t.rd_shop_od_copied); }}>{t.rd_shop_od_copy}</button>
+              <button type="button" data-testid="wed-copy" style={smallBtn} onClick={() => { void navigator.clipboard?.writeText(link).catch(() => {}); onToast(t.rd_shop_od_copied); }}>{t.rd_shop_od_copy}</button>
             </div>
           )}
           {fallback && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2, overflowWrap: "anywhere" }}>{fallback.replace(/^https:\/\//, "")}</div>}
@@ -127,13 +154,20 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button type="button" data-testid="wed-preview" style={{ ...btn, flex: 1, background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }} onClick={() => void openPreview()}>{t.rd_wed_preview}</button>
             {canPublish
-              ? <button type="button" data-testid="wed-publish" style={{ ...btn, flex: 1 }} disabled={!!busy} onClick={() => void publish()}>{busy === "publish" ? t.rd_wed_publishing : t.rd_wed_publish}</button>
+              ? pub === "running"
+                ? <button type="button" data-testid="wed-publish" data-state="running" style={{ ...btn, flex: 1, opacity: 0.85, cursor: "progress" }} disabled aria-busy="true"><Spinner />{t.rd_wed_publishing}</button>
+                : pub === "done"
+                  ? <button type="button" data-testid="wed-publish" data-state="done" style={{ ...btn, flex: 1, background: "var(--ok)", color: "#fff", cursor: "default" }} disabled>{t.rd_wed_published_now}</button>
+                  : upToDate
+                    ? <button type="button" data-testid="wed-publish" data-state="uptodate" style={{ ...btn, flex: 1, background: "var(--surface)", color: "var(--ok)", border: "1px solid var(--ok)", cursor: "default" }} disabled>{t.rd_wed_up_to_date}</button>
+                    : <button type="button" data-testid="wed-publish" data-state="ready" style={{ ...btn, flex: 1 }} disabled={!!busy} onClick={() => void publish()}>{t.rd_wed_publish}</button>
               : <button type="button" data-testid="wed-publish-locked" style={{ ...btn, flex: 1, opacity: 0.55, cursor: "not-allowed" }} disabled aria-disabled="true">🔒 {t.rd_wed_publish}</button>}
           </div>
           {!canPublish && (ios
             ? <div data-testid="wed-locked-note" style={noteStyle}>{t.rd_wed_locked}</div>
             : <button type="button" data-testid="wed-upgrade" onClick={onUpgrade} disabled={!onUpgrade} style={{ ...noteStyle, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: onUpgrade ? "pointer" : "default", color: "var(--accent-fg)", fontWeight: 800 }}>{t.rd_wed_upgrade} {onUpgrade ? "›" : ""}</button>)}
           {msg && <div role="status" data-testid="wed-msg" style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: msg.tone === "ok" ? "var(--ok)" : "var(--danger)" }}>{msg.text}</div>}
+          {pubUpgrade && <button type="button" data-testid="wed-pub-upgrade" onClick={onUpgrade} style={{ ...noteStyle, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: "var(--accent-fg)", fontWeight: 800 }}>{t.rd_wed_upgrade_short} ›</button>}
         </section>
 
         {/* own domain — Master only; hidden on iOS (no plan upsell there) */}
@@ -199,14 +233,44 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           <button type="button" data-testid="wed-save" style={{ ...btn, flex: 1 }} disabled={!!busy} onClick={() => void save()}>{busy === "save" ? t.rd_wed_saving : t.rd_wed_save}</button>
         </div>
       </div>
-      {preview && (
-        <div data-testid="wed-preview-sheet" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#F5F5F7", overflowY: "auto" }}>
-          <button type="button" data-testid="wed-preview-close" onClick={() => setPreview(null)} style={{ position: "fixed", top: "calc(10px + env(safe-area-inset-top))", right: 12, zIndex: 1001, minHeight: 40, padding: "0 14px", borderRadius: 999, border: "none", background: "#111827", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ {t.rd_wed_preview_close}</button>
-          <Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, preview, country, plan || "")} /></Suspense>
-        </div>
-      )}
+      {preview && <PreviewSheet title={t.rd_wed_preview} closeLabel={t.rd_wed_preview_close} onClose={closePreview}>
+        <Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, preview, country, plan || "")} /></Suspense>
+      </PreviewSheet>}
     </Frame>
   );
+}
+
+/** The preview, drawn ON TOP OF THE WHOLE APP: a portal to document.body, so it is outside the
+ *  app's animated screen container (.sfl-anim-screen fades + slides its children — a fixed sheet
+ *  inside it was see-through and moved with the screen) and above the bottom bar. Fully opaque;
+ *  the shop draws its own colours (SHOP_CSS is scoped to .sfl-shop, like on the real page). */
+const PREVIEW_Z = 5000;
+function PreviewSheet({ title, closeLabel, onClose, children }: { title: string; closeLabel: string; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", key);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", key); document.body.style.overflow = prev; };
+  }, [onClose]);
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div data-testid="wed-preview-sheet" role="dialog" aria-modal="true" aria-label={title}
+      style={{ position: "fixed", inset: 0, zIndex: PREVIEW_Z, background: "#F5F5F7", opacity: 1, isolation: "isolate", display: "flex", flexDirection: "column", fontFamily: "system-ui, -apple-system, \"Segoe UI\", sans-serif" }}>
+      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "calc(6px + env(safe-area-inset-top)) 12px 6px 16px", background: "#111827", color: "#fff" }}>
+        <span style={{ fontSize: 14, fontWeight: 800 }}>{title}</span>
+        <button type="button" data-testid="wed-preview-close" onClick={onClose}
+          style={{ minHeight: 44, padding: "0 16px", borderRadius: 999, border: "1px solid rgba(255,255,255,.35)", background: "#fff", color: "#111827", fontWeight: 800, fontSize: 14, fontFamily: "inherit", cursor: "pointer" }}>✕ {closeLabel}</button>
+      </div>
+      <div data-testid="wed-preview-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", position: "relative" }}>{children}</div>
+    </div>,
+    document.body,
+  );
+}
+
+const PUBLISHED_FLASH_MS = 3000;
+function Spinner() {
+  return <span aria-hidden="true" className="sfl-wed-spin" style={{ display: "inline-block", width: 14, height: 14, marginRight: 8, verticalAlign: "-2px", borderRadius: 7, border: "2px solid currentColor", borderRightColor: "transparent", animation: "sflWedSpin .8s linear infinite" }}><style>{"@keyframes sflWedSpin{to{transform:rotate(360deg)}}"}</style></span>;
 }
 
 function subText(t: Record<string, string>, p: "short" | "chars" | "reserved"): string {

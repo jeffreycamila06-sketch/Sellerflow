@@ -33,10 +33,11 @@ export const FEATURE_SWITCH_KEYS = {
   fmStoreCheck: "fm_store_check_enabled", // Parcel Scan FamilyMart: the store # is checked after a save (sql/155, seeded 'false')
   printerScanWebFilter: "printer_scan_web_filter", // Printer settings: the normal Scan asks for every device and the WEB keeps the listed printers (sql/160, seeded 'false')
   sellerWebsite: "seller_website_enabled", // Seller Website Phase 1 for every seller (sql/163, seeded 'false'); testers via feature seller_website
+  websiteSubdomainReady: "website_subdomain_ready", // Seller Website: share <sub>.sellerflowlive.com instead of www…/s/<sub> (sql/164, seeded 'false')
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false, scanQrLookup: false, fmStoreCheck: false, printerScanWebFilter: false, sellerWebsite: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false, scanQrLookup: false, fmStoreCheck: false, printerScanWebFilter: false, sellerWebsite: false, websiteSubdomainReady: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {

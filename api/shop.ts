@@ -3,7 +3,7 @@
 // shared link shows the shop on Facebook / LINE. Reads ONLY website_og (sql/163: title, tagline,
 // cover/logo path of an ONLINE shop). The app itself (shop.html) then loads the shop in the browser.
 // `api/` is outside tsconfig (typed loosely, no @vercel/node dependency).
-import { injectOg, validSub, type ShopOg } from "../src/website/og";
+import { injectOg, validSub, type ShopOg } from "../src/website/og.js";
 
 interface Req { query: Record<string, string | string[] | undefined>; headers: Record<string, string | string[] | undefined> }
 interface Res { setHeader: (k: string, v: string) => void; status: (n: number) => { send: (b: string) => void } }
@@ -14,7 +14,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   const host = one(req.headers["x-forwarded-host"]) || one(req.headers.host) || "www.sellerflowlive.com";
   const proto = one(req.headers["x-forwarded-proto"]) || "https";
   let html: string;
-  try { html = await (await fetch(`${proto}://${host}/shop.html`)).text(); } catch { html = ""; }
+  // Same-host fetch of the built shop page. The visitor's cookie goes along ONLY to our own hosts:
+  // a protected Preview deployment answers the login page otherwise (production has no protection).
+  const ownHost = /(^|\.)sellerflowlive\.com$|\.vercel\.app$/.test(host.split(":")[0]);
+  const cookie = ownHost ? one(req.headers.cookie) : "";
+  try { html = await (await fetch(`${proto}://${host}/shop.html`, cookie ? { headers: { cookie } } : undefined)).text(); } catch { html = ""; }
   if (!html.includes('id="shop-root"')) { res.status(502).send("Shop unavailable"); return; }
   let og: ShopOg | null = null;
   const url = process.env.VITE_SUPABASE_URL || "";
