@@ -3,6 +3,7 @@
 // the website orders (own rows, RLS), one action per order (website_order_action), the receipt
 // picture (signed URL, 5 min), the new-order badge and website sales.
 // Read on open / on tap only — nothing polls (CLAUDE.md egress rule).
+import type { PaySetting, ShipSetting } from "./websiteShipPay";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import type { ShopDesign } from "../../website/shopApi";
 
@@ -13,6 +14,12 @@ export interface WebsiteSettings {
   qr?: { enabled?: boolean; path?: string; label?: string };
   cod?: { enabled?: boolean };
   autoCancelHours?: number;
+  /** v2 (sql/167): the shipping options list. Absent = derived from the fields above (see websiteShipPay). */
+  shipOptions?: ShipSetting[];
+  /** v2 (sql/167): the payment methods list. Absent = derived from bank / qr / cod above. */
+  payMethods?: PaySetting[];
+  /** v2 (sql/167): show "Prices include tax" to buyers (nothing is calculated). */
+  taxIncluded?: boolean;
 }
 export interface MyWebsite { subdomain: string; draft: ShopDesign; published: ShopDesign | null; publishedAt: string | null; settings: WebsiteSettings; customDomain: string | null }
 
@@ -100,9 +107,12 @@ export type WebsiteOrderStatus = "awaiting_payment" | "payment_sent" | "paid" | 
 export interface WebsiteOrderItem { pid: number; vid?: number | null; name: string; label?: string; code?: string; price: number; qty: number; photo?: string }
 export interface WebsiteOrder {
   id: string; orderNo: number; token: string; status: WebsiteOrderStatus; paymentIssue: boolean; buyerName: string; buyerPhone: string; buyerContact: string | null;
-  delivery: "s711" | "fm" | "home"; storeId: string | null; storeName: string | null; address: string | null; payment: "bank" | "qr" | "cod";
+  delivery: "s711" | "fm" | "home" | "store" | "pickup"; storeId: string | null; storeName: string | null; address: string | null; payment: "bank" | "qr" | "cod";
   items: WebsiteOrderItem[]; subtotal: number; shipFee: number; total: number; note: string | null; receiptPath: string | null; receiptAt: string | null;
   autoCancelAt: string | null; paidAt: string | null; shippedAt: string | null; cancelledAt: string | null; cancelReason: string | null; seenAt: string | null; createdAt: string;
+  courier?: string | null; tracking?: string | null; // v2 (sql/167): typed by the seller when shipping
+  shipId?: string | null; shipName?: string | null;  // v2 (sql/167): the picked shipping option
+  payId?: string | null; payName?: string | null;    // v2 (sql/167): the picked payment method
 }
 export const wNo = (n: number) => `W-${String(n).padStart(4, "0")}`;
 const n0 = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
@@ -115,18 +125,39 @@ export function rowToWebsiteOrder(r: Record<string, unknown>): WebsiteOrder {
     subtotal: n0(r.subtotal), shipFee: n0(r.ship_fee), total: n0(r.total), note: (r.note as string) || null, receiptPath: (r.receipt_path as string) || null, receiptAt: (r.receipt_at as string) || null,
     autoCancelAt: (r.auto_cancel_at as string) || null, paidAt: (r.paid_at as string) || null, shippedAt: (r.shipped_at as string) || null, cancelledAt: (r.cancelled_at as string) || null,
     cancelReason: (r.cancel_reason as string) || null, seenAt: (r.seen_at as string) || null, createdAt: String(r.created_at || ""),
+    ...(r.courier !== undefined ? { courier: (r.courier as string) || null } : {}), ...(r.tracking_no !== undefined ? { tracking: (r.tracking_no as string) || null } : {}),
+    ...(r.ship_id !== undefined ? { shipId: (r.ship_id as string) || null } : {}), ...(r.ship_name !== undefined ? { shipName: (r.ship_name as string) || null } : {}),
+    ...(r.pay_id !== undefined ? { payId: (r.pay_id as string) || null } : {}), ...(r.pay_name !== undefined ? { payName: (r.pay_name as string) || null } : {}),
   };
 }
 export const WEBSITE_ORDERS_PAGE = 200;
+export const WEBSITE_ORDERS_V2_COLS = "courier,tracking_no,ship_id,ship_name,pay_id,pay_name";
+/** Mark shipped with an optional courier + tracking number, or change them on a shipped order (sql/167). */
+export async function websiteOrderShip(id: string, courier: string, tracking: string): Promise<{ ok: true; courier: string | null; tracking: string | null } | { ok: false }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false };
+  try {
+    const { data, error } = await supabase.rpc("website_order_ship", { p_id: id, p_courier: courier, p_tracking: tracking });
+    // before sql/167 is applied the function does not exist → the plain 'shipped' step (as today, nothing typed is kept)
+    if (error && (error.code === "PGRST202" || error.code === "42883")) {
+      const r = await websiteOrderAction(id, "shipped");
+      return r.ok ? { ok: true, courier: null, tracking: null } : { ok: false };
+    }
+    if (error || !data) return { ok: false };
+    const d = data as Record<string, unknown>;
+    return { ok: true, courier: (d.courier as string) || null, tracking: (d.tracking as string) || null };
+  } catch { return { ok: false }; }
+}
 export async function loadWebsiteOrders(): Promise<WebsiteOrder[] | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   const me = await uid();
   if (!me) return null;
   try {
-    const { data, error } = await supabase.from("website_orders")
-      .select("id,order_no,token,status,payment_issue,buyer_name,buyer_phone,buyer_contact,delivery,store_id,store_name,address,payment,items,subtotal,ship_fee,total,note,receipt_path,receipt_at,auto_cancel_at,paid_at,shipped_at,cancelled_at,cancel_reason,seen_at,created_at")
-      .eq("user_id", me).order("created_at", { ascending: false }).limit(WEBSITE_ORDERS_PAGE);
-    return error ? null : (data as Record<string, unknown>[]).map(rowToWebsiteOrder);
+    const base = "id,order_no,token,status,payment_issue,buyer_name,buyer_phone,buyer_contact,delivery,store_id,store_name,address,payment,items,subtotal,ship_fee,total,note,receipt_path,receipt_at,auto_cancel_at,paid_at,shipped_at,cancelled_at,cancel_reason,seen_at,created_at";
+    const read = (cols: string) => supabase!.from("website_orders").select(cols).eq("user_id", me).order("created_at", { ascending: false }).limit(WEBSITE_ORDERS_PAGE);
+    // sql/167 columns first; before sql/167 is applied → the sql/163 read (same as before)
+    let { data, error } = await read(`${base},${WEBSITE_ORDERS_V2_COLS}`);
+    if (error) ({ data, error } = await read(base));
+    return error ? null : (data as unknown as Record<string, unknown>[]).map(rowToWebsiteOrder);
   } catch { return null; }
 }
 export async function loadBlockedPhones(): Promise<Set<string>> {

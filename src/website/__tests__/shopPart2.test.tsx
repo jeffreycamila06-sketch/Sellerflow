@@ -88,7 +88,7 @@ describe("RPC answer + helpers", () => {
   });
   it("language: the buyer's pick → the seller's → the country (TW = 繁體中文)", () => {
     expect(shopLang(DEMO_SHOP, null)).toBe("zh-TW");
-    expect(shopLang({ ...DEMO_SHOP, country: "PH" }, null)).toBe("fil");
+    expect(shopLang({ ...DEMO_SHOP, country: "PH" }, null)).toBe("en"); // v2 item 12: the Philippines starts in English
     expect(shopLang(DEMO_SHOP, "en")).toBe("en");
     expect(money("NT$", 1210)).toBe("NT$1,210");
     expect(compact(12400)).toBe("12.4k");
@@ -110,7 +110,7 @@ describe("pages", () => {
     expect(screen.getByTestId("shop-name").textContent).toBe("BudgetUkay");
     for (const id of ["shop-verified", "shop-stats", "shop-announcement", "shop-live", "shop-socials", "shop-cats", "shop-grid", "shop-about", "shop-policy", "shop-powered"]) expect(screen.getByTestId(id)).toBeTruthy();
     expect(screen.getAllByTestId("shop-item")).toHaveLength(4);
-    expect(screen.getByText("認證賣家", { exact: false })).toBeTruthy(); // Taiwan seller → 繁體中文
+    expect(screen.getAllByText("認證賣家", { exact: false }).length).toBeGreaterThan(0); // Taiwan seller → 繁體中文 (v2: about + trust badge)
   });
   it("Master → no Powered by", () => {
     render(<ShopApp preview={{ ...DEMO_SHOP, powered: false }} />);

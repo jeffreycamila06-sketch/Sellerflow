@@ -33,10 +33,22 @@ export function cleanGroups(groups: VariantGroup[] | undefined | null): VariantG
       seen.add(s.toLowerCase()); values.push(s);
       if (values.length >= MAX_VALUES) break;
     }
-    if (name && values.length) out.push({ name, values });
+    if (name && values.length) {
+      const g2: VariantGroup = { name, values };
+      // v2: one colour group at most; swatches only #rrggbb for values that exist
+      if (g?.color === true && !out.some((x) => x.color)) {
+        g2.color = true;
+        const sw: Record<string, string> = {};
+        for (const v of values) { const c = String(g?.swatches?.[v] ?? ""); if (SWATCH_RE.test(c)) sw[v] = c.toUpperCase(); }
+        if (Object.keys(sw).length) g2.swatches = sw;
+      }
+      out.push(g2);
+    }
   }
   return out;
 }
+/** A swatch colour the shop may use in a style (anything else is dropped). */
+export const SWATCH_RE = /^#[0-9a-fA-F]{6}$/;
 /** Every combination, in group order: [["S","Pink"],["S","Blue"],["M","Pink"],…]. */
 export function combos(groups: VariantGroup[]): string[][] {
   const gs = cleanGroups(groups);

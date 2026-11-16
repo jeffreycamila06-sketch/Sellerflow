@@ -5,7 +5,7 @@ export const SHOP_COLORS = ["#EE4D2D", "#E11D48", "#7C3AED", "#0D9488", "#2563EB
 export const shopColor = (c: string | undefined) => (SHOP_COLORS as readonly string[]).includes(String(c)) ? (c as string) : SHOP_COLORS[0];
 
 export const SHOP_CSS = `
-.sfl-shop{--sc:#EE4D2D;font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:#111827;background:#F5F5F7;min-height:100vh;-webkit-text-size-adjust:100%}
+.sfl-shop{--sc:var(--s-acc,#EE4D2D);font-family:var(--s-font,"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif);color:var(--s-fg,#111827);background:var(--s-bg,#F5F5F7);min-height:100vh;-webkit-text-size-adjust:100%}
 .sfl-shop *{box-sizing:border-box}
 .sfl-shop button,.sfl-shop input,.sfl-shop textarea,.sfl-shop select{font-family:inherit}
 .sfl-shop input,.sfl-shop textarea,.sfl-shop select{font-size:16px}
@@ -22,7 +22,7 @@ export const SHOP_CSS = `
 .sfl-only-wide{display:none}
 @media (min-width:900px){.sfl-only-wide{display:block}}
 .sfl-btn{min-height:46px;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer;border:none}
-.sfl-btn-main{background:var(--sc);color:#fff}
+.sfl-btn-main{background:var(--sc);color:var(--s-on,#fff)}
 .sfl-btn-line{background:#fff;color:var(--sc);border:1.5px solid var(--sc)}
 .sfl-btn:disabled{opacity:.45;cursor:not-allowed}
 .sfl-card{background:#fff;border-radius:16px;border:1px solid #ECECF1}

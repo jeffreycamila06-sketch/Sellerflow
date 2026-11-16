@@ -755,14 +755,16 @@ When you message, include your account email, your TikTok username, what you wer
 
 ## website — Your shop website (preview)
 Last checked: 2026-11-16
-Keywords: website, shop page, online shop, publish, website orders, checkout, store link, 網站, 商店網頁, 网站
+Keywords: website, shop page, online shop, publish, website orders, checkout, store link, theme, banner, flash sale, shipping options, payment methods, tracking number, 網站, 商店網頁, 网站
 
 Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
 
 - **Website address** — type your address, then **Save**. Tap **Copy** to share it.
-- Add your logo, cover photo, shop color, name, tagline, about us, announcement bar, live schedule, return policy, Follow us links and chat buttons (Messenger, LINE, WhatsApp, Instagram). Turn sections on or off.
+- **Look** — pick a theme (**Pop**, **Boutique** or **Bold**) and your shop color, or keep **Theme colour**. Add your logo and cover photo.
+- Add your name, tagline, about us, announcement bar, live schedule, return policy, Follow us links and chat buttons (Messenger, LINE, WhatsApp, Instagram).
+- **Home page** — turn each part on or off: banner slides, trust badges, categories, next live, flash sale, best sellers, promo banner, new arrivals, about us, how to order, good to know. Tap **Edit** to write banner slides (up to 5, each with a picture and a button), the trust badges, the promo banner, the how-to-order steps and your questions & answers, or to add a picture for each category. Empty parts don't show.
 - **Preview** shows your shop the way buyers see it. **Publish** puts it online — the button then shows **Published ✓**. Changes stay a draft until you tap **Publish** again.
 - The Free plan can build and preview the website. Publishing needs a paid plan.
-- **Payment & shipping** — 7-11, FamilyMart and home delivery fees, free shipping over an amount, bank transfer, payment QR, pay at pickup (also turn on 取貨付款 in 賣貨便 / 好賣+), and how many hours before unpaid orders are cancelled.
-- **Products** — tap **Website** on a product to add a category, a description, up to 8 photos and options like size and color. Each option has its own code and stock. The product code alone is then sold out — in live, use the option codes.
-- **Orders** → **Website** — your website orders. Open an order to see the receipt (check your bank app first), then tap **Money received**, **Not received**, **Mark as shipped**, **Cancel order** or **Block buyer**. The buyer sees each step on their order link.
+- **Payment & shipping** — your shipping options (7-11 and FamilyMart in Taiwan, home delivery, local pickup, your own couriers): name, fee, free shipping over an amount, and whether pay on delivery is allowed. Tap **Add shipping option** for your own. Then your payment methods: bank transfer, payment QR, GCash, Interac e-Transfer, PayID and more — add instructions and a QR picture; pay first or pay on delivery (in Taiwan also turn on 取貨付款 in 賣貨便 / 好賣+). Buyers pay you directly. You can also show **Prices include tax** and set how many hours before unpaid orders are cancelled.
+- **Products** — tap **Website** on a product to add a category, a description, up to 8 photos and options like size and color. Each option has its own code and stock. The product code alone is then sold out — in live, use the option codes. You can also add an old price (shown crossed out), a flash sale price with an end time, the condition and a size guide, and mark the color group to show color dots.
+- **Orders** → **Website** — your website orders. Open an order to see the receipt (check your bank app first), then tap **Money received**, **Not received**, **Mark as shipped** (add the courier and tracking number if you like), **Cancel order** or **Block buyer**. The buyer sees each step on their order link.

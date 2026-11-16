@@ -1,12 +1,18 @@
 // Seller Website — the buyer side's ONLY data source: the public RPCs of sql/163 (website_shop,
 // website_place_order, website_order, website_order_receipt). No table is read directly; the RPCs
 // return a whitelist (never the seller's email / phone / plan). No buyer data is logged anywhere.
+import { toCheckoutV2, type CheckoutV2 } from "./shipPay";
 import { isSupabaseConfigured, supabase } from "../supabase";
 
 export interface ShopVariant { id: number; values: string[]; price: number; stock: number; photo: number | null; code?: string }
+/** An option group; v2: `color` = the colour group, `swatches` = #rrggbb per value (validated on read). */
+export interface ShopGroup { name: string; values: string[]; color?: boolean; swatches?: Record<string, string> }
 export interface ShopProduct {
   id: number; name: string; price: number; stock: number; code?: string; category?: string; description?: string;
-  createdAt?: string; photos: string[]; groups?: { name: string; values: string[] }[]; variants?: ShopVariant[];
+  createdAt?: string; photos: string[]; groups?: ShopGroup[]; variants?: ShopVariant[];
+  // v2 (sql/167): optional — old price (struck through), a running flash sale (price + end), condition, size guide
+  oldPrice?: number; flashPrice?: number; flashEnd?: string; condition?: string; sizeGuide?: string;
+  sold?: number; // v2 (item 9): units sold, the product + its options (absent = none)
 }
 export type SocialKey = "facebook" | "instagram" | "tiktok" | "youtube" | "x" | "threads" | "shopee";
 export type ChatKey = "messenger" | "line" | "whatsapp" | "instagram";
@@ -14,8 +20,19 @@ export interface ShopDesign {
   name?: string; tagline?: string; about?: string; logo?: string; cover?: string; color?: string; announcement?: string;
   live?: string; policy?: string; replyTime?: string; currency?: string; lang?: string;
   socials?: Partial<Record<SocialKey, string>>; chats?: Partial<Record<ChatKey, string>>;
-  sections?: Partial<Record<"announcement" | "live" | "categories" | "about" | "policy" | "socials", boolean>>;
+  sections?: Partial<Record<SectionKey, boolean>>;
+  // v2 (sql/167 PART 1): the home page
+  theme?: "pop" | "boutique" | "bold";
+  slides?: ShopSlide[]; trust?: ShopTrust[]; promo?: ShopPromo; steps?: ShopStep[]; faq?: ShopFaq[]; catPics?: Record<string, string>;
 }
+/** Home page parts the seller can turn off (all on unless set to false). */
+export type SectionKey = "announcement" | "live" | "categories" | "about" | "policy" | "socials"
+  | "slides" | "trust" | "flash" | "best" | "promo" | "newest" | "steps" | "faq";
+export interface ShopSlide { title?: string; text?: string; button?: string; cat?: string; pic?: string }
+export interface ShopPromo { title?: string; text?: string; button?: string; cat?: string; pic?: string }
+export interface ShopTrust { title?: string; sub?: string }
+export interface ShopStep { title?: string; text?: string }
+export interface ShopFaq { q: string; a: string }
 export interface ShopCheckout {
   ship: { s711?: { fee: number }; fm?: { fee: number }; home?: { fee: number } };
   freeOver?: number; bank?: { bankName?: string; accountName?: string; accountNumber?: string };
@@ -24,6 +41,8 @@ export interface ShopCheckout {
 export interface Shop {
   online: true; sub: string; shop: ShopDesign; country: string; powered: boolean; verified: boolean;
   stats: { orders: number; products: number }; products: ShopProduct[]; checkout: ShopCheckout;
+  /** v2 (sql/167): the seller's shipping options + payment methods. Absent before sql/167 → see shipPay.checkoutOf. */
+  checkout2?: CheckoutV2;
 }
 export type ShopResult = Shop | { online: false };
 
@@ -43,7 +62,11 @@ export function toShop(j: unknown): ShopResult {
     return {
       id: num(p.id), name: String(p.name ?? ""), price: num(p.price), stock: Math.max(0, num(p.stock)), code: str(p.code), category: str(p.category),
       description: str(p.description), createdAt: str(p.createdAt), photos: Array.isArray(p.photos) ? (p.photos as unknown[]).filter((x): x is string => typeof x === "string") : [],
-      groups: Array.isArray(p.groups) ? (p.groups as { name: string; values: string[] }[]) : undefined, variants: variants && variants.length ? variants : undefined,
+      groups: Array.isArray(p.groups) ? cleanShopGroups(p.groups) : undefined, variants: variants && variants.length ? variants : undefined,
+      ...(num(p.oldPrice, 0) > 0 ? { oldPrice: num(p.oldPrice) } : {}),
+      ...(Number.isFinite(Number(p.flashPrice)) && p.flashPrice !== null && str(p.flashEnd) ? { flashPrice: num(p.flashPrice), flashEnd: str(p.flashEnd) } : {}),
+      ...(str(p.condition) ? { condition: str(p.condition) } : {}), ...(str(p.sizeGuide) ? { sizeGuide: str(p.sizeGuide) } : {}),
+      ...(num(p.sold, 0) > 0 ? { sold: Math.floor(num(p.sold)) } : {}),
     };
   }).filter((p): p is ShopProduct => p !== null);
   const c = (o.checkout && typeof o.checkout === "object" ? o.checkout : {}) as ShopCheckout;
@@ -52,7 +75,27 @@ export function toShop(j: unknown): ShopResult {
     online: true, sub: o.sub, shop: (o.shop && typeof o.shop === "object" ? o.shop : {}) as ShopDesign, country: String(o.country || "TW"),
     powered: o.powered !== false, verified: o.verified === true, stats: { orders: num(stats.orders), products: num(stats.products) },
     products, checkout: { ...c, ship: c.ship || {} },
+    ...(toCheckoutV2(o.checkout2) ? { checkout2: toCheckoutV2(o.checkout2)! } : {}),
   };
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+/** Option groups from the server, cleaned: names / values as strings, at most one colour group, swatches only #rrggbb. Pure. */
+export function cleanShopGroups(raw: unknown): ShopGroup[] {
+  let colour = false;
+  return (Array.isArray(raw) ? raw : []).map((g): ShopGroup | null => {
+    const o = g && typeof g === "object" ? (g as Record<string, unknown>) : null;
+    if (!o || !Array.isArray(o.values)) return null;
+    const out: ShopGroup = { name: String(o.name ?? ""), values: (o.values as unknown[]).map(String) };
+    if (o.color === true && !colour) {
+      colour = true; out.color = true;
+      const sw = o.swatches && typeof o.swatches === "object" ? (o.swatches as Record<string, unknown>) : {};
+      const ok: Record<string, string> = {};
+      for (const v of out.values) if (typeof sw[v] === "string" && HEX.test(sw[v] as string)) ok[v] = sw[v] as string;
+      if (Object.keys(ok).length) out.swatches = ok;
+    }
+    return out;
+  }).filter((g): g is ShopGroup => g !== null);
 }
 
 export async function loadShop(sub: string): Promise<ShopResult | null> {
@@ -73,12 +116,15 @@ export function photoUrl(path: string | undefined | null): string {
 }
 
 // ── money / language ──────────────────────────────────────────────────────────
-export const currencyFor = (s: Shop) => s.shop.currency || (s.country === "TW" ? "NT$" : s.country === "PH" ? "₱" : "NT$");
+/** The shop's money sign: the seller's own pick, else the seller's country (v2 item 12). */
+export const COUNTRY_CUR: Record<string, string> = { TW: "NT$", PH: "₱", CA: "CA$", AU: "A$", US: "US$", NZ: "NZ$", SG: "S$", HK: "HK$", MY: "RM", VN: "₫", TH: "฿", ID: "Rp", JP: "¥", KR: "₩", GB: "£", BG: "€" };
+export const currencyFor = (s: Shop) => s.shop.currency || COUNTRY_CUR[(s.country || "TW").toUpperCase()] || "$";
 export function money(cur: string, n: number): string {
   const v = Math.round(Number(n) * 100) / 100;
   return `${cur}${v.toLocaleString("en-US", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 })}`;
 }
-const COUNTRY_LANG: Record<string, string> = { TW: "zh-TW", CN: "zh", PH: "fil", VN: "vi", TH: "th", ID: "id", BG: "bg" };
+// the Philippines starts in English (Jeff 2026-11-16); Canada, Australia and the rest too
+const COUNTRY_LANG: Record<string, string> = { TW: "zh-TW", CN: "zh", VN: "vi", TH: "th", ID: "id", BG: "bg" };
 /** The shop's language: the buyer's own pick (this device) → the seller's choice → the seller's country (TW = 繁體中文). */
 export function shopLang(s: Shop | null, picked: string | null): string {
   if (picked) return picked;

@@ -122,7 +122,24 @@ describe("load before sql/163 is applied", () => {
     }));
     const { loadProductsDb } = await import("../productsDb");
     expect(await loadProductsDb()).toEqual([OLD_PRODUCT]);
-    expect(sel.mock.calls.map((c) => c[0])).toEqual(["local_id,name,sku,price,stock,platform,live_code,category,description,photo_paths,show_on_website,parent_local_id,variant", "local_id,name,sku,price,stock,platform,live_code"]);
+    expect(sel.mock.calls.map((c) => c[0])).toEqual([
+      "local_id,name,sku,price,stock,platform,live_code,category,description,photo_paths,show_on_website,parent_local_id,variant,old_price,flash_price,flash_end,item_condition,size_guide",
+      "local_id,name,sku,price,stock,platform,live_code,category,description,photo_paths,show_on_website,parent_local_id,variant",
+      "local_id,name,sku,price,stock,platform,live_code"]);
+    vi.doUnmock("../../../supabase");
+  });
+  it("sql/163 applied, sql/167 not yet → the sql/163 read (website fields kept, no v2 fields)", async () => {
+    const row = { ...OLD_ROW, category: "Tops", description: "Soft" };
+    vi.doMock("../../../supabase", () => ({
+      isSupabaseConfigured: true,
+      supabase: {
+        auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) },
+        from: () => ({ select: (cols: string) => ({ eq: () => ({ order: async () => { sel(cols); return cols.includes("old_price") ? { data: null, error: { message: "column products.old_price does not exist" } } : { data: [row], error: null }; } }) }) }),
+      },
+    }));
+    const { loadProductsDb } = await import("../productsDb");
+    expect(await loadProductsDb()).toEqual([{ ...OLD_PRODUCT, category: "Tops", description: "Soft" }]);
+    expect(sel.mock.calls.length).toBe(2);
     vi.doUnmock("../../../supabase");
   });
 });

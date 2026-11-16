@@ -1,130 +1,173 @@
-// Seller Website — shop home: cover, logo, name, tagline, verified badge, stats, Chat with us,
-// Follow us, live schedule, categories, search, sort, grid, about & return policy, footer.
-import { useMemo, useState } from "react";
+// Seller Website v2 — item 1: the home page, in the preview's order. Every part can be turned off by the
+// seller and hides by itself when it has nothing to show:
+//   banner slides (1–5, swipe, never rotates by itself) · 4 trust badges · categories with pictures ·
+//   next live · flash sale (countdown) · best sellers (ranked by real sold units) · promo banner ·
+//   new arrivals · about + shop numbers · how to order · good to know (FAQ + return policy).
+// The announcement bar and the footer are the frame's (v2/Shell). No ratings / reviews / vouchers (Build 2).
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../../redesign/i18n";
-import type { Shop } from "../shopApi";
-import { photoUrl, money } from "../shopApi";
-import { fromPrice, productStock } from "../cart";
-import { sortProducts, filterShop, compact, NEW_DAYS, type Sort } from "../shopLogic";
-import { ShopLogo, SocialIcons, Icon, SmallPhoto } from "../ui";
-import { IC, mutedText } from "../shopStyle";
-import { firstChatHref } from "../shopLinks";
+import type { Shop, SectionKey, ShopProduct } from "../shopApi";
+import { photoUrl } from "../shopApi";
+import { Card } from "../v2/Card";
+import { VIcon, type IconName } from "../v2/icons";
+import { checkoutOf } from "../shipPay";
+import { flashOn, soonestFlashEnd, countdown } from "../pricing";
+import { compact } from "../shopLogic";
+import { socialUrl } from "../shopLinks";
+import type { ShopFilter } from "../shopFilter";
+import { homeSlides, homeTrust, homeSteps, categoriesOf, bestSellers, newArrivals, type HomeSlide } from "./homeData";
 
-export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop: Shop; cur: string; query: string; onOpen: (id: number) => void; catRef?: React.RefObject<HTMLDivElement | null>; nowMs: number }) {
-  const t = useT();
+type T = Record<string, string>;
+export interface HomeProps {
+  shop: Shop; cur: string; nowMs: number; saved: number[]; onSave: (id: number) => void; onOpen: (id: number) => void; onQuick: (id: number) => void;
+  onShop: (f?: Partial<ShopFilter>) => void;
+}
+export default function Home({ shop, cur, nowMs, saved, onSave, onOpen, onQuick, onShop }: HomeProps) {
+  const t = useT() as unknown as T;
   const d = shop.shop;
-  const [cat, setCat] = useState("");
-  const [sort, setSort] = useState<Sort>("newest");
-  const cats = useMemo(() => [...new Set(shop.products.map((p) => p.category).filter((c): c is string => !!c))], [shop.products]);
-  const list = useMemo(() => sortProducts(filterShop(shop.products, query, cat), sort), [shop.products, query, cat, sort]);
-  const chat = firstChatHref(shop);
-  const cover = d.cover ? `url("${photoUrl(d.cover)}") center/cover` : "linear-gradient(135deg, var(--sc), #C026D3)";
+  const on = (k: SectionKey) => d.sections?.[k] !== false;
+  const ck = checkoutOf(shop);
+  const slides = useMemo(() => homeSlides(d), [d]);
+  const cats = useMemo(() => categoriesOf(shop), [shop]);
+  const flash = useMemo(() => shop.products.filter((p) => flashOn(p, nowMs)), [shop.products, nowMs]);
+  const best = useMemo(() => bestSellers(shop.products), [shop.products]);
+  const fresh = useMemo(() => newArrivals(shop.products), [shop.products]);
+  const trust = homeTrust(t, shop, cur);
+  const steps = homeSteps(t, shop);
+  const sold = shop.products.reduce((a, p) => a + (p.sold || 0), 0);
+  const faq: { q: string; a: string; policy?: boolean }[] = [...(d.faq || []), ...(d.policy && on("policy") ? [{ q: t.rd_shop_returns, a: d.policy, policy: true }] : [])];
+  const liveUrl = socialUrl("tiktok", d.socials?.tiktok || "") || socialUrl("facebook", d.socials?.facebook || "");
+  const card = (p: ShopProduct, rank?: number) => <Card key={p.id} p={p} cur={cur} nowMs={nowMs} saved={saved.includes(p.id)} onSave={() => onSave(p.id)} onOpen={() => onOpen(p.id)} onQuick={() => onQuick(p.id)} rank={rank} />;
+  const icons: IconName[] = ["truck", "cash", "shield", "bolt"];
 
   return (
-    <div className="sfl-wrap" style={{ paddingBottom: 8 }}>
-      <div style={{ height: 150, background: cover, borderRadius: "0 0 0 0" }} />
-      <div style={{ padding: "0 12px" }}>
-        <div className="sfl-card" data-testid="shop-card" style={{ marginTop: -60, padding: 16, position: "relative", boxShadow: "0 8px 24px rgba(17,24,39,.08)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <ShopLogo shop={shop} size={60} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <h1 data-testid="shop-name" style={{ fontSize: 20, fontWeight: 800, margin: 0, color: "#111827", overflowWrap: "anywhere" }}>{d.name}</h1>
-                {shop.verified && <span data-testid="shop-verified" style={{ fontSize: 11, fontWeight: 800, color: "#059669", background: "#ECFDF5", padding: "2px 7px", borderRadius: 999 }}>✓ {t.rd_shop_verified}</span>}
-              </div>
-              {d.tagline && <div style={{ ...mutedText, fontSize: 13 }}>{d.tagline}</div>}
-            </div>
-          </div>
-          <div data-testid="shop-stats" style={{ display: "grid", gridTemplateColumns: d.replyTime ? "repeat(3,1fr)" : "repeat(2,1fr)", gap: 8, marginTop: 14 }}>
-            <Stat n={compact(shop.stats.orders)} label={t.rd_shop_orders_done} />
-            <Stat n={compact(shop.stats.products)} label={t.rd_shop_products} />
-            {d.replyTime && <Stat n={d.replyTime} label={t.rd_shop_chat_reply} />}
-          </div>
-          {chat && <a data-testid="shop-chat" href={chat} target="_blank" rel="noreferrer noopener" className="sfl-btn sfl-btn-main" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 14, padding: "0 16px", textDecoration: "none", lineHeight: "46px" }}><Icon d={IC.chat} size={18} />{t.rd_shop_chat_us}</a>}
-          {(d.socials && Object.values(d.socials).some(Boolean)) && d.sections?.socials !== false && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, paddingTop: 12, borderTop: "1px solid #F1F1F4" }}>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "#6B7280" }}>{t.rd_shop_follow}</span>
-              <SocialIcons shop={shop} />
-            </div>
-          )}
+    <div className="v-wrap" data-testid="shop-home">
+      {on("slides") && slides.length > 0 && <Hero slides={slides} t={t} onGo={(cat) => onShop(cat ? { cat } : {})} />}
+
+      {on("trust") && trust.length > 0 && (
+        <div className="v-trust" data-testid="shop-trust">
+          {trust.map((x, i) => <div key={i}><VIcon n={icons[i]} size={20} /><span>{x.title}{x.sub && <small>{x.sub}</small>}</span></div>)}
         </div>
+      )}
 
-        {d.live && d.sections?.live !== false && (
-          <div data-testid="shop-live" style={{ marginTop: 12, background: "#111827", color: "#fff", borderRadius: 14, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-            <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: 5, background: "#EF4444", flexShrink: 0 }} />
-            <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.35 }}>{d.live}</span>
-          </div>
-        )}
-
-        <div ref={catRef} style={{ marginTop: 16 }} />
-        {cats.length > 0 && d.sections?.categories !== false && (
-          <div className="sfl-hscroll" data-testid="shop-cats" style={{ padding: "2px 0 6px" }}>
-            <button type="button" className="sfl-chip" aria-pressed={cat === ""} onClick={() => setCat("")}>{t.rd_shop_all}</button>
-            {cats.map((c) => <button key={c} type="button" className="sfl-chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
-          </div>
-        )}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "12px 0 10px", flexWrap: "wrap" }}>
-          <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>{cat || t.rd_shop_all_products}</h2>
-          <div style={{ display: "flex", gap: 4, background: "#fff", border: "1px solid #ECECF1", borderRadius: 10, padding: 3 }}>
-            {(["newest", "price_low", "price_high"] as Sort[]).map((s) => (
-              <button key={s} type="button" data-testid={`shop-sort-${s}`} aria-pressed={sort === s} onClick={() => setSort(s)} style={{ minHeight: 32, padding: "4px 10px", borderRadius: 8, border: "none", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: sort === s ? "#111827" : "transparent", color: sort === s ? "#fff" : "#6B7280" }}>
-                {s === "newest" ? t.rd_shop_sort_new : s === "price_low" ? t.rd_shop_sort_low : t.rd_shop_sort_high}
+      {on("categories") && cats.length > 0 && (
+        <div className="v-sec">
+          <div className="v-sech"><h3>{t.rd_home_by_cat}</h3></div>
+          <div className="v-cats" data-testid="shop-cats">
+            {cats.map((c) => (
+              <button key={c.name} type="button" className="v-cat" data-testid="shop-cat" onClick={() => onShop({ cat: c.name })}>
+                {c.pic ? <img className="v-art" src={photoUrl(c.pic)} alt="" loading="lazy" /> : <span className="v-art v-ph0" style={{ display: "grid", fontSize: 24 }}>{c.name.slice(0, 1)}</span>}
+                {c.name}
               </button>
             ))}
           </div>
         </div>
-        {list.length === 0
-          ? <div data-testid="shop-empty" style={{ ...mutedText, textAlign: "center", padding: "30px 0" }}>{query ? t.rd_shop_no_match : t.rd_shop_no_products}</div>
-          : (
-            <div className="sfl-grid" data-testid="shop-grid">
-              {list.map((p) => {
-                const stock = productStock(p);
-                const isNew = p.createdAt && nowMs - Date.parse(p.createdAt) < NEW_DAYS * 86400000;
-                return (
-                  <button key={p.id} type="button" data-testid="shop-item" onClick={() => onOpen(p.id)} className="sfl-card" style={{ padding: 0, overflow: "hidden", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column" }}>
-                    <span style={{ position: "relative", display: "block", width: "100%", paddingBottom: "100%", background: "#F3F4F6" }}>
-                      {p.photos[0] ? <SmallPhoto path={p.photos[0]} alt={p.name} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 800, color: "#D1D5DB" }}>{p.name.slice(0, 1)}</span>}
-                      {stock === 0 ? <Badge bg="#6B7280">{t.rd_shop_sold_out}</Badge> : isNew ? <Badge bg="#111827">{t.rd_shop_new}</Badge> : stock <= 3 ? <Badge bg="var(--sc)">{tpl(t.rd_shop_only_left, { n: String(stock) })}</Badge> : null}
-                    </span>
-                    <span style={{ padding: "8px 10px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "#111827", lineHeight: 1.3, minHeight: "2.6em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</span>
-                      <span style={{ fontSize: 15, fontWeight: 800, color: "var(--sc)" }}>{p.variants?.length ? `${t.rd_shop_from} ` : ""}{money(cur, fromPrice(p))}</span>
-                    </span>
-                  </button>
-                );
-              })}
+      )}
+
+      {on("live") && d.live && (
+        <div className="v-sec">
+          <div className="v-live" data-testid="shop-live">
+            <div className="v-tx"><span className="v-pill">● LIVE</span><b>{tpl(t.rd_home_next_live, { when: d.live })}</b><span>{t.rd_home_live_sub}</span></div>
+            {liveUrl && <a className="v-btn" href={liveUrl} target="_blank" rel="noreferrer noopener" data-testid="shop-live-go" style={{ textDecoration: "none" }}>{t.rd_home_live_go}</a>}
+          </div>
+        </div>
+      )}
+
+      {on("flash") && flash.length > 0 && (
+        <div className="v-sec">
+          <div className="v-flash" data-testid="shop-flash">
+            <div className="v-sech"><h3>⚡ {t.rd_home_flash}</h3><Countdown end={soonestFlashEnd(flash, nowMs)} startMs={nowMs} label={t.rd_home_ends_in} /></div>
+            <div className="v-hs">{flash.map((p) => card(p))}</div>
+          </div>
+        </div>
+      )}
+
+      {on("best") && best.length > 0 && (
+        <div className="v-sec" data-testid="shop-best">
+          <div className="v-sech"><h3>{t.rd_shop_best_sellers}</h3><button type="button" onClick={() => onShop({ sort: "best" })}>{t.rd_home_see_all} ›</button></div>
+          <div className="v-hs">{best.map((p, i) => card(p, i + 1))}</div>
+        </div>
+      )}
+
+      {on("promo") && d.promo?.title && (
+        <div className="v-sec">
+          <div className="v-promo" data-testid="shop-promo" style={d.promo.pic ? { background: `linear-gradient(90deg, rgba(0,0,0,.62), rgba(0,0,0,.15)), url("${photoUrl(d.promo.pic)}") center/cover`, color: "#fff" } : undefined}>
+            <div><h3>{d.promo.title}</h3>{d.promo.text && <p>{d.promo.text}</p>}</div>
+            <button type="button" className="v-btn v-w" onClick={() => onShop(d.promo?.cat ? { cat: d.promo.cat } : {})}>{d.promo.button || t.rd_home_shop_now}</button>
+          </div>
+        </div>
+      )}
+
+      {on("newest") && fresh.length > 0 && (
+        <div className="v-sec">
+          <div className="v-sech"><h3>{t.rd_shop_new_arrivals}</h3><button type="button" onClick={() => onShop({ sort: "new" })}>{t.rd_home_see_all} ›</button></div>
+          <div className="v-grid" data-testid="shop-grid">{fresh.map((p) => card(p))}</div>
+        </div>
+      )}
+      {shop.products.length === 0 && <div className="v-empty" data-testid="shop-empty">{t.rd_shop_no_products}</div>}
+
+      {on("about") && (d.about || shop.stats.orders > 0) && (
+        <div className="v-sec">
+          <div className="v-about" data-testid="shop-about">
+            <h3 style={{ fontSize: 19 }}>{tpl(t.rd_home_about, { shop: d.name || "" })} {shop.verified && <span data-testid="shop-verified" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--s-ok)", fontFamily: "var(--s-font)", whiteSpace: "nowrap" }}>✓ {t.rd_shop_verified}</span>}</h3>
+            {d.about && <p style={{ whiteSpace: "pre-wrap" }}>{d.about}</p>}
+            <div className="v-stats" data-testid="shop-stats">
+              <div><b>{compact(shop.stats.orders)}</b><span>{t.rd_shop_orders_done}</span></div>
+              <div><b>{compact(shop.stats.products)}</b><span>{t.rd_shop_products}</span></div>
+              {sold > 0 ? <div><b>{compact(sold)}</b><span>{t.rd_home_items_sold}</span></div>
+                : d.replyTime ? <div><b>{d.replyTime}</b><span>{t.rd_shop_chat_reply}</span></div>
+                : <div><b>{ck.options.length}</b><span>{t.rd_home_ways_ship}</span></div>}
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-        {d.about && d.sections?.about !== false && (
-          <section className="sfl-card" data-testid="shop-about" style={{ marginTop: 18, padding: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 6px" }}>{t.rd_shop_about}</h2>
-            <p style={{ ...mutedText, fontSize: 13.5, margin: 0, whiteSpace: "pre-wrap" }}>{d.about}</p>
-          </section>
-        )}
-        {d.policy && d.sections?.policy !== false && (
-          <section className="sfl-card" data-testid="shop-policy" style={{ marginTop: 12, padding: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 6px" }}>{t.rd_shop_policy}</h2>
-            <p style={{ ...mutedText, fontSize: 13.5, margin: 0, whiteSpace: "pre-wrap" }}>{d.policy}</p>
-          </section>
-        )}
-        <footer data-testid="shop-footer" style={{ textAlign: "center", padding: "22px 0 8px", ...mutedText }}>
-          <div>© {d.name}</div>
-          {shop.powered && <div data-testid="shop-powered" style={{ marginTop: 4 }}>{t.rd_shop_powered} <a href="https://www.sellerflowlive.com" target="_blank" rel="noreferrer noopener" style={{ color: "#6B7280", fontWeight: 700 }}>SellerFlowLive</a></div>}
-        </footer>
-      </div>
+      {on("steps") && (
+        <div className="v-sec" data-testid="shop-steps">
+          <div className="v-sech"><h3>{t.rd_shop_f_how}</h3></div>
+          <div className="v-steps">{steps.map((s, i) => <div className="v-step" key={i}><i>{i + 1}</i><span><b>{s.title}</b><span>{s.text}</span></span></div>)}</div>
+        </div>
+      )}
+
+      {on("faq") && faq.length > 0 && (
+        <div className="v-sec" data-testid="shop-faq">
+          <div className="v-sech"><h3>{t.rd_home_good_to_know}</h3></div>
+          {faq.map((f, i) => <details key={i} data-testid={f.policy ? "shop-policy" : "shop-faq-item"}><summary>{f.q}</summary><p style={{ whiteSpace: "pre-wrap" }}>{f.a}</p></details>)}
+        </div>
+      )}
+      <div style={{ height: 8 }} />
     </div>
   );
 }
 
-function Stat({ n, label }: { n: string; label: string }) {
+function Hero({ slides, t, onGo }: { slides: HomeSlide[]; t: T; onGo: (cat?: string) => void }) {
+  const [i, setI] = useState(0);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const onScroll = () => { const el = ref.current; if (el && el.clientWidth) setI(Math.round(el.scrollLeft / el.clientWidth)); };
   return (
-    <div style={{ textAlign: "center", background: "#F9FAFB", borderRadius: 12, padding: "9px 4px" }}>
-      <div style={{ fontSize: 16, fontWeight: 800, color: "#111827" }}>{n}</div>
-      <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600 }}>{label}</div>
-    </div>
+    <>
+      <div className="v-hero" ref={ref} onScroll={onScroll} data-testid="shop-slides">
+        {slides.map((s, k) => {
+          const bg: CSSProperties = s.pic ? { background: `linear-gradient(90deg, rgba(0,0,0,.6), rgba(0,0,0,.08)), url("${photoUrl(s.pic)}") center/cover` } : { background: "var(--s-hero)" };
+          return (
+            <div key={k} className="v-slide" style={bg} data-testid="shop-slide">
+              <div>
+                {s.title && <h2>{s.title}</h2>}
+                {s.text && <p>{s.text}</p>}
+                <button type="button" className="v-btn v-w" onClick={() => onGo(s.cat)}>{s.button || t.rd_home_shop_now}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {slides.length > 1 && <div className="v-dots" aria-hidden="true">{slides.map((_, k) => <i key={k} className={k === i ? "v-on" : ""} />)}</div>}
+    </>
   );
 }
-function Badge({ bg, children }: { bg: string; children: React.ReactNode }) {
-  return <span style={{ position: "absolute", left: 8, top: 8, fontSize: 10.5, fontWeight: 800, color: "#fff", background: bg, padding: "3px 7px", borderRadius: 6 }}>{children}</span>;
+
+function Countdown({ end, startMs, label }: { end: string | undefined; startMs: number; label: string }) {
+  const [now, setNow] = useState(startMs);
+  useEffect(() => { const id = setInterval(() => setNow((n) => n + 1000), 1000); return () => clearInterval(id); }, []);
+  const parts = countdown(end, now).split(":");
+  return <span className="v-cd" data-testid="shop-flash-cd">{label} {parts.map((p, k) => <span key={k}>{k ? ":" : ""}<i>{p}</i></span>)}</span>;
 }

@@ -3,27 +3,28 @@
 import type { ShopDesign, ShopProduct } from "../../website/shopApi";
 import {
   loadMyWebsite, saveMyWebsite, saveWebsiteSettings, publishWebsite, subdomainFree, loadWebsiteOrders, loadBlockedPhones,
-  websiteOrderAction, receiptUrl,
+  websiteOrderAction, websiteOrderShip, receiptUrl,
   type MyWebsite, type PublishResult, type SaveResult, type WebsiteSettings, type WebsiteOrder, type OrderAction, type WebsiteOrderStatus,
 } from "./websiteSeller";
 import { uploadSitePicture } from "./websitePhotos";
 import { shopProductsFrom } from "./websiteEditor";
 import { loadProductsDb } from "./productsDb";
 import { loadProductImagePaths } from "./productImages";
+import { loadSoldUnits } from "./soldUnits";
 
 export interface EditorApi {
   load: () => Promise<MyWebsite | null | "error">;
   save: (w: { subdomain: string; draft: ShopDesign }, exists: boolean) => Promise<SaveResult>;
   publish: () => Promise<PublishResult>;
   subdomainFree: (s: string) => Promise<boolean | null>;
-  uploadPicture: (kind: "logo" | "cover", f: Blob) => Promise<string | null>;
+  uploadPicture: (kind: "logo" | "cover" | "slide" | "promo" | "cat", f: Blob) => Promise<string | null>;
   loadProducts: () => Promise<ShopProduct[]>;
 }
 export const realEditorApi: EditorApi = {
   load: loadMyWebsite, save: (w, e) => saveMyWebsite(w, e), publish: publishWebsite, subdomainFree, uploadPicture: uploadSitePicture,
   loadProducts: async () => {
-    const [p, img] = await Promise.all([loadProductsDb(), loadProductImagePaths()]);
-    return shopProductsFrom(p || [], img || new Map());
+    const [p, img, sold] = await Promise.all([loadProductsDb(), loadProductImagePaths(), loadSoldUnits()]);
+    return shopProductsFrom(p || [], img || new Map(), undefined, Date.now(), sold);
   },
 };
 export interface PayShipApi { load: () => Promise<MyWebsite | null | "error">; save: (s: WebsiteSettings) => Promise<boolean>; uploadQr: (f: Blob) => Promise<string | null> }
@@ -35,8 +36,10 @@ export interface OrdersApi {
   act: (id: string, a: OrderAction) => Promise<{ ok: true; status: WebsiteOrderStatus; blocked: boolean } | { ok: false }>;
   receipt: (path: string) => Promise<string | null>;
   shopSub: () => Promise<string | null>;
+  /** v2 (sql/167): ship with an optional courier + tracking (or change them). Absent → the plain 'shipped' action. */
+  ship?: (id: string, courier: string, tracking: string) => Promise<{ ok: true; courier: string | null; tracking: string | null } | { ok: false }>;
 }
 export const realOrdersApi: OrdersApi = {
-  load: loadWebsiteOrders, blocked: loadBlockedPhones, act: websiteOrderAction, receipt: receiptUrl,
+  load: loadWebsiteOrders, blocked: loadBlockedPhones, act: websiteOrderAction, receipt: receiptUrl, ship: websiteOrderShip,
   shopSub: async () => { const w = await loadMyWebsite(); return w && w !== "error" ? w.subdomain : null; },
 };

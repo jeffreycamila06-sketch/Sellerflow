@@ -2871,7 +2871,7 @@ export default function RedesignApp() {
               plan={auth.profile?.plan} planStatus={auth.profile?.planStatus} planExpiry={auth.profile?.planExpiry} country={profileCountry || "TW"} onToast={(msg) => setToast({ msg, kind: "ok" })} subdomainReady={featureSw.websiteSubdomainReady} /></Suspense>
           )}
           {screen === "websitepay" && sellerWebsiteOn && (
-            <Suspense fallback={null}><WebsitePayShip onBack={() => goBack()} cur={cur} onToast={(msg) => setToast({ msg, kind: "ok" })} /></Suspense>
+            <Suspense fallback={null}><WebsitePayShip onBack={() => goBack()} cur={cur} country={profileCountry || "TW"} onToast={(msg) => setToast({ msg, kind: "ok" })} /></Suspense>
           )}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} website={sellerWebsiteOn} />}
           {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} website={sellerWebsiteOn ? loadWebsiteSales : undefined} />}
