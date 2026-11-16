@@ -25,7 +25,7 @@ import {
 } from "./orderApi";
 import { checkoutOf, deliveryOfNeeds, freeOverOf, shipLabel, payLabel, type PayOpt, type ShipOpt } from "./shipPay";
 import { addrFormOf, composeAddress, cleanPost, phoneHintOf, CA_PROVINCES, AU_STATES, EMPTY_ADDR, type AddrParts } from "./addressForm";
-import { orderMessage, deliveryLabel, deliveryWhere, paymentLabel, orderTimeline, CHAT_APP_NAME } from "./orderText";
+import { orderMessage, deliveryLabel, deliveryWhere, paymentLabel, orderTimeline, orderHero, parcelPill, CHAT_APP_NAME } from "./orderText";
 import { STORE_MAPS, deliveriesOf, paymentsOf, placeFailText, copyText } from "./checkoutLogic";
 
 export interface CheckoutFlowProps {
@@ -317,10 +317,26 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: "10px 0 2px" }}>{t.rd_shop_od_sent}</h1>
         </div>
       )}
+      {!fresh && (() => {
+        // order tracking item 7: the title follows the order's state (opened from the link)
+        const h = orderHero(t, view, parcel);
+        const tint = h.tone === "bad" ? ["color-mix(in srgb,#dc2626 12%,var(--s-card))", "color-mix(in srgb,#dc2626 78%,var(--s-fg))"]
+          : h.tone === "warn" ? ["color-mix(in srgb,#f59e0b 16%,var(--s-card))", "color-mix(in srgb,#b45309 72%,var(--s-fg))"]
+          : h.tone === "grey" ? ["var(--s-bg)", "var(--s-mut)"] : ["#ECFDF5", "#059669"];
+        return (
+          <div data-testid="od-title" data-tone={h.tone} style={{ textAlign: "center", padding: "14px 0 6px" }}>
+            <div aria-hidden="true" style={{ width: 58, height: 58, borderRadius: 29, background: tint[0], color: tint[1], fontSize: 28, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{h.icon}</div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: "10px 0 2px" }}>{h.title}</h1>
+            {h.sub && <p style={{ margin: 0, fontSize: 13, color: "var(--s-mut)" }}>{h.sub}</p>}
+          </div>
+        );
+      })()}
       <div className="v-box" style={{ padding: 14, marginTop: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <h2 data-testid="od-no" style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{tpl(t.rd_shop_od_order, { no: view.orderNo })}</h2>
-          <span data-testid="od-status" style={{ fontSize: 12.5, fontWeight: 800, padding: "4px 10px", borderRadius: 999, background: view.status === "cancelled" ? "var(--s-bg)" : view.status === "shipped" || view.status === "paid" ? "#ECFDF5" : "#FFF7ED", color: view.status === "cancelled" ? "var(--s-mut)" : view.status === "shipped" || view.status === "paid" ? "#047857" : "#C2410C" }}>{t[`rd_shop_od_st_${view.status}`]}</span>
+          {parcel ? (() => { const pp = parcelPill(t, parcel); const c = pp.tone === "bad" ? ["color-mix(in srgb,#dc2626 12%,var(--s-card))", "color-mix(in srgb,#dc2626 78%,var(--s-fg))"] : pp.tone === "warn" ? ["color-mix(in srgb,#f59e0b 16%,var(--s-card))", "color-mix(in srgb,#b45309 72%,var(--s-fg))"] : ["#ECFDF5", "#047857"];
+            return <span data-testid="od-status" data-tone={pp.tone} style={{ fontSize: 12.5, fontWeight: 800, padding: "4px 10px", borderRadius: 999, background: c[0], color: c[1] }}>{pp.text}</span>; })()
+            : <span data-testid="od-status" style={{ fontSize: 12.5, fontWeight: 800, padding: "4px 10px", borderRadius: 999, background: view.status === "cancelled" ? "var(--s-bg)" : view.status === "shipped" || view.status === "paid" ? "#ECFDF5" : "#FFF7ED", color: view.status === "cancelled" ? "var(--s-mut)" : view.status === "shipped" || view.status === "paid" ? "#047857" : "#C2410C" }}>{t[`rd_shop_od_st_${view.status}`]}</span>}
         </div>
         {parcel?.state === "returned" && (
           <div className="v-pnote v-bad" data-testid="od-returned">

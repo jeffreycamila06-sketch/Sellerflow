@@ -19,18 +19,27 @@ it.runIf(!!process.env.CAPTURE_ORDER_BEFORE)("capture the BEFORE html", async ()
   writeFileSync(BEFORE_FILE, JSON.stringify(out, null, 1));
 });
 
+// The deliberate changes of later items, taken out before comparing (everything else must be byte for byte):
+//  item 7 — opened from the link, the big title (od-title) now follows the order's state.
+const DELIBERATE = (html: string) => {
+  const d = document.createElement("div"); d.innerHTML = html;
+  d.querySelector("[data-testid=od-title]")?.remove();
+  return d.innerHTML;
+};
 describe("no match → the order page as today", () => {
   const before = JSON.parse(readFileSync(BEFORE_FILE, "utf8")) as Record<string, string>;
-  it("22 order pages (11 orders × right after checkout / opened from the link) are byte for byte the same", async () => {
+  it("22 order pages (11 orders × right after checkout / opened from the link) are byte for byte the same (except the deliberate changes)", async () => {
     expect(Object.keys(before)).toHaveLength(22);
     for (const [name, p] of CASES) for (const page of ["sent", "order"] as const) {
-      expect(await orderPageHtml(viewOf(p), page), `${name} | ${page}`).toBe(before[`${name} | ${page}`]);
+      const now = await orderPageHtml(viewOf(p), page);
+      expect(DELIBERATE(now), `${name} | ${page}`).toBe(before[`${name} | ${page}`]);
+      if (page === "sent") expect(now, `${name} | sent: no deliberate change right after checkout`).toBe(before[`${name} | ${page}`]);
     }
   });
   it("a parcel on an order that doesn't qualify (home, typed store, not shipped, no tracking) is ignored", async () => {
     const parcel = { state: "at_store" as const, deadline: "2026-11-26" };
     for (const [name, p] of CASES.filter(([n]) => !/^(fm|s711) shipped/.test(n))) {
-      for (const page of ["sent", "order"] as const) expect(await orderPageHtml(viewOf({ ...p, parcel }), page), `${name} | ${page}`).toBe(before[`${name} | ${page}`]);
+      for (const page of ["sent", "order"] as const) expect(DELIBERATE(await orderPageHtml(viewOf({ ...p, parcel }), page)), `${name} | ${page}`).toBe(before[`${name} | ${page}`]);
     }
     expect(orderParcel(viewOf({ delivery: "home", parcel }))).toBeUndefined();
     expect(orderParcel(viewOf({ status: "paid", parcel }))).toBeUndefined();

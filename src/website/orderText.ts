@@ -74,3 +74,23 @@ function baseTimeline(t: T, v: OrderView): TimelineStep[] {
     { label: shipLine, st: shipped ? "nw" : "" },
   ];
 }
+
+/** Order tracking item 7: the big title, from the order's state (+ the parcel's once it matched). Pure.
+ *  (Right after checkout the page keeps "Order sent!" — this is for the order opened from its link.) */
+export function orderHero(t: T, v: OrderView, parcel?: ParcelView): { title: string; sub?: string; icon: string; tone: "ok" | "warn" | "bad" | "grey" } {
+  if (v.status === "cancelled") return { title: t.rd_shop_od_st_cancelled, icon: "✕", tone: "grey" };
+  if (v.status === "awaiting_payment") return { title: t.rd_shop_od_st_awaiting_payment, icon: "⏳", tone: "warn" };
+  if (v.status === "payment_sent") return { title: t.rd_ot_t_receipt, icon: "✓", tone: "ok" };
+  if (v.status === "paid" || v.status === "confirmed") return { title: t.rd_tl_packing, icon: "✓", tone: "ok" };
+  const st = parcel?.state;
+  if (st === "in_transit") return { title: t.rd_ot_t_transit, sub: t.rd_ot_s_transit, icon: "✓", tone: "ok" };
+  if (st === "at_store") return { title: t.rd_ot_t_store, sub: t.rd_ot_s_store, icon: "📦", tone: "warn" };
+  if (st === "picked_up") return { title: t.rd_ot_t_picked, sub: t.rd_ot_s_picked, icon: "✓", tone: "ok" };
+  if (st === "returned") return { title: t.rd_ot_t_returned, sub: t.rd_ot_s_returned, icon: "↩", tone: "bad" };
+  return { title: t.rd_ot_t_shipped, sub: t.rd_ot_s_shipped, icon: "✓", tone: "ok" };
+}
+/** The small status pill: the order's status, or the parcel's once it matched. Pure. */
+export function parcelPill(t: T, parcel: ParcelView): { text: string; tone: "ok" | "warn" | "bad" } {
+  return parcel.state === "at_store" ? { text: t.rd_ot_t_store, tone: "warn" } : parcel.state === "returned" ? { text: t.rd_ot_p_returned, tone: "bad" }
+    : parcel.state === "picked_up" ? { text: t.rd_tl_picked, tone: "ok" } : { text: t.rd_tl_transit, tone: "ok" };
+}
