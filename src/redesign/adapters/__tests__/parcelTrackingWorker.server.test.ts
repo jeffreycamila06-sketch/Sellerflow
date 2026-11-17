@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   planCaps, scopeForJob, jobOutcome, taipeiHour, createWorker, shouldRefundPress, JOB_MAX_MS, REST_MS,
-  sevenScopeForJob, sellerRequestBudget, MANUAL_REQUEST_BUDGET,
+  MANUAL_REQUEST_BUDGET,
 } from "../../../../server/parcelTrackingWorker.js";
 
 const T0 = new Date("2026-09-29T02:00:00Z"); // 10:00 Taipei
