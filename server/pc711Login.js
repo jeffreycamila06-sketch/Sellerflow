@@ -561,6 +561,16 @@ export function createPc711Login(opts = {}) {
     await saveSession(merged, { last_ok_at: new Date(now()).toISOString() });
   }
 
+  // A check saw the logged-out cart page and the quick re-login (unchanged, above) did not bring the session
+  // back → needs_login: Admin says so, every check stays paused (getSession → null), and the passive cart
+  // read can bring it back. Sends nothing.
+  async function markLoggedOut(w = "cart_logged_out") {
+    if (!key || !row || !row.blob || row.state === "needs_login") return false;
+    await persist({ state: "needs_login", last_problem: word(w) });
+    say("logged_out", 0, 0, w);
+    return true;
+  }
+
   // ONE quick re-login with the saved session (no password): the page's own JSON quick-login. ⚠️ NOT
   // PROVEN. Any step that asks for a passkey / password / picture / SMS → needs_login, stop.
   async function quickRelogin() {
@@ -620,7 +630,7 @@ export function createPc711Login(opts = {}) {
     return { cookies: jar.dump() };
   }
 
-  return { load, status, start, captcha, submit, sms, resend, back, disconnect, getSession, saveCookies, quickRelogin, hasKey: () => Boolean(key), _flow: () => flow };
+  return { load, status, start, captcha, submit, sms, resend, back, disconnect, getSession, saveCookies, quickRelogin, markLoggedOut, hasKey: () => Boolean(key), _flow: () => flow };
 }
 
 // ── routes (server.js mounts these behind requireAuth + requireAdmin + its own limiter) ──

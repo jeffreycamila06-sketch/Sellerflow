@@ -434,7 +434,7 @@ describe("pc711 login — server.js wiring (additions only)", () => {
     expect(src).toContain('const pc711StatusAllowed = createWindowLimiter({ max: 120, windowMs: 10 * 60 * 1000 });');
     expect(src).toContain('const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed, statusAllowed: pc711StatusAllowed });');
     expect(src).toContain('const pc711Json = express.json({ limit: "4kb" });');
-    expect(src).toContain("const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies } });");
+    expect(src).toContain("const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });");
     expect(src).not.toContain("PC_PROBE_MYSHIP_COOKIE");
     expect(src).toContain('req.path.startsWith("/admin/pc711/")');
   });
@@ -471,5 +471,30 @@ describe("pc711 login — logged out since", () => {
   it("not connected / key missing → no 'logged out since'", async () => {
     expect(make(fullSite().f).login.status().loggedOutSince).toBeNull();
     expect(make(fullSite().f, { env: {} }).login.status().loggedOutSince).toBeNull();
+  });
+});
+
+// Checks stay paused while logged out: a check that saw the logged-out cart page (after the unchanged quick
+// re-login) marks the login needs_login. That sends nothing; getSession then gives no cookies to any check.
+describe("pc711 login — markLoggedOut (checks stay paused)", () => {
+  it("connected → needs_login; no request; getSession → null; loggedOutSince set; a second call changes nothing", async () => {
+    const t = Date.UTC(2026, 10, 17, 0, 6);
+    const m = memStore();
+    const s = fullSite();
+    const { login, logs } = make(s.f, { store: m.store, now: () => t });
+    await connectAll(login);
+    const before = s.calls.length;
+    expect(await login.getSession()).toMatchObject({ cookies: expect.any(Object) });
+    expect(await login.markLoggedOut("cart_logged_out")).toBe(true);
+    expect(s.calls.length).toBe(before); // sends nothing
+    expect(login.status()).toMatchObject({ state: "needs_login", lastProblem: "cart_logged_out", loggedOutSince: "2026-11-17T00:06:00.000Z" });
+    expect(await login.getSession()).toBeNull();
+    expect((m.row as Record<string, unknown>).blob).toBeTruthy(); // the saved session is kept (the passive read uses it)
+    expect(await login.markLoggedOut("cart_logged_out")).toBe(false);
+    expect(logs.filter((l) => l.includes(" logged_out "))).toEqual(["[PC711_LOGIN] logged_out http=0 ms=0 cart_logged_out"]);
+  });
+  it("nothing saved / no key → does nothing", async () => {
+    expect(await make(fullSite().f).login.markLoggedOut()).toBe(false);
+    expect(await make(fullSite().f, { env: {} }).login.markLoggedOut()).toBe(false);
   });
 });

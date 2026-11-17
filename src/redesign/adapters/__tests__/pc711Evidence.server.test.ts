@@ -629,3 +629,33 @@ describe("mirror stops itself when the login is lost (login_lost)", () => {
     for (const l of h.logs) { expect(l).not.toContain(STORE); expect(l).not.toMatch(/cookie|token|=[A-Za-z0-9+/]{20,}/i); }
   });
 });
+
+// Checks stay paused while logged out, and start again by themselves when the login is back (a new since).
+describe("checks stay paused while logged out", () => {
+  it("needs_login → no check and no database request on any tick; connected again (new since) → checks run", async () => {
+    let st: Row = { state: "needs_login", since: "c1" };
+    const h = harness({ mirror: false, status: () => st, queue: [pend("phone"), pend("store")] });
+    for (let i = 0; i < 20; i++) { h.advance(30_000); await h.job.tick(); }
+    expect(h.check).not.toHaveBeenCalled();
+    expect(h.requests).toEqual([]);
+    st = { state: "connected", since: "c2" };
+    await h.job.tick();
+    expect(h.check).toHaveBeenCalledTimes(2);
+  });
+  it("a check that comes back logged out stops the job; same since → still paused; a new since → resumes", async () => {
+    let st: Row = { state: "connected", since: "c1" };
+    let out = true;
+    const h = harness({ status: () => st, queue: [pend("store"), pend("store")], check: (i) => (out ? { verdict: "unknown", http: 200, ms: 500, kind: "login_not_accepted", steps: [] } : OK(i as { kind: string })) });
+    await h.job.tick();
+    expect(h.check).toHaveBeenCalledTimes(1);
+    st = { state: "needs_login", since: "c1" };
+    for (let i = 0; i < 5; i++) { h.advance(30_000); await h.job.tick(); }
+    st = { state: "connected", since: "c1" }; // same connect → still stopped
+    for (let i = 0; i < 3; i++) { h.advance(30_000); await h.job.tick(); }
+    expect(h.check).toHaveBeenCalledTimes(1);
+    out = false;
+    st = { state: "connected", since: "c2" }; // logged in again (the passive read or Jeff)
+    await h.job.tick();
+    expect(h.check).toHaveBeenCalledTimes(2);
+  });
+});
