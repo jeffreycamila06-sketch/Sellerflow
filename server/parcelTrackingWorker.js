@@ -8,13 +8,18 @@
 // breaker (inside checkRows), one health row per job, service-role queries always
 // scoped by explicit user_id. Logs carry user_id + counts only — never codes/names.
 //
-// Limits per job: parcels (Plus 300 / Pro·Master·admin 600), a per-seller daily REQUEST
-// budget (same numbers — a 600-parcel pass needs ~300 requests), a 30-min hard stop,
-// and a 10-min rest after 30 min of back-to-back work.
+// 7-11 rules (Jeff, 2026-11-17 — server/pickupRules.js): no check at Sync (a 'new_parcels' job
+// checks no 7-11 parcel; it still runs the 全家 part); a 7-11 parcel is checkable from the 2nd
+// Taipei day after its sync (at a store: always); "Check now" checks EVERY checkable parcel,
+// at-store first, then least recently checked first — no parcel cap.
+// Limits per job: a per-seller daily REQUEST budget (manual 1,100; urgent / auto / health the
+// plan numbers), the global daily cap, a 30-min hard stop, and a 10-min rest after 30 min of
+// back-to-back work. Urgent keeps its plan parcel cap (Plus 300 / Pro·Master·admin 600).
 import {
   checkRows, readPollGate, readDailyRequests, writePollHealth, purgeRetention,
-  selectLiveRows, isMissingCarrierColumn, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, activePollIds,
+  selectLiveRows, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, activePollIds,
 } from "./parcelTrackingRunner.js";
+import { splitCheckable, orderForCheck } from "./pickupRules.js";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MEMORY_LIMIT_MB } from "./observability.js";
 import { AUTO_SETTING_KEYS, autoSettingsFrom, autoTier, autoScope, overMemoryLimit, clampSetting } from "./parcelTrackingAuto.js";
@@ -25,48 +30,45 @@ export const JOB_MAX_MS = 30 * 60 * 1000;
 export const REST_MS = 10 * 60 * 1000;
 export const HEALTH_HOUR = 9;                          // Taipei — daily health job after 09:00
 export const NEW_PARCEL_SLACK_MS = 5 * 60 * 1000;      // new_parcels scope reaches 5 min before the request
-export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // manual skips in_transit rows checked < 24h ago
+export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // 全家 part only (scopeForJob): manual skips in_transit rows checked < 24h ago
 export const AUTO_STALE_MS = 60 * 60 * 1000;           // an auto job queued > 1h ago (e.g. worker was off) is dropped
+export const HEALTH_FALLBACK_SCAN = 200;               // rows read to find one checkable health probe
 const TAG = "[PARCEL-JOB]";
 
-// Day-1 transit skip: a 7-11 parcel synced less than N hours ago, already checked once and
-// still in transit almost never reaches the store yet (median 2.7 days Sync → at_store), so
-// manual / auto jobs leave it for a later run. N = app_settings key below (0 = off).
-export const TRANSIT_SKIP_KEY = "parcel_tracking_transit_skip_hours";
-export const TRANSIT_SKIP_SPEC = { def: 24, min: 0, max: 72 };
-const TRANSIT_SKIP_KINDS = new Set(["manual", "auto"]);            // never new_parcels / urgent / health
-const TRANSIT_SKIP_STATUSES = new Set(["in_transit", "created", "unknown"]);
-
-// PURE — the setting value → whole hours in [0, 72]; missing / invalid → 24.
-export function transitSkipHours(raw) {
-  return clampSetting(raw, TRANSIT_SKIP_SPEC);
-}
-
-// PURE — split a job's live rows into { rows (may be queried), skipped }. Skipped rows are
-// simply left out of this job: nothing is written for them, so they come back next run.
-// The live select is 7-11 only (or pre-carrier-column = all 7-11), so a missing carrier counts as 7-11.
-export function splitTransitSkip(job, rows, nowDate, hours) {
-  if (!(hours > 0) || !TRANSIT_SKIP_KINDS.has(job.kind)) return { rows, skipped: [] };
-  const cutoff = nowDate.getTime() - hours * 60 * 60 * 1000;
-  const keep = [], skipped = [];
-  for (const r of rows) {
-    const skip = (r.carrier == null || r.carrier === "711") && !r.terminal
-      && TRANSIT_SKIP_STATUSES.has(r.status) && !!r.last_polled_at
-      && Date.parse(r.created_at) > cutoff;
-    (skip ? skipped : keep).push(r);
-  }
-  return { rows: keep, skipped };
-}
-
-// PURE — per-job parcel cap and per-seller daily request budget by plan.
+// PURE — per-job parcel cap and per-seller daily request budget by plan. Used by urgent / auto /
+// health jobs and by the 全家 part; a manual 7-11 check has no parcel cap and the budget below.
 export function planCaps(plan, isAdmin = false) {
   const p = String(plan || "").trim().toLowerCase();
   const big = isAdmin || p === "pro" || p === "master";
   return { parcels: big ? 600 : 300, requests: big ? 600 : 300 };
 }
 
-// PURE — which of the seller's non-terminal rows (already stalest-first) this job checks.
+// Per-seller daily request budget for a MANUAL check ("Check now", any plan): enough for two
+// 30-minute presses (~520 requests each at 0.5 request per parcel) plus captcha retries.
+export const MANUAL_REQUEST_BUDGET = 1100;
+
+// PURE — today's request budget for this job kind (before subtracting what was already used).
+export function sellerRequestBudget(kind, caps) {
+  return kind === "manual" ? MANUAL_REQUEST_BUDGET : caps.requests;
+}
+
+// PURE — which of the seller's CHECKABLE 7-11 rows (2-day rule already applied) this job checks.
+//   manual      → all of them, in check order (at-store first), never capped
+//   new_parcels → none (no 7-11 check at Sync; the job still runs its 全家 part)
+//   urgent      → as before (at-store due today or tomorrow, plan cap)
+//   health      → the first one in check order
 // Returns { rows, capped }.
+export function sevenScopeForJob(job, rows, nowDate, caps) {
+  if (job.kind === "manual") return { rows: orderForCheck(rows), capped: false };
+  if (job.kind === "new_parcels") return { rows: [], capped: false };
+  if (job.kind === "health") return { rows: orderForCheck(rows).slice(0, 1), capped: false };
+  if (job.kind === "urgent") return scopeForJob(job, rows, nowDate, caps);
+  return { rows: [], capped: false };
+}
+
+// PURE — which of the seller's non-terminal rows (already stalest-first) this job checks.
+// Since 2026-11-17 this is the 全家 part's scope only (unchanged); the 7-11 part uses
+// sevenScopeForJob. Returns { rows, capped }.
 export function scopeForJob(job, rows, nowDate, caps) {
   const now = nowDate.getTime();
   const polledAt = (r) => (r.last_polled_at ? Date.parse(r.last_polled_at) : NaN);
@@ -201,23 +203,7 @@ export function createWorker(opts) {
     }, logger);
     if (job.kind !== "health" && purge) { // purge=false: an expired seller's rows stay untouched
       await purgeRetention(serviceSb, [job.user_id], t, logger, TAG);
-      // Rows inserted while this job ran were blocked from enqueuing by the one-active
-      // lock — queue a follow-up covering them.
-      if (job.started_at) {
-        // 7-11 rows only (sql/119); before sql/119 the carrier column is missing → unfiltered.
-        const freshQuery = (sevenElevenOnly) => {
-          let q = serviceSb.from("parcel_tracking").select("id")
-            .eq("user_id", job.user_id).eq("terminal", false);
-          if (sevenElevenOnly) q = q.eq("carrier", "711");
-          return q.is("last_polled_at", null).gte("created_at", job.started_at).limit(1);
-        };
-        let { data: fresh, error: freshErr } = await freshQuery(true);
-        if (isMissingCarrierColumn(freshErr)) ({ data: fresh } = await freshQuery(false));
-        if ((fresh || []).length) {
-          await serviceSb.rpc("parcel_tracking_enqueue_job", { p_user_id: job.user_id, p_kind: "new_parcels", p_created_by: "followup", p_requested_at: job.started_at });
-          logger.log(`${TAG} follow-up new_parcels queued user=${job.user_id}`);
-        }
-      }
+      // (No follow-up new_parcels job any more: a 7-11 parcel is not checked at Sync — 2026-11-17.)
     }
     try { emit(job.user_id, { user_id: job.user_id, job_id: job.id, kind: job.kind, checked, total }); } catch { /* socket down — the client polls */ }
     logger.log(`${TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} status=${status}${error ? ` error=${error}` : ""} checked=${checked}/${total} requests=${requests} ${durationMs}ms${stats}`);
@@ -309,20 +295,6 @@ export function createWorker(opts) {
       if (aErr) logger.error(`${TAG} last_completed_at write failed user=${job.user_id}:`, aErr.code || "error");
     }
     await purgeRetention(serviceSb, [job.user_id], t, logger, TAG);
-    if (job.started_at) { // rows inserted while the job ran — same follow-up as finishJob
-      const freshQuery = (sevenElevenOnly) => {
-        let q = serviceSb.from("parcel_tracking").select("id")
-          .eq("user_id", job.user_id).eq("terminal", false);
-        if (sevenElevenOnly) q = q.eq("carrier", "711");
-        return q.is("last_polled_at", null).gte("created_at", job.started_at).limit(1);
-      };
-      let { data: fresh, error: freshErr } = await freshQuery(true);
-      if (isMissingCarrierColumn(freshErr)) ({ data: fresh } = await freshQuery(false));
-      if ((fresh || []).length) {
-        await serviceSb.rpc("parcel_tracking_enqueue_job", { p_user_id: job.user_id, p_kind: "new_parcels", p_created_by: "followup", p_requested_at: job.started_at });
-        logger.log(`${TAG} follow-up new_parcels queued user=${job.user_id}`);
-      }
-    }
     try { emit(job.user_id, { user_id: job.user_id, job_id: job.id, kind: job.kind, checked: allChecked, total: allTotal }); } catch { /* socket down — the client polls */ }
     logger.log(`${TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} status=${status}${error ? ` error=${error}` : ""} checked=${allChecked}/${allTotal} requests=${requests} ${durationMs}ms${stats} familymart=${fm.checked}/${fm.total}${fm.reason ? ` (${fm.reason})` : ""} ${fmMs}ms`);
     // The worker's rest counts the 全家 time too — also when the 全家 part was cut off at its limit.
@@ -333,6 +305,32 @@ export function createWorker(opts) {
   async function finishNormal(job, res, fmCtx) {
     const plan = await fmPlanFor(job, fmCtx);
     return plan ? finishJobWithFm(job, res, plan) : finishJob(job, res);
+  }
+
+  // One checkable 7-11 row of any active seller (enabled access, plan not expired), for the health
+  // probe. Any read error → none (the job then finishes 0/0, as before).
+  async function healthFallbackRows() {
+    try {
+      const { data: acc, error } = await serviceSb.from("parcel_tracking_access").select("user_id").eq("enabled", true);
+      if (error) return [];
+      let ids = (acc || []).map((r) => String(r.user_id)).filter(Boolean);
+      if (!ids.length) return [];
+      const { data: profs, error: pErr } = await serviceSb.from("seller_profiles")
+        .select("auth_user_id, role, plan_status, plan_expiry").in("auth_user_id", ids);
+      if (pErr) return [];
+      ids = activePollIds(ids, profs || [], now());
+      if (!ids.length) return [];
+      const { data, error: rErr } = await serviceSb.from("parcel_tracking")
+        .select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at,last_polled_at,pickup_deadline")
+        .eq("terminal", false).eq("carrier", "711").in("user_id", ids)
+        .order("last_polled_at", { ascending: true, nullsFirst: true }).order("id", { ascending: true })
+        .limit(HEALTH_FALLBACK_SCAN);
+      if (rErr) return [];
+      const pick = orderForCheck(splitCheckable((data || []).filter((r) => r && r.tracking_no), now()).rows);
+      return pick.slice(0, 1);
+    } catch {
+      return [];
+    }
   }
 
   async function runJob(job) {
@@ -374,7 +372,7 @@ export function createWorker(opts) {
       const { data: todays, error: tErr } = await serviceSb.from("parcel_tracking_jobs").select("requests_used")
         .eq("user_id", job.user_id).gte("requested_at", taipeiMidnightIso(now()));
       if (tErr) return finishJob(job, { status: "failed", error: "select_failed", startedMs });
-      const budget = caps.requests - (todays || []).reduce((n, j) => n + (Number(j.requests_used) || 0), 0);
+      const budget = sellerRequestBudget(job.kind, caps) - (todays || []).reduce((n, j) => n + (Number(j.requests_used) || 0), 0);
       if (budget < MAX_REQUESTS_PER_BATCH) return finishJob(job, { status: "skipped", error: "daily_cap", startedMs });
 
       const daily = { day: taipeiDay(now()), requests: 0, sentThisRun: 0 };
@@ -393,20 +391,17 @@ export function createWorker(opts) {
       const sel = await selectLiveRows(serviceSb, [job.user_id]);
       if (sel.error) return finishJob(job, { status: "failed", error: "select_failed", startedMs });
       const live = sel.rows.filter((r) => r && r.tracking_no);
-      let skipHours = 0;
-      if (TRANSIT_SKIP_KINDS.has(job.kind)) {
-        // A failed settings read keeps the old behaviour (no skip).
-        const { data: ts, error: tsErr } = await serviceSb.from("app_settings").select("key,value").in("key", [TRANSIT_SKIP_KEY]);
-        if (!tsErr) skipHours = transitSkipHours((ts || []).find((r) => r.key === TRANSIT_SKIP_KEY)?.value);
-      }
-      const split = splitTransitSkip(job, live, now(), skipHours);
+      // 2-day rule: a 7-11 parcel synced today or yesterday (Taipei) and not at a store is left
+      // out of every job — nothing is written for it.
+      const split = splitCheckable(live, now());
       const scopeOf = (list) => (auto
         ? autoScope(list, now(), { ...auto, maxParcels: Math.min(auto.maxParcels, caps.parcels) }, tier)
-        : scopeForJob(job, list, now(), caps));
-      const scope = scopeOf(split.rows);
-      // Count only the held-back rows this job would otherwise have queried.
-      const skipped = split.skipped.length ? scopeOf(split.skipped).rows.length : 0;
-      const skipStat = skipped ? ` transit_skipped=${skipped}` : "";
+        : sevenScopeForJob(job, list, now(), caps));
+      let scope = scopeOf(split.rows);
+      // The daily health probe always needs ONE row: when its own seller has none, the stalest
+      // checkable row of any active seller (a normal check of that parcel).
+      if (job.kind === "health" && !scope.rows.length) scope = { rows: await healthFallbackRows(), capped: false };
+      const skipStat = split.young.length && (job.kind === "manual" || isAuto) ? ` young_skipped=${split.young.length}` : "";
       const fmCtx = { auto, tier, caps };
       if (!scope.rows.length) return finishNormal(job, { status: "done", error: null, startedMs, stats: autoStats() + skipStat }, fmCtx);
 
