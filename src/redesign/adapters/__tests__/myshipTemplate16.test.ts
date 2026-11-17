@@ -78,7 +78,7 @@ for (const [name, rows] of CALLERS) {
       expect(mine.indexOf('<row r="7"')).toBeGreaterThan(mine.indexOf("<sheetData>"));
       expect(mine.indexOf('<row r="8"')).toBeLessThan(mine.indexOf("</sheetData>"));
       expect(mine).toContain('<dimension ref="A1:K8"/>');
-      for (const [i, r] of rows.entries()) for (const v of r) if (v) expect(mine).toContain(`<t xml:space="preserve">${v}</t>`), void i;
+      for (const r of rows) for (const v of r) if (v) expect(mine).toContain(`<t xml:space="preserve">${v}</t>`);
       // remove our rows + put the dimension back → exactly 7-11's sheet
       const restored = mine.replace(/<row r="(?:[7-9]|\d{2,})"[^>]*>.*?<\/row>/gs, "").replace('<dimension ref="A1:K8"/>', '<dimension ref="A1:K6"/>');
       expect(restored).toBe(orig);
