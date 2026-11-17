@@ -1,12 +1,16 @@
 // node docs/design/pickup-check-flow/harness/shoot.cjs — TODAY (main, port 5311) vs NEW (branch, port 5310),
 // iPhone 390 / Android 360 / laptop 1280. Start both servers first (see vite.config.mjs; TODAY = a main
 // worktree with this harness copied in). Prints the horizontal overflow of each page.
+// Optional args: node shoot.cjs [today|new] [scene numbers, e.g. 5,6] — only those.
 const { chromium } = require("playwright");
 const JSZip = require("jszip");
 const path = require("path");
 const fs = require("fs");
 const OUT = path.join(__dirname, "..");
-const ENVS = [["today", 5311], ["new", 5310]];
+const ONLY_ENV = process.argv[2] && process.argv[2] !== "all" ? process.argv[2] : null;
+const ONLY_SCENES = process.argv[3] ? new Set(process.argv[3].split(",").map(Number)) : null;
+const want = (n) => !ONLY_SCENES || ONLY_SCENES.has(n);
+const ENVS = [["today", 5311], ["new", 5310]].filter(([e]) => !ONLY_ENV || e === ONLY_ENV);
 const DEVICES = [["iphone390", 390, 844], ["android360", 360, 800], ["laptop1280", 1280, 800]];
 
 // A 賣貨便 匯出報表 with 4 new parcels on the 訂單匯入 tab (header row 3) — same shape the reader expects.
@@ -29,7 +33,7 @@ async function exportFile() {
     const open = async (scene) => {
       const p = await b.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
       await p.goto(`http://localhost:${port}/docs/design/pickup-check-flow/harness/index.html?scene=${scene}${env === "today" ? "&today=1" : ""}`, { waitUntil: "networkidle" });
-      await p.waitForSelector(narrow ? "[data-testid=pt-cards]" : "[data-testid=pt-tabs]");
+      await p.waitForSelector(scene === "empty" ? "[data-testid=pt-empty]" : narrow ? "[data-testid=pt-cards]" : "[data-testid=pt-tabs]");
       return p;
     };
     const shot = async (p, name) => {
@@ -38,26 +42,47 @@ async function exportFile() {
       console.log(`${file}: horizontal overflow ${over}px`);
       await p.screenshot({ path: path.join(OUT, file) });
     };
-    // 1. counts + the Waiting list (opens on Waiting)
-    let p = await open("counts");
-    await shot(p, "1-counts-waiting");
-    // 2. the In transit list
-    await p.click(narrow ? "[data-testid=pt-card-transit]" : "[data-testid=pt-tab-transit]");
-    await p.waitForTimeout(300);
-    await shot(p, "2-counts-transit");
-    await p.close();
-    // 3. a press that found nothing checkable (the status poll reads the finished job after ~15 s)
-    p = await open("toast");
-    await p.waitForSelector("[data-testid=pt-toast]", { timeout: 25000 });
-    await shot(p, "3-toast-nothing");
-    await p.close();
-    // 4. a 7-11 Sync of 4 new parcels
-    p = await open("sync");
-    await p.setInputFiles("[data-testid=pt-sync-file]", { name: "export.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
-    await p.waitForSelector("[data-testid=pt-toast]", { timeout: 10000 });
-    await p.waitForTimeout(800);
-    await shot(p, "4-sync-toast");
-    await p.close();
+    let p;
+    if (want(1) || want(2)) {
+      // 1. counts + the Waiting list (opens on Waiting)
+      p = await open("counts");
+      if (want(1)) await shot(p, "1-counts-waiting");
+      // 2. the In transit list
+      await p.click(narrow ? "[data-testid=pt-card-transit]" : "[data-testid=pt-tab-transit]");
+      await p.waitForTimeout(300);
+      if (want(2)) await shot(p, "2-counts-transit");
+      await p.close();
+    }
+    if (want(3)) {
+      // 3. a press that found nothing checkable (the status poll reads the finished job after ~15 s)
+      p = await open("toast");
+      await p.waitForSelector("[data-testid=pt-toast]", { timeout: 25000 });
+      await shot(p, "3-toast-nothing");
+      await p.close();
+    }
+    if (want(4)) {
+      // 4. a 7-11 Sync of 4 new parcels
+      p = await open("sync");
+      await p.setInputFiles("[data-testid=pt-sync-file]", { name: "export.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
+      await p.waitForSelector("[data-testid=pt-toast]", { timeout: 10000 });
+      await p.waitForTimeout(800);
+      await shot(p, "4-sync-toast");
+      await p.close();
+    }
+    if (want(5)) {
+      // 5. "How to sync?" opened (rd_pt_sync_s4)
+      p = await open("counts");
+      await p.click("[data-testid=pt-sync-how-toggle]");
+      await p.waitForSelector("[data-testid=pt-sync-how]");
+      await shot(p, "5-how-to-sync");
+      await p.close();
+    }
+    if (want(6)) {
+      // 6. no parcels yet (rd_pt_empty_s3)
+      p = await open("empty");
+      await shot(p, "6-empty");
+      await p.close();
+    }
   }
   await b.close();
 })();

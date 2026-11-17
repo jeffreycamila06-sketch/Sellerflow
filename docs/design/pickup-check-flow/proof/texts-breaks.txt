@@ -1,0 +1,18 @@
+## BREAK: vi check note: old automatic sentence put back
+   (src/redesign/i18n/index.tsx: `vi: "Bạn có thể kiểm tra lại sau 12 giờ kể từ lần kiểm tra trước."` → `vi: "Bạn có thể kiểm tra lại sau 12 giờ kể từ lần kiểm tra trước. Bưu kiện mới từ Đồng bộ được kiểm tra tự động."`)
+     × vi: no automatic-check claim, nothing empty; s4 names the In transit tab 5ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/i18n/__tests__/pickupNoAutoCheckTexts.test.ts > Pickup Status texts: no claim that new parcels are checked automatically > vi: no automatic-check claim, nothing empty; s4 names the In transit tab
+      Tests  1 failed | 25 passed (26)
+
+## BREAK: en sync step: old tab name put back
+   (src/redesign/i18n/index.tsx: `en: "Usernames appear right away under In transit."` → `en: "Usernames appear right away under Waiting pickup."`)
+     × English, exactly 8ms
+     × en: no automatic-check claim, nothing empty; s4 names the In transit tab 3ms
+     × renders the Sync button + hint card; the how-to steps toggle open 269ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/i18n/__tests__/pickupNoAutoCheckTexts.test.ts > Pickup Status texts: no claim that new parcels are checked automatically > English, exactly
+ FAIL  src/redesign/i18n/__tests__/pickupNoAutoCheckTexts.test.ts > Pickup Status texts: no claim that new parcels are checked automatically > en: no automatic-check claim, nothing empty; s4 names the In transit tab
+ FAIL  src/redesign/screens/__tests__/ParcelTracking.sync.test.tsx > Pickup Status — Sync from 賣貨便 > renders the Sync button + hint card; the how-to steps toggle open
+      Tests  3 failed | 23 passed (26)
+
