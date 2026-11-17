@@ -1,0 +1,38 @@
+## BREAK: unchecked 7-11 back under Waiting (list)
+   (src/redesign/adapters/parcelTracking.ts: `    if (isUnchecked(r)) { (r.carrier === "fm" ? g.waitingPickup : g.inTransit).push(r); continue; }` → `    if (isUnchecked(r)) { g.waitingPickup.push(r); continue; }`)
+     × routes each status to its bucket; chaseable only in the 4 actionable groups (+ a not-checked-yet 7-11 row under In transit) 9ms
+     × a not-checked-yet 全家 row keeps its old place under Waiting 2ms
+     × agrees with groupParcels for every row 7ms
+     × counts per tab; 'all' counts every row incl. the other bucket; In transit includes a not-checked-yet 7-11 parcel 3ms
+     × 'all' keeps every row (nothing disappears); status tabs are exact 2ms
+     × tabs show counts; Waiting is selected by default; table has the 5 columns 355ms
+     × Waiting rows sorted by days-left (urgent first), urgent Left is red, every row has a F-code cell 1033ms
+     × plain handle → Chase (opens TikTok); other username → Copy it; no username → Copy the tracking number (S6); not checked yet → nothing 1031ms
+     × other tabs: In transit '—' + no action; Picked up 'Done'; Returned 'Returned'; All keeps the other bucket 93ms
+     × 4 status cards with counts; Waiting selected; compact rows WITHOUT the F-code 47ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/screens/__tests__/ParcelTracking.redesign.test.tsx > WEB — boxed status tabs + aligned table > tabs show counts; Waiting is selected by default; table has the 5 columns
+
+## BREAK: 全家 unchecked moved to In transit too
+   (src/redesign/adapters/parcelTracking.ts: `    if (isUnchecked(r)) { (r.carrier === "fm" ? g.waitingPickup : g.inTransit).push(r); continue; }` → `    if (isUnchecked(r)) { g.inTransit.push(r); continue; }`)
+     × agrees with groupParcels for every row 7ms
+     × a not-checked-yet 全家 row keeps its old place under Waiting 13ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelTracking.client.test.ts > groupParcels — status buckets, chaseable-gated, deadline-sorted > a not-checked-yet 全家 row keeps its old place under Waiting
+ FAIL  src/redesign/adapters/__tests__/parcelTrackingTabs.test.ts > rowTab — mirrors groupParcels' bucketing (parity) > agrees with groupParcels for every row
+      Tests  2 failed | 105 passed (107)
+
+## BREAK: count of unchecked not added to In transit
+   (src/redesign/adapters/parcelTracking.ts: `    transit: (transit.count ?? 0) + (unchecked.count ?? 0),` → `    transit: transit.count ?? 0,`)
+     × S7: the unfinished list is PAGED in a stable order (deadline, then id) and Load more continues from the offset 13ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelTrackingTabs.test.ts > 2026-09-27 Returned-tab starvation fix — exact totals + three disjoint queries > S7: the unfinished list is PAGED in a stable order (deadline, then id) and Load more continues from the offset
+      Tests  1 failed | 106 passed (107)
+
+## BREAK: old 'all parcels were checked recently' toast for a press
+   (src/redesign/screens/ParcelTracking.tsx: `return job.kind === "auto" ? t.rd_pt_job_nothing : t.rd_pt_job_none_checkable;` → `return t.rd_pt_job_nothing;`)
+     × a press that found nothing checkable says so truthfully (not "Updated 0 of 0") and the button is ready again 1030ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/screens/__tests__/ParcelTracking.checkNow.test.tsx > check card > a press that found nothing checkable says so truthfully (not "Updated 0 of 0") and the button is ready again
+      Tests  1 failed | 106 passed (107)
+

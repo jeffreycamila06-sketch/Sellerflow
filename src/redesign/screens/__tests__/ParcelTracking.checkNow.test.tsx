@@ -122,13 +122,21 @@ describe("check card", () => {
     await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("Updated 40 of 300 parcels — the rest on the next check"));
   });
 
-  it("a job that had nothing to check says so (not \"Updated 0 of 0\") and the button is ready again", async () => {
+  it("a press that found nothing checkable says so truthfully (not \"Updated 0 of 0\") and the button is ready again", async () => {
     loadTrackingStatus
       .mockResolvedValueOnce(st({ active_job: { id: "j", kind: "manual", status: "running" } }))
       .mockResolvedValue(st({ last_job: { id: "j", kind: "manual", status: "done", error: null, parcels_checked: 0, parcels_total: 0 } }));
     const r = view();
-    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("Nothing to check yet — all parcels were checked recently"));
+    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("No parcels can be checked yet."));
     await waitFor(() => expect(r.getByTestId("pt-check-now").getAttribute("data-state")).toBe("ready"));
+  });
+
+  it("the old sentence stays only where it is still true: an AUTOMATIC check that had nothing to check", async () => {
+    loadTrackingStatus
+      .mockResolvedValueOnce(st({ active_job: { id: "j", kind: "auto", status: "running" } }))
+      .mockResolvedValue(st({ last_job: { id: "j", kind: "auto", status: "done", error: null, parcels_checked: 0, parcels_total: 0 } }));
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("Nothing to check yet — all parcels were checked recently"));
   });
 
   it("no polling when nothing is running", async () => {

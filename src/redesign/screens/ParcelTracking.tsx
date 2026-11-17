@@ -437,7 +437,9 @@ function checkErrorText(res: CheckResult, t: T): string {
 function jobDoneText(job: TrackingJob | null, t: T): string {
   if (!job) return "";
   const n = job.parcels_checked ?? 0, m = job.parcels_total ?? 0;
-  if (job.status === "done" && m === 0) return t.rd_pt_job_nothing;
+  // Nothing could be checked. Only an automatic check skips recently checked parcels, so only
+  // there "all parcels were checked recently" is true; otherwise the parcels are too new (2-day rule).
+  if (job.status === "done" && m === 0) return job.kind === "auto" ? t.rd_pt_job_nothing : t.rd_pt_job_none_checkable;
   if (job.status === "done") return tpl(job.error ? t.rd_pt_job_partial : t.rd_pt_job_done, { n, m });
   return t.rd_pt_job_failed;
 }
