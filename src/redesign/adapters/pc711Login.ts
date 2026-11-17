@@ -17,7 +17,13 @@ export interface Pc711Status {
   lastProblem: string | null;
   /** needs_login only: since when the server is logged out of 7-11 (ISO) */
   loggedOutSince: string | null;
+  /** needs_login only: the passive cart read every 10 minutes (it never logs in) */
+  passive: Pc711Passive | null;
 }
+export type Pc711PassiveKind = "logged_in" | "logged_out" | "login_page" | "error" | "blocked" | "other" | "config_missing";
+export interface Pc711Passive { lastAt: string | null; nextAt: string | null; kind: Pc711PassiveKind | null }
+const PASSIVE_KINDS: Pc711PassiveKind[] = ["logged_in", "logged_out", "login_page", "error", "blocked", "other", "config_missing"];
+const isoOrNull = (v: unknown) => (typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null);
 export interface Pc711Answer {
   ok: boolean;
   status: number;
@@ -40,7 +46,11 @@ export function toPc711Status(j: unknown): Pc711Status | null {
     autoLogins: Number.isFinite(Number(o.autoLogins)) ? Number(o.autoLogins) : 0,
     phoneTail: typeof o.phoneTail === "string" ? o.phoneTail.slice(-3) : "",
     lastProblem: typeof o.lastProblem === "string" ? o.lastProblem : null,
-    loggedOutSince: state === "needs_login" && typeof o.loggedOutSince === "string" && Number.isFinite(Date.parse(o.loggedOutSince)) ? o.loggedOutSince : null,
+    loggedOutSince: state === "needs_login" ? isoOrNull(o.loggedOutSince) : null,
+    passive: state === "needs_login" && o.passive && typeof o.passive === "object" ? (() => {
+      const p = o.passive as Record<string, unknown>;
+      return { lastAt: isoOrNull(p.lastAt), nextAt: isoOrNull(p.nextAt), kind: PASSIVE_KINDS.find((k) => k === p.kind) ?? null };
+    })() : null,
   };
 }
 

@@ -436,6 +436,8 @@ describe("pc711 login — server.js wiring (additions only)", () => {
     expect(src).toContain('const pc711Json = express.json({ limit: "4kb" });');
     expect(src).toContain("const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });");
     expect(src).not.toContain("PC_PROBE_MYSHIP_COOKIE");
+    expect(src).toContain("const pc711PassiveTimer = setInterval(() => { void pc711.passiveCheck().catch(() => {}); }, 60 * 1000);");
+    expect(src).toContain("if (typeof pc711PassiveTimer.unref === \"function\") pc711PassiveTimer.unref();");
     expect(src).toContain('req.path.startsWith("/admin/pc711/")');
   });
 });
@@ -496,5 +498,140 @@ describe("pc711 login — markLoggedOut (checks stay paused)", () => {
   it("nothing saved / no key → does nothing", async () => {
     expect(await make(fullSite().f).login.markLoggedOut()).toBe(false);
     expect(await make(fullSite().f, { env: {} }).login.markLoggedOut()).toBe(false);
+  });
+});
+
+// The passive cart read while logged out: ONE GET of the cart page every 10 minutes with the saved cookies.
+// Logged in → connected again (a new since → the shadow job resumes). It never sends a login request.
+import { cartReadKind, PC711_PASSIVE_EVERY_MS } from "../../../../server/pc711Login.js";
+describe("pc711 login — passive cart read while logged out", () => {
+  const LOGIN_PATHS = ["/Member/Login/", "/auth/service/authorize", ...Object.values(PC711_ROUTES)];
+  const setup = async (cart: (c: Call) => Reply) => {
+    let t = Date.UTC(2026, 10, 17, 0, 6);
+    const m = memStore();
+    await connectAll(make(fullSite().f, { store: m.store, now: () => t }).login);
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: cart });
+    const logs: string[] = [];
+    const login = createPc711Login({ fetchImpl: s.f as never, now: () => t, log: (l: string) => logs.push(l), store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login.load();
+    await login.markLoggedOut("cart_logged_out");
+    return { login, s, logs, m, at: () => t, advance: (ms: number) => { t += ms; } };
+  };
+  const onlyCartReads = (calls: Call[]) => calls.every((c) => c.method === "GET" && c.host === "myship.7-11.com.tw" && c.path === `/cart/easy/${GM}`);
+
+  it("waits 10 minutes, then reads the cart page ONCE; still logged out → stays needs_login, next read 10 minutes later", async () => {
+    const h = await setup(() => ({ body: cartPage("") }));
+    h.advance(60_000);
+    expect(await h.login.passiveCheck()).toBeNull();
+    expect(h.s.calls).toEqual([]);
+    h.advance(PC711_PASSIVE_EVERY_MS - 60_000);
+    expect(await h.login.passiveCheck()).toEqual({ resumed: false, kind: "logged_out" });
+    expect(h.s.calls.length).toBe(1);
+    expect(onlyCartReads(h.s.calls)).toBe(true);
+    expect(h.login.status()).toMatchObject({ state: "needs_login", passive: { kind: "logged_out", lastAt: "2026-11-17T00:16:00.000Z", nextAt: "2026-11-17T00:26:00.000Z" } });
+    h.advance(5 * 60_000);
+    expect(await h.login.passiveCheck()).toBeNull(); // not yet
+    expect(h.s.calls.length).toBe(1);
+    h.advance(5 * 60_000);
+    await h.login.passiveCheck();
+    expect(h.s.calls.length).toBe(2);
+    expect(h.logs.filter((l) => l.includes(" passive "))).toEqual(["[PC711_LOGIN] passive http=200 ms=0 logged_out", "[PC711_LOGIN] passive http=200 ms=0 logged_out"]);
+  });
+  it("the cart page shows logged in → connected with a NEW since (the shadow resumes); getSession has cookies again", async () => {
+    let inNow = false;
+    const h = await setup(() => ({ body: cartPage(inNow ? "SID12345" : ""), cookies: inNow ? ["ASP.NET_SessionId=FRESH1; path=/"] : [] }));
+    const oldSince = h.login.status().since;
+    h.advance(PC711_PASSIVE_EVERY_MS);
+    await h.login.passiveCheck();
+    expect(h.login.status().state).toBe("needs_login");
+    inNow = true;
+    h.advance(PC711_PASSIVE_EVERY_MS);
+    expect(await h.login.passiveCheck()).toEqual({ resumed: true, kind: "logged_in" });
+    const st = h.login.status();
+    expect(st).toMatchObject({ state: "connected", loggedOutSince: null, passive: null, since: "2026-11-17T00:26:00.000Z" });
+    expect(st.since).not.toBe(oldSince);
+    expect(JSON.stringify(await h.login.getSession())).toContain("FRESH1");
+    expect(h.logs.some((l) => l === "[PC711_LOGIN] passive http=200 ms=0 resumed")).toBe(true);
+    // connected → no more passive reads
+    const n = h.s.calls.length;
+    for (let i = 0; i < 5; i++) { h.advance(PC711_PASSIVE_EVERY_MS); await h.login.passiveCheck(); }
+    expect(h.s.calls.length).toBe(n);
+  });
+  it("NEVER a login request: a redirect to the login page is read as one word and not followed; across a day of reads only cart GETs", async () => {
+    for (const cart of [
+      () => ({ status: 302, location: "https://myship.7-11.com.tw/Member/Login/" }),
+      () => ({ status: 302, location: `https://${OP}/auth/service/authorize?client=CID1` }),
+      () => ({ body: "<html><a href='/Member/Login/'>uniopen 登入/註冊</a></html>" }),
+      () => ({ status: 500, body: "Runtime Error" }), () => ({ status: 429, body: "" }), () => ({ body: "<html>hello</html>" }),
+    ]) {
+      const h = await setup(cart);
+      for (let i = 0; i < 144; i++) { h.advance(PC711_PASSIVE_EVERY_MS); await h.login.passiveCheck(); }
+      expect(h.s.calls.length).toBe(144);
+      expect(onlyCartReads(h.s.calls)).toBe(true);
+      for (const c of h.s.calls) { expect(LOGIN_PATHS).not.toContain(c.path); expect(c.host).not.toBe(OP); expect(c.body).toBe(""); }
+      expect(h.login.status().state).toBe("needs_login");
+    }
+  });
+  it("words for each read: login_page / error / blocked / other; a fetch that throws → error, still needs_login", async () => {
+    const kinds: string[] = [];
+    for (const cart of [
+      () => ({ status: 302, location: "/Member/Login/?ReturnUrl=x" }), () => ({ status: 503, body: "" }), () => ({ status: 403, body: "" }),
+      () => ({ body: "<html>maintenance</html>" }), () => { throw new Error("boom"); },
+    ]) {
+      const h = await setup(cart as never);
+      h.advance(PC711_PASSIVE_EVERY_MS);
+      kinds.push((await h.login.passiveCheck())!.kind);
+      expect(h.login.status().state).toBe("needs_login");
+    }
+    expect(kinds).toEqual(["login_page", "error", "blocked", "other", "error"]);
+  });
+  it("only while logged out with a saved session: connected / not connected / no key / Jeff's login flow open → nothing is sent", async () => {
+    const s = fullSite();
+    const m = memStore();
+    const { login } = make(s.f, { store: m.store });
+    expect(await login.passiveCheck()).toBeNull(); // not connected
+    await connectAll(login);
+    const n = s.calls.length;
+    expect(await login.passiveCheck()).toBeNull(); // connected
+    expect(s.calls.length).toBe(n);
+    expect(await make(fullSite().f, { env: {} }).login.passiveCheck()).toBeNull(); // no key
+    const h = await setup(() => ({ body: cartPage("") }));
+    await h.login.start(); // Jeff opened the login flow
+    const before = h.s.calls.length;
+    h.advance(PC711_PASSIVE_EVERY_MS);
+    expect(await h.login.passiveCheck()).toBeNull();
+    expect(h.s.calls.length).toBe(before);
+  });
+  it("after a restart: logged out more than 10 minutes ago → the first read goes at once", async () => {
+    const h = await setup(() => ({ body: cartPage("") }));
+    h.advance(25 * 60_000);
+    const again = createPc711Login({ fetchImpl: h.s.f as never, now: h.at, log: () => {}, store: h.m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await again.load();
+    expect(await again.passiveCheck()).toEqual({ resumed: false, kind: "logged_out" });
+  });
+  it("no log line carries a cookie, a phone, a token or page text; words only", async () => {
+    const h = await setup(() => ({ body: `<html>${PHONE} 陳小美 token=SECRETTOKEN123</html>`, cookies: ["MemberLogin=COOKIEVALUE99; path=/"] }));
+    for (let i = 0; i < 3; i++) { h.advance(PC711_PASSIVE_EVERY_MS); await h.login.passiveCheck(); }
+    const lines = h.logs.filter((l) => l.includes(" passive "));
+    expect(lines.length).toBe(3);
+    for (const l of lines) expect(l).toMatch(/^\[PC711_LOGIN\] passive http=\d+ ms=\d+ (logged_in|logged_out|login_page|error|blocked|other|config_missing|resumed)$/);
+    expect(h.logs.join("\n")).not.toMatch(/0912345678|陳小美|SECRETTOKEN|COOKIEVALUE|LOGGEDIN1|SID12345/);
+    expect(JSON.stringify(h.login.status())).not.toMatch(/COOKIEVALUE|SECRETTOKEN|0912345678/);
+  });
+  it("cartReadKind matrix", () => {
+    const r = (o: Record<string, unknown>) => ({ status: 200, url: `https://myship.7-11.com.tw/cart/easy/${GM}`, text: "", location: "", ...o });
+    expect(cartReadKind(r({ text: cartPage("SID12345") }))).toBe("logged_in");
+    expect(cartReadKind(r({ text: cartPage("") }))).toBe("logged_out");
+    expect(cartReadKind(r({ text: cartPage("SID") }))).toBe("logged_out");
+    expect(cartReadKind(r({ status: 302, location: "/Member/Login/" }))).toBe("login_page");
+    expect(cartReadKind(r({ status: 302, location: "https://myship.7-11.com.tw/cart/other" }))).toBe("other");
+    expect(cartReadKind(r({ text: "<a href='https://bu-group.openpoint.com.tw/x'>uniopen 登入</a>" }))).toBe("login_page");
+    expect(cartReadKind(r({ status: 500 }))).toBe("error");
+    expect(cartReadKind(r({ text: "系統錯誤" }))).toBe("error");
+    expect(cartReadKind(r({ status: 429 }))).toBe("blocked");
+    expect(cartReadKind(r({ text: "Request Rejected" }))).toBe("blocked");
+    expect(cartReadKind({ fail: "timeout" })).toBe("error");
+    expect(cartReadKind(null)).toBe("error");
+    expect(cartReadKind(r({ text: "<html>hi</html>" }))).toBe("other");
   });
 });

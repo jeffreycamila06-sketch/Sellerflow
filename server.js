@@ -1253,6 +1253,10 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 // STORE step uses this session (and its one quick re-login). Loaded at boot so a deploy keeps it.
 const pc711 = createPc711Login({ store: createPc711Store(serviceSb), readSetting, env: process.env });
 pc711.load().catch(() => {});
+// While logged out of 7-11 (needs_login): ONE passive read of the cart page every 10 minutes (the module keeps
+// the 10-minute timing; this only wakes it once a minute). Logged in → checks resume. It never logs in.
+const pc711PassiveTimer = setInterval(() => { void pc711.passiveCheck().catch(() => {}); }, 60 * 1000);
+if (typeof pc711PassiveTimer.unref === "function") pc711PassiveTimer.unref();
 const pc711Allowed = createWindowLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
 const pc711StatusAllowed = createWindowLimiter({ max: 120, windowMs: 10 * 60 * 1000 });
 const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed, statusAllowed: pc711StatusAllowed });
