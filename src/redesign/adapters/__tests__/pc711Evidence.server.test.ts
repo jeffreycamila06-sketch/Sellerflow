@@ -34,7 +34,7 @@ const OK = (i: { kind: string }) => ({ verdict: i.kind === "phone" ? "ok" : "ope
 const RESTRICTED = () => ({ verdict: "restricted", http: 200, ms: 900, kind: "", raw: "Status:false-restricted", steps: [] });
 const REFUSE = () => ({ verdict: "unknown", http: 429, ms: 300, kind: "http", steps: [{ step: "phone.token", http: 429, ms: 300, ok: false, note: "kind=http" }] });
 
-function harness(o: { health?: (fromIso: string) => Row | null; saveFails?: () => boolean; updateFails?: () => boolean; queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (i: Record<string, string>) => unknown; awaitingRows?: () => Row[]; parcels?: Record<string, Row | null>; start?: number } = {}) {
+function harness(o: { health?: (fromIso: string) => Row | null; saveFails?: () => boolean; updateFails?: () => boolean; queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (i: Record<string, string>) => unknown; awaitingRows?: () => Row[]; parcels?: Record<string, Row | null>; start?: number; status?: () => Row } = {}) {
   let t = o.start ?? NOW;
   const logs: string[] = [], oldRows: Row[] = [], evRows: Row[] = [], updates: [unknown, Row][] = [];
   const settings: Record<string, string> = { pc711_shadow_enabled: "true", [MIRROR_SWITCH]: o.mirror ? "true" : "false" };
@@ -78,7 +78,7 @@ function harness(o: { health?: (fromIso: string) => Row | null; saveFails?: () =
   };
   const check = vi.fn(async (i: Record<string, string>) => { t += 900; return o.check ? o.check(i) : OK(i as { kind: string }); });
   const job = createPc711Shadow({
-    db, evidence: ev, check, pc711: { status: () => ({ state: "connected", since: "c1" }) },
+    db, evidence: ev, check, pc711: { status: () => (o.status ? o.status() : { state: "connected", since: "c1" }) },
     readSetting: req("readSetting", async (k: string) => settings[k] ?? null), now: () => t, log: (l: string) => logs.push(l), sleep: async (ms: number) => { t += ms; },
   });
   return { job, db, ev, check, logs, oldRows, evRows, updates, settings, requests, stops, healthAsked, at: () => t, advance: (ms: number) => { t += ms; } };
@@ -535,5 +535,89 @@ describe("wiring", () => {
     for (const line of src.split("\n").filter((l) => l.includes("say(`"))) {
       expect(line).not.toMatch(/\.phone|customer_name|\.msg|ext_message|\.name\b|input\b/);
     }
+  });
+});
+
+// sql/173: the server lost its 7-11 login while mirror was on → mirror switches itself off ONCE (the
+// existing stop function, rule login_lost — it only ever writes 'false'); nothing else is sent while logged out.
+describe("mirror stops itself when the login is lost (login_lost)", () => {
+  const LOST_STATES = ["needs_login"] as const;
+  it("needs_login while mirror is on → ONE stop (rule login_lost), the switch becomes 'false', no other request", async () => {
+    let st: Row = { state: "connected", since: "c1" };
+    const h = harness({ mirror: true, status: () => st });
+    await h.job.tick(); // a normal pass: the job sees the mirror switch on
+    expect(h.settings[MIRROR_SWITCH]).toBe("true");
+    for (const state of LOST_STATES) {
+      st = { state, since: "c1" };
+      h.requests.length = 0;
+      h.check.mockClear();
+      for (let i = 0; i < 6; i++) { h.advance(5_000); await h.job.tick(); }
+      expect(h.stops).toEqual([{ rule: "login_lost", value: null, from: expect.any(String), parcels: null }]);
+      expect(h.settings[MIRROR_SWITCH]).toBe("false");
+      expect(h.requests).toEqual(["ev.stopMirror"]); // the one write; no pass, no check, no insert
+      expect(h.check).not.toHaveBeenCalled();
+      expect(h.logs.filter((l) => l.includes("rule=login_lost"))).toEqual(["[PC711_SHADOW] mirror self-stop rule=login_lost switched_off"]);
+    }
+  });
+  it("mirror already off → no stop call at all; logged out = zero requests", async () => {
+    let st: Row = { state: "connected", since: "c1" };
+    const h = harness({ mirror: false, status: () => st });
+    await h.job.tick();
+    st = { state: "needs_login", since: "c1" };
+    h.requests.length = 0;
+    for (let i = 0; i < 4; i++) { h.advance(5_000); await h.job.tick(); }
+    expect(h.stops).toEqual([]);
+    expect(h.requests).toEqual([]);
+  });
+  it("the stop write fails → tried again on the next tick; after one success, never again in that logged-out spell", async () => {
+    let st: Row = { state: "connected", since: "c1" };
+    const h = harness({ mirror: true, status: () => st });
+    await h.job.tick();
+    let fail = 2;
+    const real = h.ev.stopMirror.getMockImplementation()!;
+    h.ev.stopMirror.mockImplementation(async (...a: Parameters<typeof real>) => { if (fail-- > 0) { h.stops.push({ failed: true }); throw new Error("db down"); } return real(...a); });
+    st = { state: "needs_login", since: "c1" };
+    for (let i = 0; i < 6; i++) { h.advance(61_000); await h.job.tick(); }
+    expect(h.ev.stopMirror).toHaveBeenCalledTimes(3); // 2 failures + 1 success, then nothing
+    expect(h.settings[MIRROR_SWITCH]).toBe("false");
+    expect(h.logs.filter((l) => l.includes("rule=login_lost write_failed")).length).toBe(2);
+  });
+  it("a check that sees the logged-out cart page stops the job; the next tick stops mirror once", async () => {
+    let st: Row = { state: "connected", since: "c1" };
+    const h = harness({ mirror: true, status: () => st, queue: [pend("store")], check: () => ({ verdict: "unknown", http: 200, ms: 500, kind: "login_not_accepted", steps: [] }) });
+    await h.job.tick(); // the check comes back logged out → the job stops (status stays "connected", same since)
+    expect(h.stops).toEqual([]);
+    for (let i = 0; i < 3; i++) { h.advance(5_000); await h.job.tick(); }
+    expect(h.stops.map((x) => x.rule)).toEqual(["login_lost"]);
+    expect(h.settings[MIRROR_SWITCH]).toBe("false");
+  });
+  it("logged in again (a new connect) and lost again → a new spell may stop again, only if mirror was switched back on", async () => {
+    let st: Row = { state: "connected", since: "c1" };
+    const h = harness({ mirror: true, status: () => st });
+    await h.job.tick();
+    st = { state: "needs_login", since: "c1" };
+    await h.job.tick();
+    expect(h.stops.length).toBe(1);
+    st = { state: "connected", since: "c2" };
+    await h.job.tick(); // mirror is off now → the pass reads it off
+    st = { state: "needs_login", since: "c2" };
+    await h.job.tick();
+    expect(h.stops.length).toBe(1); // mirror was off: nothing to stop
+    st = { state: "connected", since: "c3" };
+    h.settings[MIRROR_SWITCH] = "true";
+    await h.job.tick();
+    st = { state: "needs_login", since: "c3" };
+    await h.job.tick(); await h.job.tick();
+    expect(h.stops.length).toBe(2);
+    expect(h.settings[MIRROR_SWITCH]).toBe("false");
+  });
+  it("no log line carries a phone, a name, a store number, a cookie or a token", async () => {
+    let st: Row = { state: "connected", since: "c1" };
+    const h = harness({ mirror: true, status: () => st, queue: [pend("phone")] });
+    await h.job.tick();
+    st = { state: "needs_login", since: "c1" };
+    await h.job.tick();
+    expect(noPhoneIn(h.logs)).toBe(true);
+    for (const l of h.logs) { expect(l).not.toContain(STORE); expect(l).not.toMatch(/cookie|token|=[A-Za-z0-9+/]{20,}/i); }
   });
 });
