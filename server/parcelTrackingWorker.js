@@ -19,7 +19,8 @@ import {
   checkRows, readPollGate, readDailyRequests, writePollHealth, purgeRetention,
   selectLiveRows, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, activePollIds,
 } from "./parcelTrackingRunner.js";
-import { splitCheckable, orderForCheck } from "./pickupRules.js";
+import { splitCheckable, orderForCheck, isCheckable, isNotDroppedMessage, RETIRE_NOT_DROPPED_DAYS } from "./pickupRules.js";
+import { MAX_BATCH } from "./parcelTracking.js";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MEMORY_LIMIT_MB } from "./observability.js";
 import { AUTO_SETTING_KEYS, autoSettingsFrom, autoTier, autoScope, overMemoryLimit, clampSetting } from "./parcelTrackingAuto.js";
@@ -33,7 +34,41 @@ export const NEW_PARCEL_SLACK_MS = 5 * 60 * 1000;      // new_parcels scope reac
 export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // 全家 part only (scopeForJob): manual skips in_transit rows checked < 24h ago
 export const AUTO_STALE_MS = 60 * 60 * 1000;           // an auto job queued > 1h ago (e.g. worker was off) is dropped
 export const HEALTH_FALLBACK_SCAN = 200;               // rows read to find one checkable health probe
+
+// NIGHT CLEANUP (2026-11-17): 02:00–05:00 Taipei, only while no job is waiting, at most 600 rows a
+// night. It re-asks 7-11 about unfinished 7-11 parcels whose SAVED answer is "not dropped off yet"
+// and that were synced 10+ Taipei days ago; the batch loop's 10-day rule then decides on the FRESH
+// answer only (still not dropped → leaves Pickup Status; anything else → a normal update). So a
+// seller who never presses still gets these rows cleared, and the old backlog is worked through.
+// 60 rows per worker tick (~30 requests, ~2 min), so a seller's press waits at most one chunk.
+// Tonight's count is read back from the health rows (kind 'cleanup'), so a restart cannot exceed it.
+export const CLEANUP_START_HOUR = 2;
+export const CLEANUP_END_HOUR = 5;
+export const CLEANUP_NIGHT_MAX = 600;
+export const CLEANUP_CHUNK = 60;
+export const CLEANUP_CHUNK_MAX_MS = 5 * 60 * 1000;
+export const CLEANUP_IDLE_PAUSE_MS = 30 * 60 * 1000;   // nothing to do / a read failed → look again in 30 min
 const TAG = "[PARCEL-JOB]";
+
+// PURE — is the night cleanup window open (Taipei 02:00–04:59)?
+export function inCleanupWindow(nowDate) {
+  const h = taipeiHour(nowDate);
+  return h >= CLEANUP_START_HOUR && h < CLEANUP_END_HOUR;
+}
+
+// PURE — rows a night's cleanup has used, from its health rows: answered rows + up to 6 per failed
+// batch (an upper bound, so the night limit is never exceeded).
+export function cleanupRowsUsed(healthRows) {
+  return (healthRows || []).reduce((n, h) => n + (Number(h.updated) || 0) + (Number(h.errors) || 0) * MAX_BATCH, 0);
+}
+
+// PURE — sync time before which a parcel is 10+ Taipei calendar days old (the start of the Taipei
+// day RETIRE_NOT_DROPPED_DAYS - 1 days before today), as an ISO string.
+export function cleanupCreatedBefore(nowDate) {
+  const today = taipeiDay(nowDate);
+  const d = new Date(Date.parse(`${today}T00:00:00Z`) - (RETIRE_NOT_DROPPED_DAYS - 1) * 86400000).toISOString().slice(0, 10);
+  return new Date(`${d}T00:00:00+08:00`).toISOString();
+}
 
 // PURE — per-job parcel cap and per-seller daily request budget by plan. Used by urgent / auto /
 // health jobs and by the 全家 part; a manual 7-11 check has no parcel cap and the budget below.
@@ -162,6 +197,73 @@ export function createWorker(opts) {
   } = opts;
   let running = false, busyMs = 0, restUntil = 0, healthDay = "", timer = null;
   let fmInFlight = false; // a 全家 part that was left behind at its time limit and has not come back yet
+  let cleanupPauseUntil = 0, cleanupNightDone = "";
+  const CTAG = "[PARCEL-CLEANUP]";
+
+  // One night-cleanup chunk (see CLEANUP_* above). Called only from an idle tick (no job waiting),
+  // after the kill switch / breaker gate. Returns a small summary, or null when it did not run.
+  async function maybeCleanup(t) {
+    if (opts.cleanup === false || !inCleanupWindow(t)) return null;
+    const night = taipeiDay(t);
+    if (cleanupNightDone === night || cleanupPauseUntil > t.getTime()) return null;
+    const pause = (why) => { cleanupPauseUntil = t.getTime() + CLEANUP_IDLE_PAUSE_MS; return { cleanup: why }; };
+    try {
+      const nightStart = new Date(`${night}T${String(CLEANUP_START_HOUR).padStart(2, "0")}:00:00+08:00`).toISOString();
+      const { data: hs, error: hErr } = await serviceSb.from("parcel_tracking_health").select("updated,errors")
+        .eq("kind", "cleanup").gte("ran_at", nightStart);
+      if (hErr) return pause("read_failed");
+      const used = cleanupRowsUsed(hs);
+      const room = Math.min(CLEANUP_CHUNK, CLEANUP_NIGHT_MAX - used);
+      if (room <= 0) { cleanupNightDone = night; logger.log(`${CTAG} night limit reached (${used}/${CLEANUP_NIGHT_MAX} rows)`); return { cleanup: "night_limit" }; }
+
+      const { data: acc, error: aErr } = await serviceSb.from("parcel_tracking_access").select("user_id").eq("enabled", true);
+      if (aErr) return pause("read_failed");
+      let ids = (acc || []).map((r) => String(r.user_id)).filter(Boolean);
+      if (ids.length) {
+        const { data: profs, error: pErr } = await serviceSb.from("seller_profiles")
+          .select("auth_user_id, role, plan_status, plan_expiry").in("auth_user_id", ids);
+        if (pErr) return pause("read_failed");
+        ids = activePollIds(ids, profs || [], t); // expired sellers: rows untouched
+      }
+      if (!ids.length) return pause("nothing");
+      // Candidates by the SAVED answer; the decision is made on the fresh answer by checkRows.
+      const { data, error: rErr } = await serviceSb.from("parcel_tracking")
+        .select("id,user_id,tracking_no,arrived_at,status,status_message,unchanged_polls,created_at,last_polled_at,pickup_deadline")
+        .eq("terminal", false).eq("carrier", "711").eq("status", "in_transit")
+        .like("status_message", "%尚未至門市寄件%").lt("created_at", cleanupCreatedBefore(t))
+        .in("user_id", ids)
+        .order("last_polled_at", { ascending: true, nullsFirst: true }).order("id", { ascending: true })
+        .limit(room);
+      if (rErr) return pause("read_failed");
+      const rows = (data || []).filter((r) => r && r.tracking_no && isNotDroppedMessage(r.status_message) && isCheckable(r, t));
+      if (!rows.length) return pause("nothing");
+
+      const daily = { day: taipeiDay(now()), requests: 0, sentThisRun: 0 };
+      const d = await readDailyRequests(serviceSb, daily.day);
+      if (d.error) return pause("read_failed");
+      daily.requests = d.requests;
+      const dailyCap = limits.dailyRequestCap ?? DAILY_REQUEST_CAP;
+      if (!underRequestCap(daily.requests, dailyCap)) return pause("daily_cap");
+
+      const startedMs = now().getTime();
+      const r = await checkRowsImpl({
+        serviceSb, rows, daily, fetchImpl, makeOcr, now, logger, limits: { ...limits, dailyRequestCap: dailyCap }, tag: CTAG,
+        deadlineAt: startedMs + CLEANUP_CHUNK_MAX_MS,
+      });
+      const sellers = new Set(rows.map((x) => String(x.user_id))).size;
+      await writePollHealth(serviceSb, {
+        ran_at: new Date(startedMs).toISOString(), ok: !r.tripped, reason: r.stopReason || null, queries: r.batchesRun, updated: r.updated,
+        errors: r.failures, duration_ms: now().getTime() - startedMs, sellers, skipped_cap: 0, retired: r.retired, requests: r.sent, kind: "cleanup",
+      }, logger);
+      const tonight = used + (Number(r.updated) || 0) + (Number(r.failures) || 0) * MAX_BATCH;
+      logger.log(`${CTAG} checked=${r.updated}/${rows.length} left_pickup_status=${Number(r.notDropped) || 0} sellers=${sellers} requests=${r.sent} tonight=${tonight}/${CLEANUP_NIGHT_MAX}${r.stopReason ? ` stop=${r.stopReason}` : ""}`);
+      if (r.tripped || r.stopReason === "daily_cap") return pause(r.stopReason);
+      return { cleanup: "ran", checked: r.updated, total: rows.length, left: Number(r.notDropped) || 0 };
+    } catch (e) {
+      logger.error(`${CTAG} threw:`, (e && e.code) || "threw");
+      return pause("threw");
+    }
+  }
 
   async function maybeEnqueueHealth(t) {
     const day = taipeiDay(t);
@@ -438,7 +540,11 @@ export function createWorker(opts) {
         return { skipped: "claim_failed" };
       }
       const job = Array.isArray(data) ? data[0] : data;
-      if (!job) { busyMs = 0; return { idle: true }; }
+      if (!job) {
+        busyMs = 0;
+        const c = await maybeCleanup(t); // night cleanup only while nothing is waiting
+        return c ? { idle: true, ...c } : { idle: true };
+      }
       const out = await runJob(job);
       busyMs += out.durationMs;
       if (busyMs >= JOB_MAX_MS) {

@@ -1,0 +1,36 @@
+## BREAK: window runs past 05:00
+   (server/parcelTrackingWorker.js: `export const CLEANUP_END_HOUR = 5;` → `export const CLEANUP_END_HOUR = 6;`)
+     × window is 02:00–04:59 Taipei 16ms
+     × outside 02:00–05:00 → never runs 8ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCleanup.server.test.ts > night cleanup — pure parts > window is 02:00–04:59 Taipei
+ FAIL  src/redesign/adapters/__tests__/pickupCleanup.server.test.ts > night cleanup — in the worker > outside 02:00–05:00 → never runs
+      Tests  2 failed | 9 passed (11)
+
+## BREAK: night limit not read back from the database
+   (server/parcelTrackingWorker.js: `      const room = Math.min(CLEANUP_CHUNK, CLEANUP_NIGHT_MAX - used);` → `      const room = CLEANUP_CHUNK;`)
+     × night limit counted from the database: 580 used → only 20 more; 600 → none (and no more reads tonight) 13ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCleanup.server.test.ts > night cleanup — in the worker > night limit counted from the database: 580 used → only 20 more; 600 → none (and no more reads tonight)
+      Tests  1 failed | 10 passed (11)
+
+## BREAK: (control: harmless edit, must stay green)
+   (server/parcelTrackingWorker.js: `        const c = await maybeCleanup(t); // night cleanup only while nothing is waiting` → `        const c = await maybeCleanup(t); // night cleanup only while nothing is waiting
+        void 0;`)
+      Tests  11 passed (11)
+
+## BREAK: cleanup runs even with a job waiting
+   (server/parcelTrackingWorker.js: `      const { data, error } = await serviceSb.rpc("parcel_tracking_claim_job");` → `      { const pre = await maybeCleanup(t); if (pre) return { idle: true, ...pre }; }
+      const { data, error } = await serviceSb.rpc("parcel_tracking_claim_job");`)
+     × a job waiting → the job runs, the cleanup does not 13ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCleanup.server.test.ts > night cleanup — in the worker > a job waiting → the job runs, the cleanup does not
+      Tests  1 failed | 10 passed (11)
+
+## BREAK: young parcels taken as candidates
+   (server/parcelTrackingWorker.js: `.lt("created_at", cleanupCreatedBefore(t))` → `.lt("created_at", t.toISOString())`)
+     × reads the right candidates and hands them to the check; health row kind 'cleanup'; count-only log 18ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCleanup.server.test.ts > night cleanup — in the worker > reads the right candidates and hands them to the check; health row kind 'cleanup'; count-only log
+      Tests  1 failed | 10 passed (11)
+
