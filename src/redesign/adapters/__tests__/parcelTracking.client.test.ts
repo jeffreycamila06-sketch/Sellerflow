@@ -234,10 +234,11 @@ describe("groupParcels — status buckets, chaseable-gated, deadline-sorted", ()
   ];
   const g = groupParcels(rows, TODAY);
 
-  it("routes each status to its bucket; chaseable only in the 4 actionable groups (+ unchecked under Waiting)", () => {
-    // urgent first, then soonest deadline; the not-checked-yet row (no deadline) sinks last
-    expect(g.waitingPickup.map((r) => r.id)).toEqual(["atUrgent", "atA", "created"]);
-    expect(g.inTransit.map((r) => r.id)).toEqual(["transit"]);
+  it("routes each status to its bucket; chaseable only in the 4 actionable groups (+ a not-checked-yet 7-11 row under In transit)", () => {
+    // urgent first, then soonest deadline
+    expect(g.waitingPickup.map((r) => r.id)).toEqual(["atUrgent", "atA"]);
+    // 2026-11-17: a not-checked-yet 7-11 row is under In transit (no deadline → after the others)
+    expect(g.inTransit.map((r) => r.id)).toEqual(["transit", "created"]);
     expect(g.pickedUp.map((r) => r.id)).toEqual(["picked"]);
     expect(g.returned.map((r) => r.id)).toEqual(["returned"]);
   });
@@ -245,6 +246,11 @@ describe("groupParcels — status buckets, chaseable-gated, deadline-sorted", ()
     expect(g.other.map((r) => r.id).sort()).toEqual(["home", "notfound"]);
     expect(isUnchecked({ status: "created" })).toBe(true);
     for (const st of ["at_store", "in_transit", "not_found", "unknown", "picked_up", "returned"]) expect(isUnchecked({ status: st }), st).toBe(false);
+  });
+  it("a not-checked-yet 全家 row keeps its old place under Waiting", () => {
+    const fm = groupParcels([{ ...row({ id: "fmNew", status: "created" }), carrier: "fm" }, { ...row({ id: "sevenNew", status: "created" }), carrier: "711" }], TODAY);
+    expect(fm.waitingPickup.map((r) => r.id)).toEqual(["fmNew"]);
+    expect(fm.inTransit.map((r) => r.id)).toEqual(["sevenNew"]);
   });
   it("does not mutate the input array", () => {
     expect(rows[0].id).toBe("atA"); // original order untouched

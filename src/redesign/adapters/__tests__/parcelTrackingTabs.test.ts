@@ -16,20 +16,22 @@ const mk = (over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
 });
 
 describe("rowTab — mirrors groupParcels' bucketing (parity)", () => {
-  it("maps statuses; non-chaseable / not_found → null (the 'other' bucket); not-checked-yet → waiting (B2)", () => {
+  it("maps statuses; non-chaseable / not_found → null (the 'other' bucket); not-checked-yet 7-11 → transit, 全家 → waiting", () => {
     expect(rowTab(mk({ status: "at_store" }))).toBe("waiting");
     expect(rowTab(mk({ status: "in_transit" }))).toBe("transit");
     expect(rowTab(mk({ status: "picked_up" }))).toBe("picked");
     expect(rowTab(mk({ status: "returned" }))).toBe("returned");
-    expect(rowTab(mk({ status: "created" }))).toBe("waiting");                 // uploaded, never polled
-    expect(rowTab(mk({ status: "created", shipType: null }))).toBe("waiting"); // even with no ship_type yet
+    expect(rowTab(mk({ status: "created" }))).toBe("transit");                 // uploaded, never checked (2026-11-17)
+    expect(rowTab(mk({ status: "created", shipType: null }))).toBe("transit"); // even with no ship_type yet
+    expect(rowTab(mk({ status: "created", carrier: "711" }))).toBe("transit");
+    expect(rowTab(mk({ status: "created", carrier: "fm" }))).toBe("waiting");  // 全家 keeps its grouping
     expect(rowTab(mk({ status: "not_found" }))).toBeNull();
     expect(rowTab(mk({ status: "at_store", shipType: "HOME" }))).toBeNull();
     expect(rowTab(mk({ status: "at_store", specialType: "return" }))).toBeNull();
   });
   it("agrees with groupParcels for every row", () => {
     const rows = ["at_store", "in_transit", "picked_up", "returned", "created", "not_found"].flatMap((s) =>
-      [mk({ status: s }), mk({ status: s, shipType: "HOME" })]);
+      [mk({ status: s }), mk({ status: s, shipType: "HOME" }), mk({ status: s, carrier: "fm" })]);
     const g = groupParcels(rows, TODAY);
     const byGroup = new Map<string, string | null>();
     g.waitingPickup.forEach((r) => byGroup.set(r.id, "waiting"));
@@ -89,18 +91,18 @@ describe("tabRows / tabCounts", () => {
     mk({ status: "in_transit" }),
     mk({ status: "picked_up" }),
     mk({ status: "returned" }),
-    mk({ status: "created", shipType: null }),         // not checked yet → Waiting (B2)
+    mk({ status: "created", shipType: null }),         // not checked yet (7-11) → In transit (2026-11-17)
     mk({ status: "at_store", shipType: "HOME" }),      // other (non-chaseable)
   ];
   const g = groupParcels(rows, TODAY);
 
-  it("counts per tab; 'all' counts every row incl. the other bucket; Waiting includes not-checked-yet", () => {
-    expect(tabCounts(g)).toEqual({ all: 7, waiting: 3, transit: 1, picked: 1, returned: 1 });
+  it("counts per tab; 'all' counts every row incl. the other bucket; In transit includes a not-checked-yet 7-11 parcel", () => {
+    expect(tabCounts(g)).toEqual({ all: 7, waiting: 2, transit: 2, picked: 1, returned: 1 });
   });
   it("'all' keeps every row (nothing disappears); status tabs are exact", () => {
     expect(tabRows(g, "all", TODAY)).toHaveLength(7);
-    expect(tabRows(g, "waiting", TODAY).map((r) => r.status)).toEqual(["at_store", "at_store", "created"]); // unchecked sinks last
-    expect(tabRows(g, "transit", TODAY)).toHaveLength(1);
+    expect(tabRows(g, "waiting", TODAY).map((r) => r.status)).toEqual(["at_store", "at_store"]);
+    expect(tabRows(g, "transit", TODAY).map((r) => r.status)).toEqual(["in_transit", "created"]); // unchecked: no deadline, sinks last
   });
   it("a no-username parcel is visible in its status tab, sorted by days-left", () => {
     const w = tabRows(g, "waiting", TODAY);
@@ -140,13 +142,15 @@ describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoi
     expect(adapter).toContain('.order("returned_at", { ascending: false');
     expect(adapter).toContain('.order("picked_up_at", { ascending: false');
     // never-partial (the S1 rule): any query error — incl. the S7 exact-count queries — fails the WHOLE load
-    expect(adapter).toContain("const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error;");
+    expect(adapter).toContain("const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error || uncheckedFm.error;");
   });
   it("S7: the unfinished list is PAGED in a stable order (deadline, then id) and Load more continues from the offset", () => {
     expect(adapter).toMatch(/\.order\("pickup_deadline", \{ ascending: true, nullsFirst: false \}\)\s*\.order\("id", \{ ascending: true \}\)\s*\.range\(from, from \+ PARCEL_TRACKING_PAGE - 1\)/);
     expect(adapter).toContain("const { data, error } = await livePage(me, Math.max(0, offset), fm);");
-    // exact waiting = chaseable at_store + not-checked-yet; transit = chaseable in_transit
+    // exact waiting = chaseable at_store (+ a not-checked-yet 全家 row); transit = chaseable in_transit + not-checked-yet 7-11
     expect(adapter).toContain('.or("special_type.is.null,special_type.eq.")');
-    expect(adapter).toContain("waiting: (atStore.count ?? 0) + (unchecked.count ?? 0),");
+    expect(adapter).toContain("waiting: (atStore.count ?? 0) + (uncheckedFm.count ?? 0),");
+    expect(adapter).toContain("transit: (transit.count ?? 0) + (unchecked.count ?? 0),");
+    expect(adapter).toContain('fm ? created().eq("carrier", "711") : created(),');
   });
 });

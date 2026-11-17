@@ -43,7 +43,7 @@ const ROWS = [
   mk({ status: "in_transit", buyerUsername: "moving" }),
   mk({ status: "picked_up", buyerUsername: "collected" }),
   mk({ status: "returned", buyerUsername: "bounced" }),
-  mk({ status: "created", shipType: null, buyerUsername: "fresh" }),                             // uploaded, not checked yet → Waiting (B2)
+  mk({ status: "created", shipType: null, buyerUsername: "fresh" }),                             // uploaded, not checked yet → In transit (2026-11-17)
 ];
 
 const view = () => render(<TProvider lang="en"><ParcelTracking /></TProvider>);
@@ -59,8 +59,8 @@ describe("WEB — boxed status tabs + aligned table", () => {
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-tabs")).toBeTruthy());
     expect(r.getByTestId("pt-tab-all").textContent).toContain("8");
-    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("5"); // 4 at store + 1 not checked yet
-    expect(r.getByTestId("pt-tab-transit").textContent).toContain("1");
+    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("4"); // 4 at store
+    expect(r.getByTestId("pt-tab-transit").textContent).toContain("2"); // 1 moving + 1 not checked yet (2026-11-17)
     expect(r.getByTestId("pt-tab-picked").textContent).toContain("1");
     expect(r.getByTestId("pt-tab-returned").textContent).toContain("1");
     expect(r.getByTestId("pt-tab-waiting").getAttribute("aria-selected")).toBe("true");
@@ -73,24 +73,21 @@ describe("WEB — boxed status tabs + aligned table", () => {
 
   it("Waiting rows sorted by days-left (urgent first), urgent Left is red, every row has a F-code cell", async () => {
     const r = view();
-    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(5));
+    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(4));
     const rows = r.getAllByTestId("pt-row");
     expect(rows[0].textContent).toContain("@urgent_buyer");          // 1 day left → first
     expect(within(rows[0]).getByTestId("pt-left").getAttribute("data-urgent")).toBe("1");
     expect(within(rows[3]).getByTestId("pt-left").getAttribute("data-urgent")).toBe("0"); // 5 days → gray
-    // not-checked-yet row sinks last, honest label, NO chase action
-    expect(rows[4].textContent).toContain("@fresh");
-    expect(within(rows[4]).getByTestId("pt-left").textContent).toBe("Not checked yet");
-    expect(within(rows[4]).queryByTestId("pt-open-profile")).toBeNull();
-    expect(within(rows[4]).queryByTestId("pt-copy-username")).toBeNull();
-    expect(r.getAllByTestId("pt-code")).toHaveLength(5);
+    // the not-checked-yet row is no longer under Waiting (it is under In transit — next test)
+    expect(rows.some((x) => x.textContent?.includes("@fresh"))).toBe(false);
+    expect(r.getAllByTestId("pt-code")).toHaveLength(4);
     // the no-username parcel stays visible in its tab
     expect(rows.some((x) => /no username/i.test(x.textContent || ""))).toBe(true);
   });
 
   it("plain handle → Chase (opens TikTok); other username → Copy it; no username → Copy the tracking number (S6); not checked yet → nothing", async () => {
     const r = view();
-    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(5));
+    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(4));
     const open = r.getAllByTestId("pt-open-profile");
     expect(open.map((a) => a.getAttribute("href"))).toEqual(expect.arrayContaining(["https://www.tiktok.com/@urgent_buyer", "https://www.tiktok.com/@maria_shop"]));
     open.forEach((a) => expect(a.textContent).toBe("Chase"));
@@ -113,8 +110,14 @@ describe("WEB — boxed status tabs + aligned table", () => {
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-tabs")).toBeTruthy());
     fireEvent.click(r.getByTestId("pt-tab-transit"));
-    expect(r.getByTestId("pt-left").textContent).toBe("—");
+    const transit = r.getAllByTestId("pt-row");
+    expect(transit).toHaveLength(2);
+    expect(within(transit[0]).getByTestId("pt-left").textContent).toBe("—");
+    // not checked yet: under In transit, honest label, NO chase action, sinks last (no deadline)
+    expect(transit[1].textContent).toContain("@fresh");
+    expect(within(transit[1]).getByTestId("pt-left").textContent).toBe("Not checked yet");
     expect(r.queryByTestId("pt-open-profile")).toBeNull();
+    expect(r.queryByTestId("pt-copy-username")).toBeNull();
     fireEvent.click(r.getByTestId("pt-tab-picked"));
     expect(r.getByTestId("pt-left").textContent).toBe("Done");
     expect(r.queryByTestId("pt-open-profile")).toBeNull();
@@ -158,12 +161,15 @@ describe("MOBILE — status count cards + compact rows (no parcel code)", () => 
   it("4 status cards with counts; Waiting selected; compact rows WITHOUT the F-code", async () => {
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-cards")).toBeTruthy());
-    expect(r.getByTestId("pt-card-waiting").textContent).toContain("5");
+    expect(r.getByTestId("pt-card-waiting").textContent).toContain("4");
+    expect(r.getByTestId("pt-card-transit").textContent).toContain("2");
     expect(r.getByTestId("pt-card-picked").textContent).toContain("1");
     expect(r.getByTestId("pt-card-waiting").getAttribute("aria-pressed")).toBe("true");
     expect(r.getByTestId("pt-card-waiting").style.border).toContain("2px");
-    expect(r.getAllByTestId("pt-row")).toHaveLength(5);
-    // B2: a freshly synced (never polled) parcel is VISIBLE on the phone, under Waiting
+    expect(r.getAllByTestId("pt-row")).toHaveLength(4);
+    // a freshly synced (never checked) parcel is VISIBLE on the phone — under In transit (2026-11-17)
+    expect(r.getAllByTestId("pt-row").some((x) => x.textContent?.includes("@fresh"))).toBe(false);
+    fireEvent.click(r.getByTestId("pt-card-transit"));
     const fresh = r.getAllByTestId("pt-row").find((x) => x.textContent?.includes("@fresh"))!;
     expect(fresh).toBeTruthy();
     expect(within(fresh).getByTestId("pt-left").getAttribute("data-unchecked")).toBe("1");
