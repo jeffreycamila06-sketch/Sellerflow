@@ -51,7 +51,7 @@ describe("Pickup Status — Sync from 賣貨便", () => {
     await waitFor(() => expect(r.getByTestId("pt-sync")).toBeTruthy());
     loadParcelTracking.mockClear();
     pickFile(r);
-    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("2 new · 1 updated · 0 already synced New parcels are being checked now."));
+    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("2 new · 1 updated · 0 already synced"));
     expect(loadParcelTracking).toHaveBeenCalled();
     expect(r.queryByTestId("pt-sync-error")).toBeNull();
   });

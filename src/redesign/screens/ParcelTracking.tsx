@@ -735,11 +735,9 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
       return;
     }
     if (res.fresh + res.updated === 0) { showToast(tpl(t.rd_pt_sync_noop, { n: res.same })); return; }
-    const done = tpl(t.rd_pt_sync_done2, { new: res.fresh, updated: res.updated, same: res.same });
-    // New rows queue an automatic check server-side (trigger) — say so, and show it running.
-    showToast(res.fresh > 0 ? `${done} ${t.rd_pt_autocheck}` : done, 5000);
+    // No check runs at Sync any more (2026-11-17): new 7-11 parcels are first checked on the 2nd day.
+    showToast(tpl(t.rd_pt_sync_done2, { new: res.fresh, updated: res.updated, same: res.same }), 5000);
     await load(); // re-read so the new parcels + @handles show immediately
-    if (res.fresh > 0) { const st = await loadTrackingStatus(); if (st) setStatus(st); }
   };
 
   // "Sync from FamilyMart" — the 好賣+ Order export, read here and saved by the fm_pickup_upload RPC.

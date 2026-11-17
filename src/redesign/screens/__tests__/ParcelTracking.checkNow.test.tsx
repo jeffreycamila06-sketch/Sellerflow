@@ -2,7 +2,7 @@
 // Last checked comes ONLY from last_completed_at; the button is ready / busy / locked;
 // status is re-read (fast interval in tests) only while a job is active; refusals get
 // plain words; the urgent link appears only when a parcel is due today/tomorrow; the
-// Stale chip marks rows not checked for 24h+; Sync with new parcels says they're being checked.
+// Stale chip marks rows not checked for 24h+; Sync no longer starts a check (2026-11-17).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -184,14 +184,16 @@ describe("check card", () => {
     expect(r.getByTestId("pt-stale").textContent).toBe("Not checked 24h+");
   });
 
-  it("Sync with new parcels says they're being checked and shows Checking…", async () => {
+  it("Sync with new parcels no longer says they're being checked and starts no Checking… (2026-11-17)", async () => {
     syncFromExport.mockResolvedValue({ ok: true, total: 2, fresh: 2, updated: 0, same: 0, withoutHandle: 0 });
     const r = view();
     await r.findByTestId("pt-check-card");
-    loadTrackingStatus.mockResolvedValue(st({ active_job: { id: "j", kind: "new_parcels", status: "queued" } }));
+    const reads = loadTrackingStatus.mock.calls.length;
     fireEvent.change(r.getByTestId("pt-sync-file"), { target: { files: [new File([new Uint8Array([1])], "x.xlsx")] } });
-    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toContain("New parcels are being checked now."));
-    await waitFor(() => expect(r.getByTestId("pt-check-now").textContent).toBe("Checking…"));
+    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("2 new · 0 updated · 0 already synced"));
+    expect(r.getByTestId("pt-toast").textContent).not.toContain("being checked");
+    expect(loadTrackingStatus.mock.calls.length).toBe(reads); // no status read → no Checking… spinner
+    expect(r.getByTestId("pt-check-now").textContent).not.toBe("Checking…");
   });
 
   it("hourglass only while a job is active; the button still reads exactly \"Checking…\"", async () => {
