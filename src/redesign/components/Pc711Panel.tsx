@@ -365,9 +365,16 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
   if (status.state === "needs_login") {
     return (
       <div data-testid="pc711-needs-login">
-        <div role="alert" style={{ background: "rgba(217,119,6,.14)", border: "1px solid rgba(217,119,6,.45)", color: "var(--text)", borderRadius: 14, padding: "13px 14px", fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>{t.rd_pc711_needs}</div>
+        <div role="alert" data-testid="pc711-logged-out" style={{ background: "var(--danger-soft)", border: "1.5px solid var(--danger)", color: "var(--text)", borderRadius: 14, padding: "13px 14px", lineHeight: 1.45 }}>
+          <div data-testid="pc711-lo-title" style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 15, fontWeight: 800, color: "var(--danger)" }}>
+            <span aria-hidden style={{ width: 10, height: 10, borderRadius: 10, background: "var(--danger)", flex: "0 0 10px", marginTop: 6 }} />
+            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{t.rd_pc711_lo_title}</span>
+          </div>
+          <div data-testid="pc711-lo-since" style={{ marginTop: 6, fontSize: 13, fontWeight: 700 }}>{tpl(t.rd_pc711_lo_since, { time: status.loggedOutSince ? taipeiStamp(status.loggedOutSince) : "—" })}</div>
+          <div data-testid="pc711-lo-paused" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)" }}>{t.rd_pc711_lo_paused}</div>
+        </div>
         {errLine}
-        <button type="button" data-testid="pc711-begin" disabled={busy} onClick={() => void begin()} style={{ ...primary, opacity: busy ? 0.55 : 1 }}>{t.rd_pc711_connect_again}</button>
+        <button type="button" data-testid="pc711-begin" disabled={busy} onClick={() => void begin()} style={{ ...primary, opacity: busy ? 0.55 : 1 }}>{t.rd_pc711_lo_btn}</button>
       </div>
     );
   }

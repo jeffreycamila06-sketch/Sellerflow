@@ -185,6 +185,7 @@ export function createPc711Login(opts = {}) {
   let row = null;          // the saved row (blob + state fields)
   let phoneTail = "";      // from the blob
   let flow = null;         // the one login flow in progress (holds the password/picture in memory only)
+  let loggedOutAt = 0;     // when THIS server saw the state become needs_login (0 = not seen; see loggedOutSince)
 
   const say = (step, http, ms, w) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${word(w)}`); } catch { /* never stops */ } };
   const sayWords = (step, http, ms, words) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${words}`); } catch { /* never stops */ } };
@@ -320,7 +321,10 @@ export function createPc711Login(opts = {}) {
 
   // ── saved row ───────────────────────────────────────────────────────────────
   async function persist(patch) {
+    const wasOut = Boolean(row) && row.state === "needs_login";
     row = { ...(row || {}), ...patch, updated_at: new Date(now()).toISOString() };
+    if (row.state === "needs_login" && !wasOut) loggedOutAt = now();
+    if (row.state !== "needs_login") loggedOutAt = 0;
     if (store) await store.save(row);
   }
   async function saveSession(jarDump, extra = {}) {
@@ -344,13 +348,21 @@ export function createPc711Login(opts = {}) {
     } catch { say("load", 0, 0, "store_error"); }
   }
 
+  // Since when the server is logged out (needs_login): the moment this server saw it happen; after a
+  // restart, the time of the last quick re-login try (that try is what found it logged out), else the
+  // last time the saved row changed.
+  function loggedOutSince() {
+    if (!row || row.state !== "needs_login") return null;
+    if (loggedOutAt) return new Date(loggedOutAt).toISOString();
+    return row.last_quick_at || row.updated_at || null;
+  }
   function status() {
-    if (!key) return { state: "key_missing", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: "key_missing" };
-    if (!row || !row.blob) return { state: "not_connected", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: row?.last_problem ? word(row.last_problem) : null };
+    if (!key) return { state: "key_missing", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: "key_missing", loggedOutSince: null };
+    if (!row || !row.blob) return { state: "not_connected", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: row?.last_problem ? word(row.last_problem) : null, loggedOutSince: null };
     return {
       state: row.state === "needs_login" ? "needs_login" : "connected",
       since: row.since || null, lastOkAt: row.last_ok_at || null, autoLogins: Number(row.auto_logins || 0),
-      phoneTail, lastProblem: row.last_problem ? word(row.last_problem) : null,
+      phoneTail, lastProblem: row.last_problem ? word(row.last_problem) : null, loggedOutSince: loggedOutSince(),
     };
   }
 

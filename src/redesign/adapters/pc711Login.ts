@@ -15,6 +15,8 @@ export interface Pc711Status {
   autoLogins: number;
   phoneTail: string;
   lastProblem: string | null;
+  /** needs_login only: since when the server is logged out of 7-11 (ISO) */
+  loggedOutSince: string | null;
 }
 export interface Pc711Answer {
   ok: boolean;
@@ -38,6 +40,7 @@ export function toPc711Status(j: unknown): Pc711Status | null {
     autoLogins: Number.isFinite(Number(o.autoLogins)) ? Number(o.autoLogins) : 0,
     phoneTail: typeof o.phoneTail === "string" ? o.phoneTail.slice(-3) : "",
     lastProblem: typeof o.lastProblem === "string" ? o.lastProblem : null,
+    loggedOutSince: state === "needs_login" && typeof o.loggedOutSince === "string" && Number.isFinite(Date.parse(o.loggedOutSince)) ? o.loggedOutSince : null,
   };
 }
 

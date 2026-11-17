@@ -439,3 +439,37 @@ describe("pc711 login — server.js wiring (additions only)", () => {
     expect(src).toContain('req.path.startsWith("/admin/pc711/")');
   });
 });
+
+// Admin "Logged out since": when this server saw the state become needs_login; after a restart, the time of
+// the quick re-login try that found it logged out. Cleared when connected again.
+describe("pc711 login — logged out since", () => {
+  it("set when the state becomes needs_login, kept while it stays, cleared on a new connect, from the saved row after a restart", async () => {
+    let t = Date.UTC(2026, 10, 17, 0, 0);
+    const m = memStore();
+    const first = make(fullSite().f, { store: m.store, now: () => t });
+    await connectAll(first.login);
+    expect(first.login.status()).toMatchObject({ state: "connected", loggedOutSince: null });
+    // 08:06 Taipei: the quick re-login is offered a passkey → needs_login
+    t = Date.UTC(2026, 10, 17, 0, 6);
+    const s2 = fullSite({ [`POST ${OP}${PC711_ROUTES.quickCandidates}`]: { ct: JSONH, body: JSON.stringify({ candidates: [{ id: "x", type: "passkey" }] }) } });
+    const login2 = createPc711Login({ fetchImpl: s2.f as never, now: () => t, log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login2.load();
+    await login2.quickRelogin();
+    expect(login2.status()).toMatchObject({ state: "needs_login", loggedOutSince: "2026-11-17T00:06:00.000Z" });
+    t += 30 * 60_000;
+    expect(login2.status().loggedOutSince).toBe("2026-11-17T00:06:00.000Z"); // does not move while it stays logged out
+    // a restart: the time of the try that found it logged out (last_quick_at), from the saved row
+    const login3 = createPc711Login({ fetchImpl: s2.f as never, now: () => t, log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login3.load();
+    expect(login3.status()).toMatchObject({ state: "needs_login", loggedOutSince: "2026-11-17T00:06:00.000Z" });
+    // Jeff logs in again → cleared
+    const login4 = createPc711Login({ fetchImpl: fullSite().f as never, now: () => t, log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login4.load();
+    await connectAll(login4);
+    expect(login4.status()).toMatchObject({ state: "connected", loggedOutSince: null });
+  });
+  it("not connected / key missing → no 'logged out since'", async () => {
+    expect(make(fullSite().f).login.status().loggedOutSince).toBeNull();
+    expect(make(fullSite().f, { env: {} }).login.status().loggedOutSince).toBeNull();
+  });
+});

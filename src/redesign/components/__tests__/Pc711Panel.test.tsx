@@ -44,6 +44,41 @@ describe("Pc711Panel", () => {
     await waitFor(() => expect(screen.getByTestId("pc711-needs-login")).toBeTruthy());
     expect(screen.getByTestId("pc711-begin")).toBeTruthy();
   });
+  it("logged out: says plainly it needs Jeff to log in, since when (Taipei time), and that checks are paused", async () => {
+    push("/status", { body: { state: "needs_login", loggedOutSince: "2026-11-17T00:06:00Z" } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-logged-out")).toBeTruthy());
+    expect(screen.getByTestId("pc711-logged-out").getAttribute("role")).toBe("alert");
+    expect(screen.getByTestId("pc711-lo-title").textContent).toBe("Logged out of 7-11 — needs Jeff to log in");
+    expect(screen.getByTestId("pc711-lo-since").textContent).toBe("Logged out since 11/17 08:06:00");
+    expect(screen.getByTestId("pc711-lo-paused").textContent).toContain("checks are paused");
+    expect(screen.getByTestId("pc711-begin").textContent).toBe("Log in to 7-11");
+  });
+  it("logged out with no time known → '—', never a wrong time", async () => {
+    push("/status", { body: { state: "needs_login", loggedOutSince: "not a date" } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-lo-since").textContent).toBe("Logged out since —"));
+  });
+  it("connected → no logged-out box", async () => {
+    push("/status", { body: { state: "connected", since: "2026-11-14T00:00:00Z", lastOkAt: "2026-11-14T00:00:00Z", autoLogins: 0, phoneTail: "678", loggedOutSince: "2026-11-17T00:06:00Z" } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-connected")).toBeTruthy());
+    expect(screen.queryByTestId("pc711-logged-out")).toBeNull();
+  });
+  it("the logged-out box is written in all 8 languages (no English left in the other 7)", async () => {
+    const en: Record<string, string> = {};
+    for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"]) {
+      push("/status", { body: { state: "needs_login", loggedOutSince: "2026-11-17T00:06:00Z" } });
+      const r = render(<TProvider lang={lang as never}><Pc711Panel /></TProvider>);
+      await waitFor(() => expect(r.getByTestId("pc711-lo-title")).toBeTruthy());
+      const txt = { title: r.getByTestId("pc711-lo-title").textContent!, since: r.getByTestId("pc711-lo-since").textContent!, paused: r.getByTestId("pc711-lo-paused").textContent!, btn: r.getByTestId("pc711-begin").textContent! };
+      for (const v of Object.values(txt)) expect(v.trim().length).toBeGreaterThan(3);
+      expect(txt.since).toContain("11/17 08:06:00");
+      if (lang === "en") Object.assign(en, txt);
+      else for (const k of Object.keys(txt)) expect(txt[k as keyof typeof txt], `${lang} ${k}`).not.toBe(en[k]);
+      r.unmount();
+    }
+  });
   it("full connect ladder: begin → step1 → send SMS → step2 → connect → connected", async () => {
     push("/status", { body: { state: "not_connected" } });
     push("/login/start", { body: { flowId: "F1", captcha: "data:image/png;base64,AAA" } });
