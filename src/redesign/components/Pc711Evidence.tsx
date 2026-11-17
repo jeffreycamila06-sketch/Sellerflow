@@ -132,6 +132,7 @@ export default function Pc711EvidenceBlock() {
           <div data-testid="pc711-ev-mirror-phone" style={line}>{srcLine("mirror", "phone")}</div>
           <div data-testid="pc711-ev-mirror-store" style={line}>{srcLine("mirror", "store")}</div>
           <div data-testid="pc711-ev-mirror-line" style={line}>{tpl(t.rd_pc711_ev_mirrorline, { s: String(tot.mirror.serverFirst), e: String(tot.mirror.extensionFirst), ms: tot.mirror.avgFirstByMs === null ? "—" : String(tot.mirror.avgFirstByMs), l: String(tot.mirror.late), n: String(tot.mirror.timeout) })}</div>
+          <div data-testid="pc711-ev-mirror-remembered" style={{ ...line, color: "var(--text-dim)" }}>{tpl(t.rd_pc711_ev_mirror_rem, { n: String(tot.mirror.remembered) })}</div>
           <div style={head}>{t.rd_pc711_ev_other}</div>
           <div data-testid="pc711-ev-restricted" style={line}>{tpl(t.rd_pc711_ev_restricted, { a: String(tot.restricted.agree), d: String(tot.restricted.disagree) })}</div>
           <div data-testid="pc711-ev-storeage" style={line}>{tpl(t.rd_pc711_ev_storeage, { avg: tot.storeAge.avgS === null ? "—" : String(tot.storeAge.avgS), max: tot.storeAge.maxS === null ? "—" : String(tot.storeAge.maxS), n: String(tot.storeAge.n) })}</div>

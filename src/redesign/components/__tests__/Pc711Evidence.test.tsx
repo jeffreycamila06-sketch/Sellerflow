@@ -29,7 +29,7 @@ const TOTALS = {
     { mode: "after", kind: "store", source: "remembered", compared: 7, agree: 0 },
     { mode: "mirror", kind: "phone", source: "fresh", compared: 3, agree: 3 },
   ],
-  mirror: { n: 4, serverFirst: 3, extensionFirst: 1, avgFirstByMs: 1800, late: 1, timeout: 0 },
+  mirror: { n: 4, serverFirst: 3, extensionFirst: 1, avgFirstByMs: 1800, late: 1, timeout: 0, remembered: 2 },
   storeAge: { n: 15, avgS: 640, maxS: 3428 }, restricted: { agree: 6, disagree: 2 },
 };
 const MIS = { id: 7, at: "2026-11-16T15:51:47Z", kind: "phone", round: 1, mode: "after", match: false, ext_verdict: "restricted", srv_verdict: "ok", ext_source: "remembered", reask_n: 2, reask1_word: "ok", reask2_word: "ok", srv_ms: 800 };
@@ -60,6 +60,7 @@ describe("totals", () => {
     expect(screen.getByTestId("pc711-ev-storeage").textContent).toContain("average 640 s · max 3428 s (15)");
     expect(screen.getByTestId("pc711-ev-mirror-line").textContent).toContain("Server first 3 · extension first 1 · average gap 1800 ms · late 1");
     expect(screen.getByTestId("pc711-ev-errors").textContent).toBe("Errors: after 2 · mirror 1");
+    expect(screen.getByTestId("pc711-ev-mirror-remembered").textContent).toBe("Remembered extension answers (not counted in who was first): 2");
   });
   it("pairsBySource adds up a mode + kind by source", () => {
     expect(pairsBySource(TOTALS.pairs as never, "after", "store").remembered).toEqual({ agree: 0, compared: 7 });

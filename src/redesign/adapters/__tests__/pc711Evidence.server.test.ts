@@ -263,8 +263,16 @@ describe("Part 2 — mirror mode", () => {
   it("the extension answers after 15 min → the SAME row, marked late (the pair is kept)", () => {
     const p = pairPatch({ id: 1, kind: "store", input: STORE, cur_input: STORE, ext: "full", ext_at: ago(0), srv_started_at: ago(20), srv_finished_at: ago(19.9),
       srv_verdict: "open", source: "unknown", ext_timeout: true, gone: false }, NOW);
-    expect(p).toMatchObject({ ext_verdict: "full", ext_late: true, match: false, first: "server", pair_closed: true });
+    expect(p).toMatchObject({ ext_verdict: "full", ext_late: true, match: false, first: null, first_by_ms: null, pair_closed: true }); // source unknown → no winner
     expect(p!.ext_age_s).toBe(-1200); // the answer came AFTER the server asked (negative age)
+  });
+  it("who finished first: only a FRESH extension answer counts; a remembered one (16 h old) or an unknown source has no winner", () => {
+    const base = { id: 1, kind: "phone", input: PHONE, cur_input: PHONE, ext: "ok", srv_started_at: ago(1), srv_finished_at: ago(0.9), srv_verdict: "ok", gone: false, ext_timeout: false };
+    const fresh = pairPatch({ ...base, source: "fresh", ext_at: ago(0.8) }, NOW)!;
+    expect(fresh).toMatchObject({ first: "server", first_by_ms: 6000, ext_source: "fresh" });
+    const old = pairPatch({ ...base, source: "remembered", ext_at: ago(16 * 60), cache_at: ago(16 * 60) }, NOW)!;
+    expect(old).toMatchObject({ first: null, first_by_ms: null, ext_source: "remembered", match: true, pair_closed: true });
+    for (const source of ["unknown", null, "weird"]) expect(pairPatch({ ...base, source, ext_at: ago(0.8) }, NOW)).toMatchObject({ first: null, first_by_ms: null, ext_source: "unknown" });
   });
   it("no answer yet → keep waiting; deleted parcel or changed value → stop waiting with the reason", () => {
     const base = { id: 1, kind: "phone", input: PHONE, srv_finished_at: ago(1), srv_verdict: "ok" };
