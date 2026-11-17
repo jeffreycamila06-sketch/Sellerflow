@@ -95,6 +95,12 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
   let verdictGen = 0;                       // pcEv.verdictGen
   let lastKeepaliveAt = 0;                  // pcLastKeepaliveAt
   let s = null;                             // the kept session: { jar, guid, pageUrl, host, section, known }
+  // Jeff 2026-11-18 — the open schedule (the extension waits for a person here):
+  let openFails = 0;           // opens in a row that gave no answer: failed, or opened and died before any answer
+  let nextOpenAt = 0;          // no try before this (2 min after the last try)
+  let loginKick = false;       // a 7-11 login happened: the next refresh may try at once
+  let unanswered = false;      // the kept session was opened and has not given an answer yet
+  let deathCounted = false;    // its death (before any answer) is already counted in openFails
   const say = (line) => { try { log(line); } catch { /* a log never stops a check */ } };
 
   // pcEmapVerdict / pcEmapMiss — the ONLY writers of the miss ladder
@@ -102,6 +108,7 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     e.lastVerdictAt = t; e.misses = 0; e.firstMissAt = 0; e.lastMissReason = ""; e.reloads = 0;
     verdictGen += 1;
     e.remint = { tried: false, result: "" };
+    openFails = 0; nextOpenAt = 0; unanswered = false; // a session gave an answer: the open schedule is over
   }
   function miss(t, reason, transient, inMaint) {
     if (transient) return;
@@ -258,17 +265,15 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     return { ok: true, kind: "", http: info.http, step: info.step };
   }
 
-  // Jeff 2026-11-18 — after a failed open (the extension waits for a person here): one more try at once;
-  // two failures in a row → one try every 2 min until it opens; at once after a 7-11 login; never 01:00–05:00.
-  // hooks.onOpenFail(info) → true when the shadow's safety brake paused (then no further try now);
-  // hooks.onOpenOk() → a successful open breaks the brake's run of refusals.
-  let openFails = 0;           // failed opens in a row
-  let nextOpenAt = 0;          // the next try after two failures in a row
-  let loginKick = false;       // a 7-11 login happened: the next refresh may try at once
+  // Jeff 2026-11-18 — an open that gives no answer (it failed, or it opened and the session died before any
+  // answer): one try at once; then one try every 2 min until a session gives an answer; at once after a
+  // 7-11 login; never 01:00–05:00. hooks.onOpenFail(info) → true when the shadow's safety brake paused (then
+  // no further try now); hooks.onOpenOk() → a successful open breaks the brake's run of refusals.
   async function openTry(hooks) {
     const info = await remint();
     if (info.ok) {
-      openFails = 0; nextOpenAt = 0;
+      // opened: the next try (if this session dies before any answer) not before 2 min from this one
+      nextOpenAt = now() + EMAP_OPEN_RETRY_MS; unanswered = true; deathCounted = false;
       if (hooks && hooks.onOpenOk) { try { hooks.onOpenOk(); } catch { /* never stops the pass */ } }
       return { info, paused: false };
     }
@@ -292,8 +297,11 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     // the server's "賣貨便 tab parked on /cart/detail" = the saved 7-11 login, which the caller checks before every pass
     const remintable = state === "dead" || state === "expired" || state === "no_tab";
     const lastFailed = e.remint.result.startsWith("open_failed");
-    // the extension: once per episode; Jeff: after a failed open, again every 2 min, and at once after a login
-    const due = remintable && !inMaint && (!e.remint.tried || loginKick || (lastFailed && now() >= nextOpenAt));
+    // the opened session died before giving any answer → it counts like a failed open (once per session)
+    let atOnce = false;
+    if (remintable && unanswered && !deathCounted && !inMaint) { deathCounted = true; openFails += 1; atOnce = openFails === 1; }
+    // the extension: once per episode; Jeff: an open with no answer → again at once, then every 2 min; at once after a login
+    const due = remintable && !inMaint && (!e.remint.tried || loginKick || atOnce || ((lastFailed || unanswered) && now() >= nextOpenAt));
     if (due) {
       loginKick = false;
       let r = await openTry(hooks);
@@ -314,7 +322,7 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     verdict: () => verdict(now()),
     miss: (reason, transient, inMaint) => miss(now(), reason, transient, inMaint),
     gen: () => verdictGen,
-    state: () => ({ state: e.state, present: e.present, guid: e.guid, error: e.error, misses: e.misses, reloads: e.reloads, lastVerdictAt: e.lastVerdictAt || null, remintTried: e.remint.tried, remintResult: e.remint.result, openFails, nextOpenAt: nextOpenAt || null }),
+    state: () => ({ state: e.state, present: e.present, guid: e.guid, error: e.error, misses: e.misses, reloads: e.reloads, lastVerdictAt: e.lastVerdictAt || null, remintTried: e.remint.tried, remintResult: e.remint.result, openFails, nextOpenAt: nextOpenAt || null, unanswered }),
     _e: () => e, _session: () => s, _lastKeepaliveAt: () => lastKeepaliveAt,
   };
 }

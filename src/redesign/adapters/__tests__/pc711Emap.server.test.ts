@@ -382,25 +382,97 @@ describe("R9 recovery = pcRecoveryDue / pcDeriveEmap", () => {
   });
 });
 
-describe("R10 dead / expired / no session → re-open ONCE per episode; a verdict ends the episode", () => {
-  it("expired (the reload landed on error.aspx) → one re-open; a second death without a verdict in between → no second re-open", async () => {
-    let guid = MARK.guid;
-    const h = harness({ open: () => OPENED(guid), byid: () => ({ body: "<html>" }), page: () => ({ status: 302, location: "/mobilemap/error.aspx" }) });
-    await h.job.tick(); // open #1
-    // the adopted session has no verdict yet; drive it to expiry
-    for (let i = 0; i < 12 * 30; i++) { h.queue.push(pend("store", { store_id: String(300000 + i), input: String(300000 + i) })); await h.job.tick(); h.advance(5000); }
-    expect(h.opens).toHaveBeenCalledTimes(1); // tried=true stays until a verdict (the extension's rule)
-    expect(h.emap.state().state).toBe("expired");
-    guid = MARK.guid2;
-  });
-  it("after a verdict, a later death re-opens again", async () => {
+describe("R10 dead / expired / no session → re-open (the extension: once per episode; a verdict ends the episode)", () => {
+  it("the first death of a session that had answered → re-opened at once (the extension's rule)", async () => {
     let answer = true;
     const h = harness({ byid: () => (answer ? { body: "OK;1+a+b+enable+0++門市" } : { body: "<html>" }), page: () => ({ status: 302, location: "/mobilemap/error.aspx" }) });
     await h.job.tick(); // open #1
     h.queue.push(pend("store")); await h.job.tick(); // verdict → episode over
     answer = false;
-    for (let i = 0; i < 12 * 30; i++) { h.queue.push(pend("store", { store_id: String(400000 + i), input: String(400000 + i) })); await h.job.tick(); h.advance(5000); }
+    for (let i = 0; i < 12 * 30 && h.opens.mock.calls.length < 2; i++) { h.queue.push(pend("store", { store_id: String(400000 + i), input: String(400000 + i) })); await h.job.tick(); h.advance(5000); }
     expect(h.opens).toHaveBeenCalledTimes(2);
+    const lines = h.logs.filter((l) => l.includes("[PC711_EMAP]"));
+    const reopen = lines.lastIndexOf("[PC711_EMAP] open result=ok");
+    expect(lines[reopen - 1]).toMatch(/recover .*result=error_aspx/); // the death and the re-open in the same pass
+  });
+});
+
+// ═══ R10c Jeff 2026-11-18: opened, but the session died before giving any answer ═══════════════
+describe("R10c opened but died before any answer → the failed-open schedule: once at once, then every 2 min until an answer", () => {
+  const ODD = () => ({ body: "<html>" } as Reply); // no answer from E-Map (the keepalive cannot end the schedule)
+  const die = (h: ReturnType<typeof harness>) => { h.emap._e().error = true; }; // the kept session lands on error.aspx
+  it("a real run: every death before an answer is followed by a re-open in the SAME pass; tries ≥ 2 min apart", async () => {
+    const h = harness({ byid: ODD, page: () => ({ status: 302, location: "/mobilemap/error.aspx" }) });
+    const tries: number[] = [];
+    h.opens.mockImplementation(async () => { tries.push(h.at()); h.events.push("open"); h.advance(3200); return OPENED(); });
+    for (let i = 0; i < 12 * 30; i++) { h.queue.push(pend("store", { store_id: String(300000 + i), input: String(300000 + i) })); await h.job.tick(); h.advance(5000); }
+    expect(tries.length).toBeGreaterThan(3);
+    tries.slice(1).forEach((x, i) => expect(x - tries[i]).toBeGreaterThanOrEqual(EMAP_OPEN_RETRY_MS));
+    const lines = h.logs.filter((l) => l.includes("[PC711_EMAP]"));
+    lines.forEach((l, i) => { if (i > 0 && l === "[PC711_EMAP] open result=ok") expect(lines[i - 1]).toMatch(/recover .*result=error_aspx/); });
+  });
+  it("the first death before an answer → one try at once", async () => {
+    const h = harness({ byid: ODD });
+    await h.job.tick(); // open #1 (ok, no answer yet)
+    h.advance(5000); die(h);
+    await h.job.tick();
+    expect(h.opens).toHaveBeenCalledTimes(2);
+  });
+  it("then every 2 min: a second death right after → no try before 2 min from the last try, one try at 2 min", async () => {
+    const tries: number[] = [];
+    const h = harness({ byid: ODD });
+    h.opens.mockImplementation(async () => { tries.push(h.at()); h.advance(3200); return OPENED(); });
+    await h.job.tick(); h.advance(5000); die(h); await h.job.tick(); // open #1, death → open #2 at once
+    expect(tries.length).toBe(2);
+    h.advance(5000); die(h);
+    for (let i = 0; i < 5; i++) { await h.job.tick(); h.advance(5000); }
+    expect(h.emap.state().openFails).toBe(2); // each death counted ONCE (not once per pass while it waits)
+    for (let i = 0; i < 30 && tries.length === 2; i++) { await h.job.tick(); h.advance(5000); }
+    expect(tries.length).toBe(3);
+    expect(tries[2] - tries[1]).toBeGreaterThanOrEqual(EMAP_OPEN_RETRY_MS);
+    expect(tries[2] - tries[1]).toBeLessThanOrEqual(EMAP_OPEN_RETRY_MS + 5000 + 3200);
+  });
+  it("a session that gives an answer ends the schedule (the next death is the extension's single re-open again)", async () => {
+    const h = harness({ byid: ODD });
+    await h.job.tick(); h.advance(5000); die(h); await h.job.tick(); // open #1, death → #2
+    expect(h.emap.state()).toMatchObject({ openFails: 1, unanswered: true });
+    h.emap.verdict();
+    expect(h.emap.state()).toMatchObject({ openFails: 0, unanswered: false, nextOpenAt: null });
+    h.advance(5000); die(h); await h.job.tick();
+    expect(h.opens).toHaveBeenCalledTimes(3); // at once, not 2 min later
+  });
+  it("a 7-11 login → a try at once (not waiting the 2 min)", async () => {
+    let since = "c1";
+    const h = harness({ byid: ODD, status: () => ({ state: "connected", since }) });
+    await h.job.tick(); h.advance(5000); die(h); await h.job.tick(); // #1, #2
+    h.advance(5000); die(h); await h.job.tick();
+    expect(h.opens).toHaveBeenCalledTimes(2); // < 2 min: waiting
+    since = "c2"; h.advance(5000);
+    await h.job.tick();
+    expect(h.opens).toHaveBeenCalledTimes(3);
+  });
+  it("never during 01:00–05:00 Taipei", async () => {
+    const h = harness({ start: NIGHT - 2 * 3600_000 + 1000, byid: ODD }); // 00:00:01 Taipei (NIGHT = 02:00)
+    await h.job.tick(); // open #1 before 01:00
+    h.set(NIGHT); die(h);
+    for (let i = 0; i < 12 * 30; i++) { await h.job.tick(); h.advance(5000); }
+    expect(h.opens).toHaveBeenCalledTimes(1);
+    h.set(Date.parse("2026-11-17T21:00:10Z")); // 05:00:10
+    await h.job.tick();
+    expect(h.opens).toHaveBeenCalledTimes(2);
+  });
+  it("the safety brake: the re-opens refused 5 times in a row (HTTP 429) → 15 min with no try", async () => {
+    const tries: number[] = [];
+    const h = harness({ byid: ODD });
+    await h.job.tick(); h.advance(5000); // open #1 ok
+    h.opens.mockImplementation(async () => { tries.push(h.at()); h.advance(3200); return { store: { kind: "cart_form_missing", steps: [{ step: "store.cart", http: 429 }] } }; });
+    die(h);
+    for (let i = 0; i < 12 * 60 && tries.length < 5; i++) { await h.job.tick(); h.advance(5000); }
+    expect(tries.length).toBe(5);
+    const fifth = tries[4];
+    for (let i = 0; i < 12 * 14; i++) { await h.job.tick(); h.advance(5000); }
+    expect(tries.length).toBe(5);
+    expect(h.job.state().pausedUntil).toBeGreaterThanOrEqual(fifth + 15 * 60_000 - 1);
   });
 });
 
