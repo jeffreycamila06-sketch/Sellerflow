@@ -124,10 +124,11 @@ export function isChaseable(shipType: string | null | undefined, specialType: st
   return String(shipType).trim().toUpperCase() === "C2C" && String(specialType || "").trim() === "";
 }
 
-// NOT CHECKED YET = a row the seller uploaded ("Sync from 賣貨便") that the poller has
+// NOT CHECKED YET = a row the seller uploaded ("Sync from 賣貨便") that the check has
 // not reached: status is still the table default 'created'. It has no ship_type /
-// deadline yet, so it can't be classified — it is shown under Waiting with an honest
-// "next check within 4h" note (B2) and gets NO Chase action.
+// deadline yet, so it can't be classified. A 7-11 one is shown and counted under In
+// transit (2026-11-17: the first check comes on the 2nd day after the sync); a 全家 one
+// keeps its old place under Waiting. Either way: "Not checked yet", NO Chase action.
 export function isUnchecked(row: Pick<ParcelTrackingRow, "status">): boolean {
   return row.status === "created";
 }
@@ -221,9 +222,9 @@ function byDeadline(today: string) {
 export function groupParcels(rows: ParcelTrackingRow[], today: string): ParcelGroups {
   const g: ParcelGroups = { waitingPickup: [], inTransit: [], pickedUp: [], returned: [], other: [] };
   for (const r of rows) {
-    // Not checked yet (uploaded, never polled — no ship_type yet): shown under Waiting
-    // (B2) so a fresh sync is visible on the phone, where there is no "All" tab.
-    if (isUnchecked(r)) { g.waitingPickup.push(r); continue; }
+    // Not checked yet (uploaded, never checked — no ship_type yet): a 7-11 one under In transit
+    // (2026-11-17), a 全家 one under Waiting as before — visible on the phone, which has no "All" tab.
+    if (isUnchecked(r)) { (r.carrier === "fm" ? g.waitingPickup : g.inTransit).push(r); continue; }
     if (!isChaseable(r.shipType, r.specialType)) { g.other.push(r); continue; }
     if (r.status === "at_store") g.waitingPickup.push(r);
     else if (r.status === "in_transit") g.inTransit.push(r);
@@ -258,7 +259,7 @@ export const PICKUP_STATUS_TABS: Exclude<PickupTab, "all">[] = ["transit", "wait
 // Which status tab a row belongs to (null = the "other" bucket → "all" only). MIRRORS
 // groupParcels' bucketing exactly (parity-tested).
 export function rowTab(row: ParcelTrackingRow): Exclude<PickupTab, "all"> | null {
-  if (isUnchecked(row)) return "waiting"; // not checked yet → Waiting (B2), same as groupParcels
+  if (isUnchecked(row)) return row.carrier === "fm" ? "waiting" : "transit"; // not checked yet — same as groupParcels
   if (!isChaseable(row.shipType, row.specialType)) return null;
   if (row.status === "at_store") return "waiting";
   if (row.status === "in_transit") return "transit";
@@ -272,7 +273,7 @@ export function rowTab(row: ParcelTrackingRow): Exclude<PickupTab, "all"> | null
 // (≤2 days incl. overdue, OR returning-soon) → rendered red. In transit / other → "—";
 // picked up → "Done"; returned → "Returned".
 export type LeftCell =
-  | { kind: "unchecked" } // uploaded, not polled yet → "Not checked yet — next check within 4h"
+  | { kind: "unchecked" } // uploaded, not checked yet → "Not checked yet"
   | { kind: "days"; days: number | null; urgent: boolean }
   | { kind: "none" }
   | { kind: "done" }
@@ -477,8 +478,9 @@ function livePage(me: string, from: number, fm = false) {
 }
 
 // Exact counts for the two tabs built from the (paged) unfinished list. Mirrors
-// groupParcels: waiting = chaseable at_store + not-checked-yet ('created'); transit =
-// chaseable in_transit. Chaseable = ship_type C2C with no special_type.
+// groupParcels: waiting = chaseable at_store (+ a not-checked-yet 全家 row); transit =
+// chaseable in_transit + a not-checked-yet ('created') 7-11 row. Chaseable = ship_type C2C
+// with no special_type. 全家 off → the database hides 全家 rows, so every 'created' row is 7-11.
 function headCount(me: string) {
   return supabase!.from("parcel_tracking").select("id", { count: "exact", head: true }).eq("user_id", me);
 }
@@ -489,7 +491,8 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   const base = () => supabase!.from("parcel_tracking").select(ptSelect(fm), { count: "exact" }).eq("user_id", me);
   const chaseable = (q: ReturnType<typeof headCount>) => q.eq("ship_type", "C2C").or("special_type.is.null,special_type.eq.");
-  const [live, returned, picked, atStore, unchecked, transit] = await Promise.all([
+  const created = () => headCount(me).eq("terminal", false).eq("status", "created");
+  const [live, returned, picked, atStore, unchecked, transit, uncheckedFm] = await Promise.all([
     livePage(me, 0, fm),
     base().eq("status", "returned")
       .order("returned_at", { ascending: false, nullsFirst: false })
@@ -498,10 +501,11 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
       .order("picked_up_at", { ascending: false, nullsFirst: false })
       .limit(PARCEL_TRACKING_PAGE),
     chaseable(headCount(me).eq("terminal", false).eq("status", "at_store")),
-    headCount(me).eq("terminal", false).eq("status", "created"),
+    fm ? created().eq("carrier", "711") : created(),
     chaseable(headCount(me).eq("terminal", false).eq("status", "in_transit")),
+    fm ? created().eq("carrier", "fm") : Promise.resolve({ count: 0, error: null }),
   ]);
-  const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error;
+  const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error || uncheckedFm.error;
   if (err) return { ok: false, rows: [], error: err.message }; // never partial (the S1 rule)
   const rows = [...(live.data ?? []), ...(returned.data ?? []), ...(picked.data ?? [])]
     .map((r) => rowToTracking(r as unknown as Record<string, unknown>));
@@ -510,8 +514,8 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
     picked: picked.count ?? 0,
     returned: returned.count ?? 0,
     live: live.count ?? 0,
-    waiting: (atStore.count ?? 0) + (unchecked.count ?? 0),
-    transit: transit.count ?? 0,
+    waiting: (atStore.count ?? 0) + (uncheckedFm.count ?? 0),
+    transit: (transit.count ?? 0) + (unchecked.count ?? 0),
   };
   return { ok: true, rows, totals };
 }

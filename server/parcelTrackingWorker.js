@@ -8,13 +8,20 @@
 // breaker (inside checkRows), one health row per job, service-role queries always
 // scoped by explicit user_id. Logs carry user_id + counts only — never codes/names.
 //
-// Limits per job: parcels (Plus 300 / Pro·Master·admin 600), a per-seller daily REQUEST
-// budget (same numbers — a 600-parcel pass needs ~300 requests), a 30-min hard stop,
-// and a 10-min rest after 30 min of back-to-back work.
+// 7-11 rules (Jeff, 2026-11-17 — server/pickupRules.js): no check at Sync (a 'new_parcels' job
+// checks no 7-11 parcel; it still runs the 全家 part); a 7-11 parcel is checkable from the 2nd
+// Taipei day after its sync (at a store: always); "Check now" checks EVERY checkable parcel,
+// at-store first, then least recently checked first — no parcel cap.
+// Limits per job: ONE per-seller daily REQUEST budget of 1,100 shared by manual, urgent and auto
+// (health / new_parcels keep the plan number), the global daily cap, a 30-min hard stop, and a
+// 10-min rest after 30 min of back-to-back work. Parcel caps are unchanged (urgent: Plus 300 /
+// Pro·Master·admin 600; auto: its own max parcels).
 import {
   checkRows, readPollGate, readDailyRequests, writePollHealth, purgeRetention,
-  selectLiveRows, isMissingCarrierColumn, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, activePollIds,
+  selectLiveRows, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, activePollIds,
 } from "./parcelTrackingRunner.js";
+import { splitCheckable, orderForCheck, isCheckable, isNotDroppedMessage, RETIRE_NOT_DROPPED_DAYS } from "./pickupRules.js";
+import { MAX_BATCH } from "./parcelTracking.js";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MEMORY_LIMIT_MB } from "./observability.js";
 import { AUTO_SETTING_KEYS, autoSettingsFrom, autoTier, autoScope, overMemoryLimit, clampSetting } from "./parcelTrackingAuto.js";
@@ -25,48 +32,82 @@ export const JOB_MAX_MS = 30 * 60 * 1000;
 export const REST_MS = 10 * 60 * 1000;
 export const HEALTH_HOUR = 9;                          // Taipei — daily health job after 09:00
 export const NEW_PARCEL_SLACK_MS = 5 * 60 * 1000;      // new_parcels scope reaches 5 min before the request
-export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // manual skips in_transit rows checked < 24h ago
+export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // 全家 part only (scopeForJob): manual skips in_transit rows checked < 24h ago
 export const AUTO_STALE_MS = 60 * 60 * 1000;           // an auto job queued > 1h ago (e.g. worker was off) is dropped
+export const HEALTH_FALLBACK_SCAN = 200;               // rows read to find one checkable health probe
+
+// NIGHT CLEANUP (2026-11-17): 02:00–05:00 Taipei, only while no job is waiting, at most 600 rows a
+// night. It re-asks 7-11 about unfinished 7-11 parcels whose SAVED answer is "not dropped off yet"
+// and that were synced 10+ Taipei days ago; the batch loop's 10-day rule then decides on the FRESH
+// answer only (still not dropped → leaves Pickup Status; anything else → a normal update). So a
+// seller who never presses still gets these rows cleared, and the old backlog is worked through.
+// 60 rows per worker tick (~30 requests, ~2 min), so a seller's press waits at most one chunk.
+// Tonight's count is read back from the health rows (kind 'cleanup'), so a restart cannot exceed it.
+export const CLEANUP_START_HOUR = 2;
+export const CLEANUP_END_HOUR = 5;
+export const CLEANUP_NIGHT_MAX = 600;
+export const CLEANUP_CHUNK = 60;
+export const CLEANUP_CHUNK_MAX_MS = 5 * 60 * 1000;
+export const CLEANUP_IDLE_PAUSE_MS = 30 * 60 * 1000;   // nothing to do / a read failed → look again in 30 min
 const TAG = "[PARCEL-JOB]";
 
-// Day-1 transit skip: a 7-11 parcel synced less than N hours ago, already checked once and
-// still in transit almost never reaches the store yet (median 2.7 days Sync → at_store), so
-// manual / auto jobs leave it for a later run. N = app_settings key below (0 = off).
-export const TRANSIT_SKIP_KEY = "parcel_tracking_transit_skip_hours";
-export const TRANSIT_SKIP_SPEC = { def: 24, min: 0, max: 72 };
-const TRANSIT_SKIP_KINDS = new Set(["manual", "auto"]);            // never new_parcels / urgent / health
-const TRANSIT_SKIP_STATUSES = new Set(["in_transit", "created", "unknown"]);
-
-// PURE — the setting value → whole hours in [0, 72]; missing / invalid → 24.
-export function transitSkipHours(raw) {
-  return clampSetting(raw, TRANSIT_SKIP_SPEC);
+// PURE — is the night cleanup window open (Taipei 02:00–04:59)?
+export function inCleanupWindow(nowDate) {
+  const h = taipeiHour(nowDate);
+  return h >= CLEANUP_START_HOUR && h < CLEANUP_END_HOUR;
 }
 
-// PURE — split a job's live rows into { rows (may be queried), skipped }. Skipped rows are
-// simply left out of this job: nothing is written for them, so they come back next run.
-// The live select is 7-11 only (or pre-carrier-column = all 7-11), so a missing carrier counts as 7-11.
-export function splitTransitSkip(job, rows, nowDate, hours) {
-  if (!(hours > 0) || !TRANSIT_SKIP_KINDS.has(job.kind)) return { rows, skipped: [] };
-  const cutoff = nowDate.getTime() - hours * 60 * 60 * 1000;
-  const keep = [], skipped = [];
-  for (const r of rows) {
-    const skip = (r.carrier == null || r.carrier === "711") && !r.terminal
-      && TRANSIT_SKIP_STATUSES.has(r.status) && !!r.last_polled_at
-      && Date.parse(r.created_at) > cutoff;
-    (skip ? skipped : keep).push(r);
-  }
-  return { rows: keep, skipped };
+// PURE — rows a night's cleanup has used, from its health rows: answered rows + up to 6 per failed
+// batch (an upper bound, so the night limit is never exceeded).
+export function cleanupRowsUsed(healthRows) {
+  return (healthRows || []).reduce((n, h) => n + (Number(h.updated) || 0) + (Number(h.errors) || 0) * MAX_BATCH, 0);
 }
 
-// PURE — per-job parcel cap and per-seller daily request budget by plan.
+// PURE — sync time before which a parcel is 10+ Taipei calendar days old (the start of the Taipei
+// day RETIRE_NOT_DROPPED_DAYS - 1 days before today), as an ISO string.
+export function cleanupCreatedBefore(nowDate) {
+  const today = taipeiDay(nowDate);
+  const d = new Date(Date.parse(`${today}T00:00:00Z`) - (RETIRE_NOT_DROPPED_DAYS - 1) * 86400000).toISOString().slice(0, 10);
+  return new Date(`${d}T00:00:00+08:00`).toISOString();
+}
+
+// PURE — per-job parcel cap (urgent / auto / health / the 全家 part; a manual 7-11 check has no
+// parcel cap) and the plan request number (health / new_parcels only — see SELLER_REQUEST_BUDGET).
 export function planCaps(plan, isAdmin = false) {
   const p = String(plan || "").trim().toLowerCase();
   const big = isAdmin || p === "pro" || p === "master";
   return { parcels: big ? 600 : 300, requests: big ? 600 : 300 };
 }
 
-// PURE — which of the seller's non-terminal rows (already stalest-first) this job checks.
+// ONE per-seller daily request budget (any plan) shared by manual, urgent and automatic checks:
+// enough for two 30-minute presses (~520 requests each at 0.5 request per parcel) plus captcha
+// retries. Each job gets it minus EVERYTHING the seller used today, so a large "Check now" never
+// leaves the same seller's urgent press with a smaller plan number to fall under.
+export const SELLER_REQUEST_BUDGET = 1100;
+const SHARED_BUDGET_KINDS = new Set(["manual", "urgent", "auto"]);
+
+// PURE — today's request budget for this job kind (before subtracting what was already used).
+export function sellerRequestBudget(kind, caps) {
+  return SHARED_BUDGET_KINDS.has(kind) ? SELLER_REQUEST_BUDGET : caps.requests;
+}
+
+// PURE — which of the seller's CHECKABLE 7-11 rows (2-day rule already applied) this job checks.
+//   manual      → all of them, in check order (at-store first), never capped
+//   new_parcels → none (no 7-11 check at Sync; the job still runs its 全家 part)
+//   urgent      → as before (at-store due today or tomorrow, plan cap)
+//   health      → the first one in check order
 // Returns { rows, capped }.
+export function sevenScopeForJob(job, rows, nowDate, caps) {
+  if (job.kind === "manual") return { rows: orderForCheck(rows), capped: false };
+  if (job.kind === "new_parcels") return { rows: [], capped: false };
+  if (job.kind === "health") return { rows: orderForCheck(rows).slice(0, 1), capped: false };
+  if (job.kind === "urgent") return scopeForJob(job, rows, nowDate, caps);
+  return { rows: [], capped: false };
+}
+
+// PURE — which of the seller's non-terminal rows (already stalest-first) this job checks.
+// Since 2026-11-17 this is the 全家 part's scope only (unchanged); the 7-11 part uses
+// sevenScopeForJob. Returns { rows, capped }.
 export function scopeForJob(job, rows, nowDate, caps) {
   const now = nowDate.getTime();
   const polledAt = (r) => (r.last_polled_at ? Date.parse(r.last_polled_at) : NaN);
@@ -160,6 +201,73 @@ export function createWorker(opts) {
   } = opts;
   let running = false, busyMs = 0, restUntil = 0, healthDay = "", timer = null;
   let fmInFlight = false; // a 全家 part that was left behind at its time limit and has not come back yet
+  let cleanupPauseUntil = 0, cleanupNightDone = "";
+  const CTAG = "[PARCEL-CLEANUP]";
+
+  // One night-cleanup chunk (see CLEANUP_* above). Called only from an idle tick (no job waiting),
+  // after the kill switch / breaker gate. Returns a small summary, or null when it did not run.
+  async function maybeCleanup(t) {
+    if (opts.cleanup === false || !inCleanupWindow(t)) return null;
+    const night = taipeiDay(t);
+    if (cleanupNightDone === night || cleanupPauseUntil > t.getTime()) return null;
+    const pause = (why) => { cleanupPauseUntil = t.getTime() + CLEANUP_IDLE_PAUSE_MS; return { cleanup: why }; };
+    try {
+      const nightStart = new Date(`${night}T${String(CLEANUP_START_HOUR).padStart(2, "0")}:00:00+08:00`).toISOString();
+      const { data: hs, error: hErr } = await serviceSb.from("parcel_tracking_health").select("updated,errors")
+        .eq("kind", "cleanup").gte("ran_at", nightStart);
+      if (hErr) return pause("read_failed");
+      const used = cleanupRowsUsed(hs);
+      const room = Math.min(CLEANUP_CHUNK, CLEANUP_NIGHT_MAX - used);
+      if (room <= 0) { cleanupNightDone = night; logger.log(`${CTAG} night limit reached (${used}/${CLEANUP_NIGHT_MAX} rows)`); return { cleanup: "night_limit" }; }
+
+      const { data: acc, error: aErr } = await serviceSb.from("parcel_tracking_access").select("user_id").eq("enabled", true);
+      if (aErr) return pause("read_failed");
+      let ids = (acc || []).map((r) => String(r.user_id)).filter(Boolean);
+      if (ids.length) {
+        const { data: profs, error: pErr } = await serviceSb.from("seller_profiles")
+          .select("auth_user_id, role, plan_status, plan_expiry").in("auth_user_id", ids);
+        if (pErr) return pause("read_failed");
+        ids = activePollIds(ids, profs || [], t); // expired sellers: rows untouched
+      }
+      if (!ids.length) return pause("nothing");
+      // Candidates by the SAVED answer; the decision is made on the fresh answer by checkRows.
+      const { data, error: rErr } = await serviceSb.from("parcel_tracking")
+        .select("id,user_id,tracking_no,arrived_at,status,status_message,unchanged_polls,created_at,last_polled_at,pickup_deadline")
+        .eq("terminal", false).eq("carrier", "711").eq("status", "in_transit")
+        .like("status_message", "%尚未至門市寄件%").lt("created_at", cleanupCreatedBefore(t))
+        .in("user_id", ids)
+        .order("last_polled_at", { ascending: true, nullsFirst: true }).order("id", { ascending: true })
+        .limit(room);
+      if (rErr) return pause("read_failed");
+      const rows = (data || []).filter((r) => r && r.tracking_no && isNotDroppedMessage(r.status_message) && isCheckable(r, t));
+      if (!rows.length) return pause("nothing");
+
+      const daily = { day: taipeiDay(now()), requests: 0, sentThisRun: 0 };
+      const d = await readDailyRequests(serviceSb, daily.day);
+      if (d.error) return pause("read_failed");
+      daily.requests = d.requests;
+      const dailyCap = limits.dailyRequestCap ?? DAILY_REQUEST_CAP;
+      if (!underRequestCap(daily.requests, dailyCap)) return pause("daily_cap");
+
+      const startedMs = now().getTime();
+      const r = await checkRowsImpl({
+        serviceSb, rows, daily, fetchImpl, makeOcr, now, logger, limits: { ...limits, dailyRequestCap: dailyCap }, tag: CTAG,
+        deadlineAt: startedMs + CLEANUP_CHUNK_MAX_MS,
+      });
+      const sellers = new Set(rows.map((x) => String(x.user_id))).size;
+      await writePollHealth(serviceSb, {
+        ran_at: new Date(startedMs).toISOString(), ok: !r.tripped, reason: r.stopReason || null, queries: r.batchesRun, updated: r.updated,
+        errors: r.failures, duration_ms: now().getTime() - startedMs, sellers, skipped_cap: 0, retired: r.retired, requests: r.sent, kind: "cleanup",
+      }, logger);
+      const tonight = used + (Number(r.updated) || 0) + (Number(r.failures) || 0) * MAX_BATCH;
+      logger.log(`${CTAG} checked=${r.updated}/${rows.length} left_pickup_status=${Number(r.notDropped) || 0} sellers=${sellers} requests=${r.sent} tonight=${tonight}/${CLEANUP_NIGHT_MAX}${r.stopReason ? ` stop=${r.stopReason}` : ""}`);
+      if (r.tripped || r.stopReason === "daily_cap") return pause(r.stopReason);
+      return { cleanup: "ran", checked: r.updated, total: rows.length, left: Number(r.notDropped) || 0 };
+    } catch (e) {
+      logger.error(`${CTAG} threw:`, (e && e.code) || "threw");
+      return pause("threw");
+    }
+  }
 
   async function maybeEnqueueHealth(t) {
     const day = taipeiDay(t);
@@ -201,23 +309,7 @@ export function createWorker(opts) {
     }, logger);
     if (job.kind !== "health" && purge) { // purge=false: an expired seller's rows stay untouched
       await purgeRetention(serviceSb, [job.user_id], t, logger, TAG);
-      // Rows inserted while this job ran were blocked from enqueuing by the one-active
-      // lock — queue a follow-up covering them.
-      if (job.started_at) {
-        // 7-11 rows only (sql/119); before sql/119 the carrier column is missing → unfiltered.
-        const freshQuery = (sevenElevenOnly) => {
-          let q = serviceSb.from("parcel_tracking").select("id")
-            .eq("user_id", job.user_id).eq("terminal", false);
-          if (sevenElevenOnly) q = q.eq("carrier", "711");
-          return q.is("last_polled_at", null).gte("created_at", job.started_at).limit(1);
-        };
-        let { data: fresh, error: freshErr } = await freshQuery(true);
-        if (isMissingCarrierColumn(freshErr)) ({ data: fresh } = await freshQuery(false));
-        if ((fresh || []).length) {
-          await serviceSb.rpc("parcel_tracking_enqueue_job", { p_user_id: job.user_id, p_kind: "new_parcels", p_created_by: "followup", p_requested_at: job.started_at });
-          logger.log(`${TAG} follow-up new_parcels queued user=${job.user_id}`);
-        }
-      }
+      // (No follow-up new_parcels job any more: a 7-11 parcel is not checked at Sync — 2026-11-17.)
     }
     try { emit(job.user_id, { user_id: job.user_id, job_id: job.id, kind: job.kind, checked, total }); } catch { /* socket down — the client polls */ }
     logger.log(`${TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} status=${status}${error ? ` error=${error}` : ""} checked=${checked}/${total} requests=${requests} ${durationMs}ms${stats}`);
@@ -309,20 +401,6 @@ export function createWorker(opts) {
       if (aErr) logger.error(`${TAG} last_completed_at write failed user=${job.user_id}:`, aErr.code || "error");
     }
     await purgeRetention(serviceSb, [job.user_id], t, logger, TAG);
-    if (job.started_at) { // rows inserted while the job ran — same follow-up as finishJob
-      const freshQuery = (sevenElevenOnly) => {
-        let q = serviceSb.from("parcel_tracking").select("id")
-          .eq("user_id", job.user_id).eq("terminal", false);
-        if (sevenElevenOnly) q = q.eq("carrier", "711");
-        return q.is("last_polled_at", null).gte("created_at", job.started_at).limit(1);
-      };
-      let { data: fresh, error: freshErr } = await freshQuery(true);
-      if (isMissingCarrierColumn(freshErr)) ({ data: fresh } = await freshQuery(false));
-      if ((fresh || []).length) {
-        await serviceSb.rpc("parcel_tracking_enqueue_job", { p_user_id: job.user_id, p_kind: "new_parcels", p_created_by: "followup", p_requested_at: job.started_at });
-        logger.log(`${TAG} follow-up new_parcels queued user=${job.user_id}`);
-      }
-    }
     try { emit(job.user_id, { user_id: job.user_id, job_id: job.id, kind: job.kind, checked: allChecked, total: allTotal }); } catch { /* socket down — the client polls */ }
     logger.log(`${TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} status=${status}${error ? ` error=${error}` : ""} checked=${allChecked}/${allTotal} requests=${requests} ${durationMs}ms${stats} familymart=${fm.checked}/${fm.total}${fm.reason ? ` (${fm.reason})` : ""} ${fmMs}ms`);
     // The worker's rest counts the 全家 time too — also when the 全家 part was cut off at its limit.
@@ -333,6 +411,32 @@ export function createWorker(opts) {
   async function finishNormal(job, res, fmCtx) {
     const plan = await fmPlanFor(job, fmCtx);
     return plan ? finishJobWithFm(job, res, plan) : finishJob(job, res);
+  }
+
+  // One checkable 7-11 row of any active seller (enabled access, plan not expired), for the health
+  // probe. Any read error → none (the job then finishes 0/0, as before).
+  async function healthFallbackRows() {
+    try {
+      const { data: acc, error } = await serviceSb.from("parcel_tracking_access").select("user_id").eq("enabled", true);
+      if (error) return [];
+      let ids = (acc || []).map((r) => String(r.user_id)).filter(Boolean);
+      if (!ids.length) return [];
+      const { data: profs, error: pErr } = await serviceSb.from("seller_profiles")
+        .select("auth_user_id, role, plan_status, plan_expiry").in("auth_user_id", ids);
+      if (pErr) return [];
+      ids = activePollIds(ids, profs || [], now());
+      if (!ids.length) return [];
+      const { data, error: rErr } = await serviceSb.from("parcel_tracking")
+        .select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at,last_polled_at,pickup_deadline")
+        .eq("terminal", false).eq("carrier", "711").in("user_id", ids)
+        .order("last_polled_at", { ascending: true, nullsFirst: true }).order("id", { ascending: true })
+        .limit(HEALTH_FALLBACK_SCAN);
+      if (rErr) return [];
+      const pick = orderForCheck(splitCheckable((data || []).filter((r) => r && r.tracking_no), now()).rows);
+      return pick.slice(0, 1);
+    } catch {
+      return [];
+    }
   }
 
   async function runJob(job) {
@@ -374,7 +478,7 @@ export function createWorker(opts) {
       const { data: todays, error: tErr } = await serviceSb.from("parcel_tracking_jobs").select("requests_used")
         .eq("user_id", job.user_id).gte("requested_at", taipeiMidnightIso(now()));
       if (tErr) return finishJob(job, { status: "failed", error: "select_failed", startedMs });
-      const budget = caps.requests - (todays || []).reduce((n, j) => n + (Number(j.requests_used) || 0), 0);
+      const budget = sellerRequestBudget(job.kind, caps) - (todays || []).reduce((n, j) => n + (Number(j.requests_used) || 0), 0);
       if (budget < MAX_REQUESTS_PER_BATCH) return finishJob(job, { status: "skipped", error: "daily_cap", startedMs });
 
       const daily = { day: taipeiDay(now()), requests: 0, sentThisRun: 0 };
@@ -393,20 +497,17 @@ export function createWorker(opts) {
       const sel = await selectLiveRows(serviceSb, [job.user_id]);
       if (sel.error) return finishJob(job, { status: "failed", error: "select_failed", startedMs });
       const live = sel.rows.filter((r) => r && r.tracking_no);
-      let skipHours = 0;
-      if (TRANSIT_SKIP_KINDS.has(job.kind)) {
-        // A failed settings read keeps the old behaviour (no skip).
-        const { data: ts, error: tsErr } = await serviceSb.from("app_settings").select("key,value").in("key", [TRANSIT_SKIP_KEY]);
-        if (!tsErr) skipHours = transitSkipHours((ts || []).find((r) => r.key === TRANSIT_SKIP_KEY)?.value);
-      }
-      const split = splitTransitSkip(job, live, now(), skipHours);
+      // 2-day rule: a 7-11 parcel synced today or yesterday (Taipei) and not at a store is left
+      // out of every job — nothing is written for it.
+      const split = splitCheckable(live, now());
       const scopeOf = (list) => (auto
         ? autoScope(list, now(), { ...auto, maxParcels: Math.min(auto.maxParcels, caps.parcels) }, tier)
-        : scopeForJob(job, list, now(), caps));
-      const scope = scopeOf(split.rows);
-      // Count only the held-back rows this job would otherwise have queried.
-      const skipped = split.skipped.length ? scopeOf(split.skipped).rows.length : 0;
-      const skipStat = skipped ? ` transit_skipped=${skipped}` : "";
+        : sevenScopeForJob(job, list, now(), caps));
+      let scope = scopeOf(split.rows);
+      // The daily health probe always needs ONE row: when its own seller has none, the stalest
+      // checkable row of any active seller (a normal check of that parcel).
+      if (job.kind === "health" && !scope.rows.length) scope = { rows: await healthFallbackRows(), capped: false };
+      const skipStat = split.young.length && (job.kind === "manual" || isAuto) ? ` young_skipped=${split.young.length}` : "";
       const fmCtx = { auto, tier, caps };
       if (!scope.rows.length) return finishNormal(job, { status: "done", error: null, startedMs, stats: autoStats() + skipStat }, fmCtx);
 
@@ -443,7 +544,11 @@ export function createWorker(opts) {
         return { skipped: "claim_failed" };
       }
       const job = Array.isArray(data) ? data[0] : data;
-      if (!job) { busyMs = 0; return { idle: true }; }
+      if (!job) {
+        busyMs = 0;
+        const c = await maybeCleanup(t); // night cleanup only while nothing is waiting
+        return c ? { idle: true, ...c } : { idle: true };
+      }
       const out = await runJob(job);
       busyMs += out.durationMs;
       if (busyMs >= JOB_MAX_MS) {

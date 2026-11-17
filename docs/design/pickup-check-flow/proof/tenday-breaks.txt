@@ -1,0 +1,32 @@
+## BREAK: 9 days instead of 10
+   (server/pickupRules.js: `export const RETIRE_NOT_DROPPED_DAYS = 10;` → `export const RETIRE_NOT_DROPPED_DAYS = 9;`)
+     × 10 Taipei calendar days: synced the 8th 23:59 → retired on the 18th at 00:00; the 9th 00:00 → kept 8ms
+     × fresh not-dropped answer + synced 10 days ago → terminal, status and message as answered 6ms
+     × same answer, synced 9 days ago → stays (terminal false) 9ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupTenDay.server.test.ts > shouldRetireNotDropped (pure) > 10 Taipei calendar days: synced the 8th 23:59 → retired on the 18th at 00:00; the 9th 00:00 → kept
+ FAIL  src/redesign/adapters/__tests__/pickupTenDay.server.test.ts > checkRows: the 10-day rule on the answer just received > fresh not-dropped answer + synced 10 days ago → terminal, status and message as answered
+ FAIL  src/redesign/adapters/__tests__/pickupTenDay.server.test.ts > checkRows: the 10-day rule on the answer just received > same answer, synced 9 days ago → stays (terminal false)
+      Tests  3 failed | 5 passed (8)
+
+## BREAK: decided on the STORED answer instead of the fresh one
+   (server/parcelTrackingRunner.js: `          const leaves = !retire && shouldRetireNotDropped(u, row.created_at, now());` → `          const leaves = !retire && shouldRetireNotDropped({ ...u, status_message: row.status_message ?? u.status_message }, row.created_at, now());`)
+     × the STORED answer is ignored: stored not-dropped, fresh answer moving → normal update, kept 12ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupTenDay.server.test.ts > checkRows: the 10-day rule on the answer just received > the STORED answer is ignored: stored not-dropped, fresh answer moving → normal update, kept
+      Tests  1 failed | 7 passed (8)
+
+## BREAK: an at-store answer could be removed
+   (server/pickupRules.js: `  if (!u || u.status !== "in_transit" || u.terminal || u.returning_soon) return false;` → `  if (!u || u.terminal || u.returning_soon) return false;`)
+     × only the not-dropped answer, only in transit, never returning soon / finished 12ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupTenDay.server.test.ts > shouldRetireNotDropped (pure) > only the not-dropped answer, only in transit, never returning soon / finished
+      Tests  1 failed | 7 passed (8)
+
+## BREAK: rule not applied at all
+   (server/parcelTrackingRunner.js: `            terminal: u.terminal || retire || leaves,` → `            terminal: u.terminal || retire,`)
+     × fresh not-dropped answer + synced 10 days ago → terminal, status and message as answered 18ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupTenDay.server.test.ts > checkRows: the 10-day rule on the answer just received > fresh not-dropped answer + synced 10 days ago → terminal, status and message as answered
+      Tests  1 failed | 7 passed (8)
+

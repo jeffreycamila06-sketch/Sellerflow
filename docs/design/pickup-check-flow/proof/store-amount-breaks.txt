@@ -1,0 +1,58 @@
+## BREAK: amount from 小計 (a looser header match)
+   (src/redesign/adapters/parcelExportRead.ts: `return /^商品總額([(（]A\+B[)）])?$/i.test(headerKey(h));` → `return /^(小計|商品總額)/.test(headerKey(h));`)
+     × 取件門市 and 商品總額(A+B) match; neighbours never do 9ms
+     × picks 取件門市 and 商品總額(A+B) — never 小計 / 運費 / 單價 — and never the recipient name 5ms
+     × a missing header saves nothing for that field; the rest reads exactly as today 2ms
+     × a bad amount / empty store saves nothing for that field only 1ms
+     × upserts are exactly today's (no store / amount / name keys); fills are guarded updates, one per value 3ms
+     × a row that already has a store / amount (extension or checked) gets nothing for that field 1ms
+     × a file without the two columns makes no update at all (today's behaviour) 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > header matching (by text, spaces / line breaks ignored) > 取件門市 and 商品總額(A+B) match; neighbours never do
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > picks 取件門市 and 商品總額(A+B) — never 小計 / 運費 / 單價 — and never the recipient name
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > a missing header saves nothing for that field; the rest reads exactly as today
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > a bad amount / empty store saves nothing for that field only
+
+## BREAK: store by position (column K) instead of header text
+   (src/redesign/adapters/parcelExportRead.ts: `    if (!storeCol && isStoreHeader(txt)) storeCol = col;` → `    if (!storeCol && col === "K") storeCol = col;`)
+     × found by header text, not by position (columns shuffled) 8ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > found by header text, not by position (columns shuffled)
+      Tests  1 failed | 12 passed (13)
+
+## BREAK: amount update without the 'only if empty' guard
+   (src/redesign/adapters/parcelExportRead.ts: `        .is("order_amount", null).is("recipient_name", null);` → `        .is("recipient_name", null);`)
+     × upserts are exactly today's (no store / amount / name keys); fills are guarded updates, one per value 10ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > upserts are exactly today's (no store / amount / name keys); fills are guarded updates, one per value
+      Tests  1 failed | 12 passed (13)
+
+## BREAK: store update without the 'only if empty' guard
+   (src/redesign/adapters/parcelExportRead.ts: `        .or(STORE_EMPTY).is("recipient_name", null);` → `        .is("recipient_name", null);`)
+     × upserts are exactly today's (no store / amount / name keys); fills are guarded updates, one per value 11ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > upserts are exactly today's (no store / amount / name keys); fills are guarded updates, one per value
+      Tests  1 failed | 12 passed (13)
+
+## BREAK: plan overwrites a store a row already has
+   (src/redesign/adapters/parcelExportRead.ts: `    if (r.store && !i?.hasStore) add(stores, r.store, r.tracking_no);` → `    if (r.store) add(stores, r.store, r.tracking_no);`)
+     × new rows and empty fields only; a checked row's store/amount and the extension's row are never touched 10ms
+     × a row that already has a store / amount (extension or checked) gets nothing for that field 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > what gets filled (only EMPTY fields) > new rows and empty fields only; a checked row's store/amount and the extension's row are never touched
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > a row that already has a store / amount (extension or checked) gets nothing for that field
+      Tests  2 failed | 11 passed (13)
+
+## BREAK: the recipient name read into the row
+   (src/redesign/adapters/parcelExportRead.ts: `    out.push(row);` → `    out.push({ ...row, recipient_name: r.cells.G } as ExportHandleRow);`)
+     × picks 取件門市 and 商品總額(A+B) — never 小計 / 運費 / 單價 — and never the recipient name 14ms
+     × found by header text, not by position (columns shuffled) 2ms
+     × a missing header saves nothing for that field; the rest reads exactly as today 3ms
+     × a bad amount / empty store saves nothing for that field only 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > picks 取件門市 and 商品總額(A+B) — never 小計 / 運費 / 單價 — and never the recipient name
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > found by header text, not by position (columns shuffled)
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > a missing header saves nothing for that field; the rest reads exactly as today
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > reading the 訂單匯入 tab > a bad amount / empty store saves nothing for that field only
+      Tests  4 failed | 9 passed (13)
+

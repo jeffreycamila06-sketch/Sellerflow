@@ -13,6 +13,10 @@
 //   • header = ROW 3 (rows 1–2 are a title/date/filter banner); data = rows ≥ 4
 //   • 配送單編號 → tracking_no ; 其[他它]資訊 / FB·LINE·IG → buyer_username (VERBATIM,
 //     blank → null) ; 商品名稱 (shop-name product column) is EXPLICITLY ignored
+//   • 取件門市 → the pickup store, 商品總額(A+B) → the amount (2026-11-17, addition A; found BY HEADER
+//     TEXT, a line break / spaces in the header are ignored; a missing header = that field is not
+//     read). These two are read here only — the Chrome extension reader is unchanged.
+//     收件人姓名 and phones are NEVER read into a row.
 //   • NO reliable shop identity exists in the file (row 1 = an order-date filter; the
 //     filename is a random per-export token) → a wrong-shop upload is caught by
 //     tracking-number COLLISION with another seller instead (sql/62)
@@ -24,7 +28,30 @@ const IMPORT_SHEET = "訂單匯入";
 const HEADER_ROW = 3;
 const UPSERT_CHUNK = 500;
 
-export interface ExportHandleRow { tracking_no: string; buyer_username: string | null }
+// store / amount are present only when the file HAS that column (absent key = column not found).
+export interface ExportHandleRow { tracking_no: string; buyer_username: string | null; store?: string | null; amount?: number | null }
+
+// ── Addition A (2026-11-17): pickup store + amount from the file ──────────────
+export const STORE_MAX = 40;
+const headerKey = (h: string | null | undefined) => String(h ?? "").replace(/\s+/g, ""); // drops spaces, line breaks, full-width spaces
+// PURE — the 取件門市 header (exactly that text, spaces / line breaks ignored). Never 寄件門市.
+export function isStoreHeader(h: string | null | undefined): boolean { return /^取件門市$/.test(headerKey(h)); }
+// PURE — the 商品總額(A+B) header (also 商品總額 alone, full-width brackets). Never 小計 / 運費 / 單價.
+export function isAmountHeader(h: string | null | undefined): boolean { return /^商品總額([(（]A\+B[)）])?$/i.test(headerKey(h)); }
+// PURE — the store as written (trimmed), at most STORE_MAX characters; empty → null. No parsing:
+// a trailing 門市 is kept.
+export function storeValue(raw: string | null | undefined): string | null {
+  const s = String(raw ?? "").trim();
+  return s ? s.slice(0, STORE_MAX) : null;
+}
+// PURE — a whole number of 0 or more ("350", "350.0"); anything else ("350.5", "-1", "1,200",
+// "1e3", text, empty) → null.
+export function amountValue(raw: string | null | undefined): number | null {
+  const s = String(raw ?? "").trim();
+  if (!/^\d+(\.0+)?$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isSafeInteger(n) ? n : null;
+}
 
 const unesc = (s: string): string =>
   s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
@@ -62,14 +89,18 @@ export function rowsOf(xml: string, S: string[]): SheetRow[] {
 
 // PURE: the 訂單匯入 sheet XML + sharedStrings XML → { tracking_no, buyer_username } rows.
 // Columns are located BY HEADER TEXT on row 3 (positions differ between the two tabs).
-export function extractImportHandles(sheetXml: string, sharedStringsXml: string): { rows: ExportHandleRow[]; cols: { fcodeCol?: string; handleCol?: string }; noCode: number } {
+export function extractImportHandles(sheetXml: string, sharedStringsXml: string): { rows: ExportHandleRow[]; cols: { fcodeCol?: string; handleCol?: string; storeCol?: string; amountCol?: string }; noCode: number } {
   const S = sharedStrings(sharedStringsXml || "");
   const rows = rowsOf(sheetXml, S);
   const header = rows.find((r) => r.rn === HEADER_ROW);
   if (!header) return { rows: [], cols: {}, noCode: 0 };
   let fcodeCol: string | undefined;
   let handleCol: string | undefined;
+  let storeCol: string | undefined;
+  let amountCol: string | undefined;
   for (const [col, txt] of Object.entries(header.cells)) {
+    if (!storeCol && isStoreHeader(txt)) storeCol = col;
+    if (!amountCol && isAmountHeader(txt)) amountCol = col;
     const h = String(txt || "").replace(/\s+/g, "");
     if (!fcodeCol && /配送單編號/.test(h)) fcodeCol = col;
     // handle column: 其他/其它資訊 OR the FB/LINE/IG hint — but NEVER 商品名稱 (the product/shop-name column)
@@ -88,9 +119,12 @@ export function extractImportHandles(sheetXml: string, sharedStringsXml: string)
       continue;
     }
     const hv = handleCol ? String(r.cells[handleCol] || "") : "";
-    out.push({ tracking_no: tn, buyer_username: hv.trim() ? hv : null }); // VERBATIM; blank → null
+    const row: ExportHandleRow = { tracking_no: tn, buyer_username: hv.trim() ? hv : null }; // VERBATIM; blank → null
+    if (storeCol) row.store = storeValue(r.cells[storeCol]);
+    if (amountCol) row.amount = amountValue(r.cells[amountCol]);
+    out.push(row);
   }
-  return { rows: out, cols: { fcodeCol, handleCol }, noCode };
+  return { rows: out, cols: { fcodeCol, handleCol, ...(storeCol ? { storeCol } : {}), ...(amountCol ? { amountCol } : {}) }, noCode };
 }
 
 // S5 — one row per tracking number, keeping the LAST occurrence in the sheet (the
@@ -204,6 +238,74 @@ export function planSync(rows: ExportHandleRow[], existing: Map<string, string |
   return { withHandle, codeOnly, fresh, updated, same, withoutHandle };
 }
 
+// What a stored row already has, for addition A. A row with a recipient name (only the Chrome
+// extension writes one) is never filled: then trg_link_parcel_tracking has nothing to do.
+export interface FillInfo { hasStore: boolean; hasAmount: boolean; hasName: boolean }
+const filled = (v: unknown) => v != null && String(v).trim() !== "";
+export function fillInfoOf(r: { store_id?: unknown; rec_store?: unknown; order_amount?: unknown; recipient_name?: unknown }): FillInfo {
+  return { hasStore: filled(r.store_id) || filled(r.rec_store), hasAmount: r.order_amount != null, hasName: filled(r.recipient_name) };
+}
+
+// PURE — what one Sync writes. NEW parcels go in ONE insert-only write (ignoreDuplicates = ON CONFLICT DO
+// NOTHING) that already carries the username, the pickup store and the amount — no extra request, and a
+// row that appeared meanwhile (another device, the extension) is left exactly as it is. Parcels that
+// already existed and whose username changed get today's username-only merge write.
+export function planWrites(rows: ExportHandleRow[], existing: Map<string, string | null>) {
+  const inserts: { tracking_no: string; buyer_username?: string; store_id?: string; order_amount?: number }[] = [];
+  const handleUpdates: { tracking_no: string; buyer_username: string }[] = [];
+  for (const r of rows) {
+    const has = r.buyer_username != null && String(r.buyer_username).trim() !== "";
+    if (!existing.has(r.tracking_no)) {
+      inserts.push({
+        tracking_no: r.tracking_no,
+        ...(has ? { buyer_username: String(r.buyer_username) } : {}),
+        ...(r.store ? { store_id: r.store } : {}),
+        ...(r.amount != null ? { order_amount: r.amount } : {}),
+      });
+    } else if (has && existing.get(r.tracking_no) !== r.buyer_username) {
+      handleUpdates.push({ tracking_no: r.tracking_no, buyer_username: String(r.buyer_username) });
+    }
+  }
+  return { inserts, handleUpdates };
+}
+
+// PURE — which EXISTING rows get a store / an amount, grouped by value (one guarded update per value).
+// New parcels never come here (they got theirs in the insert). Only a field that is EMPTY and only rows
+// without a recipient name. The database update repeats every one of these conditions, so a value written
+// meanwhile (by the check or the extension) is never overwritten.
+export function planFills(rows: ExportHandleRow[], info: Map<string, FillInfo>) {
+  const stores = new Map<string, string[]>();
+  const amounts = new Map<number, string[]>();
+  const add = <K,>(m: Map<K, string[]>, k: K, code: string) => { const l = m.get(k); if (l) l.push(code); else m.set(k, [code]); };
+  for (const r of rows) {
+    const i = info.get(r.tracking_no);
+    if (!i || i.hasName) continue; // a new parcel (filled in its insert) or a row with a recipient name
+    if (r.store && !i.hasStore) add(stores, r.store, r.tracking_no);
+    if (r.amount != null && !i.hasAmount) add(amounts, r.amount, r.tracking_no);
+  }
+  return { stores, amounts };
+}
+
+// Guarded fills: store_id only where store_id AND rec_store are empty, order_amount only where it is
+// NULL, both only for the seller's own 7-11 rows without a recipient name. Never throws and never
+// changes the sync result (the parcels are already saved); a failed fill is simply not done.
+const STORE_EMPTY = "and(store_id.is.null,rec_store.is.null),and(store_id.is.null,rec_store.eq.),and(store_id.eq.,rec_store.is.null),and(store_id.eq.,rec_store.eq.)";
+async function applyFills(me: string, plan: ReturnType<typeof planFills>): Promise<void> {
+  const base = () => supabase!.from("parcel_tracking");
+  for (const [store, codes] of plan.stores) for (const c of chunk(codes, LOOKUP_CHUNK)) {
+    try {
+      await base().update({ store_id: store }).eq("user_id", me).eq("carrier", "711").in("tracking_no", c)
+        .or(STORE_EMPTY).is("recipient_name", null);
+    } catch { /* not filled — the parcel itself is saved */ }
+  }
+  for (const [amount, codes] of plan.amounts) for (const c of chunk(codes, LOOKUP_CHUNK)) {
+    try {
+      await base().update({ order_amount: amount }).eq("user_id", me).eq("carrier", "711").in("tracking_no", c)
+        .is("order_amount", null).is("recipient_name", null);
+    } catch { /* not filled */ }
+  }
+}
+
 const LOOKUP_CHUNK = 200; // tracking numbers per own-row lookup (URL length)
 
 // Read the export and sync it under the seller's own JWT. Writes ONLY user_id /
@@ -231,34 +333,46 @@ export async function syncFromExport(bytes: Uint8Array): Promise<SyncResult> {
     if (foreign > 0) return { ...base, error: "foreign", foreign };
 
     // What's already stored for these codes (own rows only — RLS + explicit user_id).
+    const wantsFill = rows.some((r) => r.store || r.amount != null);
     const existing = new Map<string, string | null>();
+    const info = new Map<string, FillInfo>();
     for (const c of chunk(codes, LOOKUP_CHUNK)) {
-      const { data, error } = await supabase.from("parcel_tracking").select("tracking_no, buyer_username").eq("user_id", me).in("tracking_no", c);
+      const { data, error } = await supabase.from("parcel_tracking")
+        .select("tracking_no, buyer_username, store_id, rec_store, order_amount, recipient_name")
+        .eq("user_id", me).in("tracking_no", c);
       if (error) return { ...base, error: classifyDbError(error) };
-      for (const r of (data ?? []) as { tracking_no: string; buyer_username: string | null }[]) existing.set(String(r.tracking_no), r.buyer_username ?? null);
+      for (const r of data ?? []) {
+        existing.set(String(r.tracking_no), r.buyer_username ?? null);
+        if (wantsFill) info.set(String(r.tracking_no), fillInfoOf(r));
+      }
     }
 
-    const plan = planSync(rows, existing);
+    const plan = planSync(rows, existing); // the counts (unchanged)
+    const writes = planWrites(rows, existing);
     const counts = { total: rows.length, fresh: plan.fresh, updated: plan.updated, same: plan.same, withoutHandle: plan.withoutHandle };
-    const attempted = plan.withHandle.length + plan.codeOnly.length;
+    const attempted = writes.inserts.length + writes.handleUpdates.length;
     let saved = 0;
     const fail = (error: { code?: string; message?: string; status?: number }): SyncResult => {
       const cause = classifyDbError(error);
       if (saved > 0 && cause !== "signed_out") return { ok: false, ...counts, error: "partial", saved, attempted };
       return { ok: false, ...counts, error: cause };
     };
-    for (const c of chunk(plan.withHandle, UPSERT_CHUNK)) {
-      const { error } = await supabase.from("parcel_tracking")
-        .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no" });
-      if (error) return fail(error);
-      saved += c.length;
-    }
-    for (const c of chunk(plan.codeOnly, UPSERT_CHUNK)) {
+    // New parcels: one insert-only write per 500 (username, store and amount in the same write).
+    for (const c of chunk(writes.inserts, UPSERT_CHUNK)) {
       const { error } = await supabase.from("parcel_tracking")
         .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no", ignoreDuplicates: true });
       if (error) return fail(error);
       saved += c.length;
     }
+    // Existing parcels whose username changed: today's username-only merge write.
+    for (const c of chunk(writes.handleUpdates, UPSERT_CHUNK)) {
+      const { error } = await supabase.from("parcel_tracking")
+        .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no" });
+      if (error) return fail(error);
+      saved += c.length;
+    }
+    // Addition A for parcels that ALREADY existed: the store / amount into EMPTY fields only.
+    if (wantsFill) await applyFills(me, planFills(rows, info));
     return { ok: true, ...counts, saved };
   } catch {
     return { ...base, error: "network" };

@@ -60,7 +60,7 @@ Keywords: general settings, profile, shop name, phone, live setup, live session,
 - **ACCOUNT** — **Subscription** (not shown on iPhone), **Support & user guide**, **Delete account**.
 
 ## plans — Plans: Free, Basic, Plus, Pro, Master
-Last checked: 2026-11-10
+Last checked: 2026-11-17
 Keywords: plan, plans, subscription, free, basic, plus, pro, master, which plan, features, anong plan, 方案, 订阅, 哪個方案
 
 There are five plans. What the app shows per plan:
@@ -69,7 +69,7 @@ There are five plans. What the app shows per plan:
 |---|---|---|---|
 | Free | 1 | 150 orders in total (see "Free order limit") | 🔒 locked |
 | Basic | 1 | unlimited | 🔒 locked |
-| Plus | 2 | unlimited | Pickup Status and parcel check: automatic. Parcel Scan: see that section |
+| Plus | 2 | unlimited | Pickup Status (tap **Check now** to update) and parcel check. Parcel Scan: see that section |
 | Pro | 3 | unlimited | same as Plus |
 | Master | 5 | unlimited | same as Plus |
 
@@ -557,7 +557,7 @@ Both:
 - A field with a mistake shows a short message under it.
 
 ## pickup-status — Pickup Status
-Last checked: 2026-11-14
+Last checked: 2026-11-17
 Keywords: pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export, whatsapp, line, messenger, instagram, copy message, remind buyer, 催取件訊息, 提醒買家, nhắc người mua, เตือนผู้ซื้อ, ingatkan pembeli
 
 **Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
@@ -568,6 +568,8 @@ Who has it:
 - Not shown outside Taiwan.
 
 **7-11:** on 賣貨便 (in a normal browser), download the 匯出報表 file. Then tap **Sync from 7-11** and pick the file. Tap **Check now** to refresh.
+- New 7-11 parcels are first checked 2 days after you sync. Until then they show **Not checked yet** under **In transit**.
+- A 7-11 parcel that is still not dropped off 10 days after you sync leaves the list.
 
 **全家 (FamilyMart)** — only when 全家 is turned on for your account:
 1. On 好賣+, open **ALL ORDERS** and download the **Order export** (.xlsx).

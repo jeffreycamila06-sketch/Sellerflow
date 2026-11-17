@@ -1,0 +1,79 @@
+## BREAK: 2-day rule removed (0 days)
+   (server/pickupRules.js: `export const CHECK_AFTER_DAYS = 2;` → `export const CHECK_AFTER_DAYS = 0;`)
+     × synced Monday (00:01 or 23:59) → not checkable Tuesday 23:59, checkable Wednesday 00:00 7ms
+     × every status that is not at a store waits: created, in_transit, not_found, unknown 1ms
+     × splitCheckable keeps order and puts young rows aside 2ms
+     × checks every checkable parcel in check order, leaves young ones out (nothing written for them) 5ms
+     × only young parcels → nothing checked, done 0/0, the seller's press is given back 3ms
+     × own checkable row → that one 1ms
+     × no own checkable row → one checkable row of an active seller (young and expired-seller rows skipped) 1ms
+     × nobody has a checkable row → done 0/0, nothing checked 2ms
+     × never-checked young parcels are left out; older ones and at-store ones are checked 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > 2-day rule (Asia/Taipei calendar days) > synced Monday (00:01 or 23:59) → not checkable Tuesday 23:59, checkable Wednesday 00:00
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > 2-day rule (Asia/Taipei calendar days) > every status that is not at a store waits: created, in_transit, not_found, unknown
+
+## BREAK: 3 days instead of 2
+   (server/pickupRules.js: `export const CHECK_AFTER_DAYS = 2;` → `export const CHECK_AFTER_DAYS = 3;`)
+     × synced Monday (00:01 or 23:59) → not checkable Tuesday 23:59, checkable Wednesday 00:00 10ms
+     × synced Sunday 23:59 → checkable Tuesday (2 Taipei days later), whatever the hours 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > 2-day rule (Asia/Taipei calendar days) > synced Monday (00:01 or 23:59) → not checkable Tuesday 23:59, checkable Wednesday 00:00
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > 2-day rule (Asia/Taipei calendar days) > synced Sunday 23:59 → checkable Tuesday (2 Taipei days later), whatever the hours
+      Tests  2 failed | 23 passed (25)
+
+## BREAK: order: at-store parcels last
+   (server/pickupRules.js: `  return [...atStore, ...rest];` → `  return [...rest, ...atStore];`)
+     × at-store first (passed deadline, then nearest, no deadline last), then the rest least recently checked (never checked first) 8ms
+     × same deadline → least recently checked first; equal keys keep the given order; input untouched 2ms
+     × health: exactly one row, the first in check order 1ms
+     × checks every checkable parcel in check order, leaves young ones out (nothing written for them) 5ms
+     × a check stopped by the 30-min limit is reported partial (at-store parcels went first) 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > check order > at-store first (passed deadline, then nearest, no deadline last), then the rest least recently checked (never checked first)
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > check order > same deadline → least recently checked first; equal keys keep the given order; input untouched
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > sevenScopeForJob > health: exactly one row, the first in check order
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: Check now under the new rules > checks every checkable parcel in check order, leaves young ones out (nothing written for them)
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: Check now under the new rules > a check stopped by the 30-min limit is reported partial (at-store parcels went first)
+      Tests  5 failed | 20 passed (25)
+
+## BREAK: order: most recently checked first
+   (server/pickupRules.js: `  rest.sort(byPolled);` → `  rest.sort((a, b) => byPolled(b, a));`)
+     × at-store first (passed deadline, then nearest, no deadline last), then the rest least recently checked (never checked first) 8ms
+     × same deadline → least recently checked first; equal keys keep the given order; input untouched 1ms
+     × checks every checkable parcel in check order, leaves young ones out (nothing written for them) 4ms
+     × no own checkable row → one checkable row of an active seller (young and expired-seller rows skipped) 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > check order > at-store first (passed deadline, then nearest, no deadline last), then the rest least recently checked (never checked first)
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > check order > same deadline → least recently checked first; equal keys keep the given order; input untouched
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: Check now under the new rules > checks every checkable parcel in check order, leaves young ones out (nothing written for them)
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: the daily health probe always finds a row > no own checkable row → one checkable row of an active seller (young and expired-seller rows skipped)
+      Tests  4 failed | 21 passed (25)
+
+## BREAK: per-press cap of 300 put back
+   (server/parcelTrackingWorker.js: `  if (job.kind === "manual") return { rows: orderForCheck(rows), capped: false };` → `  if (job.kind === "manual") return { rows: orderForCheck(rows).slice(0, caps.parcels), capped: rows.length > caps.parcels };`)
+     × manual: every checkable row, never capped (2,500 rows) 10ms
+     × no parcel cap: 2,500 checkable parcels all go to the check (a Plus seller) 12ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > sevenScopeForJob > manual: every checkable row, never capped (2,500 rows)
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: Check now under the new rules > no parcel cap: 2,500 checkable parcels all go to the check (a Plus seller)
+      Tests  2 failed | 23 passed (25)
+
+## BREAK: check at Sync put back
+   (server/parcelTrackingWorker.js: `  if (job.kind === "new_parcels") return { rows: [], capped: false };` → `  if (job.kind === "new_parcels") return { rows: orderForCheck(rows), capped: false };`)
+     × new_parcels: no 7-11 parcel (no check at Sync) 8ms
+     × a new_parcels job checks no 7-11 parcel and queues no follow-up; its 全家 part is still asked 3ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > sevenScopeForJob > new_parcels: no 7-11 parcel (no check at Sync)
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: no 7-11 check at Sync > a new_parcels job checks no 7-11 parcel and queues no follow-up; its 全家 part is still asked
+      Tests  2 failed | 23 passed (25)
+
+## BREAK: health fallback removed
+   (server/parcelTrackingWorker.js: `      if (job.kind === "health" && !scope.rows.length)` → `      if (false && job.kind === "health" && !scope.rows.length)`)
+     × no own checkable row → one checkable row of an active seller (young and expired-seller rows skipped) 7ms
+     × the fallback read asks only enabled, unexpired sellers' unfinished 7-11 rows 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: the daily health probe always finds a row > no own checkable row → one checkable row of an active seller (young and expired-seller rows skipped)
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: the daily health probe always finds a row > the fallback read asks only enabled, unexpired sellers' unfinished 7-11 rows
+      Tests  2 failed | 23 passed (25)
+

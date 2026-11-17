@@ -437,7 +437,9 @@ function checkErrorText(res: CheckResult, t: T): string {
 function jobDoneText(job: TrackingJob | null, t: T): string {
   if (!job) return "";
   const n = job.parcels_checked ?? 0, m = job.parcels_total ?? 0;
-  if (job.status === "done" && m === 0) return t.rd_pt_job_nothing;
+  // Nothing could be checked. Only an automatic check skips recently checked parcels, so only
+  // there "all parcels were checked recently" is true; otherwise the parcels are too new (2-day rule).
+  if (job.status === "done" && m === 0) return job.kind === "auto" ? t.rd_pt_job_nothing : t.rd_pt_job_none_checkable;
   if (job.status === "done") return tpl(job.error ? t.rd_pt_job_partial : t.rd_pt_job_done, { n, m });
   return t.rd_pt_job_failed;
 }
@@ -735,11 +737,9 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
       return;
     }
     if (res.fresh + res.updated === 0) { showToast(tpl(t.rd_pt_sync_noop, { n: res.same })); return; }
-    const done = tpl(t.rd_pt_sync_done2, { new: res.fresh, updated: res.updated, same: res.same });
-    // New rows queue an automatic check server-side (trigger) — say so, and show it running.
-    showToast(res.fresh > 0 ? `${done} ${t.rd_pt_autocheck}` : done, 5000);
+    // No check runs at Sync any more (2026-11-17): new 7-11 parcels are first checked on the 2nd day.
+    showToast(tpl(t.rd_pt_sync_done2, { new: res.fresh, updated: res.updated, same: res.same }), 5000);
     await load(); // re-read so the new parcels + @handles show immediately
-    if (res.fresh > 0) { const st = await loadTrackingStatus(); if (st) setStatus(st); }
   };
 
   // "Sync from FamilyMart" — the 好賣+ Order export, read here and saved by the fm_pickup_upload RPC.

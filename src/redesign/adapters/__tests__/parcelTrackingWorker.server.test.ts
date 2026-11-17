@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   planCaps, scopeForJob, jobOutcome, taipeiHour, createWorker, shouldRefundPress, JOB_MAX_MS, REST_MS,
-  transitSkipHours, splitTransitSkip, TRANSIT_SKIP_KEY,
+  SELLER_REQUEST_BUDGET,
 } from "../../../../server/parcelTrackingWorker.js";
 
 const T0 = new Date("2026-09-29T02:00:00Z"); // 10:00 Taipei
@@ -16,6 +16,7 @@ type Cfg = {
   enabled?: string; plan?: string; role?: string; planStatus?: string; planExpiry?: string | null; job?: Record<string, unknown> | null; claimError?: unknown;
   rows?: Record<string, unknown>[]; todaysJobs?: { requests_used: number }[]; dailyRequests?: number;
   healthToday?: boolean; freshAfter?: boolean; settings?: Record<string, string>;
+  accessIds?: string[]; otherRows?: Record<string, unknown>[]; profiles?: Record<string, unknown>[];
 };
 function fakeSb(cfg: Cfg = {}) {
   const queries: Q[] = [];
@@ -24,6 +25,8 @@ function fakeSb(cfg: Cfg = {}) {
     const has = (k: string, ...v: unknown[]) => q.filters.some((f) => f[0] === k && v.every((x, i) => f[i + 1] === x));
     if (q.table === "app_settings") return { data: [{ key: "parcel_tracking_enabled", value: cfg.enabled ?? "true" },
       ...Object.entries(cfg.settings ?? {}).map(([key, value]) => ({ key, value }))], error: null };
+    if (q.table === "seller_profiles" && q.filters.some((f) => f[0] === "in")) return { data: cfg.profiles ?? [], error: null };
+    if (q.table === "parcel_tracking_access" && q.op === "select") return { data: (cfg.accessIds ?? []).map((user_id) => ({ user_id })), error: null };
     if (q.table === "seller_profiles") return { data: { plan: cfg.plan ?? "plus", role: cfg.role ?? "seller", plan_status: cfg.planStatus ?? "active", plan_expiry: cfg.planExpiry ?? null }, error: null };
     if (q.table === "parcel_tracking_daily") return { data: { requests: cfg.dailyRequests ?? 0 }, error: null };
     if (q.table === "parcel_tracking_jobs" && q.op === "select") {
@@ -32,7 +35,8 @@ function fakeSb(cfg: Cfg = {}) {
     }
     if (q.table === "parcel_tracking" && q.op === "select") {
       if (q.filters.some((f) => f[0] === "is")) return { data: cfg.freshAfter ? [{ id: "x" }] : [], error: null };
-      const r = q.filters.find((f) => f[0] === "range") as [string, number, number];
+      const r = q.filters.find((f) => f[0] === "range") as [string, number, number] | undefined;
+      if (!r) return { data: cfg.otherRows ?? [], error: null }; // the health fallback read (limit, no range)
       return { data: (cfg.rows ?? []).slice(r[1], r[2] + 1), error: null };
     }
     if (q.op === "delete") return { data: [], error: null };
@@ -64,7 +68,9 @@ const quiet = () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() });
 const job = (kind: string, extra: Record<string, unknown> = {}) =>
   ({ id: "J1", user_id: "U1", kind, status: "running", created_by: kind === "manual" ? "seller" : "sync", requested_at: iso(60_000), started_at: iso(0), ...extra });
 const row = (id: string, extra: Record<string, unknown> = {}) =>
-  ({ id, user_id: "U1", tracking_no: `F${id}0000000`, status: "in_transit", last_polled_at: null, created_at: iso(2 * H), ...extra });
+  ({ id, user_id: "U1", tracking_no: `F${id}0000000`, status: "in_transit", last_polled_at: null, created_at: iso(72 * H), ...extra });
+// synced today (Taipei) → left out by the 2-day rule
+const young = (id: string, extra: Record<string, unknown> = {}) => row(id, { created_at: iso(1 * H), ...extra });
 const checkOk = (over: Record<string, unknown> = {}) => vi.fn(async (a: { rows: unknown[] }) => ({
   batchesRun: 1, updated: a.rows.length, unknowns: 0, notFound: 0, captchaFails: 0, failures: 0, retired: 0,
   tripped: false, stopReason: null, sent: 3, ...over,
@@ -192,7 +198,7 @@ describe("createWorker().tick", () => {
     expect(out).toMatchObject({ status: "done", checked: 2, total: 2 });
     const args = check.mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(args.deadlineAt).toBe(T0.getTime() + JOB_MAX_MS);
-    expect(args.requestBudget).toBe(300);
+    expect(args.requestBudget).toBe(SELLER_REQUEST_BUDGET);
     expect(args.tag).toBe("[PARCEL-JOB]");
     expect(jobUpdate(sb)!.patch).toMatchObject({ status: "done", error: null, parcels_checked: 2, parcels_total: 2, requests_used: 3 });
     expect(jobUpdate(sb)!.filters).toContainEqual(["eq", "id", "J1"]);
@@ -223,18 +229,18 @@ describe("createWorker().tick", () => {
   });
 
   it("per-seller daily budget used up → skipped daily_cap without any SHOPMORE request", async () => {
-    const sb = fakeSb({ job: job("manual"), rows: [row("a")], todaysJobs: [{ requests_used: 200 }, { requests_used: 99 }] });
+    const sb = fakeSb({ job: job("manual"), rows: [row("a")], todaysJobs: [{ requests_used: 1000 }, { requests_used: 99 }] });
     const check = checkOk();
     const w = createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check });
     expect(await w.tick()).toMatchObject({ status: "skipped", error: "daily_cap" });
     expect(check).not.toHaveBeenCalled();
   });
 
-  it("Pro gets a 600 budget minus today's use", async () => {
-    const sb = fakeSb({ plan: "pro", job: job("manual"), rows: [row("a")], todaysJobs: [{ requests_used: 100 }] });
+  it("an URGENT check on Pro uses the shared seller budget: 1,100 minus today's use", async () => {
+    const sb = fakeSb({ plan: "pro", job: job("urgent"), rows: [row("a", { status: "at_store", pickup_deadline: "2026-09-29" })], todaysJobs: [{ requests_used: 100 }] });
     const check = checkOk();
     await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick();
-    expect((check.mock.calls[0][0] as unknown as Record<string, unknown>).requestBudget).toBe(500);
+    expect((check.mock.calls[0][0] as unknown as Record<string, unknown>).requestBudget).toBe(1000);
   });
 
   it("global daily cap reached → skipped daily_cap", async () => {
@@ -254,7 +260,7 @@ describe("createWorker().tick", () => {
   });
 
   it("an empty scope finishes done 0/0 without calling checkRows", async () => {
-    const sb = fakeSb({ job: job("manual"), rows: [row("a", { last_polled_at: iso(1 * H) })] });
+    const sb = fakeSb({ job: job("manual"), rows: [young("a", { last_polled_at: iso(1 * H) })] });
     const check = checkOk();
     expect(await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick()).toMatchObject({ status: "done", checked: 0, total: 0 });
     expect(check).not.toHaveBeenCalled();
@@ -272,10 +278,10 @@ describe("createWorker().tick", () => {
     expect(await w.tick()).not.toEqual({ skipped: "resting" });
   });
 
-  it("queues follow-up new_parcels when rows arrived while the job ran (requested_at = job start)", async () => {
+  it("no follow-up new_parcels job any more, even when rows arrived while the job ran (no check at Sync)", async () => {
     const sb = fakeSb({ job: job("manual"), rows: [row("a")], freshAfter: true });
     await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: checkOk() }).tick();
-    expect(sb.rpcs).toContainEqual({ name: "parcel_tracking_enqueue_job", args: { p_user_id: "U1", p_kind: "new_parcels", p_created_by: "followup", p_requested_at: iso(0) } });
+    expect(sb.rpcs.filter((r) => r.name === "parcel_tracking_enqueue_job")).toEqual([]);
   });
 
   it("health job: queued once per Taipei day after 09:00, only for PARCEL_HEALTH_USER_ID", async () => {
@@ -325,8 +331,8 @@ describe("refund the daily press when a seller's manual check did nothing", () =
     return sb;
   };
 
-  it("manual/seller with 0 parcels in scope (all checked < 24h ago) → refunded", async () => {
-    const sb = await run(job("manual"), [row("a", { last_polled_at: iso(1 * H) })]);
+  it("manual/seller with 0 parcels in scope (all synced today or yesterday) → refunded", async () => {
+    const sb = await run(job("manual"), [young("a", { last_polled_at: iso(1 * H) })]);
     expect(refunds(sb)).toEqual([{ name: "parcel_tracking_refund_press", args: { p_job_id: "J1" } }]);
     expect(jobUpdate(sb)!.patch).toMatchObject({ status: "done", parcels_total: 0 });
   });
@@ -348,7 +354,7 @@ describe("refund the daily press when a seller's manual check did nothing", () =
     expect(refunds(sb)).toHaveLength(1);
   });
   it("skipped daily_cap → not refunded", async () => {
-    const sb = await run(job("manual"), [row("a")], checkOk(), { todaysJobs: [{ requests_used: 300 }] });
+    const sb = await run(job("manual"), [row("a")], checkOk(), { todaysJobs: [{ requests_used: 1100 }] });
     expect(jobUpdate(sb)!.patch).toMatchObject({ status: "skipped", error: "daily_cap" });
     expect(refunds(sb)).toEqual([]);
   });
@@ -364,76 +370,3 @@ describe("refund the daily press when a seller's manual check did nothing", () =
   });
 });
 
-describe("day-1 transit skip (parcel_tracking_transit_skip_hours)", () => {
-  const polled = iso(1 * H);
-  const day1 = (id: string, extra: Record<string, unknown> = {}) => row(id, { last_polled_at: polled, created_at: iso(5 * H), ...extra });
-
-  it("setting: missing/invalid → 24, clamped to 0..72, 0 = off", () => {
-    expect(transitSkipHours(undefined)).toBe(24);
-    expect(transitSkipHours("abc")).toBe(24);
-    expect(transitSkipHours("0")).toBe(0);
-    expect(transitSkipHours("-5")).toBe(0);
-    expect(transitSkipHours("100")).toBe(72);
-    expect(transitSkipHours("36")).toBe(36);
-  });
-
-  it("day-1 in-transit (checked once) is skipped; created/unknown too", () => {
-    const rows = [day1("a"), day1("b", { status: "created" }), day1("c", { status: "unknown" })];
-    const s = splitTransitSkip(job("manual"), rows, T0, 24);
-    expect(s.rows).toEqual([]);
-    expect(s.skipped.map((r) => r.id)).toEqual(["a", "b", "c"]);
-  });
-
-  it("never skipped: never polled, at_store, no status, older than N, other carrier", () => {
-    const rows = [
-      day1("np", { last_polled_at: null }),
-      day1("st", { status: "at_store" }),
-      day1("ns", { status: null }),
-      day1("old", { created_at: iso(25 * H) }),
-      day1("fm", { carrier: "fm" }),
-    ];
-    expect(splitTransitSkip(job("auto"), rows, T0, 24).skipped).toEqual([]);
-  });
-
-  it("urgent / new_parcels / health jobs never skip; N=0 disables", () => {
-    for (const k of ["urgent", "new_parcels", "health"]) expect(splitTransitSkip(job(k), [day1("a")], T0, 24).skipped).toEqual([]);
-    expect(splitTransitSkip(job("manual"), [day1("a")], T0, 0).skipped).toEqual([]);
-  });
-
-  it("N is the window: 4h-old parcel skipped at N=6, kept at N=3", () => {
-    const r = [day1("a", { created_at: iso(4 * H) })];
-    expect(splitTransitSkip(job("auto"), r, T0, 6).skipped).toHaveLength(1);
-    expect(splitTransitSkip(job("auto"), r, T0, 3).skipped).toHaveLength(0);
-  });
-
-  it("worker: skipped parcels are not queried, not counted in parcels_total, logged as a count", async () => {
-    // unknown status: the manual 24h-polled rule does not hold it back, only the new rule does
-    const rows = [day1("a", { status: "unknown" }), row("b", { status: "in_transit", last_polled_at: iso(30 * H), created_at: iso(48 * H) })];
-    const sb = fakeSb({ job: job("manual"), rows });
-    const logger = quiet();
-    const check = checkOk();
-    await createWorker({ serviceSb: sb, now: () => T0, logger, checkRowsImpl: check }).tick();
-    expect((check.mock.calls[0][0] as { rows: { id: string }[] }).rows.map((r) => r.id)).toEqual(["b"]);
-    expect((jobUpdate(sb)?.patch as { parcels_total: number }).parcels_total).toBe(1);
-    const done = logger.log.mock.calls.map((c) => String(c[0])).find((l) => l.includes(" done "))!;
-    expect(done).toContain("transit_skipped=1");
-    expect(done).not.toMatch(/F[ab]0000000/);
-    expect(sb.queries.some((q) => q.table === "parcel_tracking" && q.op === "update")).toBe(false);
-  });
-
-  it("worker: a seller's manual press where every parcel was transit-skipped gets the press back", async () => {
-    const sb = fakeSb({ job: job("manual"), rows: [day1("a", { status: "unknown" })] });
-    const check = checkOk();
-    await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick();
-    expect(check).not.toHaveBeenCalled();
-    expect((jobUpdate(sb)?.patch as { parcels_total: number }).parcels_total).toBe(0);
-    expect(sb.rpcs.some((r) => r.name === "parcel_tracking_refund_press")).toBe(true);
-  });
-
-  it("worker: setting 0 turns it off", async () => {
-    const sb = fakeSb({ job: job("manual"), rows: [day1("a", { status: "unknown" })], settings: { [TRANSIT_SKIP_KEY]: "0" } });
-    const check = checkOk();
-    await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick();
-    expect((check.mock.calls[0][0] as { rows: unknown[] }).rows).toHaveLength(1);
-  });
-});

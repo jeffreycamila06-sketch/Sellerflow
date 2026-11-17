@@ -1,0 +1,11 @@
+# Database requests of one 7-11 Sync of only NEW parcels (every store different, 25 different amounts, 1 in 7 without a username)
+# counted by src/redesign/adapters/__tests__/parcelExportRequests.test.ts (PRINT_COUNTS=1); the session read is local and not counted
+## main 229d4670 (before addition A)
+[sync-requests] n=31 total=4 {"rpc":1,"select":1,"upsert":2,"update":0} today(before A)=4
+[sync-requests] n=123 total=4 {"rpc":1,"select":1,"upsert":2,"update":0} today(before A)=4
+## d6461004 (addition A, one update per store / amount)
+[sync-requests] n=31 total=60 {"rpc":1,"select":1,"upsert":2,"update":56} today(before A)=4
+[sync-requests] n=123 total=152 {"rpc":1,"select":1,"upsert":2,"update":148} today(before A)=4
+## this fix (new parcels: store + amount in the one insert-only write)
+[sync-requests] n=31 total=3 {"rpc":1,"select":1,"upsert":1,"update":0} today(before A)=4
+[sync-requests] n=123 total=3 {"rpc":1,"select":1,"upsert":1,"update":0} today(before A)=4

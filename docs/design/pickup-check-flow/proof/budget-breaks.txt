@@ -1,0 +1,24 @@
+## BREAK: urgent and auto back on the plan number (300 / 600) — the old behaviour
+   (server/parcelTrackingWorker.js: `const SHARED_BUDGET_KINDS = new Set(["manual", "urgent", "auto"]);` → `const SHARED_BUDGET_KINDS = new Set(["manual"]);`)
+     × budget: ONE 1,100 per seller for manual, urgent and auto on every plan; health / new_parcels keep the plan number 9ms
+     × a Plus seller who used 400 requests today (e.g. a large Check now) can still run URGENT: budget 700, checked 1ms
+     × never-checked young parcels are left out; older ones and at-store ones are checked 2ms
+     × an URGENT check on Pro uses the shared seller budget: 1,100 minus today's use 10ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelTrackingWorker.server.test.ts > createWorker().tick > an URGENT check on Pro uses the shared seller budget: 1,100 minus today's use
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > sevenScopeForJob > budget: ONE 1,100 per seller for manual, urgent and auto on every plan; health / new_parcels keep the plan number
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: Check now under the new rules > a Plus seller who used 400 requests today (e.g. a large Check now) can still run URGENT: budget 700, checked
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: the automatic check skips young parcels (its own limits unchanged) > never-checked young parcels are left out; older ones and at-store ones are checked
+      Tests  4 failed | 57 passed (61)
+
+## BREAK: only urgent on the plan number
+   (server/parcelTrackingWorker.js: `const SHARED_BUDGET_KINDS = new Set(["manual", "urgent", "auto"]);` → `const SHARED_BUDGET_KINDS = new Set(["manual", "auto"]);`)
+     × an URGENT check on Pro uses the shared seller budget: 1,100 minus today's use 8ms
+     × budget: ONE 1,100 per seller for manual, urgent and auto on every plan; health / new_parcels keep the plan number 7ms
+     × a Plus seller who used 400 requests today (e.g. a large Check now) can still run URGENT: budget 700, checked 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelTrackingWorker.server.test.ts > createWorker().tick > an URGENT check on Pro uses the shared seller budget: 1,100 minus today's use
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > sevenScopeForJob > budget: ONE 1,100 per seller for manual, urgent and auto on every plan; health / new_parcels keep the plan number
+ FAIL  src/redesign/adapters/__tests__/pickupCheckFlow.server.test.ts > worker: Check now under the new rules > a Plus seller who used 400 requests today (e.g. a large Check now) can still run URGENT: budget 700, checked
+      Tests  3 failed | 58 passed (61)
+

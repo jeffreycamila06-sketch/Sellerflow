@@ -1,0 +1,56 @@
+## BREAK: new parcels filled by one update per store / amount again (the slow version)
+   (src/redesign/adapters/parcelExportRead.ts: `    if (!i || i.hasName) continue; // a new parcel (filled in its insert) or a row with a recipient name` → `    if (i?.hasName) continue;`)
+     × 31 new parcels: at most today's requests + 2 13ms
+     × 123 new parcels: at most today's requests + 2 4ms
+     × existing rows' empty fields only; a new row (filled in its insert), a checked row's store/amount and the extension's row are never planned 7ms
+     × new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value 10ms
+     × a fill that fails never changes the sync result (the parcels are saved) 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportRequests.test.ts > Sync request count — only new parcels > 31 new parcels: at most today's requests + 2
+ FAIL  src/redesign/adapters/__tests__/parcelExportRequests.test.ts > Sync request count — only new parcels > 123 new parcels: at most today's requests + 2
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > what gets filled (only EMPTY fields) > existing rows' empty fields only; a new row (filled in its insert), a checked row's store/amount and the extension's row are never planned
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > a fill that fails never changes the sync result (the parcels are saved)
+      Tests  5 failed | 32 passed (37)
+
+## BREAK: one insert request per new parcel
+   (src/redesign/adapters/parcelExportRead.ts: `    for (const c of chunk(writes.inserts, UPSERT_CHUNK)) {` → `    for (const c of chunk(writes.inserts, 1)) {`)
+     × 31 new parcels: at most today's requests + 2 8ms
+     × 123 new parcels: at most today's requests + 2 3ms
+     × new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value 11ms
+     × first upload: ONE insert-only write with {user_id, tracking_no, buyer_username?} — no-username rows are KEPT 5ms
+     × S4: a failure AFTER some parcels saved → 'partial' with saved / attempted 9ms
+     × 5,000-row file: every row is considered (no cap), written in 500-row chunks 51ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportRequests.test.ts > Sync request count — only new parcels > 31 new parcels: at most today's requests + 2
+ FAIL  src/redesign/adapters/__tests__/parcelExportRequests.test.ts > Sync request count — only new parcels > 123 new parcels: at most today's requests + 2
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value
+ FAIL  src/redesign/adapters/__tests__/parcelExportUpload.test.ts > syncFromExport — the whole upload path > first upload: ONE insert-only write with {user_id, tracking_no, buyer_username?} — no-username rows are KEPT
+ FAIL  src/redesign/adapters/__tests__/parcelExportUpload.test.ts > syncFromExport — the whole upload path > S4: a failure AFTER some parcels saved → 'partial' with saved / attempted
+
+## BREAK: new-parcel write as a MERGE (could overwrite a row that appeared meanwhile)
+   (src/redesign/adapters/parcelExportRead.ts: `        .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no", ignoreDuplicates: true });
+      if (error) return fail(error);
+      saved += c.length;
+    }
+    // Existing` → `        .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no" });
+      if (error) return fail(error);
+      saved += c.length;
+    }
+    // Existing`)
+     × new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value 10ms
+     × first upload: ONE insert-only write with {user_id, tracking_no, buyer_username?} — no-username rows are KEPT 15ms
+     × an existing parcel whose username changed keeps today's username-only MERGE write 3ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value
+ FAIL  src/redesign/adapters/__tests__/parcelExportUpload.test.ts > syncFromExport — the whole upload path > first upload: ONE insert-only write with {user_id, tracking_no, buyer_username?} — no-username rows are KEPT
+ FAIL  src/redesign/adapters/__tests__/parcelExportUpload.test.ts > syncFromExport — the whole upload path > an existing parcel whose username changed keeps today's username-only MERGE write
+      Tests  3 failed | 34 passed (37)
+
+## BREAK: new parcels lose their store
+   (src/redesign/adapters/parcelExportRead.ts: `        ...(r.store ? { store_id: r.store } : {}),` → ``)
+     × new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value 22ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/adapters/__tests__/parcelExportStoreAmount.test.ts > Sync writes > new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value
+      Tests  1 failed | 36 passed (37)
+

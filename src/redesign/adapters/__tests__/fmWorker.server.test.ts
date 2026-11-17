@@ -168,7 +168,7 @@ describe("全家 runs — ONE result", () => {
     expect(before).toContain("parcel_tracking_health.insert");        // the 7-11 numbers are taken before 全家
     expect(before).not.toContain("parcel_tracking_jobs.update");      // …and the job row is still 'running'
     expect(before).not.toContain("parcel_tracking_access.update");
-    expect(after).toEqual(["parcel_tracking_jobs.update", "parcel_tracking_access.update", "parcel_tracking.delete", "parcel_tracking.select"]); // + purge and follow-up, as before
+    expect(after).toEqual(["parcel_tracking_jobs.update", "parcel_tracking_access.update", "parcel_tracking.delete"]); // + purge (no 7-11 follow-up read since 2026-11-17: no check at Sync)
     expect(jobUpdates(sb)).toEqual([{ status: "done", error: null, finished_at: T0.toISOString(), parcels_total: 5, parcels_checked: 5, requests_used: 3 }]);
     expect(healthRows(sb)).toEqual([expect.objectContaining({ kind: "manual", updated: 2, requests: 3, ok: true })]);
     expect(accessUpdates(sb)).toEqual([{ last_completed_at: T0.toISOString() }]);

@@ -43,7 +43,9 @@ describe("Pickup Status — Sync from 賣貨便", () => {
     await waitFor(() => expect(r.getByTestId("pt-sync-card")).toBeTruthy());
     expect(r.queryByTestId("pt-sync-how")).toBeNull();
     fireEvent.click(r.getByTestId("pt-sync-how-toggle"));
-    expect(r.getByTestId("pt-sync-how").textContent).toContain("checked automatically");
+    const how = r.getByTestId("pt-sync-how").textContent;
+    expect(how).toContain("Usernames appear right away under In transit.");
+    expect(how).not.toContain("automatically"); // no check runs at Sync (2026-11-17)
   });
 
   it("success → toast with new / updated / already-synced counts + reload", async () => {
@@ -51,7 +53,7 @@ describe("Pickup Status — Sync from 賣貨便", () => {
     await waitFor(() => expect(r.getByTestId("pt-sync")).toBeTruthy());
     loadParcelTracking.mockClear();
     pickFile(r);
-    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("2 new · 1 updated · 0 already synced New parcels are being checked now."));
+    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("2 new · 1 updated · 0 already synced"));
     expect(loadParcelTracking).toHaveBeenCalled();
     expect(r.queryByTestId("pt-sync-error")).toBeNull();
   });
@@ -130,7 +132,7 @@ describe("N2 — empty state: 3 steps + the Sync button right there", () => {
     expect(steps).toHaveLength(3);
     expect(steps[0].textContent).toContain("匯出報表");
     expect(steps[1].textContent).toContain("Sync from 7-11");
-    expect(steps[2].textContent).toContain("checked automatically");
+    expect(steps[2].textContent).toBe("Your parcels appear here.");
     expect(r.queryByTestId("pt-sync-card")).toBeNull();
     expect(r.getByTestId("pt-empty-sync").textContent).toBe("Sync from 7-11");
   });

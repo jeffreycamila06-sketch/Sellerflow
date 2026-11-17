@@ -1,0 +1,10 @@
+## BREAK 1: 7-11 rows still queue a job
+FAIL: 175: a 7-11 sync queues NO job
+FAIL: 175: a multi-row 7-11 sync queues NO job
+FAIL: 175 applies again after its rollback (ok)
+sql175: 17 passed, 3 failed
+
+## BREAK 2: 2-day rule changed to 0 days
+FAIL: auto: a 7-11 parcel synced today is not due
+FAIL: auto: a 7-11 parcel synced yesterday (00:00 and 23:59 Taipei) is not due
+sql175: 18 passed, 2 failed
