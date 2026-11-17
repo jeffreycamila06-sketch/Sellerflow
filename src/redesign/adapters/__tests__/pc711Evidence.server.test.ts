@@ -591,7 +591,7 @@ describe("mirror stops itself when the login is lost (login_lost)", () => {
     expect(h.logs.filter((l) => l.includes("rule=login_lost write_failed")).length).toBe(2);
   });
   it("a check that sees the logged-out cart page stops the job; the next tick stops mirror once", async () => {
-    let st: Row = { state: "connected", since: "c1" };
+    const st: Row = { state: "connected", since: "c1" };
     const h = harness({ mirror: true, status: () => st, queue: [pend("store")], check: () => ({ verdict: "unknown", http: 200, ms: 500, kind: "login_not_accepted", steps: [] }) });
     await h.job.tick(); // the check comes back logged out → the job stops (status stays "connected", same since)
     expect(h.stops).toEqual([]);
