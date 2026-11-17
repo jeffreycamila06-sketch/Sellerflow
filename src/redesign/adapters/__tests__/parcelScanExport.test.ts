@@ -142,7 +142,7 @@ describe("export count (= ready.length) hard-excludes wrong store codes", () => 
 
 describe("build-from-parcel_scans smoke — the EXISTING builder eats the mapped rows", () => {
   it("produces a valid .xlsm from parcel_scans rows through buildXlsmFromTemplate", async () => {
-    const template = readFileSync(resolve(__dirname, "../../../../public/templates/myship-import-template.xlsm"));
+    const template = readFileSync(resolve(__dirname, "../../../../public/templates/myship-import-template-1.6.xlsm"));
     const tmplBytes = new Uint8Array(template.buffer, template.byteOffset, template.byteLength);
     const rows = splitScansForExport([row(), row({ id: "r2", customerName: "林大同", storeId: "266402" })], 38)
       .ready.map((r) => scanToXlsRow(r, { storeName: "Budgetukay", fee: 38 }));

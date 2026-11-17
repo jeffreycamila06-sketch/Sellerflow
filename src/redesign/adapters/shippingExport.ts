@@ -190,7 +190,8 @@ export function deliverXlsmMobile(bytes: Uint8Array, filename: string, mime: str
 // splices our rows into the 訂單匯入 sheet XML at row 7+ (inlineStr cells,
 // dimension updated). Same interface as before; unit-tested against the REAL
 // bundled template. The next 賣貨便 dummy upload re-runs the P4 gate.
-export const SHIP_TEMPLATE_URL = "/templates/myship-import-template.xlsm";
+// 7-11 template 1.6 (2026-11-17), bundled byte for byte under a NEW name so no cached 1.5 copy is ever used.
+export const SHIP_TEMPLATE_URL = "/templates/myship-import-template-1.6.xlsm";
 export const SHIP_DATA_SHEET = "訂單匯入";
 
 export async function fetchShipTemplate(): Promise<ArrayBuffer> {

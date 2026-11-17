@@ -70,19 +70,19 @@ import { readFileSync } from "node:fs";
 import { buildXlsmFromTemplate, SHIP_DATA_SHEET } from "../shippingExport";
 
 describe("buildXlsmFromTemplate — 賣貨便 template round-trip (real file)", () => {
-  const template = readFileSync("public/templates/myship-import-template.xlsm");
+  const template = readFileSync("public/templates/myship-import-template-1.6.xlsm");
   const rows = [
     ["王小明", "0912345678", "123456", "常溫", "#1 商品x2", "560", "60", "2026/7/3", "", "testuser"],
     ["陳大文", "0987654321", "654321", "冷凍", "#2 商品x1", "1200", "0", "2026/7/3", "", "user2"],
   ];
 
-  it("preserves both sheets, the VBA project, 填寫說明 B1=1.5, and the row-6 headers; writes rows at A7 as strings", async () => {
+  it("preserves both sheets, the VBA project, 填寫說明 B1=1.6, and the row-6 headers; writes rows at A7 as strings", async () => {
     const out = await buildXlsmFromTemplate(new Uint8Array(template), rows);
     const XLSX = await import("xlsx");
     const rt = XLSX.read(out, { type: "array", bookVBA: true });
     expect(rt.SheetNames).toEqual(["訂單匯入", "填寫說明"]);
     expect((rt as { vbaraw?: unknown }).vbaraw).toBeTruthy();           // 驗證 macro survives
-    expect(rt.Sheets["填寫說明"]["B1"].v).toBe("1.5");                   // version cell untouched (template 1.5, 2026-10-27)
+    expect(String(rt.Sheets["填寫說明"]["B1"].v)).toBe("1.6");           // version cell untouched (template 1.6, 2026-11-17)
     const ws = rt.Sheets[SHIP_DATA_SHEET];
     expect(ws["A6"].v).toBe("＊取件人姓名");                             // headers untouched
     expect(ws["A7"]).toMatchObject({ t: "s", v: "王小明" });             // data starts row 7
@@ -93,10 +93,10 @@ describe("buildXlsmFromTemplate — 賣貨便 template round-trip (real file)", 
     expect(ws["!ref"]).toBe("A1:K8");                                    // extended by 2 rows only
   });
 
-  it("is the 1.5 template byte-for-byte (sha256 + size pinned — never re-save it in Excel)", async () => {
+  it("is the 1.6 template byte-for-byte (sha256 + size pinned — never re-save it in Excel)", async () => {
     const { createHash } = await import("node:crypto");
-    expect(template.length).toBe(30_368);
-    expect(createHash("sha256").update(template).digest("hex")).toBe("cffc789837a3900d11913994ada7f6b1bad1c66f0ba258fd5b5954e871d2f63f");
+    expect(template.length).toBe(30_316);
+    expect(createHash("sha256").update(template).digest("hex")).toBe("91bec9db31a6971b4058b1c9a619735506956af17eb3cdcba5b2fd2ada8ff5a9");
   });
 
   it("ZIP PATCH: the sheet's <dataValidations> (D7:D1048576 常溫/冷凍) survives the row insert, after </sheetData>", async () => {
