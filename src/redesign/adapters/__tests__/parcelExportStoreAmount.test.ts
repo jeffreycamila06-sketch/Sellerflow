@@ -156,31 +156,30 @@ describe("what gets filled (only EMPTY fields)", () => {
     ["CHK", fillInfoOf({ store_id: null, rec_store: "朝陽", order_amount: 250 })],             // already checked
     ["BARE", fillInfoOf({ store_id: null, rec_store: "", order_amount: null })],               // synced earlier, never checked
   ]);
-  it("new rows and empty fields only; a checked row's store/amount and the extension's row are never touched", () => {
+  it("existing rows' empty fields only; a new row (filled in its insert), a checked row's store/amount and the extension's row are never planned", () => {
     const p = planFills(rows, info);
-    expect([...p.stores]).toEqual([["朝陽", ["NEW"]], ["中壢", ["BARE"]]]);
-    expect([...p.amounts]).toEqual([[260, ["NEW"]], [410, ["BARE"]]]);
+    expect([...p.stores]).toEqual([["中壢", ["BARE"]]]);
+    expect([...p.amounts]).toEqual([[410, ["BARE"]]]);
   });
 });
 
 describe("Sync writes", () => {
   const sync = async (bytes: Uint8Array) => syncFromExport(bytes);
-  it("upserts are exactly today's (no store / amount / name keys); fills are guarded updates, one per value", async () => {
+  it("new parcels: store and amount in the ONE insert-only write; an existing parcel missing them: guarded updates, one per value", async () => {
     M.existing = [{ tracking_no: "F3", buyer_username: "buyer_F3", store_id: null, rec_store: null, order_amount: null, recipient_name: null }];
     const res = await sync(file([R("F1", "朝陽", "260"), R("F2", "朝陽", "410"), R("F3", "中壢華強門市", "410")]));
     expect(res).toMatchObject({ ok: true, total: 3, fresh: 2, same: 1 });
-    for (const u of M.calls.filter((c) => c.op === "upsert")) {
-      for (const row of u.payload as Record<string, unknown>[]) expect(Object.keys(row).sort()).toEqual(["buyer_username", "tracking_no", "user_id"]);
-    }
-    const ups = updates();
-    const storeUps = ups.filter((u) => "store_id" in (u.payload as object));
-    const amountUps = ups.filter((u) => "order_amount" in (u.payload as object));
-    expect(storeUps.map((u) => [u.payload, u.filters.find((f) => f[0] === "in")?.[2]])).toEqual([
-      [{ store_id: "朝陽" }, ["F1", "F2"]], [{ store_id: "中壢華強門市" }, ["F3"]],
+    const ups = M.calls.filter((c) => c.op === "upsert");
+    expect(ups).toHaveLength(1);
+    expect(ups[0].filters).toEqual([["options", { onConflict: "user_id,tracking_no", ignoreDuplicates: true }]]); // insert-only: never overwrites
+    expect(ups[0].payload).toEqual([
+      { user_id: "SELLER", tracking_no: "F1", buyer_username: "buyer_F1", store_id: "朝陽", order_amount: 260 },
+      { user_id: "SELLER", tracking_no: "F2", buyer_username: "buyer_F2", store_id: "朝陽", order_amount: 410 },
     ]);
-    expect(amountUps.map((u) => [u.payload, u.filters.find((f) => f[0] === "in")?.[2]])).toEqual([
-      [{ order_amount: 260 }, ["F1"]], [{ order_amount: 410 }, ["F2", "F3"]],
-    ]);
+    const storeUps = updates().filter((u) => "store_id" in (u.payload as object));
+    const amountUps = updates().filter((u) => "order_amount" in (u.payload as object));
+    expect(storeUps.map((u) => [u.payload, u.filters.find((f) => f[0] === "in")?.[2]])).toEqual([[{ store_id: "中壢華強門市" }, ["F3"]]]);
+    expect(amountUps.map((u) => [u.payload, u.filters.find((f) => f[0] === "in")?.[2]])).toEqual([[{ order_amount: 410 }, ["F3"]]]);
     for (const u of storeUps) expect(u.filters).toEqual(expect.arrayContaining([
       ["eq", "user_id", "SELLER"], ["eq", "carrier", "711"], ["is", "recipient_name", null],
       ["or", "and(store_id.is.null,rec_store.is.null),and(store_id.is.null,rec_store.eq.),and(store_id.eq.,rec_store.is.null),and(store_id.eq.,rec_store.eq.)"],
@@ -190,6 +189,10 @@ describe("Sync writes", () => {
     ]));
     // never the recipient name, never a phone
     expect(JSON.stringify(M.calls.filter((c) => c.op !== "select"))).not.toMatch(/王小明|recipient_name":|phone/);
+  });
+  it("a sync of only new parcels makes no update at all", async () => {
+    await sync(file([R("F1", "朝陽", "260"), R("F2", "板橋", "410")]));
+    expect(updates()).toEqual([]);
   });
   it("a row that already has a store / amount (extension or checked) gets nothing for that field", async () => {
     M.existing = [
@@ -202,10 +205,15 @@ describe("Sync writes", () => {
     expect(ups).toEqual([[{ order_amount: 300 }, ["F2"]]]); // F2 has no amount yet; its store came from the check
   });
   it("a fill that fails never changes the sync result (the parcels are saved)", async () => {
+    const bare = (code: string) => ({ tracking_no: code, buyer_username: `buyer_${code}`, store_id: null, rec_store: null, order_amount: null, recipient_name: null });
+    M.existing = [bare("F1")];
     M.updateThrows = true;
-    expect(await sync(file([R("F1", "朝陽", "260")]))).toMatchObject({ ok: true, fresh: 1 });
-    M.updateThrows = false; M.updateError = { code: "42501" };
-    expect(await sync(file([R("F2", "朝陽", "260")]))).toMatchObject({ ok: true, fresh: 1 });
+    expect(await sync(file([R("F1", "朝陽", "260"), R("F9", "板橋", "300")]))).toMatchObject({ ok: true, fresh: 1, same: 1 });
+    expect(updates().length).toBe(2); // the fills for F1 were really tried (and failed)
+    M.calls = []; M.updateThrows = false; M.updateError = { code: "42501" };
+    M.existing = [bare("F2")];
+    expect(await sync(file([R("F2", "朝陽", "260")]))).toMatchObject({ ok: true, same: 1 });
+    expect(updates().length).toBe(2);
   });
   it("a file without the two columns makes no update at all (today's behaviour)", async () => {
     await sync(file([R("F1", "朝陽", "260")], undefined, ["取件門市", "商品總額&#10;(A+B)"]));

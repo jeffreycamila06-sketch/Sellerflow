@@ -246,19 +246,42 @@ export function fillInfoOf(r: { store_id?: unknown; rec_store?: unknown; order_a
   return { hasStore: filled(r.store_id) || filled(r.rec_store), hasAmount: r.order_amount != null, hasName: filled(r.recipient_name) };
 }
 
-// PURE — which rows get a store / an amount, grouped by value (one guarded update per value).
-// Only a field that is EMPTY (new row, or stored row without it) and only rows without a recipient
-// name. The database update repeats every one of these conditions, so a value written meanwhile
-// (by the check or the extension) is never overwritten.
+// PURE — what one Sync writes. NEW parcels go in ONE insert-only write (ignoreDuplicates = ON CONFLICT DO
+// NOTHING) that already carries the username, the pickup store and the amount — no extra request, and a
+// row that appeared meanwhile (another device, the extension) is left exactly as it is. Parcels that
+// already existed and whose username changed get today's username-only merge write.
+export function planWrites(rows: ExportHandleRow[], existing: Map<string, string | null>) {
+  const inserts: { tracking_no: string; buyer_username?: string; store_id?: string; order_amount?: number }[] = [];
+  const handleUpdates: { tracking_no: string; buyer_username: string }[] = [];
+  for (const r of rows) {
+    const has = r.buyer_username != null && String(r.buyer_username).trim() !== "";
+    if (!existing.has(r.tracking_no)) {
+      inserts.push({
+        tracking_no: r.tracking_no,
+        ...(has ? { buyer_username: String(r.buyer_username) } : {}),
+        ...(r.store ? { store_id: r.store } : {}),
+        ...(r.amount != null ? { order_amount: r.amount } : {}),
+      });
+    } else if (has && existing.get(r.tracking_no) !== r.buyer_username) {
+      handleUpdates.push({ tracking_no: r.tracking_no, buyer_username: String(r.buyer_username) });
+    }
+  }
+  return { inserts, handleUpdates };
+}
+
+// PURE — which EXISTING rows get a store / an amount, grouped by value (one guarded update per value).
+// New parcels never come here (they got theirs in the insert). Only a field that is EMPTY and only rows
+// without a recipient name. The database update repeats every one of these conditions, so a value written
+// meanwhile (by the check or the extension) is never overwritten.
 export function planFills(rows: ExportHandleRow[], info: Map<string, FillInfo>) {
   const stores = new Map<string, string[]>();
   const amounts = new Map<number, string[]>();
   const add = <K,>(m: Map<K, string[]>, k: K, code: string) => { const l = m.get(k); if (l) l.push(code); else m.set(k, [code]); };
   for (const r of rows) {
     const i = info.get(r.tracking_no);
-    if (i?.hasName) continue;
-    if (r.store && !i?.hasStore) add(stores, r.store, r.tracking_no);
-    if (r.amount != null && !i?.hasAmount) add(amounts, r.amount, r.tracking_no);
+    if (!i || i.hasName) continue; // a new parcel (filled in its insert) or a row with a recipient name
+    if (r.store && !i.hasStore) add(stores, r.store, r.tracking_no);
+    if (r.amount != null && !i.hasAmount) add(amounts, r.amount, r.tracking_no);
   }
   return { stores, amounts };
 }
@@ -324,28 +347,31 @@ export async function syncFromExport(bytes: Uint8Array): Promise<SyncResult> {
       }
     }
 
-    const plan = planSync(rows, existing);
+    const plan = planSync(rows, existing); // the counts (unchanged)
+    const writes = planWrites(rows, existing);
     const counts = { total: rows.length, fresh: plan.fresh, updated: plan.updated, same: plan.same, withoutHandle: plan.withoutHandle };
-    const attempted = plan.withHandle.length + plan.codeOnly.length;
+    const attempted = writes.inserts.length + writes.handleUpdates.length;
     let saved = 0;
     const fail = (error: { code?: string; message?: string; status?: number }): SyncResult => {
       const cause = classifyDbError(error);
       if (saved > 0 && cause !== "signed_out") return { ok: false, ...counts, error: "partial", saved, attempted };
       return { ok: false, ...counts, error: cause };
     };
-    for (const c of chunk(plan.withHandle, UPSERT_CHUNK)) {
-      const { error } = await supabase.from("parcel_tracking")
-        .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no" });
-      if (error) return fail(error);
-      saved += c.length;
-    }
-    for (const c of chunk(plan.codeOnly, UPSERT_CHUNK)) {
+    // New parcels: one insert-only write per 500 (username, store and amount in the same write).
+    for (const c of chunk(writes.inserts, UPSERT_CHUNK)) {
       const { error } = await supabase.from("parcel_tracking")
         .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no", ignoreDuplicates: true });
       if (error) return fail(error);
       saved += c.length;
     }
-    // Addition A: the pickup store and the amount, into EMPTY fields only (after the rows exist).
+    // Existing parcels whose username changed: today's username-only merge write.
+    for (const c of chunk(writes.handleUpdates, UPSERT_CHUNK)) {
+      const { error } = await supabase.from("parcel_tracking")
+        .upsert(c.map((r) => ({ user_id: me, ...r })), { onConflict: "user_id,tracking_no" });
+      if (error) return fail(error);
+      saved += c.length;
+    }
+    // Addition A for parcels that ALREADY existed: the store / amount into EMPTY fields only.
     if (wantsFill) await applyFills(me, planFills(rows, info));
     return { ok: true, ...counts, saved };
   } catch {

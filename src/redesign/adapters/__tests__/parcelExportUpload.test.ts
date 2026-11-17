@@ -169,25 +169,31 @@ describe("classifyDbError — each cause maps to its own message", () => {
 });
 
 describe("syncFromExport — the whole upload path", () => {
-  it("first upload: handle rows upsert ONLY {user_id, tracking_no, buyer_username}; no-username rows are KEPT as code-only inserts", async () => {
+  it("first upload: ONE insert-only write with {user_id, tracking_no, buyer_username?} — no-username rows are KEPT", async () => {
     const res = await syncFromExport(fullFile());
     expect(res).toMatchObject({ ok: true, total: 3, fresh: 3, updated: 0, same: 0, withoutHandle: 1 });
     expect(rpc).toHaveBeenCalledWith("parcel_tracking_foreign_overlap", { p_codes: ["F836749464", "F836749265", "F836748584"] });
-    expect(upsert).toHaveBeenCalledTimes(2);
-    const [handlePayload, handleOpts] = upsert.mock.calls[0] as [Array<Record<string, unknown>>, Record<string, unknown>];
-    expect(handleOpts).toEqual({ onConflict: "user_id,tracking_no" });
-    expect(handlePayload).toEqual([
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const [payload, opts] = upsert.mock.calls[0] as [Array<Record<string, unknown>>, Record<string, unknown>];
+    expect(opts).toEqual({ onConflict: "user_id,tracking_no", ignoreDuplicates: true }); // new parcels: never overwrites an existing row
+    expect(payload).toEqual([
       { user_id: "SELLER-UID", tracking_no: "F836749464", buyer_username: "Ashley102031" },
       { user_id: "SELLER-UID", tracking_no: "F836749265", buyer_username: "18ingaryg(IG)" },
+      { user_id: "SELLER-UID", tracking_no: "F836748584" },
     ]);
-    const [codePayload, codeOpts] = upsert.mock.calls[1] as [Array<Record<string, unknown>>, Record<string, unknown>];
-    expect(codeOpts).toEqual({ onConflict: "user_id,tracking_no", ignoreDuplicates: true }); // never overwrites an existing row
-    expect(codePayload).toEqual([{ user_id: "SELLER-UID", tracking_no: "F836748584" }]);
-    for (const row of [...handlePayload, ...codePayload]) {
+    for (const row of payload) {
       for (const k of ["status", "terminal", "pickup_deadline", "rec_store", "last_polled_at", "recipient_name", "store_id", "order_amount", "cm_order_no"]) {
-        expect(row).not.toHaveProperty(k);
+        expect(row).not.toHaveProperty(k); // this file has no 取件門市 / 商品總額 column
       }
     }
+  });
+
+  it("an existing parcel whose username changed keeps today's username-only MERGE write", async () => {
+    M.existing = [{ tracking_no: "F836749464", buyer_username: "old_name" }];
+    await syncFromExport(fullFile());
+    const merge = upsert.mock.calls.find((c) => !(c[1] as Record<string, unknown>).ignoreDuplicates)!;
+    expect(merge[1]).toEqual({ onConflict: "user_id,tracking_no" });
+    expect(merge[0]).toEqual([{ user_id: "SELLER-UID", tracking_no: "F836749464", buyer_username: "Ashley102031" }]);
   });
 
   it("S5: re-uploading the same file is a NO-OP — 0 writes, reported as already synced", async () => {
