@@ -54,6 +54,7 @@ import { runPcLoginWalk } from "./server/pcLoginWalk.js";
 import { createPc711Login, createPc711Handlers, createPc711Store } from "./server/pc711Login.js";
 import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipeiDay } from "./server/pc711Shadow.js";
 import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Evidence.js";
+import { createPc711Emap, EMAP_KEEPALIVE_STORE } from "./server/pc711Emap.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1287,7 +1288,12 @@ if (serviceSb) {
   const pc711ShadowDb = createShadowDb(serviceSb);
   // sql/172: full evidence + re-checks + re-asks + mirror (pc711_mirror_enabled, off) — admin-only table
   const pc711EvidenceDb = createEvidenceDb(serviceSb);
-  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting });
+  // the kept E-Map session (server/pc711Emap.js) = the extension's E-Map tab. open() = the requests of the
+  // 選擇取貨門市 click (cart → detail → MAP → E-Map); it gets NO relogin, so it never sends a login request.
+  const pc711Emap = createPc711Emap({
+    open: () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, openOnly: true, log: () => {} }),
+  });
+  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, emap: pc711Emap });
   pc711ShadowJob.start();
   app.get("/admin/pc711/shadow", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });

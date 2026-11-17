@@ -34,10 +34,10 @@ const MAINT_START_H = 1, MAINT_END_H = 5;    // Asia/Taipei hours [1, 5) — sam
 
 const MYSHIP = "myship.7-11.com.tw";
 const EMAP_HOSTS = ["emap.unipcsc.com.tw", "emap.pcsc.com.tw"];
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+export const PC_PROBE_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const RESTRICTION_RE = /多次未取|限制使用取貨付款|無法於平台成立訂單/;
 const TOKEN_RE = /var\s+tokenID\s*=\s*'([^']+)'/;
-const GUID_RE = /eshop[Gg]uid\s*[:=]\s*["']([^"']{8,})["']/;
+export const PC_PROBE_GUID_RE = /eshop[Gg]uid\s*[:=]\s*["']([^"']{8,})["']/;
 const PROBE_NAME = "王小明"; // a placeholder receiver name for the validation body (not a buyer)
 
 export const pcProbeEnabled = (env = process.env) => String(env?.PC_SERVER_PROBE ?? "") === "1";
@@ -264,7 +264,7 @@ export function safeLocPath(location, base) {
   return /^[A-Za-z0-9_./~-]{1,120}$/.test(path) ? path : "?";
 }
 
-function createJar(seed) {
+export function createJar(seed) {
   const hosts = new Map();
   const of = (host) => { if (!hosts.has(host)) hosts.set(host, new Map()); return hosts.get(host); };
   const put = (host, pair) => {
@@ -337,7 +337,7 @@ export function parseProbeConfig({ gms, sender, buyer }) {
 //   Without target the probe is exactly as before.
 // Never throws.
 export async function runPcServerProbe(opts = {}) {
-  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS, session = null, target = null, gate = true } = opts;
+  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS, session = null, target = null, gate = true, openOnly = false } = opts;
   const parse = (html) => parseForms(html, { budgetMs: parseBudgetMs });
   if (gate !== false && !pcProbeEnabled(env)) return { disabled: true };
   // kind "frozen" (extension 1.18.2 frozen lane) = the SAME store chain; only byIDData asks cate=27.
@@ -364,10 +364,10 @@ export async function runPcServerProbe(opts = {}) {
     let u;
     try { u = new URL(url); } catch { return { fail: "refused", ms: 0 }; }
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), Math.min(PC_PROBE_REQUEST_MS, left));
+    const timer = setTimeout(() => ctl.abort(), Math.min(Number(init.timeoutMs) > 0 ? Number(init.timeoutMs) : PC_PROBE_REQUEST_MS, left));
     const t0 = now();
     try {
-      const headers = { "user-agent": UA, ...(init.headers || {}) };
+      const headers = { "user-agent": PC_PROBE_UA, ...(init.headers || {}) };
       const cookie = jar ? jar.header(u.hostname) : "";
       if (cookie) headers.cookie = cookie;
       const sentNames = cookie ? jar.names(u.hostname) : [];
@@ -439,7 +439,15 @@ export async function runPcServerProbe(opts = {}) {
       phone.kind = "config_missing";
       record(phone, stepOf("phone.config", null, false, "config_missing"));
     } else {
-      const page = await request(null, cartUrl);
+      // target phone (the shadow): the extension's token GET (chrome-extension/myship-711.js
+      // getVerificationToken) — target.tokenMs per GET, and ONE immediate second GET only after a
+      // timeout / network error when target.tokenRetry is true. Without these the probe is as before.
+      const tokenInit = target && Number(target.tokenMs) > 0 ? { timeoutMs: Number(target.tokenMs) } : {};
+      let page = await request(null, cartUrl, tokenInit);
+      if (target && target.tokenRetry === true && (page.fail === "timeout" || page.fail === "network")) {
+        record(phone, stepOf("phone.token", page, false, `kind=${page.fail} retry=1`));
+        page = await request(null, cartUrl, tokenInit);
+      }
       const token = !page.fail && page.status === 200 ? (page.text.match(TOKEN_RE) || [])[1] || "" : "";
       const pageKind = page.fail ? page.fail : page.status >= 300 && page.status < 400 ? "redirect" : page.status !== 200 ? "http" : token ? "" : "html";
       record(phone, stepOf("phone.token", page, !pageKind, `ct=${page.ct || "-"} bytes=${page.text ? page.text.length : 0} token=${token ? 1 : 0}${pageKind ? ` kind=${pageKind}` : ""}`));
@@ -576,10 +584,15 @@ export async function runPcServerProbe(opts = {}) {
               method: "POST", body: encode(f3.fields),
               headers: { "content-type": "application/x-www-form-urlencoded", origin: `https://${MYSHIP}`, referer: `https://${MYSHIP}/` },
             }), url4);
-            const guid = !p4.fail && p4.status === 200 ? (p4.text.match(GUID_RE) || [])[1] || "" : "";
+            const guid = !p4.fail && p4.status === 200 ? (p4.text.match(PC_PROBE_GUID_RE) || [])[1] || "" : "";
             record(store, stepOf("store.emap", p4, Boolean(guid), `bytes=${p4.text ? p4.text.length : 0} hops=${p4.hops ?? 0} guid=${guid ? 1 : 0}${p4.fail ? ` kind=${p4.fail}` : ""}`));
             if (p4.fail) stop(p4.fail);
             else if (!guid) stop("guid_missing");
+            else if (openOnly) {
+              // server/pc711Emap.js: this chain = what the extension's 選擇取貨門市 click does; the page it
+              // opened is kept like the extension's E-Map tab. Handed back only — never logged.
+              store.emap = { cookies: jar.dump(), guid, pageUrl: p4.finalUrl || url4 };
+            }
             else {
               // 5. the full-store lookup
               const page4 = new URL(p4.finalUrl || url4);
