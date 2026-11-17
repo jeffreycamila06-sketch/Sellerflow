@@ -5,7 +5,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { checkRows } from "../../../../server/parcelTrackingRunner.js";
 import { shouldRetireNotDropped, isNotDroppedMessage, RETIRE_NOT_DROPPED_DAYS } from "../../../../server/pickupRules.js";
-import { QUERY_URL, SEARCH_URL } from "../../../../server/parcelTracking.js";
 
 const NOT_DROPPED = "訂單已成立，尚未至門市寄件";
 const html = (code: string, msg: string, extra = "") =>
@@ -39,22 +38,31 @@ function fakeSb() {
     },
   };
 }
-const fetchWith = (body: string) => vi.fn(async (url: string) => {
-  if (String(url).includes("/api/Captcha")) return { json: async () => ({ captchaId: "G", image: "x" }) };
-  if (!String(url).includes("/PackageDetail")) return { url: SEARCH_URL, text: async () => '<input name="__RequestVerificationToken" type="hidden" value="T">' };
-  return { url: QUERY_URL, text: async () => body };
+// Real Response objects, typed as fetch — no casts. (A Response built here has url "", which the
+// runner reads as the /PackageDetail URL it asked for: res.url || QUERY_URL in parcelTrackingRunner.js.)
+const fetchWith = (body: string) => vi.fn<typeof fetch>(async (input) => {
+  const url = String(input);
+  if (url.includes("/api/Captcha")) return Response.json({ captchaId: "G", image: "x" });
+  if (!url.includes("/PackageDetail")) return new Response('<input name="__RequestVerificationToken" type="hidden" value="T">');
+  return new Response(body);
 });
 const ocr = () => ({ solve: async () => "1234", terminate: async () => {} });
-const logs = () => { const lines: string[] = []; const p = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); }; return { lines, log: p, warn: p, error: p }; };
+// A real Console whose log / warn / error lines are kept for the assertions.
+const logs = () => {
+  const lines: string[] = [];
+  const p = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+  const logger: Console = { ...console, log: p, warn: p, error: p };
+  return { lines, logger };
+};
 async function check(row: Record<string, unknown>, body: string) {
   const sb = fakeSb();
-  const logger = logs();
+  const { lines, logger } = logs();
   const r = await checkRows({
     serviceSb: sb, rows: [{ id: "r1", user_id: "U1", tracking_no: "F12345678901", status: "in_transit", unchanged_polls: 0, ...row }],
     daily: { day: "2026-11-18", requests: 0, sentThisRun: 0 }, fetchImpl: fetchWith(body), ocr: ocr(), now: () => NOW, logger,
     limits: { minGapMs: 0, jitterMs: 0, baseBackoffMs: 0 },
   });
-  return { r, patch: sb.updates[0]?.patch, updates: sb.updates, logger };
+  return { r, patch: sb.updates[0]?.patch, updates: sb.updates, lines };
 }
 
 describe("shouldRetireNotDropped (pure)", () => {
@@ -79,11 +87,11 @@ describe("shouldRetireNotDropped (pure)", () => {
 
 describe("checkRows: the 10-day rule on the answer just received", () => {
   it("fresh not-dropped answer + synced 10 days ago → terminal, status and message as answered", async () => {
-    const { r, patch, logger } = await check({ created_at: synced("2026-11-08") }, html("F12345678901", NOT_DROPPED));
+    const { r, patch, lines } = await check({ created_at: synced("2026-11-08") }, html("F12345678901", NOT_DROPPED));
     expect(patch).toMatchObject({ status: "in_transit", status_message: NOT_DROPPED, terminal: true, last_polled_at: NOW.toISOString() });
     expect(r.retired).toBe(1);
     expect(r.notDropped).toBe(1);
-    const all = logger.lines.join("\n");
+    const all = lines.join("\n");
     expect(all).toContain("1 parcel(s) left Pickup Status (still not dropped off, synced 10+ days ago)");
     expect(all).not.toContain("F12345678901");
     expect(all).not.toContain(NOT_DROPPED);
