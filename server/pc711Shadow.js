@@ -33,6 +33,8 @@ export const SHADOW_PHONE_BACKOFF_MS = [5 * 1000, 10 * 1000, 20 * 1000, 60 * 100
 // ── with the kept E-Map session (server/pc711Emap.js): the rest of the extension's row loop ─────────
 export const SHADOW_PHONE_TOKEN_MS = 5000;               // myship-711.js TOKEN_TIMEOUT_MS
 export const SHADOW_PHONE_TOKEN_RETRY_FAILS = 2;         // PC_PHONE_TOKEN_RETRY_FAILS
+export const SHADOW_FROZEN_STORE_GAP_MS = 10 * 60 * 1000; // frozen-check.js STORE_GAP_MS
+export const SHADOW_FROZEN_SLOW_PAUSE_MS = 10 * 60 * 1000; // frozen-check.js SLOW_PAUSE_MS
 // ── the shadow's own (Jeff 2026-11-15) ─────────────────────────────────────────
 export const SHADOW_BRAKE_ERRORS = 5;                    // refusals in a row → pause
 export const SHADOW_BRAKE_PAUSE_MS = 15 * 60 * 1000;
@@ -552,9 +554,22 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
 
   // The extension's pass (chrome-extension/background.js pcRunOnce, multi-seller lane): pick the E-Map tab
   // (a session without a guid = one miss), the row loop (pcPollMulti: ≤ 5 parcels, the store half then the
-  // phone half, 2 s after each parcel), the keepalive (pcEmapKeepalive), then pcRefreshTabStatus (the
-  // recovery GET, the once-per-episode re-open). Returns the number of checks made.
+  // phone half, 2 s after each parcel), the frozen kick (frozen-check.js: ≤ 1 frozen request), the keepalive
+  // (pcEmapKeepalive), then pcRefreshTabStatus (the recovery GET, the re-open). Returns the checks made.
+  const frozenStoreAt = new Map();               // frozen-check.js st.storeAt: store → its last frozen request
+  let frozenPauseUntil = 0;                      // frozen-check.js st.pauseUntil
+  let loginSince;                                // the saved 7-11 login's `since` this job last saw
+  // the open tries (server/pc711Emap.js refresh) go through the safety brake, like every other 7-11 request
+  const openHooks = {
+    onOpenOk: () => { streak = 0; },
+    onOpenFail: async (info) => {
+      lastEnd = now();
+      const step = STEP_NAMES.includes(info.step) ? info.step : "store.cart";
+      return brakeAfter({ fail_http: Number(info.http) || 0, fail_reason: failReasonOf(info.kind), fail_step: step }, "store");
+    },
+  };
   async function runRowsExt(st, t, p, mirrorOn, budget) {
+    if (st.since !== loginSince) { loginSince = st.since; try { emap.onLogin(); } catch { /* never stops the pass */ } }
     const rowsAt = now();                          // the extension's `now` of pcPollMulti (store waits start here)
     const inMaint = inShadowMaint(rowsAt);
     try { emap.pick(inMaint); } catch { /* never stops the pass */ }
@@ -564,28 +579,30 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     const anyNeedStore = [...mall, ...aall].some((j) => j.kind === "store");
     const keyOf = (j) => `${j.mode === "mirror" ? "m:" : ""}${j.scanId}:${j.kind}`;
     for (const j of [...mall, ...aall]) { const b = backoff.get(keyOf(j)); if (b) b.seenAt = t; }
+    // frozen parcels are NOT rows: the extension's frozen lane is its own kick after the rows
     const rows = rowsOf([
       ...mall.map((job) => ({ job, queued: p.mirrorQueue ? p.mirrorQueue.waiting : 0 })),
-      ...aall.map((job) => ({ job, queued: p.waiting })),
+      ...aall.filter((job) => job.kind !== "frozen").map((job) => ({ job, queued: p.waiting })),
     ]);
+    const frozenJobs = aall.filter((job) => job.kind === "frozen");
     let processed = 0, checked = 0;
     let stalled = false;                           // stalledGms: the server sends every phone check with ONE shop
     const storeExt = (job) => ({
       ask: async () => {
         const t0 = now();
         let r;
-        try { r = job.kind === "frozen" ? await emap.checkFrozen(job.input.storeId) : await emap.checkStore(job.input.storeId); } catch { r = null; }
+        try { r = await emap.checkStore(job.input.storeId); } catch { r = null; }
         if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [], transient: false };
         lastEnd = now();
         return { r: { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut: false }, t0, end: lastEnd, loggedOut: false };
       },
       maint: inMaint,
-      // the store half waits from the pass start (pcPollMulti `now`); the frozen lane keeps the shadow's end-of-check start
-      base: (end) => (job.kind === "frozen" ? end : rowsAt),
+      // the store half waits from the pass start (pcPollMulti `now`)
+      base: () => rowsAt,
       delay: (fails) => storeBackoffDelay(fails),
-      // the store half is E-Map evidence (pcEmapVerdict / pcEmapMiss, once per verdict generation); frozen never is
-      onAnswer: job.kind === "frozen" ? null : () => emap.verdict(),
-      onMiss: job.kind === "frozen" ? null : (b, r) => {
+      // the store half is E-Map evidence (pcEmapVerdict / pcEmapMiss, once per verdict generation)
+      onAnswer: () => emap.verdict(),
+      onMiss: (b, r) => {
         if (!r.transient && b.countedGen !== emap.gen()) { emap.miss(`store: ${r.kind || "no_answer"}`, false, inMaint); b.countedGen = emap.gen(); }
       },
     });
@@ -623,8 +640,39 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       await sleep(SHADOW_ROW_GAP_MS);              // PC_ROW_GAP_MS after each parcel
       lastEnd = now();
     }
+    // the frozen kick (frozen-check.js sendOne): at most ONE frozen request a pass, a store at most once per
+    // 10 min (from the request, answered or not), none for 10 min after a slow / missing answer by day
+    const fAt = now();
+    for (const [k, at] of frozenStoreAt) if (fAt - at >= SHADOW_FROZEN_STORE_GAP_MS) frozenStoreAt.delete(k);
+    const fj = emap.usable() && fAt >= frozenPauseUntil ? frozenJobs.find((j) => {
+      const b = backoff.get(keyOf(j));
+      return !(b && fAt < b.nextAt) && !saveBlocked(jobKey(j), t) && !frozenStoreAt.has(String(j.input.storeId));
+    }) : null;
+    if (fj) {
+      checked += 1;
+      const reqAt = now();
+      frozenStoreAt.set(String(fj.input.storeId), reqAt);    // the floor starts at the request
+      let slow = false;
+      const out = await runJob(fj, st, t, p.waiting, {
+        ask: async () => {
+          const t0 = now();
+          let r;
+          try { r = await emap.checkFrozen(fj.input.storeId); } catch { r = null; }
+          if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [], transient: true };
+          slow = Boolean(r.transient);                       // frozen-check.js slowAnswer: no reply / timeout / network / 5xx
+          lastEnd = now();
+          return { r: { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut: false }, t0, end: lastEnd, loggedOut: false };
+        },
+        maint: inMaint,
+        base: () => reqAt,
+        delay: () => SHADOW_FROZEN_STORE_GAP_MS,             // the parcel comes back when its store may be asked again
+        onAnswer: null, onMiss: null,
+      });
+      if (slow && !inMaint) frozenPauseUntil = now() + SHADOW_FROZEN_SLOW_PAUSE_MS; // the night never pauses (1.18.2)
+      if (out === "stop" || out === "pause") return checked;
+    }
     try { await emap.keepalive(anyNeedStore, inShadowMaint(now())); } catch { /* never stops the pass */ }
-    try { await emap.refresh(inShadowMaint(now())); } catch { /* never stops the pass */ }
+    try { await emap.refresh(inShadowMaint(now()), openHooks); } catch { /* never stops the pass */ }
     return checked;
   }
 

@@ -1289,9 +1289,10 @@ if (serviceSb) {
   // sql/172: full evidence + re-checks + re-asks + mirror (pc711_mirror_enabled, off) — admin-only table
   const pc711EvidenceDb = createEvidenceDb(serviceSb);
   // the kept E-Map session (server/pc711Emap.js) = the extension's E-Map tab. open() = the requests of the
-  // 選擇取貨門市 click (cart → detail → MAP → E-Map); it gets NO relogin, so it never sends a login request.
+  // 選擇取貨門市 click (cart → detail → MAP → E-Map), with the SAME saved-login session object the store
+  // check on main uses: a logged-out cart runs the existing quick re-login step exactly as before.
   const pc711Emap = createPc711Emap({
-    open: () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, openOnly: true, log: () => {} }),
+    open: () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, openOnly: true, log: () => {} }),
   });
   const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, emap: pc711Emap });
   pc711ShadowJob.start();

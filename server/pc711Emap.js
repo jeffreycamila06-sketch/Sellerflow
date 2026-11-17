@@ -22,6 +22,12 @@ export const EMAP_RECOVER_MIN_SPAN_MS = 2 * 60 * 1000;     // PC_RECOVER_MIN_SPA
 export const EMAP_STORE_VERDICTS = ["open", "full", "company", "not_found"]; // PC_STORE_VERDICTS
 // ── chrome-extension/emap-711.js (test-pinned) ────────────────────────────────
 export const EMAP_REQUEST_MS = 10000;                      // TIMEOUT_MS
+// ── chrome-extension/emap-frozen-711.js + frozen-check.js (test-pinned; NOT the warm-up) ───────────
+export const EMAP_FROZEN_REQUEST_MS = 2500;                // emap-frozen-711.js TIMEOUT_MS (headers AND body)
+export const EMAP_FROZEN_STORE_GAP_MS = 10 * 60 * 1000;    // frozen-check.js STORE_GAP_MS
+export const EMAP_FROZEN_SLOW_PAUSE_MS = 10 * 60 * 1000;   // frozen-check.js SLOW_PAUSE_MS
+// ── Jeff 2026-11-18 (server only — the extension waits for a person here) ───────────────────────────
+export const EMAP_OPEN_RETRY_MS = 2 * 60 * 1000;           // after two failed opens in a row: one try every 2 min
 const EMAP_HOSTS = ["emap.unipcsc.com.tw", "emap.pcsc.com.tw"];
 const TAG = "[PC711_EMAP]";
 
@@ -108,7 +114,7 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
   async function request(url, init) {
     const t0 = now();
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), EMAP_REQUEST_MS);
+    const timer = setTimeout(() => ctl.abort(), Number(init.timeoutMs) > 0 ? Number(init.timeoutMs) : EMAP_REQUEST_MS);
     let u;
     try { u = new URL(url); } catch { clearTimeout(timer); return { fail: "refused", ms: 0 }; }
     try {
@@ -163,6 +169,32 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     return { verdict: "unknown", kind: last.kind, transient: allTransient, http: last.http, ms: now() - t0, raw: last.raw, steps };
   }
 
+  // emap-frozen-711.js postFrozen + checkFrozenStore: ONE endpoint per check (its own section memory),
+  // 2.5 s for headers and body; a real non-answer (not a blip) → the other section NEXT time.
+  async function frozenCheck(storeId) {
+    const t0 = now();
+    if (!/^\d{6}$/.test(String(storeId || ""))) return { verdict: "unknown", kind: "bad_input", transient: false, http: 0, ms: 0, raw: "", steps: [{ step: "store.config", http: 0, ms: 0, ok: false, note: "kind=bad_input" }] };
+    if (!s || !s.guid) return { verdict: "unknown", kind: "guid_missing", transient: false, http: 0, ms: 0, raw: "", steps: [{ step: "frozen.byid", http: 0, ms: 0, ok: false, note: "kind=guid_missing" }] };
+    const url = `https://${s.host}/${s.frozenSection}/byIDData.aspx?rnd=${random()}`;
+    const body = new URLSearchParams([
+      ["mode", ""], ["k", String(storeId)], ["cate", "27"], ["eshopparid", "7M0"], ["eshopid", "7M0"],
+      ["multiple_type", ""], ["Guid", s.guid], ["Nan4AjaxTrickNumber", String(now())],
+    ]).toString();
+    const res = await request(url, { method: "POST", body, timeoutMs: EMAP_FROZEN_REQUEST_MS, headers: {
+      "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest",
+      origin: `https://${s.host}`, referer: s.pageUrl,
+    } });
+    let kind = "", transient = false, answer = null;
+    if (res.fail) { kind = res.fail; transient = res.fail === "timeout" || res.fail === "network"; }
+    else if (res.location && isErrorAspx(res.location, url)) kind = "error_aspx";
+    else if (res.status < 200 || res.status >= 300) { kind = "http"; transient = res.status >= 500; }
+    else { answer = parseFrozenAnswer(res.text); if (answer === null) kind = "unexpected_answer"; }
+    if (answer === null && !transient) s.frozenSection = s.frozenSection === "mobilemap" ? "ecmap" : "mobilemap";
+    const raw = res.text !== undefined && !res.fail ? byIdRawWord(res.text) : "";
+    return { verdict: answer ?? "unknown", kind: answer === null ? kind : "", transient, http: res.status || 0, ms: now() - t0, raw,
+      steps: [{ step: "frozen.byid", http: res.status || 0, ms: res.ms || 0, ok: answer !== null, note: kind ? `kind=${kind}` : "" }] };
+  }
+
   /** pcPickEmapTab: a kept session without a guid (and not on error.aspx) → one definitive miss per pass. */
   function pick(inMaint) {
     if (e.present && !e.error && !e.guid) miss(now(), "probe: eshopGuid not found", false, inMaint);
@@ -172,7 +204,7 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
 
   /** The store half of a parcel: the check + the extension's evidence (verdict / miss handled by the caller's ladder). */
   async function checkStore(storeId) { return check(storeId); }
-  async function checkFrozen(storeId) { return check(storeId, { frozen: true }); }
+  async function checkFrozen(storeId) { return frozenCheck(storeId); }
 
   /** pcEmapKeepalive: store 198002 every 5 min while nothing needs the store half. not_found = a miss. */
   async function keepalive(anyNeedStore, inMaint) {
@@ -197,33 +229,58 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     return res.fail || (g ? "guid" : res.status === 200 ? "no_guid" : "http");
   }
 
-  // pcTryRemint + pcAdoptRemintedTab: the 選擇取貨門市 click's requests (open()), once per episode
+  // pcTryRemint + pcAdoptRemintedTab: the 選擇取貨門市 click's requests (open()).
+  // → { ok, kind (one word), http (last step), step (last step name) }. One log line: the outcome word.
   async function remint() {
     e.remint.tried = true;
     let r = null;
     try { r = await open(); } catch { r = null; }
     const st = r && r.store;
     const got = st && st.emap && st.emap.guid ? st.emap : null;
-    const stepWords = (st && Array.isArray(st.steps) ? st.steps : []).map((x) => `${String(x.step || "").replace(/^store\./, "")}:${Number(x.http) || 0}`).join(",");
-    if (!got) {
-      e.remint.result = `open_failed:${(st && st.kind) || "error"}`;
-      say(`${TAG} open failed kind=${(st && st.kind) || "error"} steps=${stepWords || "-"}`);
-      return e.present ? emapDerive(now(), e, false) : "no_tab";
-    }
+    const steps = st && Array.isArray(st.steps) ? st.steps : [];
+    const lastStep = steps.length ? steps[steps.length - 1] : null;
+    const info = { ok: false, kind: String((st && st.kind) || "error"), http: Number(lastStep && lastStep.http) || 0, step: String((lastStep && lastStep.step) || "store.cart") };
     let host = "", path = "";
-    try { const u = new URL(got.pageUrl); host = u.hostname; path = u.pathname; } catch { host = ""; }
-    if (!EMAP_HOSTS.includes(host)) { e.remint.result = "open_failed:emap_host"; say(`${TAG} open failed kind=emap_host steps=${stepWords || "-"}`); return "no_tab"; }
+    if (got) { try { const u = new URL(got.pageUrl); host = u.hostname; path = u.pathname; } catch { host = ""; } }
+    if (got && !EMAP_HOSTS.includes(host)) info.kind = "emap_host";
+    if (!got || !EMAP_HOSTS.includes(host)) {
+      e.remint.result = `open_failed:${info.kind}`;
+      say(`${TAG} open result=${noteOf(info.kind) || "error"}`);
+      return info;
+    }
     const jar = createJar(Object.fromEntries(Object.entries(got.cookies || {}).filter(([h]) => EMAP_HOSTS.includes(h))));
-    s = { jar, guid: got.guid, pageUrl: got.pageUrl, host, section: emapSectionOf(path), known: null };
+    const section = emapSectionOf(path);
+    s = { jar, guid: got.guid, pageUrl: got.pageUrl, host, section, known: null, frozenSection: section };
     // adopt: a fresh ladder, verify at once (pcAdoptRemintedTab)
     e.present = true; e.guid = true; e.error = false;
     e.remint.result = ""; e.reloads = 0; e.misses = 0; e.firstMissAt = 0; e.reloadAt = 0; lastKeepaliveAt = 0;
-    say(`${TAG} open ok section=${s.section} steps=${stepWords}`);
-    return "ok";
+    say(`${TAG} open result=ok`);
+    return { ok: true, kind: "", http: info.http, step: info.step };
   }
 
-  /** pcRefreshTabStatus: the recovery GET, then the once-per-episode re-mint. inMaint = 01:00–05:00 Taipei. */
-  async function refresh(inMaint) {
+  // Jeff 2026-11-18 — after a failed open (the extension waits for a person here): one more try at once;
+  // two failures in a row → one try every 2 min until it opens; at once after a 7-11 login; never 01:00–05:00.
+  // hooks.onOpenFail(info) → true when the shadow's safety brake paused (then no further try now);
+  // hooks.onOpenOk() → a successful open breaks the brake's run of refusals.
+  let openFails = 0;           // failed opens in a row
+  let nextOpenAt = 0;          // the next try after two failures in a row
+  let loginKick = false;       // a 7-11 login happened: the next refresh may try at once
+  async function openTry(hooks) {
+    const info = await remint();
+    if (info.ok) {
+      openFails = 0; nextOpenAt = 0;
+      if (hooks && hooks.onOpenOk) { try { hooks.onOpenOk(); } catch { /* never stops the pass */ } }
+      return { info, paused: false };
+    }
+    openFails += 1;
+    nextOpenAt = now() + EMAP_OPEN_RETRY_MS;
+    let paused = false;
+    if (hooks && hooks.onOpenFail) { try { paused = Boolean(await hooks.onOpenFail(info)); } catch { paused = false; } }
+    return { info, paused };
+  }
+
+  /** pcRefreshTabStatus: the recovery GET, then the re-mint. inMaint = 01:00–05:00 Taipei. */
+  async function refresh(inMaint, hooks = null) {
     const t = now();
     let state = emapDerive(t, e, inMaint);
     if (state === "guid_missing") {
@@ -234,18 +291,30 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     }
     // the server's "賣貨便 tab parked on /cart/detail" = the saved 7-11 login, which the caller checks before every pass
     const remintable = state === "dead" || state === "expired" || state === "no_tab";
-    if (remintable && !e.remint.tried && !inMaint) state = await remint();
+    const lastFailed = e.remint.result.startsWith("open_failed");
+    // the extension: once per episode; Jeff: after a failed open, again every 2 min, and at once after a login
+    const due = remintable && !inMaint && (!e.remint.tried || loginKick || (lastFailed && now() >= nextOpenAt));
+    if (due) {
+      loginKick = false;
+      let r = await openTry(hooks);
+      // one failed open (not after the brake paused) → one more try right away, to confirm it really cannot open
+      if (!r.info.ok && openFails === 1 && !r.paused) r = await openTry(hooks);
+      state = r.info.ok ? "ok" : e.present ? emapDerive(now(), e, inMaint) : "no_tab";
+    }
     e.state = state;
     return state;
   }
+  /** a 7-11 login happened (the saved login's `since` changed): open at once if the session is not usable. */
+  function onLogin() { loginKick = true; }
 
   return {
-    pick, usable, checkStore, checkFrozen, keepalive, refresh,
+    pick, usable, checkStore, checkFrozen, keepalive, refresh, onLogin,
+    /** the keepalive's clock (frozen-check.js laneBusy is NOT copied: the server sends one request at a time) */
     /** the store half's verdict / miss (pcEmapVerdict / pcEmapMiss), and the once-per-generation counter */
     verdict: () => verdict(now()),
     miss: (reason, transient, inMaint) => miss(now(), reason, transient, inMaint),
     gen: () => verdictGen,
-    state: () => ({ state: e.state, present: e.present, guid: e.guid, error: e.error, misses: e.misses, reloads: e.reloads, lastVerdictAt: e.lastVerdictAt || null, remintTried: e.remint.tried, remintResult: e.remint.result }),
+    state: () => ({ state: e.state, present: e.present, guid: e.guid, error: e.error, misses: e.misses, reloads: e.reloads, lastVerdictAt: e.lastVerdictAt || null, remintTried: e.remint.tried, remintResult: e.remint.result, openFails, nextOpenAt: nextOpenAt || null }),
     _e: () => e, _session: () => s, _lastKeepaliveAt: () => lastKeepaliveAt,
   };
 }

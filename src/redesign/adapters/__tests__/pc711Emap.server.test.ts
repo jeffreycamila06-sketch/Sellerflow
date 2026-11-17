@@ -4,12 +4,14 @@
 // shadow job and the REAL kept E-Map session run on a fake 7-11 and a virtual clock — no real request is made.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { createPc711Shadow, phoneBackoffDelay, storeBackoffDelay, rowsOf, SHADOW_ROW_GAP_MS, SHADOW_LIMIT, SHADOW_PHONE_TOKEN_MS, SHADOW_PHONE_TOKEN_RETRY_FAILS,
+import { execSync } from "node:child_process";
+import { createPc711Shadow, SHADOW_FROZEN_STORE_GAP_MS, SHADOW_FROZEN_SLOW_PAUSE_MS, phoneBackoffDelay, storeBackoffDelay, rowsOf, SHADOW_ROW_GAP_MS, SHADOW_LIMIT, SHADOW_PHONE_TOKEN_MS, SHADOW_PHONE_TOKEN_RETRY_FAILS,
   SHADOW_STORE_BACKOFF_MS, SHADOW_PHONE_BACKOFF_MS, SHADOW_MAINT_RETRY_MS, SHADOW_POLL_MS, SHADOW_FETCH_LIMIT } from "../../../../server/pc711Shadow.js";
 import {
   createPc711Emap, emapKeepaliveDue, emapRecoveryDue, emapDerive, emapParseByIdData, emapEndpointOrder,
   EMAP_RECENT_MS, EMAP_KEEPALIVE_MS, EMAP_KEEPALIVE_STORE, EMAP_RELOAD_COOLDOWN_MS, EMAP_MAX_RELOADS, EMAP_RECOVER_VERDICT_GUARD_MS,
-  EMAP_RECOVER_MIN_MISSES, EMAP_RECOVER_MIN_SPAN_MS, EMAP_REQUEST_MS, EMAP_STORE_VERDICTS,
+  EMAP_RECOVER_MIN_MISSES, EMAP_RECOVER_MIN_SPAN_MS, EMAP_REQUEST_MS, EMAP_STORE_VERDICTS, EMAP_OPEN_RETRY_MS,
+  EMAP_FROZEN_REQUEST_MS, EMAP_FROZEN_STORE_GAP_MS, EMAP_FROZEN_SLOW_PAUSE_MS,
 } from "../../../../server/pc711Emap.js";
 import { runPcServerProbe } from "../../../../server/pcServerProbe.js";
 import { MIRROR_SWITCH } from "../../../../server/pc711Evidence.js";
@@ -18,6 +20,8 @@ const BG = readFileSync("chrome-extension/background.js", "utf8");
 const EMAP_JS = readFileSync("chrome-extension/emap-711.js", "utf8");
 const MYSHIP_JS = readFileSync("chrome-extension/myship-711.js", "utf8");
 const SERVER = readFileSync("server.js", "utf8");
+const FROZEN_JS = readFileSync("chrome-extension/frozen-check.js", "utf8");
+const EMAP_FROZEN_JS = readFileSync("chrome-extension/emap-frozen-711.js", "utf8");
 
 // ── reading the extension's own code ───────────────────────────────────────────
 const constOf = (src: string, name: string): unknown => {
@@ -80,7 +84,7 @@ function harness(o: { queue?: R[]; mqueue?: R[]; mirror?: boolean; start?: numbe
     let rep: Reply;
     if (u.pathname.endsWith("/byIDData.aspx")) {
       const k = new URLSearchParams(c.body).get("k") || "";
-      events.push(`byid:${k === EMAP_KEEPALIVE_STORE ? "keepalive" : "parcel"}`);
+      events.push(`byid:${new URLSearchParams(c.body).get("cate") === "27" ? "frozen" : k === EMAP_KEEPALIVE_STORE ? "keepalive" : "parcel"}`);
       rep = o.byid ? o.byid(k, c) : { body: "OK;123456+店+addr+enable+0++門市" };
     } else {
       events.push("reload");
@@ -216,7 +220,7 @@ describe("R2 the E-Map session is opened ONCE and kept", () => {
   });
 });
 
-describe("R3 opening = the requests of the 選擇取貨門市 click; never a login request", () => {
+describe("R3 opening = the requests of the 選擇取貨門市 click, with main's saved-login session (its relogin step unchanged)", () => {
   // a small myship + E-Map fake for the probe chain
   const GM = "GM2609096130694";
   const cart = (sid: string) => `<html><form id="MyCart" action="/cart/detail" method="post">${["MemberSid", "item_name_1", "item_price_1", "item_qty_1", "item_amt_1", "fullAmountFee_1", "Sum", "Carm_Cgptshipprice", "Total", "Seller_GoodsTotalAmt"].map((n) => `<input type="hidden" name="${n}" value="${n === "MemberSid" ? sid : n === "fullAmountFee_1" ? "38" : "0"}">`).join("")}</form></html>`;
@@ -237,6 +241,26 @@ describe("R3 opening = the requests of the 選擇取貨門市 click; never a log
     return { f, calls };
   };
   const settings = async (k: string) => ({ parcel_check_shared_gms: JSON.stringify([GM]), parcel_check_sender_phone: "0979000111", parcel_check_probe_buyer: "0919000222" } as Record<string, string>)[k] ?? null;
+  const openWith = (s: { f: unknown }, relogin: () => Promise<unknown>, lost = vi.fn(async () => true)) => runPcServerProbe({
+    fetchImpl: s.f as never, now: () => NOW, log: () => {}, readSetting: settings, gate: false, openOnly: true,
+    session: { get: async () => ({ cookies: { "myship.7-11.com.tw": "auth=1" } }), relogin, save: async () => {}, lost } as never,
+    target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE } as never,
+  });
+  it("a logged-out cart during the open calls the existing relogin ONCE (then marks the session lost, as on main)", async () => {
+    const s = site(""); // the cart page without a member id = logged out
+    const relogin = vi.fn(async () => ({ cookies: { "myship.7-11.com.tw": "auth=2" } }));
+    const lost = vi.fn(async () => true);
+    const r = await openWith(s, relogin, lost);
+    expect(relogin).toHaveBeenCalledTimes(1);
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(r.store.emap).toBeUndefined();
+    expect(r.store.kind).toBe("login_not_accepted");
+  });
+  it("a logged-in cart during the open never calls the relogin", async () => {
+    const relogin = vi.fn(async () => ({ cookies: {} }));
+    await openWith(site("SID12345"), relogin);
+    expect(relogin).not.toHaveBeenCalled();
+  });
   it("openOnly: cart → detail → MAP → E-Map, NO byIDData, the session handed back; relogin is never called", async () => {
     const s = site("SID12345");
     const relogin = vi.fn(async () => ({ cookies: {} }));
@@ -246,14 +270,14 @@ describe("R3 opening = the requests of the 選擇取貨門市 click; never a log
     expect(r.store.emap).toMatchObject({ guid: MARK.guid, pageUrl: PAGE });
     expect(relogin).not.toHaveBeenCalled();
   });
-  it("server.js: the open() call passes NO relogin and openOnly; the two quickRelogin lines are still exactly two and unchanged", () => {
+  it("server.js: the open() call gets the SAME session object as the store check on main (get, relogin, save, lost); main's two lines unchanged", () => {
     const line = SERVER.split("\n").find((l) => l.includes("openOnly: true")) || "";
-    expect(line).toContain("session: { get: pc711.getSession, save: pc711.saveCookies, lost: pc711.markLoggedOut }");
-    expect(line).not.toContain("relogin");
-    expect(SERVER.split("relogin: pc711.quickRelogin").length - 1).toBe(2);
+    expect(line).toContain("session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }");
+    expect(SERVER.split("relogin: pc711.quickRelogin").length - 1).toBe(3); // main's two + the open call
     expect(SERVER).toContain("const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });");
     expect(SERVER).toContain("const r = await runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: input, gate: false, log: () => {} });");
-    expect(readFileSync("server/pc711Emap.js", "utf8")).not.toMatch(/relogin|quickRelogin|openpoint|\/auth\//i);
+    expect(readFileSync("server/pc711Emap.js", "utf8")).not.toMatch(/quickRelogin|openpoint|\/auth\//i); // no new login code
+    expect(execSync("git diff origin/main -- server/pc711Login.js").toString()).toBe(""); // the login module untouched
   });
 });
 
@@ -378,11 +402,78 @@ describe("R10 dead / expired / no session → re-open ONCE per episode; a verdic
     for (let i = 0; i < 12 * 30; i++) { h.queue.push(pend("store", { store_id: String(400000 + i), input: String(400000 + i) })); await h.job.tick(); h.advance(5000); }
     expect(h.opens).toHaveBeenCalledTimes(2);
   });
-  it("an open that fails → no second try until a verdict (the extension waits for a person; see DIFFERENT)", async () => {
-    const h = harness({ open: () => ({ store: { kind: "login_not_accepted", steps: [{ step: "store.cart", http: 200 }] } }) });
-    for (let i = 0; i < 50; i++) { await h.job.tick(); h.advance(5000); }
-    expect(h.opens).toHaveBeenCalledTimes(1);
-    expect(h.emap.state()).toMatchObject({ remintTried: true, remintResult: "open_failed:login_not_accepted" });
+});
+
+// ═══ R10b Jeff 2026-11-18: after a failed open (the extension waits for a person here) ═══════
+describe("R10b a failed open: one more try at once; then every 2 min; at once after a 7-11 login; never 01:00–05:00; the brake applies", () => {
+  const FAIL = (http = 200, kind = "login_not_accepted") => ({ store: { kind, steps: [{ step: "store.cart", http }] } });
+  it("a single failed open is followed by ONE immediate retry (same pass); then nothing for 2 min", async () => {
+    const h = harness({ open: () => FAIL() });
+    await h.job.tick();
+    expect(h.opens).toHaveBeenCalledTimes(2);
+    for (let i = 0; i < 23; i++) { h.advance(5000); await h.job.tick(); } // < 2 min later
+    expect(h.opens).toHaveBeenCalledTimes(2);
+  });
+  it("two failures in a row → the next try 2 min later, not less and not more", async () => {
+    const tries: number[] = [];
+    const h = harness({ open: () => { tries.push(h.at()); return FAIL(); } });
+    for (let i = 0; i < 600 && tries.length < 5; i++) { await h.job.tick(); h.advance(1000); }
+    expect(tries.length).toBe(5);
+    const gaps = tries.slice(1).map((x, i) => x - tries[i]);
+    expect(gaps[0]).toBeLessThan(5000);                     // the immediate confirm try
+    for (const g of gaps.slice(1)) { expect(g).toBeGreaterThanOrEqual(EMAP_OPEN_RETRY_MS); expect(g).toBeLessThanOrEqual(EMAP_OPEN_RETRY_MS + 1000 + 3200); }
+  });
+  it("a successful open stops the retries", async () => {
+    let n = 0;
+    const h = harness({ open: () => (++n <= 3 ? FAIL() : OPENED()) });
+    for (let i = 0; i < 12 * 30; i++) { await h.job.tick(); h.advance(5000); }
+    expect(h.opens).toHaveBeenCalledTimes(4);
+    expect(h.emap.usable()).toBe(true);
+  });
+  it("after a successful open the count starts again: the next failed open gets its immediate confirm try", async () => {
+    const seq = [FAIL(), FAIL(), OPENED(), FAIL(), FAIL()];
+    const h = harness({ open: () => seq.shift() ?? FAIL() });
+    for (let i = 0; i < 400 && h.opens.mock.calls.length < 3; i++) { await h.job.tick(); h.advance(1000); }
+    expect(h.emap.usable()).toBe(true);
+    h.emap.verdict();               // an answer ends the episode
+    h.emap._e().error = true;       // then the session lands on error.aspx
+    const before = h.opens.mock.calls.length;
+    await h.job.tick();
+    expect(h.opens.mock.calls.length - before).toBe(2);
+  });
+  it("a 7-11 login → a try at once (not waiting the 2 min)", async () => {
+    let since = "c1";
+    const tries: number[] = [];
+    const h = harness({ open: () => { tries.push(h.at()); return FAIL(); }, status: () => ({ state: "connected", since }) });
+    await h.job.tick(); // 2 failed tries
+    h.advance(10_000); since = "c2";
+    await h.job.tick();
+    expect(tries.length).toBe(3);
+    expect(tries[2] - tries[1]).toBeLessThan(EMAP_OPEN_RETRY_MS);
+  });
+  it("never during 01:00–05:00 Taipei; the tries resume after 05:00", async () => {
+    const h = harness({ start: NIGHT, open: () => FAIL() });
+    for (let i = 0; i < 12 * 60; i++) { await h.job.tick(); h.advance(5000); } // 02:00 → 03:00
+    expect(h.opens).not.toHaveBeenCalled();
+    h.set(Date.parse("2026-11-17T21:00:10Z")); // 05:00:10 Taipei
+    await h.job.tick();
+    expect(h.opens).toHaveBeenCalledTimes(2);
+  });
+  it("the safety brake: 5 refused opens in a row (HTTP 429) → 15 min with no try at all", async () => {
+    const tries: number[] = [];
+    const h = harness({ open: () => { tries.push(h.at()); return FAIL(429, "cart_form_missing"); } });
+    for (let i = 0; i < 12 * 60 && tries.length < 5; i++) { await h.job.tick(); h.advance(5000); }
+    expect(tries.length).toBe(5);
+    const fifth = tries[4];
+    for (let i = 0; i < 12 * 14; i++) { await h.job.tick(); h.advance(5000); } // 14 more minutes
+    expect(tries.length).toBe(5);
+    expect(h.job.state().pausedUntil).toBeGreaterThanOrEqual(fifth + 15 * 60_000 - 1);
+  });
+  it("one log line per try, the outcome word only", async () => {
+    const h = harness({ open: () => FAIL(200, "login_not_accepted") });
+    await h.job.tick();
+    const lines = h.logs.filter((l) => l.startsWith("[PC711_EMAP] open"));
+    expect(lines).toEqual(["[PC711_EMAP] open result=login_not_accepted", "[PC711_EMAP] open result=login_not_accepted"]);
   });
 });
 
@@ -568,6 +659,109 @@ describe("R18 logs hold no store number, phone, name, cookie, token or guid", ()
     const all = h.logs.join("\n");
     expect(all).toContain("[PC711_EMAP] keepalive");
     for (const v of [STORE, STORE2, EMAP_KEEPALIVE_STORE, MARK.guid, MARK.guid2, MARK.cookie, MARK.phone, MARK.name]) expect(all).not.toContain(v);
-    expect(all).toContain("[PC711_EMAP] open ok");
+    expect(all).toContain("[PC711_EMAP] open result=ok");
+  });
+});
+
+// ═══ F the frozen lane = frozen-check.js + emap-frozen-711.js (not the warm-up) ══════════════════
+describe("F frozen numbers = the extension's", () => {
+  it("2.5 s per frozen request; a store at most once per 10 min; 10 min pause after a slow answer", () => {
+    expect(EMAP_FROZEN_REQUEST_MS).toBe(constOf(EMAP_FROZEN_JS, "TIMEOUT_MS"));
+    expect(EMAP_FROZEN_STORE_GAP_MS).toBe(constOf(FROZEN_JS, "STORE_GAP_MS"));
+    expect(SHADOW_FROZEN_STORE_GAP_MS).toBe(constOf(FROZEN_JS, "STORE_GAP_MS"));
+    expect(EMAP_FROZEN_SLOW_PAUSE_MS).toBe(constOf(FROZEN_JS, "SLOW_PAUSE_MS"));
+    expect(SHADOW_FROZEN_SLOW_PAUSE_MS).toBe(constOf(FROZEN_JS, "SLOW_PAUSE_MS"));
+  });
+});
+
+const frozen = (store: string, o: R = {}) => pend("frozen", { store_id: store, input: store, ...o });
+const frozenByids = (h: ReturnType<typeof harness>) => h.calls.filter((c) => new URLSearchParams(c.body).get("cate") === "27");
+
+describe("F1 the frozen request is cut at 2.5 s (headers AND body); the store request keeps 10 s", () => {
+  it("timer lengths used for a frozen check and a store check", async () => {
+    const h = harness({ queue: [frozen("100001"), pend("store")] });
+    await h.job.tick(); // open
+    const seen: number[] = [];
+    const real = globalThis.setTimeout;
+    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => { seen.push(Number(ms)); return real(fn, ms); }) as never);
+    await h.job.tick();
+    spy.mockRestore();
+    expect(frozenByids(h).length).toBe(1);
+    expect(seen).toContain(EMAP_FROZEN_REQUEST_MS);
+    expect(seen).toContain(EMAP_REQUEST_MS);
+  });
+});
+
+describe("F2 at most ONE frozen request a pass, after the parcels, before the keepalive; not one of the 5 parcels, no 2 s after it", () => {
+  it("3 frozen parcels of 3 stores → one per pass", async () => {
+    const h = harness({ queue: [frozen("100001"), frozen("100002"), frozen("100003")] });
+    await h.job.tick(); // open
+    for (let i = 1; i <= 3; i++) { await h.job.tick(); expect(frozenByids(h).length).toBe(i); h.advance(5000); }
+  });
+  it("order in a pass: the parcels (store → phone → 2 s) → the frozen request → the keepalive; 5 parcels + 1 frozen", async () => {
+    const h = harness();
+    await h.job.tick(); h.advance(EMAP_KEEPALIVE_MS); h.events.length = 0;
+    for (let i = 0; i < 5; i++) h.queue.push(pend("phone"));
+    h.queue.push(frozen("100009"));
+    await h.job.tick();
+    expect(h.events).toEqual([...Array.from({ length: 5 }, () => ["phone", `sleep:${SHADOW_ROW_GAP_MS}`]).flat(), "byid:frozen", "byid:keepalive"]);
+  });
+});
+
+describe("F3 a store is asked for frozen at most once per 10 min (from the request, answered or not)", () => {
+  it("two frozen parcels of the SAME store: the second waits 10 min after the first request", async () => {
+    const h = harness({ queue: [frozen("100001"), frozen("100001")] });
+    await h.job.tick(); // open
+    await h.job.tick();
+    const first = frozenByids(h)[0].at;
+    for (let i = 0; i < 12 * 12 && frozenByids(h).length < 2; i++) { h.advance(5000); await h.job.tick(); }
+    const second = frozenByids(h)[1].at;
+    expect(second - first).toBeGreaterThanOrEqual(EMAP_FROZEN_STORE_GAP_MS);
+    expect(second - first).toBeLessThan(EMAP_FROZEN_STORE_GAP_MS + 5000 + 5000);
+  });
+  it("a frozen no-answer also holds that store 10 min (the floor starts at the request)", async () => {
+    const h = harness({ queue: [frozen("100001")], byid: (_k, c) => (new URLSearchParams(c.body).get("cate") === "27" ? { body: "<html>" } : { body: "OK;1+a+b+enable+0++門市" }) });
+    await h.job.tick(); await h.job.tick();
+    const first = frozenByids(h)[0].at;
+    for (let i = 0; i < 12 * 12 && frozenByids(h).length < 2; i++) { h.advance(5000); await h.job.tick(); }
+    expect(frozenByids(h)[1].at - first).toBeGreaterThanOrEqual(EMAP_FROZEN_STORE_GAP_MS);
+  });
+});
+
+describe("F4 one map address per frozen check; a real non-answer → the other address NEXT time; a blip keeps it", () => {
+  it("odd answer from /mobilemap/ → next frozen check asks /ecmap/ (and only that one)", async () => {
+    const h = harness({ queue: [frozen("100001"), frozen("100002")], byid: (_k, c) => (c.path.startsWith("/mobilemap/") ? { body: "<html>" } : { body: "OK;1+a+b+enable+0++門市" }) });
+    await h.job.tick(); await h.job.tick(); h.advance(5000); await h.job.tick();
+    expect(frozenByids(h).map((c) => c.path)).toEqual(["/mobilemap/byIDData.aspx", "/ecmap/byIDData.aspx"]);
+  });
+  it("a timeout keeps the address", async () => {
+    let n = 0;
+    const h = harness({ start: NIGHT - 6 * 3600_000, queue: [frozen("100001"), frozen("100002")], byid: () => (n++ === 0 ? "timeout" : { body: "OK;1+a+b+enable+0++門市" }) });
+    await h.job.tick(); await h.job.tick(); h.advance(EMAP_FROZEN_SLOW_PAUSE_MS); await h.job.tick();
+    expect(frozenByids(h).map((c) => c.path)).toEqual(["/mobilemap/byIDData.aspx", "/mobilemap/byIDData.aspx"]);
+  });
+});
+
+describe("F5 a slow / missing frozen answer by day → no frozen request for 10 min; the night never pauses", () => {
+  it("day: a timeout → the next frozen request ≥ 10 min later", async () => {
+    let n = 0;
+    const h = harness({ queue: [frozen("100001"), frozen("100002")], byid: (_k, c) => (new URLSearchParams(c.body).get("cate") === "27" && n++ === 0 ? "timeout" : { body: "OK;1+a+b+enable+0++門市" }) });
+    await h.job.tick(); await h.job.tick();
+    const first = frozenByids(h)[0].at;
+    for (let i = 0; i < 12 * 12 && frozenByids(h).length < 2; i++) { h.advance(5000); await h.job.tick(); }
+    expect(frozenByids(h)[1].at - first).toBeGreaterThanOrEqual(EMAP_FROZEN_SLOW_PAUSE_MS);
+  });
+  it("night: a timeout → the next frozen parcel (another store) is asked on the next pass", async () => {
+    let n = 0;
+    const h = harness({ start: NIGHT - 6 * 3600_000, queue: [], byid: (_k, c) => (new URLSearchParams(c.body).get("cate") === "27" && n++ === 0 ? "timeout" : { body: "OK;1+a+b+enable+0++門市" }) });
+    await h.job.tick(); // opened by day
+    h.set(NIGHT); h.queue.push(frozen("100001"), frozen("100002"));
+    await h.job.tick(); h.advance(5000); await h.job.tick();
+    expect(frozenByids(h).length).toBe(2);
+  });
+  it("a frozen check never touches the E-Map recovery evidence", async () => {
+    const h = harness({ queue: [frozen("100001")], byid: (_k, c) => (new URLSearchParams(c.body).get("cate") === "27" ? { body: "<html>" } : "timeout") });
+    await h.job.tick(); await h.job.tick();
+    expect(h.emap._e().misses).toBe(0);
   });
 });
