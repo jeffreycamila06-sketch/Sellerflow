@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   planCaps, scopeForJob, jobOutcome, taipeiHour, createWorker, shouldRefundPress, JOB_MAX_MS, REST_MS,
-  MANUAL_REQUEST_BUDGET,
+  SELLER_REQUEST_BUDGET,
 } from "../../../../server/parcelTrackingWorker.js";
 
 const T0 = new Date("2026-09-29T02:00:00Z"); // 10:00 Taipei
@@ -198,7 +198,7 @@ describe("createWorker().tick", () => {
     expect(out).toMatchObject({ status: "done", checked: 2, total: 2 });
     const args = check.mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(args.deadlineAt).toBe(T0.getTime() + JOB_MAX_MS);
-    expect(args.requestBudget).toBe(MANUAL_REQUEST_BUDGET);
+    expect(args.requestBudget).toBe(SELLER_REQUEST_BUDGET);
     expect(args.tag).toBe("[PARCEL-JOB]");
     expect(jobUpdate(sb)!.patch).toMatchObject({ status: "done", error: null, parcels_checked: 2, parcels_total: 2, requests_used: 3 });
     expect(jobUpdate(sb)!.filters).toContainEqual(["eq", "id", "J1"]);
@@ -236,11 +236,11 @@ describe("createWorker().tick", () => {
     expect(check).not.toHaveBeenCalled();
   });
 
-  it("an URGENT check on Pro keeps the plan budget: 600 minus today's use", async () => {
+  it("an URGENT check on Pro uses the shared seller budget: 1,100 minus today's use", async () => {
     const sb = fakeSb({ plan: "pro", job: job("urgent"), rows: [row("a", { status: "at_store", pickup_deadline: "2026-09-29" })], todaysJobs: [{ requests_used: 100 }] });
     const check = checkOk();
     await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick();
-    expect((check.mock.calls[0][0] as unknown as Record<string, unknown>).requestBudget).toBe(500);
+    expect((check.mock.calls[0][0] as unknown as Record<string, unknown>).requestBudget).toBe(1000);
   });
 
   it("global daily cap reached → skipped daily_cap", async () => {

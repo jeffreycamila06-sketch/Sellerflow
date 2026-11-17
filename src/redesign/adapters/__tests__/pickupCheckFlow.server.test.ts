@@ -9,7 +9,7 @@ import {
   taipeiDayOf, taipeiDaysSince, isCheckable, splitCheckable, orderForCheck, CHECK_AFTER_DAYS,
 } from "../../../../server/pickupRules.js";
 import {
-  createWorker, sevenScopeForJob, scopeForJob, sellerRequestBudget, MANUAL_REQUEST_BUDGET, planCaps,
+  createWorker, sevenScopeForJob, scopeForJob, sellerRequestBudget, SELLER_REQUEST_BUDGET, planCaps,
 } from "../../../../server/parcelTrackingWorker.js";
 import { AUTO_MODE_KEY } from "../../../../server/parcelTrackingAuto.js";
 
@@ -114,11 +114,13 @@ describe("sevenScopeForJob", () => {
     ];
     expect(sevenScopeForJob(job("urgent"), rows, TUE_2359, caps)).toEqual(scopeForJob(job("urgent"), rows, TUE_2359, caps));
   });
-  it("budget: manual 1,100 on every plan; other kinds keep the plan numbers", () => {
-    expect(sellerRequestBudget("manual", planCaps("plus"))).toBe(1100);
-    expect(sellerRequestBudget("manual", planCaps("master"))).toBe(MANUAL_REQUEST_BUDGET);
-    expect(sellerRequestBudget("urgent", planCaps("plus"))).toBe(300);
-    expect(sellerRequestBudget("auto", planCaps("pro"))).toBe(600);
+  it("budget: ONE 1,100 per seller for manual, urgent and auto on every plan; health / new_parcels keep the plan number", () => {
+    for (const kind of ["manual", "urgent", "auto"]) for (const plan of ["plus", "pro", "master"]) {
+      expect(sellerRequestBudget(kind, planCaps(plan)), `${kind}/${plan}`).toBe(1100);
+    }
+    expect(SELLER_REQUEST_BUDGET).toBe(1100);
+    expect(sellerRequestBudget("health", planCaps("plus"))).toBe(300);
+    expect(sellerRequestBudget("new_parcels", planCaps("pro"))).toBe(600);
   });
 });
 
@@ -231,6 +233,15 @@ describe("worker: Check now under the new rules", () => {
     expect(jobPatch(sb)).toMatchObject({ status: "done", parcels_total: 0 });
     expect(sb.rpcs.some((r) => r.name === "parcel_tracking_refund_press")).toBe(true);
   });
+  it("a Plus seller who used 400 requests today (e.g. a large Check now) can still run URGENT: budget 700, checked", async () => {
+    const rows = [row("due", { status: "at_store", pickup_deadline: "2026-11-17" })];
+    const { check, checked, out, sb } = await runJob("urgent", { rows, todaysJobs: [{ requests_used: 400 }] });
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(checked!.requestBudget).toBe(700);
+    expect(checked!.rows.map((r) => r.id)).toEqual(["due"]);
+    expect(out).toMatchObject({ status: "done", total: 1 });
+    expect(jobPatch(sb)).toMatchObject({ status: "done" }); // not skipped daily_cap
+  });
   it("the 1,100 budget counts every job of the seller today", async () => {
     const { check, out } = await runJob("manual", { rows: [row("a")], todaysJobs: [{ requests_used: 1095 }] });
     expect(check).not.toHaveBeenCalled();
@@ -289,6 +300,6 @@ describe("worker: the automatic check skips young parcels (its own limits unchan
     const rows = [youngRow("young"), row("old"), youngRow("store", { status: "at_store", pickup_deadline: "2026-11-18", last_polled_at: "2026-11-17T00:00:00Z" })];
     const { checked } = await runJob("auto", { rows });
     expect(checked!.rows.map((r) => r.id).sort()).toEqual(["old", "store"]);
-    expect(checked!.requestBudget).toBe(300); // the plan budget, not the manual one
+    expect(checked!.requestBudget).toBe(1100); // the one shared seller budget
   });
 });

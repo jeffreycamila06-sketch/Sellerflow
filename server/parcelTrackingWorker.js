@@ -12,9 +12,10 @@
 // checks no 7-11 parcel; it still runs the 全家 part); a 7-11 parcel is checkable from the 2nd
 // Taipei day after its sync (at a store: always); "Check now" checks EVERY checkable parcel,
 // at-store first, then least recently checked first — no parcel cap.
-// Limits per job: a per-seller daily REQUEST budget (manual 1,100; urgent / auto / health the
-// plan numbers), the global daily cap, a 30-min hard stop, and a 10-min rest after 30 min of
-// back-to-back work. Urgent keeps its plan parcel cap (Plus 300 / Pro·Master·admin 600).
+// Limits per job: ONE per-seller daily REQUEST budget of 1,100 shared by manual, urgent and auto
+// (health / new_parcels keep the plan number), the global daily cap, a 30-min hard stop, and a
+// 10-min rest after 30 min of back-to-back work. Parcel caps are unchanged (urgent: Plus 300 /
+// Pro·Master·admin 600; auto: its own max parcels).
 import {
   checkRows, readPollGate, readDailyRequests, writePollHealth, purgeRetention,
   selectLiveRows, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, activePollIds,
@@ -70,21 +71,24 @@ export function cleanupCreatedBefore(nowDate) {
   return new Date(`${d}T00:00:00+08:00`).toISOString();
 }
 
-// PURE — per-job parcel cap and per-seller daily request budget by plan. Used by urgent / auto /
-// health jobs and by the 全家 part; a manual 7-11 check has no parcel cap and the budget below.
+// PURE — per-job parcel cap (urgent / auto / health / the 全家 part; a manual 7-11 check has no
+// parcel cap) and the plan request number (health / new_parcels only — see SELLER_REQUEST_BUDGET).
 export function planCaps(plan, isAdmin = false) {
   const p = String(plan || "").trim().toLowerCase();
   const big = isAdmin || p === "pro" || p === "master";
   return { parcels: big ? 600 : 300, requests: big ? 600 : 300 };
 }
 
-// Per-seller daily request budget for a MANUAL check ("Check now", any plan): enough for two
-// 30-minute presses (~520 requests each at 0.5 request per parcel) plus captcha retries.
-export const MANUAL_REQUEST_BUDGET = 1100;
+// ONE per-seller daily request budget (any plan) shared by manual, urgent and automatic checks:
+// enough for two 30-minute presses (~520 requests each at 0.5 request per parcel) plus captcha
+// retries. Each job gets it minus EVERYTHING the seller used today, so a large "Check now" never
+// leaves the same seller's urgent press with a smaller plan number to fall under.
+export const SELLER_REQUEST_BUDGET = 1100;
+const SHARED_BUDGET_KINDS = new Set(["manual", "urgent", "auto"]);
 
 // PURE — today's request budget for this job kind (before subtracting what was already used).
 export function sellerRequestBudget(kind, caps) {
-  return kind === "manual" ? MANUAL_REQUEST_BUDGET : caps.requests;
+  return SHARED_BUDGET_KINDS.has(kind) ? SELLER_REQUEST_BUDGET : caps.requests;
 }
 
 // PURE — which of the seller's CHECKABLE 7-11 rows (2-day rule already applied) this job checks.
