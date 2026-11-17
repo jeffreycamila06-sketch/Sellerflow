@@ -36,7 +36,7 @@ class Query {
   private filters: Filter[] = [];
   private countMode = false; private headOnly = false; private lim = Infinity; private from_ = 0; private to = Infinity;
   private orders: [string, boolean][] = [];
-  private op: "select" | "upsert" = "select"; private payload: Record<string, unknown>[] = [];
+  private op: "select" | "upsert" | "update" = "select"; private payload: Record<string, unknown>[] = [];
   constructor(private table: string) {}
   select(_c?: string, o?: { count?: string; head?: boolean }) { this.countMode = !!o?.count; this.headOnly = !!o?.head; return this; }
   eq(c: string, v: unknown) { this.filters.push((r) => r[c] === v); return this; }
@@ -45,19 +45,26 @@ class Query {
   not(c: string, _op: string, _v: unknown) { this.filters.push((r) => r[c] != null); return this; }
   is(c: string, v: unknown) { this.filters.push((r) => r[c] === v); return this; }
   or(expr: string) {
-    if (expr.startsWith("special_type")) this.filters.push((r) => r.special_type == null || r.special_type === "");
+    const empty = (v: unknown) => v == null || v === "";
+    if (expr.startsWith("special_type")) this.filters.push((r) => empty(r.special_type));
+    if (expr.startsWith("and(store_id")) this.filters.push((r) => empty(r.store_id) && empty(r.rec_store)); // the Sync store fill guard
     return this;
   }
   order(c: string, o?: { ascending?: boolean }) { this.orders.push([c, o?.ascending !== false]); return this; }
   range(a: number, b: number) { this.from_ = a; this.to = b; return this; }
   limit(n: number) { this.lim = n; return this; }
   upsert(rows: Record<string, unknown>[]) { this.op = "upsert"; this.payload = rows; return this; }
+  update(patch: Record<string, unknown>) { this.op = "update"; this.payload = [patch]; return this; }
   then(res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) { return Promise.resolve(this.run()).then(res, rej); }
   private run() {
     if (this.table !== "parcel_tracking") return { data: [], error: null, count: 0 };
     if (this.op === "upsert") {
       for (const p of this.payload) if (!ROWS.some((r) => r.tracking_no === p.tracking_no)) ROWS.push(row({ ...p, created_at: iso(60000) }));
       synced = true;
+      return { data: null, error: null };
+    }
+    if (this.op === "update") {
+      for (const r of ROWS.filter((x) => this.filters.every((f) => f(x)))) Object.assign(r, this.payload[0]);
       return { data: null, error: null };
     }
     let list = ROWS.filter((r) => this.filters.every((f) => f(r)));

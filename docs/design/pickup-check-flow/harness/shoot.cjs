@@ -19,9 +19,12 @@ async function exportFile() {
   z.file("xl/workbook.xml", `<?xml version="1.0"?><workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="訂單匯入" sheetId="1" r:id="rId1"></sheet></sheets></workbook>`);
   z.file("xl/_rels/workbook.xml.rels", `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml" /></Relationships>`);
   const cell = (ref, v) => `<c r="${ref}" t="inlineStr"><is><t>${v}</t></is></c>`;
-  const data = [["F83674900001", "anna.lim"], ["F83674900002", "bea_closet"], ["F83674900003", "carla88"], ["F83674900004", "dina_pre"]]
-    .map(([f, h], i) => `<row r="${4 + i}">${cell(`H${4 + i}`, f)}${cell(`V${4 + i}`, h)}</row>`).join("");
-  z.file("xl/worksheets/sheet1.xml", `<?xml version="1.0"?><worksheet><sheetData><row r="3">${cell("H3", "配送單編號")}${cell("V3", "其它資訊(FB/LINE/IG帳號)")}</row>${data}</sheetData></worksheet>`);
+  // Columns as in the real file: G 收件人姓名, H 配送單編號, K 取件門市, P 小計(A), R 商品總額(A+B), V 其它資訊.
+  // The store values are made up (the real file's store format is not known yet).
+  const data = [["F83674900001", "anna.lim", "中壢華強門市", "410"], ["F83674900002", "bea_closet", "朝陽門市", "260"],
+    ["F83674900003", "carla88", "新竹光復門市", "560"], ["F83674900004", "dina_pre", "板橋門市", "199"]]
+    .map(([f, h, s, a], i) => `<row r="${4 + i}">${cell(`G${4 + i}`, "王小明")}${cell(`H${4 + i}`, f)}${cell(`K${4 + i}`, s)}${cell(`P${4 + i}`, "999")}${cell(`R${4 + i}`, a)}${cell(`V${4 + i}`, h)}</row>`).join("");
+  z.file("xl/worksheets/sheet1.xml", `<?xml version="1.0"?><worksheet><sheetData><row r="3">${cell("G3", "收件人姓名")}${cell("H3", "配送單編號")}${cell("K3", "取件門市")}${cell("P3", "小計&#10;(A)")}${cell("R3", "商品總額&#10;(A+B)")}${cell("V3", "其它資訊(FB/LINE/IG帳號)")}</row>${data}</sheetData></worksheet>`);
   return z.generateAsync({ type: "nodebuffer", compression: "STORE" });
 }
 
@@ -75,6 +78,17 @@ async function exportFile() {
       await p.click("[data-testid=pt-sync-how-toggle]");
       await p.waitForSelector("[data-testid=pt-sync-how]");
       await shot(p, "5-how-to-sync");
+      await p.close();
+    }
+    if (want(7)) {
+      // 7. just synced: the 4 new parcels under In transit, with the pickup store and the amount from the file
+      p = await open("sync");
+      await p.setInputFiles("[data-testid=pt-sync-file]", { name: "export.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
+      await p.waitForSelector("[data-testid=pt-toast]", { timeout: 10000 });
+      await p.click(narrow ? "[data-testid=pt-card-transit]" : "[data-testid=pt-tab-transit]");
+      await p.waitForTimeout(500);
+      if (narrow) await p.evaluate(() => document.querySelector("[data-testid=pt-row]")?.scrollIntoView({ block: "start" }));
+      await shot(p, "7-synced-store-amount");
       await p.close();
     }
     if (want(6)) {

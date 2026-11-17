@@ -11,6 +11,7 @@ NEW = this branch. iPhone 390 · Android 360 · laptop 1280; 0 px horizontal ove
 | 4 | Sync of 4 new parcels | toast + "New parcels are being checked now." + Checking… | toast only, Check now stays ready |
 | 5 | "How to sync?" opened | step 4: "Usernames appear right away under Waiting pickup; new parcels are checked automatically within a few minutes." | "Usernames appear right away under In transit." |
 | 6 | No parcels yet | step 3: "Your parcels appear here and new ones are checked automatically." | "Your parcels appear here." |
+| 7 | Just synced (addition A), In transit tab — NEW only | — (store and price show "—" until the first check) | store and amount from the file (取件門市, 商品總額(A+B)); the store values in the harness file are made up — the real format is not known yet |
 
 On every shot the line under "Last checked" is now only "You can check again 12 hours after your last check."
 (TODAY adds "New parcels from Sync are checked automatically."). Shots 1–4 NEW were re-taken after that fix.
