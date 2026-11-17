@@ -1,0 +1,14 @@
+## BREAK 1: 20 days instead of 30
+FAIL: deleted exactly 2 rows: 3
+FAIL: kept: keep_29d
+sql176: 17 passed, 2 failed
+
+## BREAK 2: status check dropped
+FAIL: deleted exactly 2 rows: 3
+FAIL: kept: keep_unknown_nd
+sql176: 17 passed, 2 failed
+
+## BREAK 3: answer-text check dropped
+FAIL: deleted exactly 2 rows: 3
+FAIL: kept: keep_moving
+sql176: 17 passed, 2 failed

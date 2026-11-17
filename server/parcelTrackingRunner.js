@@ -22,6 +22,7 @@ import {
   batch, MAX_BATCH, MAX_CAPTCHA_RETRIES, CAPTCHA_URL, QUERY_URL,
   SEARCH_URL, SHOPMORE_BASE, extractRequestToken, isHttpFailure,
 } from "./parcelTracking.js";
+import { shouldRetireNotDropped, RETIRE_NOT_DROPPED_DAYS } from "./pickupRules.js";
 
 // A realistic desktop UA — never a bot-looking agent (anti-block).
 const DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
@@ -478,7 +479,7 @@ export async function checkRows({
   }
   const groups = batch([...byCode.keys()], MAX_BATCH);
 
-  let batchesRun = 0, updated = 0, unknowns = 0, notFound = 0, captchaFails = 0, failures = 0, retired = 0, backoff = 0;
+  let batchesRun = 0, updated = 0, unknowns = 0, notFound = 0, captchaFails = 0, failures = 0, retired = 0, notDropped = 0, backoff = 0;
   let consecutive = 0, tripped = false, stopReason = null;
   const failReasons = [];
   let ocr = givenOcr;
@@ -554,6 +555,11 @@ export async function checkRows({
         for (const row of targets) {
           const unchangedPolls = nextUnchangedPolls(row.status, u.status, row.unchanged_polls);
           const retire = shouldRetire({ status: u.status, unchangedPolls, createdAt: row.created_at, now: now() });
+          // 10-day rule (2026-11-17): THIS answer still says "not dropped off yet" and the parcel was
+          // synced 10+ Taipei days ago → it leaves Pickup Status (terminal; status and message as
+          // answered). Decided ONLY on the answer just received — a failed batch never gets here.
+          // Retirement time = this check's last_polled_at (finished rows are never checked again).
+          const leaves = !retire && shouldRetireNotDropped(u, row.created_at, now());
           const patch = {
             status: u.status,
             status_message: u.status_message,
@@ -562,7 +568,7 @@ export async function checkRows({
             special_type: u.special_type,
             order_amount: u.order_amount,
             pickup_deadline: u.pickup_deadline,
-            terminal: u.terminal || retire, // S8: a never-resolving row is retired (status unchanged)
+            terminal: u.terminal || retire || leaves, // S8 / 10-day rule: retired (status unchanged)
             last_polled_at: u.last_polled_at,
             unchanged_polls: unchangedPolls,
           };
@@ -577,12 +583,14 @@ export async function checkRows({
           updated += 1;
           if (u.status === "not_found") notFound += 1;
           if (retire) retired += 1;
+          if (leaves) { retired += 1; notDropped += 1; }
         }
       }
     }
   } finally {
     if (!givenOcr && ocr) { try { await ocr.terminate(); } catch { /* worker already gone */ } }
   }
-  if (retired > 0) logger.log(`${tag} retired ${retired} never-resolving row(s) (not_found/unknown, ${RETIRE_AFTER_POLLS}+ unchanged polls, ${RETIRE_MIN_AGE_DAYS}+ days old)`);
-  return { batchesRun, updated, unknowns, notFound, captchaFails, failures, retired, tripped, stopReason, sent };
+  if (retired - notDropped > 0) logger.log(`${tag} retired ${retired - notDropped} never-resolving row(s) (not_found/unknown, ${RETIRE_AFTER_POLLS}+ unchanged polls, ${RETIRE_MIN_AGE_DAYS}+ days old)`);
+  if (notDropped > 0) logger.log(`${tag} ${notDropped} parcel(s) left Pickup Status (still not dropped off, synced ${RETIRE_NOT_DROPPED_DAYS}+ days ago)`);
+  return { batchesRun, updated, unknowns, notFound, captchaFails, failures, retired, notDropped, tripped, stopReason, sent };
 }

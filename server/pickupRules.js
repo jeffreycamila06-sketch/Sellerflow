@@ -68,3 +68,17 @@ export function orderForCheck(rows) {
   rest.sort(byPolled);
   return [...atStore, ...rest];
 }
+// PURE — is a 7-11 answer text "the order exists, the seller has not dropped it off yet"?
+export function isNotDroppedMessage(msg) {
+  const m = String(msg ?? "");
+  return m.includes("訂單已成立") && m.includes("尚未至門市寄件");
+}
+
+// PURE — the 10-day rule, on the answer JUST RECEIVED (u = resultToUpdate output) only.
+// Moving / at a store / returning / finished / not found → never.
+export function shouldRetireNotDropped(u, createdAt, nowDate) {
+  if (!u || u.status !== "in_transit" || u.terminal || u.returning_soon) return false;
+  if (!isNotDroppedMessage(u.status_message)) return false;
+  const d = taipeiDaysSince(createdAt, nowDate);
+  return d !== null && d >= RETIRE_NOT_DROPPED_DAYS;
+}
