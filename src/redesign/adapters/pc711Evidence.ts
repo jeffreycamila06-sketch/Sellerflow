@@ -12,11 +12,11 @@ export interface Pc711EvPair { mode: "after" | "mirror"; kind: "store" | "phone"
 export interface Pc711EvTotals {
   rows: number; pairs: Pc711EvPair[];
   errors: { after: number; mirror: number }; rechecks: number; flags: number; reasked: number;
-  mirror: { n: number; serverFirst: number; extensionFirst: number; avgFirstByMs: number | null; late: number; timeout: number };
+  mirror: { n: number; serverFirst: number; extensionFirst: number; avgFirstByMs: number | null; late: number; timeout: number; remembered: number };
   storeAge: { n: number; avgS: number | null; maxS: number | null };
   restricted: { agree: number; disagree: number };
 }
-export type Pc711StopRule = "phone_time" | "waited" | "store_unknown";
+export type Pc711StopRule = "phone_time" | "waited" | "store_unknown" | "login_lost";
 export interface Pc711SelfStop { silentSince: string | null; lastCheckAt: string | null; lastStop: { at: string; rule: Pc711StopRule; value: number | null; parcels: number | null } | null }
 export interface Pc711EvSummary { day: Pc711EvDay; mirrorEnabled: boolean; totals: Pc711EvTotals; selfStop: Pc711SelfStop }
 export interface Pc711EvRow {
@@ -46,7 +46,7 @@ export function toPc711EvSummary(j: unknown): Pc711EvSummary | null {
     return { mode: p.mode === "mirror" ? "mirror" : "after", kind: kindOf(p.kind), source: sourceOf(p.source) ?? "unknown", compared: num(p.compared), agree: num(p.agree) } as Pc711EvPair;
   });
   const ss = obj(o.selfStop), ls = obj(ss.lastStop);
-  const rule = ls.rule === "phone_time" || ls.rule === "waited" || ls.rule === "store_unknown" ? ls.rule : null;
+  const rule = ls.rule === "phone_time" || ls.rule === "waited" || ls.rule === "store_unknown" || ls.rule === "login_lost" ? ls.rule : null;
   const selfStop: Pc711SelfStop = {
     silentSince: time(ss.silentSince), lastCheckAt: time(ss.lastCheckAt),
     lastStop: rule && time(ls.at) ? { at: time(ls.at)!, rule, value: numOrNull(ls.value), parcels: numOrNull(ls.parcels) } : null,
@@ -55,7 +55,7 @@ export function toPc711EvSummary(j: unknown): Pc711EvSummary | null {
     day: o.day === "7days" ? "7days" : "today", mirrorEnabled: o.mirrorEnabled === true, selfStop,
     totals: {
       rows: num(t.rows), pairs, errors: { after: num(e.after), mirror: num(e.mirror) }, rechecks: num(t.rechecks), flags: num(t.flags), reasked: num(t.reasked),
-      mirror: { n: num(m.n), serverFirst: num(m.serverFirst), extensionFirst: num(m.extensionFirst), avgFirstByMs: numOrNull(m.avgFirstByMs), late: num(m.late), timeout: num(m.timeout) },
+      mirror: { n: num(m.n), serverFirst: num(m.serverFirst), extensionFirst: num(m.extensionFirst), avgFirstByMs: numOrNull(m.avgFirstByMs), late: num(m.late), timeout: num(m.timeout), remembered: num(m.remembered) },
       storeAge: { n: num(a.n), avgS: numOrNull(a.avgS), maxS: numOrNull(a.maxS) },
       restricted: { agree: num(r.agree), disagree: num(r.disagree) },
     },

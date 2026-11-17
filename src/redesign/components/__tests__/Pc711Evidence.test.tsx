@@ -29,7 +29,7 @@ const TOTALS = {
     { mode: "after", kind: "store", source: "remembered", compared: 7, agree: 0 },
     { mode: "mirror", kind: "phone", source: "fresh", compared: 3, agree: 3 },
   ],
-  mirror: { n: 4, serverFirst: 3, extensionFirst: 1, avgFirstByMs: 1800, late: 1, timeout: 0 },
+  mirror: { n: 4, serverFirst: 3, extensionFirst: 1, avgFirstByMs: 1800, late: 1, timeout: 0, remembered: 2 },
   storeAge: { n: 15, avgS: 640, maxS: 3428 }, restricted: { agree: 6, disagree: 2 },
 };
 const MIS = { id: 7, at: "2026-11-16T15:51:47Z", kind: "phone", round: 1, mode: "after", match: false, ext_verdict: "restricted", srv_verdict: "ok", ext_source: "remembered", reask_n: 2, reask1_word: "ok", reask2_word: "ok", srv_ms: 800 };
@@ -60,6 +60,7 @@ describe("totals", () => {
     expect(screen.getByTestId("pc711-ev-storeage").textContent).toContain("average 640 s · max 3428 s (15)");
     expect(screen.getByTestId("pc711-ev-mirror-line").textContent).toContain("Server first 3 · extension first 1 · average gap 1800 ms · late 1");
     expect(screen.getByTestId("pc711-ev-errors").textContent).toBe("Errors: after 2 · mirror 1");
+    expect(screen.getByTestId("pc711-ev-mirror-remembered").textContent).toBe("Remembered extension answers (not counted in who was first): 2");
   });
   it("pairsBySource adds up a mode + kind by source", () => {
     expect(pairsBySource(TOTALS.pairs as never, "after", "store").remembered).toEqual({ agree: 0, compared: 7 });
@@ -75,6 +76,10 @@ describe("mirror self-stop on Admin", () => {
   it("stopped: when and which rule fired (with the number)", async () => {
     setup(undefined, { lastStop: { at: "2026-11-17T03:20:00Z", rule: "phone_time", value: 9.2, parcels: 40 } });
     expect((await screen.findByTestId("pc711-ev-selfstop")).textContent).toBe("Mirror stopped itself at 11/17 11:20:00: typical phone time over 7 s (9.2)");
+  });
+  it("stopped because the server lost its 7-11 login (login_lost): the rule, no empty number", async () => {
+    setup(undefined, { lastStop: { at: "2026-11-17T00:06:20Z", rule: "login_lost", value: null, parcels: null } });
+    expect((await screen.findByTestId("pc711-ev-selfstop")).textContent).toBe("Mirror stopped itself at 11/17 08:06:20: the server lost its 7‑11 login");
   });
   it("the extension silent: 'extension silent since <time>'", async () => {
     setup(undefined, { silentSince: "2026-11-17T03:05:00Z" });

@@ -150,10 +150,13 @@ export function pairPatch(x, nowMs) {
   const extMs = Date.parse(x.ext_at || ""), srvEnd = Date.parse(x.srv_finished_at || ""), srvStart = Date.parse(x.srv_started_at || "");
   const srvErr = Boolean(x.fail_reason);
   const match = srvErr ? null : String(x.srv_verdict ?? "") === ext;
-  const first = Number.isFinite(extMs) && Number.isFinite(srvEnd) ? (extMs <= srvEnd ? "extension" : "server") : null;
+  // "who finished first" only means something when the extension really checked just now (a FRESH answer);
+  // a remembered answer can be hours old (one row showed the extension "first" by 16 hours) → no winner.
+  const source = SOURCES.includes(x.source) ? x.source : "unknown";
+  const first = source === "fresh" && Number.isFinite(extMs) && Number.isFinite(srvEnd) ? (extMs <= srvEnd ? "extension" : "server") : null;
   const patch = {
     ext_at: x.ext_at, ext_verdict: ext, ext_message: x.msg == null ? null : String(x.msg).slice(0, 120),
-    ext_restricted_until: x.until ?? null, ext_source: SOURCES.includes(x.source) ? x.source : "unknown",
+    ext_restricted_until: x.until ?? null, ext_source: source,
     ext_cache_at: x.cache_at ?? null, ext_late: Boolean(x.ext_timeout), pair_closed: true, match,
     first, first_by_ms: first ? Math.abs(extMs - srvEnd) : null,
     ext_age_s: kind === "store" && Number.isFinite(extMs) && Number.isFinite(srvStart) ? Math.round((srvStart - extMs) / 1000) : null,

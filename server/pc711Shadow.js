@@ -249,6 +249,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   let mirrorOnSince = null;    // when this server last saw mirror switch on (the self-stop's window starts here at most)
   let lastHealthAt = 0;        // the last self-stop check
   let silentSince = null;      // the regular checker wrote no answer since … (rule b skipped) — shown on Admin
+  let mirrorSwitchLast = false; // the mirror switch as the last pass read it (also during 01:00–05:00)
+  let loginStopFailAt = 0;     // the last failed login_lost write (logged at most once a minute)
   const say = (line) => { try { log(line); } catch { /* a log never stops the job */ } };
 
   async function noteWaiting(n, t) {
@@ -405,9 +407,28 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   }
 
   // sql/172: the evidence pass — ONE queue call (pc711_shadow_pass) brings everything a pass needs.
+  // sql/173: the server lost its 7-11 login (needs_login, or a check saw the logged-out cart page and the
+  // job stopped) while the mirror switch was on → switch mirror off ONCE (the existing stop function, rule
+  // login_lost; it only ever writes 'false'). A failed write is tried again on the next tick.
+  const loginLost = (st) => Boolean(st) && (st.state === "needs_login" || (stoppedSince !== null && stoppedSince === (st.since ?? null)));
+  async function stopMirrorOnLoginLoss() {
+    if (!mirrorSwitchLast) return; // once: a success sets it false, and no pass reads it again while logged out
+    const t = now();
+    let stopped;
+    try { stopped = await evidence.stopMirror("login_lost", null, mirrorOnSince !== null ? new Date(mirrorOnSince).toISOString() : null, null); }
+    catch {
+      if (t - loginStopFailAt > 60_000) { loginStopFailAt = t; say(`${TAG} mirror self-stop rule=login_lost write_failed`); }
+      return;
+    }
+    mirrorSwitchLast = false; mirrorOnLast = false; mirrorOnSince = null; lastHealthAt = 0; silentSince = null;
+    say(`${TAG} mirror self-stop rule=login_lost ${stopped ? "switched_off" : "already_off"}`);
+  }
+
   async function tickEvidence() {
-    // no database request while not connected / stopped / paused (memory only)
+    // no check request while not connected / stopped / paused (memory only; the one exception: the mirror
+    // login_lost stop above, a single write while the mirror switch was on)
     const st = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
+    if (loginLost(st)) await stopMirrorOnLoginLoss();
     if (!st || st.state !== "connected") return { skipped: "not_connected" };
     if (stoppedSince !== null && stoppedSince === (st.since ?? null)) return { skipped: "stopped" };
     stoppedSince = null;
@@ -429,6 +450,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       try { await db.purgeBefore(new Date(t - SHADOW_KEEP_DAYS * DAY_MS).toISOString()); } catch { /* next day */ }
       for (const k of [...dayMax.keys()]) if (k < taipeiDay(t - 3 * DAY_MS).key) dayMax.delete(k);
     }
+    mirrorSwitchLast = Boolean(p.mirror);
     let mirrorOn = p.mirror && mirrorAllowed;
     if (mirrorOn !== mirrorOnLast) {
       mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`);
@@ -442,7 +464,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
         let stopped = false;
         try { stopped = await evidence.stopMirror(dec.rule, dec.value, healthFrom, dec.checked); } catch { stopped = false; }
         say(`${TAG} mirror self-stop rule=${dec.rule} value=${dec.value} parcels=${dec.checked} ${stopped ? "switched_off" : "write_failed"}`);
-        if (stopped) { mirrorOn = false; mirrorOnLast = false; mirrorOnSince = null; }
+        if (stopped) { mirrorOn = false; mirrorOnLast = false; mirrorOnSince = null; mirrorSwitchLast = false; }
       }
     }
     await noteWaiting(p.waiting, t);

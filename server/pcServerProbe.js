@@ -509,6 +509,9 @@ export async function runPcServerProbe(opts = {}) {
         if (again && again.cookies) { jar = createJar(again.cookies); ({ p1, f1, loggedIn } = await openCart()); }
       }
       if (f1 && loggedIn && session) await call(() => session.save && session.save(jar.dump()));
+      // still the logged-out cart page after that → tell the login module (needs_login: Admin shows it, every
+      // check stays paused). Only a real cart form without a member id — never a transient failure or an error page.
+      if (!p1.fail && f1 && !loggedIn && session && typeof session.lost === "function") await call(() => session.lost("cart_logged_out"));
       // not a usable logged-in form → what was sent / set and what the page looks like (names and words only)
       const diag = Boolean(f1) && loggedIn ? "" : [
         ` sent_cookies=${(p1.sentNames || []).length}`,

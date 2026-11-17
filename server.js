@@ -1253,6 +1253,10 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 // STORE step uses this session (and its one quick re-login). Loaded at boot so a deploy keeps it.
 const pc711 = createPc711Login({ store: createPc711Store(serviceSb), readSetting, env: process.env });
 pc711.load().catch(() => {});
+// While logged out of 7-11 (needs_login): ONE passive read of the cart page every 10 minutes (the module keeps
+// the 10-minute timing; this only wakes it once a minute). Logged in → checks resume. It never logs in.
+const pc711PassiveTimer = setInterval(() => { void pc711.passiveCheck().catch(() => {}); }, 60 * 1000);
+if (typeof pc711PassiveTimer.unref === "function") pc711PassiveTimer.unref();
 const pc711Allowed = createWindowLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
 const pc711StatusAllowed = createWindowLimiter({ max: 120, windowMs: 10 * 60 * 1000 });
 const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed, statusAllowed: pc711StatusAllowed });
@@ -1265,7 +1269,7 @@ app.post("/admin/pc711/login/resend", requireAuth, requireAdmin, pc711Json, pc71
 app.post("/admin/pc711/login/back", requireAuth, requireAdmin, pc711Json, pc711Routes.back);
 app.post("/admin/pc711/disconnect", requireAuth, requireAdmin, pc711Json, pc711Routes.disconnect);
 app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
-const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies } });
+const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
 app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed, windowMs: PC_PROBE_LIMIT_WINDOW_MS }));
 // 7-11 server checker SHADOW (server/pc711Shadow.js, sql/159 + sql/162): compares the server's answer with the
@@ -1273,7 +1277,7 @@ app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandl
 // 'true' AND the 7-11 login is connected. Writes only pc711_shadow; never parcel_scans.
 const pc711ShadowCheck = async (input) => {
   const t0 = Date.now();
-  const r = await runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies }, target: input, gate: false, log: () => {} });
+  const r = await runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: input, gate: false, log: () => {} });
   const part = input.kind === "phone" ? r.phone : r.store; // "store" and "frozen" both run the store chain
   const steps = (part && part.steps) || [];
   // steps / raw go to pc711Shadow, which keeps only step name + http + ms + ok + a short word.

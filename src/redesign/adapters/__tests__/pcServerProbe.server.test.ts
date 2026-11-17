@@ -86,7 +86,7 @@ const settings = (over: Record<string, string | null> = {}) => async (key: strin
 // carries the old env cookie, which must never be read.
 const SESSION = { get: async () => ({ cookies: { "myship.7-11.com.tw": `auth=${MARK.cookie}; other=${MARK.cookie}2` } }) };
 const ON = { PC_SERVER_PROBE: "1", PC_PROBE_MYSHIP_COOKIE: "auth=MARKENVCOOKIE" };
-type Sess = { get?: () => Promise<unknown>; relogin?: () => Promise<unknown>; save?: (d: unknown) => Promise<unknown> } | null;
+type Sess = { get?: () => Promise<unknown>; relogin?: () => Promise<unknown>; save?: (d: unknown) => Promise<unknown>; lost?: (w: string) => Promise<unknown> } | null;
 const run = (f: unknown, o: { env?: Record<string, string>; now?: number; readSetting?: (k: string) => Promise<string | null>; session?: Sess } = {}) => {
   const logs: string[] = [];
   const p = runPcServerProbe({
@@ -304,6 +304,29 @@ describe("1b store step (only with the saved 7-11 login)", () => {
     const { result } = await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => { relogins += 1; return { cookies: { "myship.7-11.com.tw": "auth=NEWSESS" } }; } } });
     expect(relogins).toBe(0); // a transient failure is not a logged-out verdict
     expect(result.store.kind).toBe("network");
+  });
+  it("still the logged-out cart page after the quick re-login → the login module is told ONCE (lost), nothing else is sent", async () => {
+    const lost: string[] = [];
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage("") } });
+    const { result } = await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => null, lost: async (w) => { lost.push(w); } } });
+    expect(lost).toEqual(["cart_logged_out"]);
+    expect(result.store.kind).toBe("login_not_accepted");
+    expect(s.calls.filter((c) => c.url.includes("/cart/detail") || c.url.includes("emap"))).toEqual([]); // the store chain stopped at the cart page
+  });
+  it("the quick re-login brought it back → lost is NOT called", async () => {
+    const lost: string[] = [];
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: (c) => ({ body: cartPage(String(c.headers.cookie || "").includes("NEWSESS") ? MARK.sid : "") }) });
+    const { result } = await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => ({ cookies: { "myship.7-11.com.tw": "auth=NEWSESS" } }), lost: async (w) => { lost.push(w); } } });
+    expect(lost).toEqual([]);
+    expect(result.store.verdict).toBe("full");
+  });
+  it("a transient failure or an error page (no cart form) is never 'logged out' → lost is NOT called", async () => {
+    for (const reply of [() => { throw new Error("boom"); }, { status: 500, body: "<html>Runtime Error</html>" }, { status: 200, body: "<html>maintenance</html>" }]) {
+      const lost: string[] = [];
+      const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: reply as never });
+      await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => null, lost: async (w) => { lost.push(w); } } });
+      expect(lost).toEqual([]);
+    }
   });
   it("the E-Map form is posted only to the two E-Map hosts", async () => {
     const s = fullSite({ [`GET myship.7-11.com.tw/eMap/MM1/${GM}`]: { body: mapPage("https://evil.example.com/ecmap/default.aspx") } });

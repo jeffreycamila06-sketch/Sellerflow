@@ -41,6 +41,10 @@ export const PC711_QUICK_GAP_MS = 10 * 60 * 1000;
 export const PC711_QUICK_PER_DAY = 6;
 export const PC711_BODY_MAX = 1024 * 1024;
 export const PC711_IMAGE_MAX = 300 * 1024;
+// While logged out (needs_login, a saved session kept): ONE read of the cart page every 10 minutes with the
+// saved cookies. Logged in → connected again (the checks resume). It never sends a login request.
+export const PC711_PASSIVE_EVERY_MS = 10 * 60 * 1000;
+export const PC711_PASSIVE_KINDS = ["logged_in", "logged_out", "login_page", "error", "blocked", "other", "config_missing"];
 const MYSHIP = "myship.7-11.com.tw";
 const OPENPOINT = "bu-group.openpoint.com.tw"; // the password and the SMS code may only be sent here
 const AUTHORIZE_REF = `https://${OPENPOINT}/auth/service/authorize`;
@@ -176,6 +180,35 @@ const b64 = (s) => Buffer.from(String(s), "utf8").toString("base64");
 const codeOf = (j) => (j && (j.codeId ?? j.code ?? j.codeID)) ?? "";
 const descOf = (j) => { const d = j && (j.codeDescription ?? j.message ?? j.msg); return typeof d === "string" && d.trim() ? d.trim().slice(0, 200) : ""; };
 
+// What one cart-page read came back as — ONE word (never a value, a cookie or page text).
+//   logged_in   the cart form with a member id (≥ 4 characters)
+//   logged_out  the cart form without a member id
+//   login_page  a redirect to, or a page with, a 7-11 / OPENPOINT login
+//   error       timeout / network / too big / HTTP 5xx / a server-error page
+//   blocked     HTTP 403 / 429, or an access-denied page
+//   other       anything else
+export function cartReadKind(res) {
+  if (!res || res.fail) return "error";
+  const st = Number(res.status) || 0;
+  if (st === 403 || st === 429) return "blocked";
+  if (st >= 500) return "error";
+  if (st >= 300 && st < 400) {
+    let to = null;
+    try { to = new URL(String(res.location || ""), res.url || "https://myship.7-11.com.tw/"); } catch { to = null; }
+    return to && (to.hostname === OPENPOINT || /\/member\/login/i.test(to.pathname)) ? "login_page" : "other";
+  }
+  const text = String(res.text || "");
+  if (st === 200) {
+    const forms = parseForms(text, { budgetMs: 250 });
+    const cart = Array.isArray(forms) ? forms.find((f) => f.id === "MyCart") : null;
+    if (cart) return String(fieldOf(cart, "MemberSid") ?? "").length >= 4 ? "logged_in" : "logged_out";
+  }
+  if (/Access Denied|Request Rejected/i.test(text)) return "blocked";
+  if (/Runtime Error|Server Error|系統錯誤|發生錯誤/i.test(text)) return "error";
+  if (/uniopen|bu-group\.openpoint|\/Member\/Login/i.test(text)) return "login_page";
+  return "other";
+}
+
 // ── the login ────────────────────────────────────────────────────────────────
 // opts: fetchImpl, now, log, store ({ load, save, clear }), env, readSetting, newId.
 export function createPc711Login(opts = {}) {
@@ -185,6 +218,8 @@ export function createPc711Login(opts = {}) {
   let row = null;          // the saved row (blob + state fields)
   let phoneTail = "";      // from the blob
   let flow = null;         // the one login flow in progress (holds the password/picture in memory only)
+  let loggedOutAt = 0;     // when THIS server saw the state become needs_login (0 = not seen; see loggedOutSince)
+  const passive = { lastAt: 0, nextAt: 0, kind: null, running: false }; // the passive cart read (memory only)
 
   const say = (step, http, ms, w) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${word(w)}`); } catch { /* never stops */ } };
   const sayWords = (step, http, ms, words) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${words}`); } catch { /* never stops */ } };
@@ -320,7 +355,10 @@ export function createPc711Login(opts = {}) {
 
   // ── saved row ───────────────────────────────────────────────────────────────
   async function persist(patch) {
+    const wasOut = Boolean(row) && row.state === "needs_login";
     row = { ...(row || {}), ...patch, updated_at: new Date(now()).toISOString() };
+    if (row.state === "needs_login" && !wasOut) loggedOutAt = now();
+    if (row.state !== "needs_login") loggedOutAt = 0;
     if (store) await store.save(row);
   }
   async function saveSession(jarDump, extra = {}) {
@@ -344,13 +382,24 @@ export function createPc711Login(opts = {}) {
     } catch { say("load", 0, 0, "store_error"); }
   }
 
+  // Since when the server is logged out (needs_login): the moment this server saw it happen; after a
+  // restart, the time of the last quick re-login try (that try is what found it logged out), else the
+  // last time the saved row changed.
+  function loggedOutSince() {
+    if (!row || row.state !== "needs_login") return null;
+    if (loggedOutAt) return new Date(loggedOutAt).toISOString();
+    return row.last_quick_at || row.updated_at || null;
+  }
+  const iso = (ms) => (ms ? new Date(ms).toISOString() : null);
   function status() {
-    if (!key) return { state: "key_missing", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: "key_missing" };
-    if (!row || !row.blob) return { state: "not_connected", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: row?.last_problem ? word(row.last_problem) : null };
+    if (!key) return { state: "key_missing", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: "key_missing", loggedOutSince: null, passive: null };
+    if (!row || !row.blob) return { state: "not_connected", since: null, lastOkAt: null, autoLogins: 0, phoneTail: "", lastProblem: row?.last_problem ? word(row.last_problem) : null, loggedOutSince: null, passive: null };
+    const out = row.state === "needs_login";
     return {
-      state: row.state === "needs_login" ? "needs_login" : "connected",
+      state: out ? "needs_login" : "connected",
       since: row.since || null, lastOkAt: row.last_ok_at || null, autoLogins: Number(row.auto_logins || 0),
-      phoneTail, lastProblem: row.last_problem ? word(row.last_problem) : null,
+      phoneTail, lastProblem: row.last_problem ? word(row.last_problem) : null, loggedOutSince: loggedOutSince(),
+      passive: out ? { lastAt: iso(passive.lastAt), nextAt: iso(passive.nextAt || passiveDueFrom()), kind: passive.kind } : null,
     };
   }
 
@@ -549,6 +598,56 @@ export function createPc711Login(opts = {}) {
     await saveSession(merged, { last_ok_at: new Date(now()).toISOString() });
   }
 
+  // A check saw the logged-out cart page and the quick re-login (unchanged, above) did not bring the session
+  // back → needs_login: Admin says so, every check stays paused (getSession → null), and the passive cart
+  // read can bring it back. Sends nothing.
+  async function markLoggedOut(w = "cart_logged_out") {
+    if (!key || !row || !row.blob || row.state === "needs_login") return false;
+    await persist({ state: "needs_login", last_problem: word(w) });
+    say("logged_out", 0, 0, w);
+    return true;
+  }
+
+  // ── the passive cart read (while logged out) ───────────────────────────────────
+  // ONE GET of the cart page with the saved cookies (redirects are NOT followed, so it never reaches a login
+  // page), at most every 10 minutes, only in needs_login with a saved session that decrypts, and never while
+  // Jeff's login flow is open. Logged in → connected again with a new 'since' (the shadow job resumes on its
+  // own). Anything else → stays needs_login. It never sends a login request and never types anything.
+  function passiveDueFrom() {
+    const out = loggedOutSince();
+    const base = out ? Date.parse(out) : NaN;
+    return Number.isFinite(base) ? base + PC711_PASSIVE_EVERY_MS : now();
+  }
+  async function passiveCheck() {
+    if (passive.running || flow) return null;
+    if (!key || !row || !row.blob || row.state !== "needs_login") { passive.nextAt = 0; passive.lastAt = 0; passive.kind = null; return null; }
+    const cookies = sessionCookies();
+    if (!cookies) return null;
+    const t = now();
+    if (!passive.nextAt) passive.nextAt = passiveDueFrom();
+    if (t < passive.nextAt) return null;
+    passive.running = true;
+    try {
+      let gm = "";
+      try { gm = parseProbeConfig({ gms: readSetting ? await readSetting("parcel_check_shared_gms") : "" }).gm; } catch { gm = ""; }
+      let kind = "config_missing", res = null;
+      const jar = createPc711Jar(cookies);
+      if (gm) { res = await request(jar, `https://${MYSHIP}/cart/easy/${gm}`); kind = cartReadKind(res); }
+      passive.lastAt = now(); passive.kind = kind; passive.nextAt = passive.lastAt + PC711_PASSIVE_EVERY_MS;
+      say("passive", res?.status, res?.ms, kind);
+      if (kind !== "logged_in" || !row || row.state !== "needs_login") return { resumed: false, kind };
+      const at = new Date(now()).toISOString();
+      await saveSession(jar.dump(), { since: at, last_ok_at: at });
+      passive.nextAt = 0; passive.lastAt = 0; passive.kind = null;
+      say("passive", res?.status, res?.ms, "resumed");
+      return { resumed: true, kind };
+    } catch {
+      passive.lastAt = now(); passive.kind = "error"; passive.nextAt = passive.lastAt + PC711_PASSIVE_EVERY_MS;
+      say("passive", 0, 0, "error");
+      return { resumed: false, kind: "error" };
+    } finally { passive.running = false; }
+  }
+
   // ONE quick re-login with the saved session (no password): the page's own JSON quick-login. ⚠️ NOT
   // PROVEN. Any step that asks for a passkey / password / picture / SMS → needs_login, stop.
   async function quickRelogin() {
@@ -608,7 +707,7 @@ export function createPc711Login(opts = {}) {
     return { cookies: jar.dump() };
   }
 
-  return { load, status, start, captcha, submit, sms, resend, back, disconnect, getSession, saveCookies, quickRelogin, hasKey: () => Boolean(key), _flow: () => flow };
+  return { load, status, start, captcha, submit, sms, resend, back, disconnect, getSession, saveCookies, quickRelogin, markLoggedOut, passiveCheck, hasKey: () => Boolean(key), _flow: () => flow };
 }
 
 // ── routes (server.js mounts these behind requireAuth + requireAdmin + its own limiter) ──
