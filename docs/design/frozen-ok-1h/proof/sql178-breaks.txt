@@ -1,0 +1,37 @@
+## BREAK: ok trusted 2 hours instead of 1
+FAIL: 178: ok 61 minutes old → NOT used (no answer on the parcel)
+FAIL: 178: … the parcel goes to the live check queue
+FAIL: 178: … and the cache step did not copy the old ok onto it
+FAIL: 178 pending: ok 61 minutes old → not copied
+FAIL: 178 pending: ok 61 minutes old → queued for a live check
+sql178: 22 passed, 5 failed
+
+## BREAK: ok trusted 30 minutes instead of 1 hour
+FAIL: 178: ok 59 minutes old → used instantly
+FAIL: 178: … and logged as 'instant'
+FAIL: 178: … and is not in the live check queue
+FAIL: 178 pending: ok 59 minutes old → copied by the cache step
+FAIL: 178 pending: ok 59 minutes old → not queued
+sql178: 22 passed, 5 failed
+
+## BREAK: only the pending function changed (instant still 7 days)
+FAIL: 178: ok 61 minutes old → NOT used (no answer on the parcel)
+FAIL: 178: … the parcel goes to the live check queue
+FAIL: 178: … and the cache step did not copy the old ok onto it
+sql178: 24 passed, 3 failed
+
+## BREAK: no_frozen shortened to 20 days as well
+FAIL: 178: no_frozen 29 days old → still used
+sql178: 26 passed, 1 failed
+
+## BREAK: the warm-up changed to 1 hour too
+FAIL: warm-up: an ok 2 days old is still fresh (not re-warmed)
+FAIL: warm-up function untouched by 178
+FAIL: rollback: admin_frozen_warmup_next = the live text word for word
+sql178: 24 passed, 3 failed
+
+## BREAK: rollback not word for word (6 days)
+FAIL: before: admin_parcel_frozen_pending = the live text
+FAIL: rollback: admin_parcel_frozen_pending = the live text word for word
+sql178: 25 passed, 2 failed
+
