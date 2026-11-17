@@ -121,7 +121,7 @@ export default function Pc711EvidenceBlock() {
           <div data-testid="pc711-ev-mirror-state" style={{ ...line, fontWeight: 700 }}>{s.mirrorEnabled ? t.rd_pc711_ev_mirror_on : t.rd_pc711_ev_mirror_off}</div>
           <div data-testid="pc711-ev-selfstop" style={{ ...line, color: s.selfStop.lastStop ? "var(--warn)" : "var(--text-dim)", fontWeight: s.selfStop.lastStop ? 700 : 400 }}>
             {s.selfStop.lastStop
-              ? tpl(t.rd_pc711_ev_stop, { time: taipeiStamp(s.selfStop.lastStop.at), rule: s.selfStop.lastStop.rule === "phone_time" ? t.rd_pc711_ev_rule_phone : s.selfStop.lastStop.rule === "waited" ? t.rd_pc711_ev_rule_waited : s.selfStop.lastStop.rule === "login_lost" ? t.rd_pc711_ev_rule_login : t.rd_pc711_ev_rule_unknown, value: s.selfStop.lastStop.value === null ? "—" : String(s.selfStop.lastStop.value) })
+              ? tpl(s.selfStop.lastStop.value === null ? t.rd_pc711_ev_stop_nv : t.rd_pc711_ev_stop, { time: taipeiStamp(s.selfStop.lastStop.at), rule: s.selfStop.lastStop.rule === "phone_time" ? t.rd_pc711_ev_rule_phone : s.selfStop.lastStop.rule === "waited" ? t.rd_pc711_ev_rule_waited : s.selfStop.lastStop.rule === "login_lost" ? t.rd_pc711_ev_rule_login : t.rd_pc711_ev_rule_unknown, value: s.selfStop.lastStop.value === null ? "—" : String(s.selfStop.lastStop.value) })
               : t.rd_pc711_ev_stop_none}
           </div>
           {s.selfStop.silentSince && <div data-testid="pc711-ev-silent" role="status" style={{ ...line, color: "var(--warn)", fontWeight: 700 }}>{tpl(t.rd_pc711_ev_silent, { time: taipeiStamp(s.selfStop.silentSince) })}</div>}

@@ -49,10 +49,10 @@ describe("Pc711Panel", () => {
     renderPanel();
     await waitFor(() => expect(screen.getByTestId("pc711-logged-out")).toBeTruthy());
     expect(screen.getByTestId("pc711-logged-out").getAttribute("role")).toBe("alert");
-    expect(screen.getByTestId("pc711-lo-title").textContent).toBe("Logged out of 7-11 — needs Jeff to log in");
+    expect(screen.getByTestId("pc711-lo-title").textContent).toBe("Logged out of 7‑11 — needs Jeff to log in");
     expect(screen.getByTestId("pc711-lo-since").textContent).toBe("Logged out since 11/17 08:06:00");
     expect(screen.getByTestId("pc711-lo-paused").textContent).toContain("checks are paused");
-    expect(screen.getByTestId("pc711-begin").textContent).toBe("Log in to 7-11");
+    expect(screen.getByTestId("pc711-begin").textContent).toBe("Log in to 7‑11");
   });
   it("logged out: the passive look every 10 minutes — last (with what it found) and next, in Taipei time", async () => {
     push("/status", { body: { state: "needs_login", loggedOutSince: "2026-11-17T00:06:00Z", passive: { lastAt: "2026-11-17T00:16:00Z", nextAt: "2026-11-17T00:26:00Z", kind: "logged_out" } } });

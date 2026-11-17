@@ -77,6 +77,10 @@ describe("mirror self-stop on Admin", () => {
     setup(undefined, { lastStop: { at: "2026-11-17T03:20:00Z", rule: "phone_time", value: 9.2, parcels: 40 } });
     expect((await screen.findByTestId("pc711-ev-selfstop")).textContent).toBe("Mirror stopped itself at 11/17 11:20:00: typical phone time over 7 s (9.2)");
   });
+  it("stopped because the server lost its 7-11 login (login_lost): the rule, no empty number", async () => {
+    setup(undefined, { lastStop: { at: "2026-11-17T00:06:20Z", rule: "login_lost", value: null, parcels: null } });
+    expect((await screen.findByTestId("pc711-ev-selfstop")).textContent).toBe("Mirror stopped itself at 11/17 08:06:20: the server lost its 7‑11 login");
+  });
   it("the extension silent: 'extension silent since <time>'", async () => {
     setup(undefined, { silentSince: "2026-11-17T03:05:00Z" });
     expect((await screen.findByTestId("pc711-ev-silent")).textContent).toBe("Extension silent since 11/17 11:05:00 (the \"waited\" rule is skipped)");
