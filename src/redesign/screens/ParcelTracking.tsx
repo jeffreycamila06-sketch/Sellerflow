@@ -596,7 +596,27 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
     return () => clearTimeout(id);
   }, [search]);
   const busy = !!status?.active_job;
-  const showToast = (msg: string, ms = 4000) => { setToast(msg); setTimeout(() => setToast(""), ms); };
+  // Toast timers. Each one hides the toast after its own time, exactly as before; they are
+  // remembered here so the screen stops every one of them when it closes, and a copy / check
+  // that answers after the screen has closed starts no new one (a timer left running sets
+  // state on a screen that is gone — CI run 1843, "window is not defined").
+  const toastTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  const screenOpen = useRef(true);
+  useEffect(() => {
+    const timers = toastTimers.current;
+    screenOpen.current = true;
+    return () => {
+      screenOpen.current = false;
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+    };
+  }, []);
+  const showToast = (msg: string, ms = 4000) => {
+    if (!screenOpen.current) return;
+    setToast(msg);
+    const id = setTimeout(() => { toastTimers.current.delete(id); setToast(""); }, ms);
+    toastTimers.current.add(id);
+  };
 
   const apply = (next: ParcelTrackingRow[], nextTotals: ParcelTotals | undefined) => {
     setNowMs(Date.now());
@@ -629,7 +649,7 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
   }, [carriersKey, namesNonce]);
   const onCopyMsg = async (msg: string) => {
     const ok = await copyText(msg);
-    if (ok) { setToast(t.rd_pt_msg_copied); setTimeout(() => setToast(""), 1500); }
+    if (ok) showToast(t.rd_pt_msg_copied, 1500);
   };
   const extras: RowExtras = { contacts, contactOn, onCopyMsg: (m) => void onCopyMsg(m) };
   async function load() {
@@ -711,7 +731,7 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
 
   const onCopy = async (handle: string) => {
     const ok = await copyText(handle);
-    if (ok) { setToast(t.rd_pt_copied); setTimeout(() => setToast(""), 1500); }
+    if (ok) showToast(t.rd_pt_copied, 1500);
   };
 
 
