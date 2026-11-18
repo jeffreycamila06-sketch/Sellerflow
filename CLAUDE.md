@@ -5476,7 +5476,50 @@ Server only, no new request to 7-11, no rule changed (the extension's order, res
   `phone.token` ms by gap, phone "read → check starts" for parcels seen waiting (was 2.1 s), and `pc711_session.last_ok_at`
   moving about hourly when no E-Map open happens.
   The queries are in `docs/ops/pc711-speed-metrics.sql` (read-only, numbers and words only).
-- 🐛 **Flaky under CI load (NOT part of this branch, not touched):** `Admin.downgrade.test.tsx` → "an upgrade / the same plan
-  never reads the accounts and never opens the dialog" — `changePlan` called 1 time, 2 expected (CI run 1841, Nov 18; green
-  on the 10 runs before it and 3 of 3 locally). The second plan button is clicked right after the first `changePlan` call
-  is seen, while that change may still be settling. Same family as the ParcelScan race (wait for the button to be ready).
+- ✅ **`Admin.downgrade.test.tsx` flake (CI run 1841) — fixed on `claude/pc711-duty-card`, tests only:** the panel takes no
+  new tap until a plan change has finished; the test tapped the second plan right after the first change was SENT. Proven:
+  make `changePlan` answer 30 ms later → "called 1 time, 2 expected" every run. The test now forces that delay in every run
+  and repeats the second tap until the panel takes it. NOT the toast-timer cause below.
+
+## 2026-11-18 — PICKUP STATUS TOAST TIMERS (CI run 1843) + "WHO IS CHECKING" CARD PICTURES (branch `claude/pc711-duty-card`, NOT merged; no SQL; no Render)
+- **CI run 1843 (main):** all 9,543 tests passed, then 1 unhandled error "window is not defined" — the 1.5 s "Copied" toast
+  timer of `screens/ParcelTracking.tsx` fired after the test page was gone. The screen had three toast timers nobody stopped.
+  **Fix:** every toast goes through `showToast`; each toast still hides after its own time (nothing the seller sees changed —
+  an older toast's timer still hides a newer toast, kept on purpose); the screen stops every pending one when it closes
+  (`toastTimers`), and an answer that arrives after the screen closed starts no new one (`screenOpen`).
+  Test `ParcelTracking.toastTimers.test.tsx`: `withThePageGone` removes `window` and runs the clock — any late state update
+  throws the CI error. On main's old file 9 of its 12 tests fail.
+- 🔑 **PATTERN:** `setTimeout(() => setX(...))` in a screen with no clean-up = the same CI error whenever a test file ends
+  inside the timer's time. Still in 10 other files (16 places, e.g. ParcelScan 6, InviteFriends 2) — NOT touched here.
+- **"Who is checking" card — BUILT (pictures approved Nov 18):** see the next block.
+
+## 2026-11-18 — ADMIN 7-11 LOGIN: "WHO IS CHECKING" CARD (branch `claude/pc711-duty-card`, NOT merged; no SQL; needs a Render deploy for the route)
+Admin only. Says who does the 7-11 checks now: the checker laptop (extension) or the server (backup checker, sql/179).
+- **Card (`components/Pc711DutyCard.tsx`, texts `rd_pc711_duty_*` — the same English in all 8 languages):** four states —
+  green "The Lenovo is checking · Server: standby" + the Lenovo's last call · orange "The server is checking now" + since /
+  why / parcels answered in this duty · red = the same + "The server is logged out. Log in above." · grey "Backup: off" +
+  the Lenovo's last call. Under it one small line: the last finished take-over (nothing when there was none).
+  Read failed → "Couldn't read who is checking." (never "Backup: off"). No button.
+- **Where:** in `Pc711Panel.tsx`, under the top card and its button(s), above Telegram alerts — connected, logged out,
+  not connected, no session key. Not inside the two login steps.
+- **Refresh (`adapters/pc711Duty.ts` `usePc711Duty(open)`):** once when the status view opens, then every 30 s while the
+  page is in front (`DUTY_REFRESH_MS`); a hidden page asks nothing; back in front a due read runs at once; one read at a
+  time; every timer and listener is removed on close. The "… ago" numbers count by themselves (server's clock, `skewMs`).
+- **Route `GET /admin/pc711/duty` (`server/pc711Duty.js`, MANUAL Render deploy):** requireAuth → requireAdmin, the panel's
+  status limiter. READ ONLY: selects on `app_settings` (the lease `parcel_check_worker_lease` + the switch
+  `pc711_backup_enabled`), `pc711_backup_state`, `pc711_backup_log`. It calls NO database function (never
+  `pc711_backup_duty`, which writes) and writes nothing. Answer = fixed keys, counts and times only
+  (`backup, onDuty, loggedOut, reason, since, answered, answeredMore, checker{label,lastCallAt}, last{start,end,reason}, now`).
+  The only free text is the checker laptop's device label, answered only as one plain word ("Lenovo") or the extension's
+  default "<platform> <4 chars>" (`machineLabel`); else "" → "the checker laptop".
+  Tables missing (sql/179 not applied) or switch not exactly 'true' → `backup: "off"`. Any other read error → 500
+  (never a made-up "off"). Parcels of a duty = distinct `scan_id` with a `written` store / phone / frozen row since the duty
+  started, read 1,000 rows a page, continued from the last answer (the ids stay in server memory). One answer is kept 10 s.
+- **Two changes next to it:** the logged-out card hides "Store and phone checks are paused…" while the server is on duty
+  (`serverOnDuty`); the Telegram alerts sentence (`rd_pc711_al_sub`) also names the take-over and hand-back alerts.
+- **Before the Render deploy** the card says "Couldn't read who is checking." (the route is not there yet); the rest of the
+  panel is unchanged. **Today in production** sql/179 is not applied → after the deploy the card shows grey "Backup: off".
+- Pictures of the real card: `docs/design/pc711-duty-card/` (360 / 390 / 430 / 1280 px, dark, other panel states).
+- Tests: `pc711Duty.server.test.ts` (the route; the server's REAL `requireAdmin` lifted from server.js refuses a non-admin
+  with zero reads), `pc711Duty.test.tsx` (the 30 s refresh, hidden page), `Pc711DutyCard.test.tsx`, `Pc711Panel.duty.test.tsx`.
+- No help-guide change: the panel is Admin only (sellers never see it).

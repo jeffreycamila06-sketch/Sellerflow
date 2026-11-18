@@ -199,11 +199,17 @@ describe("plan downgrade over the TOTAL → confirm dialog before saving", () =>
   });
   it("an upgrade / the same plan never reads the accounts and never opens the dialog", async () => {
     const a = actions();
+    // The first change answers a moment later in EVERY run, as it does under CI load (run 1841:
+    // "called 1 time, 2 expected"). The panel takes no new tap until a change has finished, so the
+    // second tap is repeated until the panel takes it — a tap while it is busy does nothing.
+    a.changePlan.mockImplementation(async () => { await new Promise((res) => setTimeout(res, 30)); return { ok: true }; });
     const r = view(a);
     fireEvent.click(planBtn(r, "plus11@x.com", "Plus"));   // the same plan
     await waitFor(() => expect(a.changePlan).toHaveBeenCalledTimes(1));
-    fireEvent.click(planBtn(r, "plus11@x.com", "Pro"));    // an upgrade
-    await waitFor(() => expect(a.changePlan).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      fireEvent.click(planBtn(r, "plus11@x.com", "Pro"));  // an upgrade
+      expect(a.changePlan).toHaveBeenCalledTimes(2);
+    });
     expect(sellerCalls()).toBe(0);
     expect(r.queryByTestId("dg-dialog")).toBeNull();
     expect(a.downgradeRemove).not.toHaveBeenCalled();
