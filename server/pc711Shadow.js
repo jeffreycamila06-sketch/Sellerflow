@@ -30,6 +30,11 @@ export const SHADOW_MAINT_RETRY_MS = 10 * 60 * 1000;     // PC_MAINT_RETRY_MS
 export const SHADOW_MAINT_START_H = 1, SHADOW_MAINT_END_H = 5; // PC_MAINT_START_H / PC_MAINT_END_H (Taipei, [1, 5))
 export const SHADOW_STORE_BACKOFF_MS = [15 * 1000, 30 * 1000, 60 * 1000, 2 * 60 * 1000];               // PC_BACKOFF_MS
 export const SHADOW_PHONE_BACKOFF_MS = [5 * 1000, 10 * 1000, 20 * 1000, 60 * 1000, 2 * 60 * 1000];     // PC_PHONE_FAST_BACKOFF_MS
+// ── with the kept E-Map session (server/pc711Emap.js): the rest of the extension's row loop ─────────
+export const SHADOW_PHONE_TOKEN_MS = 5000;               // myship-711.js TOKEN_TIMEOUT_MS
+export const SHADOW_PHONE_TOKEN_RETRY_FAILS = 2;         // PC_PHONE_TOKEN_RETRY_FAILS
+export const SHADOW_FROZEN_STORE_GAP_MS = 10 * 60 * 1000; // frozen-check.js STORE_GAP_MS
+export const SHADOW_FROZEN_SLOW_PAUSE_MS = 10 * 60 * 1000; // frozen-check.js SLOW_PAUSE_MS
 // ── the shadow's own (Jeff 2026-11-15) ─────────────────────────────────────────
 export const SHADOW_BRAKE_ERRORS = 5;                    // refusals in a row → pause
 export const SHADOW_BRAKE_PAUSE_MS = 15 * 60 * 1000;
@@ -121,6 +126,41 @@ export const ladderFor = (kind) => (kind === "phone" ? SHADOW_PHONE_BACKOFF_MS :
 export function isRefusal(row) {
   const http = Number(row && row.fail_http) || 0;
   return http === 429 || http === 403 || http >= 500 || (row && row.fail_reason) === "timeout";
+}
+
+/** pcPhoneFastKind: the token GET got no answer (timeout / network) — not the POST. */
+export function phoneFastKind(r) {
+  const kind = String((r && r.kind) || "");
+  const posted = (Array.isArray(r && r.steps) ? r.steps : []).some((x) => x && x.step === "phone.validate");
+  return (kind === "timeout" || kind === "network") && !posted;
+}
+/** pcPhoneNoAnswer: no answer at all, token GET or POST (timeout / network). */
+export function phoneNoAnswer(r) {
+  const kind = String((r && r.kind) || "");
+  return kind === "timeout" || kind === "network";
+}
+/** pcPhoneBackoffDelay: the fast ladder for a token GET with no answer, else pcBackoffDelay (the store ladder). */
+export function phoneBackoffDelay(fails, r) {
+  const ladder = phoneFastKind(r) ? SHADOW_PHONE_BACKOFF_MS : SHADOW_STORE_BACKOFF_MS;
+  return ladder[Math.min(Math.max(1, fails), ladder.length) - 1];
+}
+/** pcBackoffDelay: the store ladder 15 s · 30 s · 60 s · 2 min (2 min after that). */
+export function storeBackoffDelay(fails) {
+  return SHADOW_STORE_BACKOFF_MS[Math.min(Math.max(1, fails), SHADOW_STORE_BACKOFF_MS.length) - 1];
+}
+/** The extension's rows (pcPollMulti): one parcel = its store half + its phone half, in queue order.
+ *  A frozen job is its own row (the extension's frozen lane is separate). Pure. */
+export function rowsOf(entries) {
+  const rows = []; const at = new Map();
+  for (const x of entries || []) {
+    const j = x.job;
+    const key = j.kind === "frozen" ? `${j.mode}:${j.scanId}:frozen` : `${j.mode}:${j.scanId}`;
+    let row = at.get(key);
+    if (!row) { row = { key, store: null, phone: null }; at.set(key, row); rows.push(row); }
+    if (j.kind === "phone") { if (!row.phone) row.phone = x; }
+    else if (!row.store) row.store = x;
+  }
+  return rows;
 }
 
 /** The RPC's rows (oldest first) → jobs [{ scanId, kind, ext, at, input }]. Pure. */
@@ -233,7 +273,9 @@ export function createShadowDb(sb) {
 
 // The job. check(input) → { verdict, http, ms, kind, raw, steps } (one server check; server.js runs
 // the probe's target mode). pc711 = the login module (status()). Never throws.
-export function createPc711Shadow({ db, evidence = null, check, pc711, readSetting, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+// emap (server/pc711Emap.js, optional): with it, the evidence pass runs the extension's row loop on ONE kept
+// E-Map session (pcPollMulti → pcEmapKeepalive → pcRefreshTabStatus); without it, the pass is as before.
+export function createPc711Shadow({ db, evidence = null, check, pc711, readSetting, emap = null, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   let running = false;
   let lastEnd = -Infinity;     // when the last 7-11 check finished (2 s between parcels)
   let day = "";                // the Taipei day the purge last ran for
@@ -268,8 +310,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   }
 
   // ONE 7-11 check: the 2 s gap, the check, needs_login. Every request to 7-11 goes through here.
-  async function ask(input) {
-    const wait = SHADOW_ROW_GAP_MS - (now() - lastEnd);
+  async function ask(input, gap = true) {
+    const wait = gap ? SHADOW_ROW_GAP_MS - (now() - lastEnd) : 0;
     if (wait > 0) await sleep(wait);
     const t0 = now();
     let r;
@@ -311,13 +353,15 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   const evInsert = async (row) => { if (!evidence) return true; try { await evidence.insert(row); return true; } catch { return false; } };
   const tagOf = (job) => (evidence ? ` mode=${job.mode || "after"} round=${job.round || 1}` : "");
 
-  // one parcel job (after-mode or mirror) → "next" | "stop" | "pause"
-  async function runJob(job, st, seenAt, queued) {
-    const { r, t0, end, loggedOut } = await ask(job.input);
+  // one parcel job (after-mode or mirror) → "next" | "stop" | "pause". ext (the extension's row loop):
+  // { ask, base(end), delay(fails, r), maint, onAnswer(), onMiss(b, r) } — the ladder's start, waits and
+  // the E-Map evidence of that half; without ext the job is as before.
+  async function runJob(job, st, seenAt, queued, ext = null) {
+    const { r, t0, end, loggedOut } = ext ? await ext.ask() : await ask(job.input);
     const row = shadowRow(job, r, t0);
     const mirror = job.mode === "mirror";
     const key = `${mirror ? "m:" : ""}${job.scanId}:${job.kind}`;
-    const maint = inShadowMaint(end);
+    const maint = ext ? ext.maint : inShadowMaint(end);
     const isErr = row.match === null && Boolean(row.fail_reason);
     const ev = async () => { const ok = await evInsert(evidenceRow(job, row, r, t0, end, queued, seenAt)); if (evidence) noteSave(jobKey(job), ok, job.kind, mirror ? "mirror" : "after"); };
     if (loggedOut) {
@@ -335,18 +379,20 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       say(shadowLogLine(mirror ? { ...row, match: null } : row, maint) + tagOf(job)); // mirror: no pair yet (match=skip)
       backoff.delete(key);
       streak = 0;
+      if (ext && ext.onAnswer) ext.onAnswer();
       return "next";
     }
     // a server error — the extension's ladder
     const b = backoff.get(key) || { fails: 0, nextAt: 0, seenAt: seenAt };
     b.seenAt = seenAt;
     if (maint) {
-      b.nextAt = lastEnd + SHADOW_MAINT_RETRY_MS; // maintenance: not counted, slow retry
+      b.nextAt = (ext ? ext.base(end) : lastEnd) + SHADOW_MAINT_RETRY_MS; // maintenance: not counted, slow retry
       backoff.set(key, b);
       say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=1 next=${SHADOW_MAINT_RETRY_MS / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
       return "next";
     }
     b.fails += 1;
+    if (ext && ext.onMiss) ext.onMiss(b, r);
     const ladder = ladderFor(job.kind);
     if (b.fails > ladder.length) {
       if (!mirror) { try { await db.insert(row); } catch { /* the next pass tries again */ } }
@@ -354,9 +400,10 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       say(shadowLogLine(row, maint) + tagOf(job));
       backoff.delete(key);
     } else {
-      b.nextAt = lastEnd + ladder[b.fails - 1]; // from the END of the failed attempt
+      const wait = ext ? ext.delay(b.fails, r) : ladder[b.fails - 1];
+      b.nextAt = (ext ? ext.base(end) : lastEnd) + wait; // from the END of the failed attempt (ext store: the pass start)
       backoff.set(key, b);
-      say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=0 next=${ladder[b.fails - 1] / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
+      say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=0 next=${wait / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
     }
     return (await brakeAfter(row, job.kind)) ? "pause" : "next";
   }
@@ -481,6 +528,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       const out = await runReask(x, st, t);
       if (out !== "next") return { checked, waiting: p.waiting, stopped: out };
     }
+    // 2 + 3 with the kept E-Map session: the extension's row loop, keepalive and recovery
+    if (emap) return { checked: checked + await runRowsExt(st, t, p, mirrorOn, budget), waiting: p.waiting };
     // 2. mirror: parcels still waiting for the extension
     if (mirrorOn && budget > 0 && p.mirrorQueue) {
       const mall = evidenceJobs(p.mirrorQueue.jobs, "mirror");
@@ -501,6 +550,130 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       if (out === "stop" || out === "pause") break;
     }
     return { checked, waiting: p.waiting };
+  }
+
+  // The extension's pass (chrome-extension/background.js pcRunOnce, multi-seller lane): pick the E-Map tab
+  // (a session without a guid = one miss), the row loop (pcPollMulti: ≤ 5 parcels, the store half then the
+  // phone half, 2 s after each parcel), the frozen kick (frozen-check.js: ≤ 1 frozen request), the keepalive
+  // (pcEmapKeepalive), then pcRefreshTabStatus (the recovery GET, the re-open). Returns the checks made.
+  const frozenStoreAt = new Map();               // frozen-check.js st.storeAt: store → its last frozen request
+  let frozenPauseUntil = 0;                      // frozen-check.js st.pauseUntil
+  let loginSince;                                // the saved 7-11 login's `since` this job last saw
+  // the open tries (server/pc711Emap.js refresh) go through the safety brake, like every other 7-11 request
+  const openHooks = {
+    onOpenOk: () => { streak = 0; },
+    onOpenFail: async (info) => {
+      lastEnd = now();
+      const step = STEP_NAMES.includes(info.step) ? info.step : "store.cart";
+      return brakeAfter({ fail_http: Number(info.http) || 0, fail_reason: failReasonOf(info.kind), fail_step: step }, "store");
+    },
+  };
+  async function runRowsExt(st, t, p, mirrorOn, budget) {
+    if (st.since !== loginSince) { loginSince = st.since; try { emap.onLogin(); } catch { /* never stops the pass */ } }
+    const rowsAt = now();                          // the extension's `now` of pcPollMulti (store waits start here)
+    const inMaint = inShadowMaint(rowsAt);
+    try { emap.pick(inMaint); } catch { /* never stops the pass */ }
+    const mall = mirrorOn && p.mirrorQueue ? evidenceJobs(p.mirrorQueue.jobs, "mirror") : [];
+    const aall = evidenceJobs(p.jobs, "after");
+    // pcEv.lastAnyNeedStore: any pending parcel needs the store half (in backoff or not)
+    const anyNeedStore = [...mall, ...aall].some((j) => j.kind === "store");
+    const keyOf = (j) => `${j.mode === "mirror" ? "m:" : ""}${j.scanId}:${j.kind}`;
+    for (const j of [...mall, ...aall]) { const b = backoff.get(keyOf(j)); if (b) b.seenAt = t; }
+    // frozen parcels are NOT rows: the extension's frozen lane is its own kick after the rows
+    const rows = rowsOf([
+      ...mall.map((job) => ({ job, queued: p.mirrorQueue ? p.mirrorQueue.waiting : 0 })),
+      ...aall.filter((job) => job.kind !== "frozen").map((job) => ({ job, queued: p.waiting })),
+    ]);
+    const frozenJobs = aall.filter((job) => job.kind === "frozen");
+    let processed = 0, checked = 0;
+    let stalled = false;                           // stalledGms: the server sends every phone check with ONE shop
+    const storeExt = (job) => ({
+      ask: async () => {
+        const t0 = now();
+        let r;
+        try { r = await emap.checkStore(job.input.storeId); } catch { r = null; }
+        if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [], transient: false };
+        lastEnd = now();
+        return { r: { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut: false }, t0, end: lastEnd, loggedOut: false };
+      },
+      maint: inMaint,
+      // the store half waits from the pass start (pcPollMulti `now`)
+      base: () => rowsAt,
+      delay: (fails) => storeBackoffDelay(fails),
+      // the store half is E-Map evidence (pcEmapVerdict / pcEmapMiss, once per verdict generation)
+      onAnswer: () => emap.verdict(),
+      onMiss: (b, r) => {
+        if (!r.transient && b.countedGen !== emap.gen()) { emap.miss(`store: ${r.kind || "no_answer"}`, false, inMaint); b.countedGen = emap.gen(); }
+      },
+    });
+    const phoneExt = (job, b) => ({
+      ask: () => ask({ ...job.input, tokenMs: SHADOW_PHONE_TOKEN_MS, tokenRetry: !inMaint && (!b || b.fails < SHADOW_PHONE_TOKEN_RETRY_FAILS) }, false),
+      maint: inMaint,
+      base: (end) => end,                          // from the END of this attempt
+      delay: (fails, r) => phoneBackoffDelay(fails, r),
+      onAnswer: null, onMiss: null,
+    });
+    for (const row of rows) {
+      if (processed >= budget) break;
+      const sj = row.store && row.store.job, pj = row.phone && row.phone.job;
+      const sb = sj ? backoff.get(keyOf(sj)) : null;
+      const pb = pj ? backoff.get(keyOf(pj)) : null;
+      const doStore = Boolean(sj) && emap.usable() && !(sb && rowsAt < sb.nextAt) && !saveBlocked(jobKey(sj), t);
+      const doPhone = Boolean(pj) && !stalled && !(pb && now() < pb.nextAt) && !saveBlocked(jobKey(pj), t);
+      if (!doStore && !doPhone) continue;
+      processed += 1;
+      if (doStore) {
+        checked += 1;
+        const out = await runJob(sj, st, t, row.store.queued, storeExt(sj));
+        if (out === "stop" || out === "pause") return checked;
+      }
+      if (doPhone) {
+        checked += 1;
+        let noAnswer = false;
+        const ext = phoneExt(pj, pb);
+        const inner = ext.ask;
+        ext.ask = async () => { const x = await inner(); noAnswer = !x.loggedOut && phoneNoAnswer(x.r) && x.r.verdict !== "ok" && x.r.verdict !== "restricted"; return x; };
+        const out = await runJob(pj, st, t, row.phone.queued, ext);
+        if (noAnswer) stalled = true;
+        if (out === "stop" || out === "pause") return checked;
+      }
+      await sleep(SHADOW_ROW_GAP_MS);              // PC_ROW_GAP_MS after each parcel
+      lastEnd = now();
+    }
+    // the frozen kick (frozen-check.js sendOne): at most ONE frozen request a pass, a store at most once per
+    // 10 min (from the request, answered or not), none for 10 min after a slow / missing answer by day
+    const fAt = now();
+    for (const [k, at] of frozenStoreAt) if (fAt - at >= SHADOW_FROZEN_STORE_GAP_MS) frozenStoreAt.delete(k);
+    const fj = emap.usable() && fAt >= frozenPauseUntil ? frozenJobs.find((j) => {
+      const b = backoff.get(keyOf(j));
+      return !(b && fAt < b.nextAt) && !saveBlocked(jobKey(j), t) && !frozenStoreAt.has(String(j.input.storeId));
+    }) : null;
+    if (fj) {
+      checked += 1;
+      const reqAt = now();
+      frozenStoreAt.set(String(fj.input.storeId), reqAt);    // the floor starts at the request
+      let slow = false;
+      const out = await runJob(fj, st, t, p.waiting, {
+        ask: async () => {
+          const t0 = now();
+          let r;
+          try { r = await emap.checkFrozen(fj.input.storeId); } catch { r = null; }
+          if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [], transient: true };
+          slow = Boolean(r.transient);                       // frozen-check.js slowAnswer: no reply / timeout / network / 5xx
+          lastEnd = now();
+          return { r: { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut: false }, t0, end: lastEnd, loggedOut: false };
+        },
+        maint: inMaint,
+        base: () => reqAt,
+        delay: () => SHADOW_FROZEN_STORE_GAP_MS,             // the parcel comes back when its store may be asked again
+        onAnswer: null, onMiss: null,
+      });
+      if (slow && !inMaint) frozenPauseUntil = now() + SHADOW_FROZEN_SLOW_PAUSE_MS; // the night never pauses (1.18.2)
+      if (out === "stop" || out === "pause") return checked;
+    }
+    try { await emap.keepalive(anyNeedStore, inShadowMaint(now())); } catch { /* never stops the pass */ }
+    try { await emap.refresh(inShadowMaint(now()), openHooks); } catch { /* never stops the pass */ }
+    return checked;
   }
 
   async function tick() {
@@ -560,6 +733,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     state: () => ({ pausedUntil: pausedUntil > now() ? pausedUntil : null, waiting, waitingAt: waitingAt || null, dayMax: Object.fromEntries(dayMax),
       selfStop: { silentSince, lastCheckAt: lastHealthAt ? new Date(lastHealthAt).toISOString() : null } }),
     _state: () => ({ day, stoppedSince, lastEnd, streak, pausedUntil, backoff: new Map(backoff) }),
+    /** the kept E-Map session's state (words and counts only) */
+    emapState: () => (emap ? emap.state() : null),
   };
 }
 
