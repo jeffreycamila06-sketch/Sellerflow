@@ -30,7 +30,7 @@
 // fake server built from those names.
 
 import crypto from "node:crypto";
-import { parseForms, parseProbeConfig } from "./pcServerProbe.js";
+import { parseForms, parseProbeConfig, isMaintWindow } from "./pcServerProbe.js";
 
 export const PC711_HOSTS = ["myship.7-11.com.tw", "bu-group.openpoint.com.tw", "emap.unipcsc.com.tw", "emap.pcsc.com.tw"];
 export const PC711_LOGIN_URL = "https://myship.7-11.com.tw/Member/Login/";
@@ -44,6 +44,17 @@ export const PC711_IMAGE_MAX = 300 * 1024;
 // While logged out (needs_login, a saved session kept): ONE read of the cart page every 10 minutes with the
 // saved cookies. Logged in → connected again (the checks resume). It never sends a login request.
 export const PC711_PASSIVE_EVERY_MS = 10 * 60 * 1000;
+// While CONNECTED (Jeff 2026-11-18): the checks no longer use the saved 賣貨便 login between two E-Map opens,
+// so it can sit unused for days. ONE light read of the cart page with the saved cookies, redirects NOT
+// followed (it never reaches a login page): at most once an hour, only when the login was not used in the
+// last hour, never 01:00–05:00 Taipei. A logged-in answer updates the last-used time. No answer / an error
+// page changes nothing. A logged-out answer is read once more 10 minutes later; logged out again → the
+// caller's step (the cart step of the E-Map open, with the existing session object — server.js) runs ONCE.
+// The read itself never sends a login request and never marks needs_login.
+export const PC711_LIGHT_EVERY_MS = 60 * 60 * 1000;
+export const PC711_LIGHT_CONFIRM_MS = 10 * 60 * 1000;
+export const PC711_LIGHT_OUT_KINDS = ["logged_out", "login_page"];
+export const PC711_LIGHT_STEP_WORDS = ["logged_in", "relogin_ok", "relogin_failed", "logged_out", "no_session", "no_answer", "no_step", "threw"];
 // quickRelogin: two cases that used to share ONE word each have their own now (log word AND last_problem word)
 export const PC711_QUICK_WORDS = { cartNotLoggedIn: "cart_not_logged_in", noClientId: "no_client_id" };
 export const PC711_PASSIVE_KINDS = ["logged_in", "logged_out", "login_page", "error", "blocked", "other", "config_missing"];
@@ -211,6 +222,32 @@ export function cartReadKind(res) {
   return "other";
 }
 
+/** Is the hourly light read due? Pure.
+ *  x: { nowMs, connected, busy, inMaint, lastOkMs, lastReadMs, outs, outAtMs }
+ *   - never when not connected, while a read / a login flow runs, or 01:00–05:00 Taipei;
+ *   - after ONE logged-out answer: the second read, 10 minutes after it;
+ *   - else: an hour after the login was last used AND an hour after the last read. */
+export function lightReadDue(x) {
+  if (!x || !x.connected || x.busy || x.inMaint) return false;
+  const t = Number(x.nowMs) || 0;
+  if (Number(x.outs) === 1) return t - (Number(x.outAtMs) || 0) >= PC711_LIGHT_CONFIRM_MS;
+  const lastUse = Math.max(Number(x.lastOkMs) || 0, Number(x.lastReadMs) || 0);
+  return t - lastUse >= PC711_LIGHT_EVERY_MS;
+}
+
+/** What the cart step did (server/pcServerProbe.js cartOnly result) → one word for the log. Pure. */
+export function lightStepWord(r) {
+  const st = r && typeof r === "object" ? r.store : null;
+  if (!st || typeof st !== "object") return "no_answer";
+  const steps = Array.isArray(st.steps) ? st.steps : [];
+  const tried = steps.some((x) => x && x.step === "store.relogin");
+  const kind = String(st.kind || "");
+  if (kind === "") return steps.some((x) => x && x.step === "store.cart" && x.ok) ? (tried ? "relogin_ok" : "logged_in") : "no_answer";
+  if (kind === "no_session") return "no_session";
+  if (kind === "login_not_accepted" || kind === "cart_form_missing") return tried ? "relogin_failed" : "logged_out";
+  return "no_answer";
+}
+
 /** The saved login's state change worth an Admin alert: connected → needs_login = "logged_out",
  *  needs_login → connected = "logged_in"; anything else (same state, first connect, disconnect) = "". Pure. */
 export function pc711StateChange(before, after) {
@@ -231,6 +268,8 @@ export function createPc711Login(opts = {}) {
   let flow = null;         // the one login flow in progress (holds the password/picture in memory only)
   let loggedOutAt = 0;     // when THIS server saw the state become needs_login (0 = not seen; see loggedOutSince)
   const passive = { lastAt: 0, nextAt: 0, kind: null, running: false }; // the passive cart read (memory only)
+  // the hourly light read (memory only). lastAt starts at this server's start: no read in its first hour.
+  const light = { lastAt: now(), kind: null, outs: 0, outAt: 0, running: false, steps: 0 };
 
   const say = (step, http, ms, w) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${word(w)}`); } catch { /* never stops */ } };
   const sayWords = (step, http, ms, words) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${words}`); } catch { /* never stops */ } };
@@ -662,6 +701,48 @@ export function createPc711Login(opts = {}) {
     } finally { passive.running = false; }
   }
 
+  // ── the hourly light read (while connected) ────────────────────────────────────
+  // step (the caller's): the cart step the E-Map open runs on a logged-out cart, with the existing session
+  // object — its ONE quick re-login (10-minute gap, 6 a day), and lost → needs_login only when that fails.
+  // This function sends ONE GET and nothing else; it never calls quickRelogin or markLoggedOut itself.
+  async function lightRead(step) {
+    if (light.running || flow) return null;
+    if (!key || !row || !row.blob || row.state === "needs_login") { light.outs = 0; return null; }
+    const t = now();
+    const lastOk = row.last_ok_at ? Date.parse(row.last_ok_at) : 0;
+    if (light.outs && Number.isFinite(lastOk) && lastOk > light.outAt) light.outs = 0; // the login was used and was fine since that answer
+    if (!lightReadDue({ nowMs: t, connected: true, busy: false, inMaint: isMaintWindow(t), lastOkMs: Number.isFinite(lastOk) ? lastOk : 0, lastReadMs: light.lastAt, outs: light.outs, outAtMs: light.outAt })) return null;
+    const cookies = sessionCookies();
+    if (!cookies) return null;
+    light.running = true;
+    try {
+      let gm = "";
+      try { gm = parseProbeConfig({ gms: readSetting ? await readSetting("parcel_check_shared_gms") : "" }).gm; } catch { gm = ""; }
+      let kind = "config_missing", res = null;
+      const jar = createPc711Jar(cookies);
+      if (gm) { res = await request(jar, `https://${MYSHIP}/cart/easy/${gm}`); kind = cartReadKind(res); }
+      light.lastAt = now(); light.kind = kind;
+      say("light", res?.status, res?.ms, kind);
+      // something else changed the login while the read was on its way (a login flow, an E-Map open): the answer is dropped
+      if (flow || !row || !row.blob || row.state === "needs_login") { light.outs = 0; return { kind, dropped: true }; }
+      if (kind === "logged_in") { light.outs = 0; await saveCookies(jar.dump()); return { kind }; }
+      if (!PC711_LIGHT_OUT_KINDS.includes(kind)) { light.outs = 0; return { kind }; } // no answer / an error page / blocked / other: nothing changes
+      light.outs += 1;
+      if (light.outs < 2) { light.outAt = light.lastAt; return { kind, outs: 1 }; }
+      // logged out twice in a row: the existing step, once
+      light.outs = 0; light.steps += 1;
+      const t0 = now();
+      let w = "no_step";
+      if (typeof step === "function") { try { w = lightStepWord(await step()); } catch { w = "threw"; } }
+      say("light_step", 0, now() - t0, w);
+      return { kind, outs: 2, step: w };
+    } catch {
+      light.lastAt = now(); light.kind = "error"; light.outs = 0;
+      say("light", 0, 0, "error");
+      return { kind: "error" };
+    } finally { light.running = false; }
+  }
+
   // ONE quick re-login with the saved session (no password): the page's own JSON quick-login. ⚠️ NOT
   // PROVEN. Any step that asks for a passkey / password / picture / SMS → needs_login, stop.
   async function quickRelogin() {
@@ -724,7 +805,7 @@ export function createPc711Login(opts = {}) {
     return { cookies: jar.dump() };
   }
 
-  return { load, status, start, captcha, submit, sms, resend, back, disconnect, getSession, saveCookies, quickRelogin, markLoggedOut, passiveCheck, hasKey: () => Boolean(key), _flow: () => flow };
+  return { load, status, start, captcha, submit, sms, resend, back, disconnect, getSession, saveCookies, quickRelogin, markLoggedOut, passiveCheck, lightRead, hasKey: () => Boolean(key), _flow: () => flow, _light: () => ({ ...light }) };
 }
 
 // ── routes (server.js mounts these behind requireAuth + requireAdmin + its own limiter) ──

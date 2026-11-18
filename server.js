@@ -57,6 +57,7 @@ import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipei
 import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Evidence.js";
 import { createPc711Emap, EMAP_KEEPALIVE_STORE } from "./server/pc711Emap.js";
 import { createPc711Backup, createBackupDb } from "./server/pc711Backup.js";
+import { createKeepAliveFetch, keepAliveMsFrom, keepAliveLogLine, createPassSettings, createSerial } from "./server/pc711Speed.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1264,6 +1265,16 @@ pc711.load().catch(() => {});
 // the 10-minute timing; this only wakes it once a minute). Logged in → checks resume. It never logs in.
 const pc711PassiveTimer = setInterval(() => { void pc711.passiveCheck().catch(() => {}); }, 60 * 1000);
 if (typeof pc711PassiveTimer.unref === "function") pc711PassiveTimer.unref();
+// One at a time for what may run the quick re-login on a logged-out cart: the E-Map open and the light read's step.
+const pc711CartLock = createSerial();
+// While connected: ONE light read of the cart page an hour when the saved login was not used (the module keeps
+// the hour, the second read 10 minutes after a logged-out answer and the 01:00–05:00 rest; this only wakes it
+// once a minute). Logged out twice in a row → the step below, once: the E-Map open's OWN cart step
+// (server/pcServerProbe.js cartOnly) with the SAME session object — its one quick re-login, and lost →
+// needs_login (+ the Telegram alert) only when that fails. Nothing after the cart page is requested.
+const pc711CartStep = () => pc711CartLock(() => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, cartOnly: true, log: () => {} }));
+const pc711LightTimer = setInterval(() => { void pc711.lightRead(pc711CartStep).catch(() => {}); }, 60 * 1000);
+if (typeof pc711LightTimer.unref === "function") pc711LightTimer.unref();
 const pc711Allowed = createWindowLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
 const pc711StatusAllowed = createWindowLimiter({ max: 120, windowMs: 10 * 60 * 1000 });
 const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed, statusAllowed: pc711StatusAllowed });
@@ -1285,9 +1296,16 @@ app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandl
 // 7-11 server checker SHADOW (server/pc711Shadow.js, sql/159 + sql/162): compares the server's answer with the
 // extension's on parcels the extension already checked. Off until app_settings pc711_shadow_enabled =
 // 'true' AND the 7-11 login is connected. Writes only pc711_shadow; never parcel_scans.
+// Speed (server/pc711Speed.js, Jeff 2026-11-18) — no new request to 7-11, no rule changed:
+//   pc711Net       the connections to the two 7-11 hosts stay open between checks (anon = the phone check,
+//                  session = the E-Map open and the kept E-Map session). Render env PC711_KEEPALIVE_MS=0 → off.
+//   pc711Settings  the three probe settings are read once a pass (the job resets it at each pass start).
+const pc711Net = createKeepAliveFetch({ ms: keepAliveMsFrom(process.env) });
+console.log(keepAliveLogLine(pc711Net));
+const pc711Settings = createPassSettings(readSetting);
 const pc711ShadowCheck = async (input) => {
   const t0 = Date.now();
-  const r = await runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: input, gate: false, log: () => {} });
+  const r = await runPcServerProbe({ readSetting: pc711Settings.read, fetchImpl: input && input.kind === "phone" ? pc711Net.anon : pc711Net.session, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: input, gate: false, log: () => {} });
   const part = input.kind === "phone" ? r.phone : r.store; // "store" and "frozen" both run the store chain
   const steps = (part && part.steps) || [];
   // steps / raw go to pc711Shadow, which keeps only step name + http + ms + ok + a short word.
@@ -1301,18 +1319,19 @@ if (serviceSb) {
   // 選擇取貨門市 click (cart → detail → MAP → E-Map), with the SAME saved-login session object the store
   // check on main uses: a logged-out cart runs the existing quick re-login step exactly as before.
   const pc711Emap = createPc711Emap({
-    open: () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, openOnly: true, log: () => {} }),
+    open: () => pc711CartLock(() => runPcServerProbe({ readSetting: pc711Settings.read, fetchImpl: pc711Net.session, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, openOnly: true, log: () => {} })),
+    fetchImpl: pc711Net.session,
   });
   // the BACKUP checker (server/pc711Backup.js, sql/179): off until app_settings pc711_backup_enabled = 'true'.
   // When the Lenovo stops it checks parcels and writes the answers; it only READS the extension's lease.
   // A phone check needs no 7-11 login, so it gets no session (and can never reach a login step).
   const pc711BackupPhone = async (input) => {
-    const r = await runPcServerProbe({ readSetting, target: { kind: "phone", ...input }, gate: false, log: () => {} });
+    const r = await runPcServerProbe({ readSetting: pc711Settings.read, fetchImpl: pc711Net.anon, target: { kind: "phone", ...input }, gate: false, log: () => {} });
     const p = (r && r.phone) || {};
     return { verdict: p.verdict || "unknown", kind: p.kind || "", steps: p.steps || [], message: p.message ?? null, until: p.until ?? null };
   };
   const pc711Backup = createPc711Backup({ db: createBackupDb(serviceSb), emap: pc711Emap, phoneCheck: pc711BackupPhone, pc711, readSetting, alert: adminAlert });
-  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, emap: pc711Emap, backup: pc711Backup });
+  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, passStart: pc711Settings.reset, emap: pc711Emap, backup: pc711Backup });
   pc711ShadowJob.start();
   app.get("/admin/pc711/shadow", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });

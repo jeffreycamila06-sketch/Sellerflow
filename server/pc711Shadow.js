@@ -278,7 +278,11 @@ export function createShadowDb(sb) {
 // backup (server/pc711Backup.js, optional): asked first on every pass. While it is ON DUTY (the Lenovo stopped,
 // sql/179) it does the pass itself and this job does nothing — comparing pauses, and so does the safety brake.
 // As a follower everything below is unchanged (the brake included).
-export function createPc711Shadow({ db, evidence = null, check, pc711, readSetting, emap = null, backup = null, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+// passStart (optional, server/pc711Speed.js): called once at the start of every pass (the settings read in a
+// pass are reused for that pass). A throw is ignored.
+// Jeff 2026-11-18 — a lost 7-11 login stops nothing while the kept E-Map session still answers: the login is
+// only needed to OPEN an E-Map session. Without a kept session that answers, everything is as before.
+export function createPc711Shadow({ db, evidence = null, check, pc711, readSetting, emap = null, backup = null, passStart = null, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   let running = false;
   let lastEnd = -Infinity;     // when the last 7-11 check finished (2 s between parcels)
   let day = "";                // the Taipei day the purge last ran for
@@ -297,6 +301,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   let mirrorSwitchLast = false; // the mirror switch as the last pass read it (also during 01:00–05:00)
   let loginStopFailAt = 0;     // the last failed login_lost write (logged at most once a minute)
   const say = (line) => { try { log(line); } catch { /* a log never stops the job */ } };
+  // the kept E-Map session still answers (server/pc711Emap.js answering()): then a lost login stops nothing
+  const keptSession = () => { try { return Boolean(emap) && typeof emap.answering === "function" && emap.answering() === true; } catch { return false; } };
 
   async function noteWaiting(n, t) {
     waiting = n; waitingAt = t;
@@ -322,7 +328,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [] };
     lastEnd = now();
     const after = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
-    const loggedOut = r.kind === "login_not_accepted" || r.kind === "no_session" || Boolean(after && after.state === "needs_login");
+    const loggedOut = r.kind === "login_not_accepted" || r.kind === "no_session" || Boolean(after && after.state === "needs_login" && !keptSession());
     return { r: { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut }, t0, end: lastEnd, loggedOut };
   }
 
@@ -359,7 +365,10 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   // one parcel job (after-mode or mirror) → "next" | "stop" | "pause". ext (the extension's row loop):
   // { ask, base(end), delay(fails, r), maint, onAnswer(), onMiss(b, r) } — the ladder's start, waits and
   // the E-Map evidence of that half; without ext the job is as before.
-  async function runJob(job, st, seenAt, queued, ext = null) {
+  // later (optional): an array. A real answer's saves (the comparison row + the evidence row) are pushed on it
+  // instead of being written now — the caller writes them after the phone check of the same parcel. Every
+  // other save (a logged-out row, an error row) is written at once, as before.
+  async function runJob(job, st, seenAt, queued, ext = null, later = null) {
     const { r, t0, end, loggedOut } = ext ? await ext.ask() : await ask(job.input);
     const row = shadowRow(job, r, t0);
     const mirror = job.mode === "mirror";
@@ -377,8 +386,11 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     }
     if (!isErr) {
       // a real answer (or the extension's own frozen unknown): the comparison row, the ladder is cleared
-      if (!mirror) { try { await db.insert(row); } catch { /* the next pass tries again */ } }
-      await ev();
+      const save = async () => {
+        if (!mirror) { try { await db.insert(row); } catch { /* the next pass tries again */ } }
+        await ev();
+      };
+      if (Array.isArray(later)) later.push(save); else await save();
       say(shadowLogLine(mirror ? { ...row, match: null } : row, maint) + tagOf(job)); // mirror: no pair yet (match=skip)
       backoff.delete(key);
       streak = 0;
@@ -478,9 +490,15 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     // no check request while not connected / stopped / paused (memory only; the one exception: the mirror
     // login_lost stop above, a single write while the mirror switch was on)
     const st = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
-    if (loginLost(st)) await stopMirrorOnLoginLoss();
-    if (!st || st.state !== "connected") return { skipped: "not_connected" };
-    if (stoppedSince !== null && stoppedSince === (st.since ?? null)) return { skipped: "stopped" };
+    // logged out of 7-11, but the kept E-Map session still answers → the pass runs as when connected (store
+    // checks through the kept session, phone checks need no login). Once that session no longer answers,
+    // the lines below apply exactly as before (mirror off once, no check until the next connect).
+    const kept = Boolean(st) && st.state === "needs_login" && keptSession();
+    if (!kept) {
+      if (loginLost(st)) await stopMirrorOnLoginLoss();
+      if (!st || st.state !== "connected") return { skipped: "not_connected" };
+      if (stoppedSince !== null && stoppedSince === (st.since ?? null)) return { skipped: "stopped" };
+    }
     stoppedSince = null;
     const t = now();
     if (pausedUntil > t) return { skipped: "paused" };
@@ -626,18 +644,29 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       const doPhone = Boolean(pj) && !stalled && !(pb && now() < pb.nextAt) && !saveBlocked(jobKey(pj), t);
       if (!doStore && !doPhone) continue;
       processed += 1;
+      // Jeff 2026-11-18 (speed): with a phone half to do, the store half's answer is saved AFTER the phone
+      // check (right after its request, before the phone's own rows) — the phone no longer waits for a save.
+      // The checks themselves, their order and the 2 s after the parcel are unchanged.
+      const storeSaves = doStore && doPhone ? [] : null;
+      const saveStore = async () => { while (storeSaves && storeSaves.length) { const save = storeSaves.shift(); try { await save(); } catch { /* the next pass tries again */ } } };
       if (doStore) {
         checked += 1;
-        const out = await runJob(sj, st, t, row.store.queued, storeExt(sj));
-        if (out === "stop" || out === "pause") return checked;
+        const out = await runJob(sj, st, t, row.store.queued, storeExt(sj), storeSaves);
+        if (out === "stop" || out === "pause") { await saveStore(); return checked; }
       }
       if (doPhone) {
         checked += 1;
         let noAnswer = false;
         const ext = phoneExt(pj, pb);
         const inner = ext.ask;
-        ext.ask = async () => { const x = await inner(); noAnswer = !x.loggedOut && phoneNoAnswer(x.r) && x.r.verdict !== "ok" && x.r.verdict !== "restricted"; return x; };
-        const out = await runJob(pj, st, t, row.phone.queued, ext);
+        ext.ask = async () => {
+          let x;
+          try { x = await inner(); } finally { await saveStore(); }
+          noAnswer = !x.loggedOut && phoneNoAnswer(x.r) && x.r.verdict !== "ok" && x.r.verdict !== "restricted";
+          return x;
+        };
+        let out;
+        try { out = await runJob(pj, st, t, row.phone.queued, ext); } finally { await saveStore(); }
         if (noAnswer) stalled = true;
         if (out === "stop" || out === "pause") return checked;
       }
@@ -684,6 +713,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     if (running) return { skipped: "running" };
     running = true;
     try {
+      if (typeof passStart === "function") { try { passStart(); } catch { /* never stops the pass */ } }
       let floor = 0;
       if (backup) {
         let d = null;

@@ -337,7 +337,10 @@ export function parseProbeConfig({ gms, sender, buyer }) {
 //   Without target the probe is exactly as before.
 // Never throws.
 export async function runPcServerProbe(opts = {}) {
-  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS, session = null, target = null, gate = true, openOnly = false } = opts;
+  // cartOnly (server/pc711Login.js, the hourly light read): the STORE chain's first step alone — the cart page
+  // with the saved login, its ONE quick re-login when the page says logged out, save / lost — and nothing after
+  // it (no /cart/detail, no map, no E-Map). The step itself is the code below, unchanged.
+  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS, session = null, target = null, gate = true, openOnly = false, cartOnly = false } = opts;
   const parse = (html) => parseForms(html, { budgetMs: parseBudgetMs });
   if (gate !== false && !pcProbeEnabled(env)) return { disabled: true };
   // kind "frozen" (extension 1.18.2 frozen lane) = the SAME store chain; only byIDData asks cate=27.
@@ -552,6 +555,7 @@ export async function runPcServerProbe(opts = {}) {
       if (p1.fail) stop(p1.fail);
       else if (!f1) stop("cart_form_missing");
       else if (!loggedIn) stop("login_not_accepted");
+      else if (cartOnly) { /* the cart step alone: logged in — nothing more is requested */ }
       else {
         // 2. the cart form → page 2. Measured on the real page: the fee is the NAMED field
         //    fullAmountFee_1; eight fields get the values the browser sends for one item (name
