@@ -5417,6 +5417,8 @@ CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
   - **Writes** go through service-role copies of the extension's functions (`pc711_backup_pending / _verdict / _requeue /
     _frozen_pending / _frozen_verdict / _sender_health`); each one checks the switch + duty itself (`pc711_backup_on_duty()`) →
     `not_on_duty` after the Lenovo's return. The Lenovo's answer wins (`p_seen_at`). One words-only row per write in `pc711_backup_log`.
+    "unknown" is not an answer: a REAL server answer replaces an "unknown" the Lenovo wrote after the server's read (store, phone,
+    frozen); a real Lenovo answer still wins; the server's own "unknown" replaces nothing written after its read.
   - **On duty = the extension's rules:** store then phone then 2 s, ≤ 5 parcels a pass; store ladder 15/30/60/120 s, "unknown" on the
     5th failure, re-queue after a session re-open and at 05:00; phone never given up, "rejected" retried; each parcel's own shop;
     sender health every 5 min; night rules; frozen lane. **No safety brake on duty** (Jeff's decision); as a follower the brake is

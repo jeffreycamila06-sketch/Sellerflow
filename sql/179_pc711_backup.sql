@@ -18,6 +18,8 @@
 -- admin_parcel_frozen_verdict, admin_set_parcel_sender_health). Same bodies; the admin gate is replaced
 -- by the duty check (inside EVERY write); the two verdict copies also take p_seen_at (when the server
 -- read the parcel) and never overwrite an answer written after it — the Lenovo's answer wins.
+-- "unknown" is not an answer: a REAL server answer replaces an "unknown" the Lenovo wrote after the
+-- read; the server's own "unknown" replaces nothing that was written after its read.
 -- scripts/sql179-behaviour.mjs proves the copies equal to the live originals on a real Postgres.
 --
 -- pc711_backup_log: one words-only row per backup write (parcel id, kind, verdict word, result).
@@ -290,6 +292,7 @@ create or replace function public.pc711_backup_verdict(
 returns text language plpgsql set search_path = public as $$
 declare
   v_cur_phone text; v_cur_store text;
+  v_cur_store_status text; v_cur_phone_status text;
   v_apply_store boolean; v_apply_phone boolean;
   v_store_key text; v_phone_key text;
   v_store_at timestamptz; v_phone_at timestamptz;
@@ -305,16 +308,21 @@ begin
     if p_phone_check_status is not null then insert into pc711_backup_log(scan_id, kind, word, result) values (p_id, 'phone', p_phone_check_status, 'not_on_duty'); end if;
     return 'not_on_duty';
   end if;
-  select ps.phone, ps.store_id, ps.store_full_at, ps.phone_check_at into v_cur_phone, v_cur_store, v_store_at, v_phone_at
+  select ps.phone, ps.store_id, ps.store_full_at, ps.phone_check_at, ps.store_full_status, ps.phone_check_status
+    into v_cur_phone, v_cur_store, v_store_at, v_phone_at, v_cur_store_status, v_cur_phone_status
     from parcel_scans ps where ps.id = p_id for update;
   if not found then return 'gone'; end if;
   v_apply_store := p_store_full_status is not null
                    and (p_expected_store is null or v_cur_store is not distinct from p_expected_store)
-                   -- the Lenovo's answer wins: never over an answer written after the server read the parcel
-                   and (p_seen_at is null or v_store_at is null or v_store_at <= p_seen_at);
+                   -- the Lenovo's answer wins: never over an answer written after the server read the parcel.
+                   -- A later "unknown" is not an answer: a REAL server answer replaces it (the server's own
+                   -- "unknown" does not — it replaces nothing written after the read).
+                   and (p_seen_at is null or v_store_at is null or v_store_at <= p_seen_at
+                        or (v_cur_store_status = 'unknown' and p_store_full_status in ('open','full','company','not_found')));
   v_apply_phone := p_phone_check_status is not null
                    and (p_expected_phone is null or v_cur_phone is not distinct from p_expected_phone)
-                   and (p_seen_at is null or v_phone_at is null or v_phone_at <= p_seen_at);
+                   and (p_seen_at is null or v_phone_at is null or v_phone_at <= p_seen_at
+                        or (v_cur_phone_status = 'unknown' and p_phone_check_status in ('ok','restricted')));
   update parcel_scans set
     store_full_status      = case when not v_apply_store then store_full_status
                                   when p_store_full_status = 'unknown' and store_full_status in ('open','full','company','not_found') then store_full_status
@@ -460,8 +468,11 @@ begin
   if not found then return 'gone'; end if;
   if v_layer is distinct from '冷凍' then return 'gone'; end if;  -- switched to 常溫 meanwhile: no frozen verdict
   if p_expected_store is not null and v_store is distinct from p_expected_store then return 'gone'; end if;
-  -- the Lenovo's answer wins: a real answer written after the server read the parcel is kept
-  if p_seen_at is not null and v_at is not null and v_at > p_seen_at and v_cur in ('ok', 'no_frozen') then
+  -- the Lenovo's answer wins: a real answer written after the server read the parcel is kept (a later
+  -- "unknown" is not an answer: a real server answer replaces it); and the server's own "unknown" leaves
+  -- an "unknown" written after its read as it is, check time included
+  if p_seen_at is not null and v_at is not null and v_at > p_seen_at
+     and (v_cur in ('ok', 'no_frozen') or (v_cur = 'unknown' and p_status = 'unknown')) then
     insert into pc711_backup_log(scan_id, kind, word, result) values (p_id, 'frozen', p_status, 'kept');
     return 'written';
   end if;

@@ -11,7 +11,9 @@
 //       hand back = the first lease call of a leader that is not degraded.
 //   • Every write goes through a service-role copy of the extension's function; the copy checks the switch and
 //     the duty ITSELF, so a write after the Lenovo's return is refused in the database ("not_on_duty").
-//   • The Lenovo's answer wins: each verdict carries the time the server read the parcel (p_seen_at).
+//   • The Lenovo's answer wins: each verdict carries the time the server read the parcel (p_seen_at). An
+//     "unknown" is not an answer: a real server answer replaces an "unknown" the Lenovo wrote after the read;
+//     the server's own "unknown" replaces nothing written after its read (both rules live in sql/179).
 //   • The extension's rules while on duty: per parcel the store half, then the phone half, then 2 s; ≤ 5
 //     parcels a pass; store ladder 15 / 30 / 60 / 120 s from the pass start, "unknown" on the 5th failure;
 //     the phone is NEVER given up (ladder 5 / 10 / 20 / 60 / 120 s after a token GET with no answer, else

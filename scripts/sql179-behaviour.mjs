@@ -323,6 +323,76 @@ const onDuty = async (db) => (await q(db, `select public.pc711_backup_on_duty() 
   await q(db, `select public.pc711_backup_verdict('${id(4)}','open',null,null,null,null,'100004',$1)`, [readAt]);
   ok((await q(db, `select store_full_status s from parcel_scans where id = '${id(4)}'`))[0].s === "open", "an answer older than the read (the full-store re-check) is replaced");
 }
+// ── 5b. "unknown" is not an answer (Jeff 2026-11-18) ─────────────────────────────────────────────
+{
+  const db = await dutyDb();
+  await db.exec(`update app_settings set value = 'true' where key = 'pc711_backup_enabled'; ${leaseAt(600)}`); await duty(db);
+  await db.exec(`insert into parcel_scans(id, user_id, created_at, status, phone, store_id, customer_name, temp_layer) values
+    ('${id(31)}','${U1}', now() - interval '5 minutes','confirmed','0911000031','100031','N','常溫'),
+    ('${id(32)}','${U1}', now() - interval '5 minutes','confirmed','0911000032','200032','FN','冷凍');`);
+  const readAt = (await q(db, `select public.pc711_backup_pending(25) j`))[0].j.read_at;
+  const LATER = `clock_timestamp() + interval '1 second'`;   // written by the Lenovo AFTER the server read the parcel
+  const row = async (n) => (await q(db, `select store_full_status s, phone_check_status p, phone_check_message m, store_full_at::text sa, phone_check_at::text pa,
+                                                frozen_store_status f, frozen_store_checked_at::text fa from parcel_scans where id = '${id(n)}'`))[0];
+  const lenovo = (n, set) => db.exec(`update parcel_scans set ${set} where id = '${id(n)}'`);
+  const server = async (n, store, phone, msg = null) => (await q(db, `select public.pc711_backup_verdict('${id(n)}', $1, $2, $3, null, null, null, $4) r`, [store, phone, msg, readAt]))[0].r;
+  const serverFrozen = async (n, st) => (await q(db, `select public.pc711_backup_frozen_verdict('${id(n)}', null, $1, $2) r`, [st, readAt]))[0].r;
+  const logOf = async (n, kind) => (await q(db, `select result from pc711_backup_log where scan_id = '${id(n)}' and kind = '${kind}' order by id desc limit 1`))[0]?.result;
+
+  // CASE 1 — a REAL server answer replaces a later "unknown" of the Lenovo
+  await lenovo(1, `store_full_status = 'unknown', store_full_at = ${LATER}, phone_check_status = 'unknown', phone_check_at = ${LATER}`);
+  await server(1, "open", "restricted", "SERVER");
+  let r = await row(1);
+  ok(r.s === "open", `case 1 (store): the Lenovo gave up ("unknown") after the server's read → the server's real answer is written (${r.s})`);
+  ok(r.p === "restricted" && r.m === "SERVER", `case 1 (phone): a later "unknown" → the server's real answer and 7-11's message are written (${r.p})`);
+  ok((await logOf(1, "store")) === "written" && (await logOf(1, "phone")) === "written", "… both logged as written");
+  await lenovo(21, `frozen_store_status = 'unknown', frozen_store_checked_at = ${LATER}`);
+  await serverFrozen(21, "ok");
+  ok((await row(21)).f === "ok", "case 1 (frozen): a later \"unknown\" → the server's real frozen answer is written");
+
+  // CASE 2 — a real answer from the Lenovo still wins over the server
+  await lenovo(2, `store_full_status = 'full', store_full_at = ${LATER}, phone_check_status = 'ok', phone_check_at = ${LATER}, phone_check_message = null`);
+  await server(2, "open", "restricted", "SERVER");
+  r = await row(2);
+  ok(r.s === "full" && r.p === "ok" && r.m === null, `case 2: the Lenovo's real store and phone answers are kept (${r.s} / ${r.p})`);
+  ok((await logOf(2, "store")) === "kept" && (await logOf(2, "phone")) === "kept", "… both logged as kept");
+  await lenovo(3, `store_full_status = 'unknown', store_full_at = ${LATER}, phone_check_status = 'ok', phone_check_at = ${LATER}`);
+  await server(3, "full", "restricted", "SERVER");
+  r = await row(3);
+  ok(r.s === "full" && r.p === "ok", `each half by itself: the later "unknown" store is replaced, the later real phone answer is kept (${r.s} / ${r.p})`);
+  await lenovo(22, `frozen_store_status = 'no_frozen', frozen_store_checked_at = ${LATER}`);
+  await serverFrozen(22, "ok");
+  ok((await row(22)).f === "no_frozen", "case 2 (frozen): the Lenovo's real frozen answer is kept");
+
+  // CASE 3 — the server's own "unknown" never replaces anything
+  await lenovo(8, `store_full_status = 'full', store_full_at = ${LATER}, phone_check_status = 'ok', phone_check_at = ${LATER}`);
+  await server(8, "unknown", "unknown");
+  r = await row(8);
+  ok(r.s === "full" && r.p === "ok", `case 3: the server's "unknown" does not replace a later real answer (${r.s} / ${r.p})`);
+  await lenovo(9, `store_full_status = 'unknown', store_full_at = ${LATER}, phone_check_status = 'unknown', phone_check_at = ${LATER}`);
+  const before9 = await row(9);
+  await server(9, "unknown", "unknown");
+  r = await row(9);
+  ok(r.s === "unknown" && r.sa === before9.sa && r.p === "unknown" && r.pa === before9.pa, "case 3: … nor a later \"unknown\" — the Lenovo's row and its times stay exactly as they were");
+  ok((await logOf(9, "store")) === "kept" && (await logOf(9, "phone")) === "kept", "… logged as kept");
+  const before10 = await row(10);                              // 'open', written 5 minutes BEFORE the read
+  await server(10, "unknown", null);
+  r = await row(10);
+  ok(r.s === "open" && r.sa === before10.sa, "case 3: … nor a real answer from before the read (the extension's own rule)");
+  await lenovo(26, `frozen_store_status = 'ok', frozen_store_checked_at = ${LATER}`);
+  await serverFrozen(26, "unknown");
+  ok((await row(26)).f === "ok", "case 3 (frozen): the server's \"unknown\" does not replace a later real frozen answer");
+  await lenovo(23, `frozen_store_status = 'unknown', frozen_store_checked_at = ${LATER}`);
+  const before23 = await row(23);
+  await serverFrozen(23, "unknown");
+  r = await row(23);
+  ok(r.f === "unknown" && r.fa === before23.fa, "case 3 (frozen): … nor a later \"unknown\" (its check time stays)");
+  // and what must still work: a parcel nobody answered takes the server's give-up
+  await server(31, "unknown", null);
+  ok((await row(31)).s === "unknown" && (await logOf(31, "store")) === "written", "a parcel nobody answered: the server's \"unknown\" (give-up) is still written");
+  await serverFrozen(32, "unknown");
+  ok((await row(32)).f === "unknown", "… and the frozen \"unknown\" too");
+}
 // ── grants + rollback ────────────────────────────────────────────────────────────────────────────
 {
   const fns = await q(B, `select p.proname, p.prosecdef, has_function_privilege('anon', p.oid, 'execute') a, has_function_privilege('authenticated', p.oid, 'execute') u, has_function_privilege('service_role', p.oid, 'execute') s from pg_proc p where p.proname like 'pc711_backup_%' order by 1`);

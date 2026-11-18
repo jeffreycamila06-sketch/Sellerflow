@@ -103,8 +103,11 @@ function harness(o: { start?: number; enabled?: boolean; byid?: (store: string, 
       const p = S.parcels.get(String(v.id));
       if (!p) return "gone";
       const seen = v.seenAt ? Date.parse(String(v.seenAt)) : null;
-      if (v.store != null && v.expectedStore === p.store_id && !(seen !== null && p.storeAt > seen) && !(v.store === "unknown" && p.store && p.store !== "unknown")) { p.store = String(v.store); p.storeAt = t; }
-      if (v.phone != null && v.expectedPhone === p.phone && !(seen !== null && p.phoneAt > seen)) { p.phoneStatus = String(v.phone); p.phoneAt = t; p.message = (v.message as string) ?? null; p.until = (v.until as string) ?? null; }
+      // sql/179: the Lenovo's answer wins, but a later "unknown" is not an answer (a real server answer replaces it)
+      const storeFree = seen === null || p.storeAt <= seen || (p.store === "unknown" && v.store !== "unknown");
+      const phoneFree = seen === null || p.phoneAt <= seen || (p.phoneStatus === "unknown" && v.phone !== "unknown");
+      if (v.store != null && v.expectedStore === p.store_id && storeFree && !(v.store === "unknown" && p.store && p.store !== "unknown")) { p.store = String(v.store); p.storeAt = t; }
+      if (v.phone != null && v.expectedPhone === p.phone && phoneFree) { p.phoneStatus = String(v.phone); p.phoneAt = t; p.message = (v.message as string) ?? null; p.until = (v.until as string) ?? null; }
       S.writes.push({ ...v, result: "written", at: t });
       return "written";
     }),
@@ -361,6 +364,28 @@ describe("B4 the Lenovo returns mid-check: the database refuses the write, the s
     expect(new Set(h.emapCalls.filter((c) => c.k !== EMAP_KEEPALIVE_STORE).map((c) => c.k)).size).toBe(4);
     expect(h.S.writes.length).toBe(0);
     expect(h.S.onDuty).toBe(false);
+  });
+});
+
+// ═══ B4b "unknown" is not an answer ══════════════════════════════════════════════════════════════
+describe("B4b a degraded Lenovo gives a parcel up while the server is checking it", () => {
+  it("the Lenovo writes \"unknown\" after the server's read → the server's real answer still lands; a real Lenovo answer is kept", async () => {
+    let n = 0;
+    const h = harness({ byid: (k) => {
+      if (k !== EMAP_KEEPALIVE_STORE) {
+        const p = [...h.S.parcels.values()][n++];              // while the server asks 7-11, the Lenovo writes its own word
+        if (p && n === 1) { p.store = "unknown"; p.storeAt = h.at() + 1; }   // parcel 1: a give-up
+        if (p && n === 2) { p.store = "full"; p.storeAt = h.at() + 1; }      // parcel 2: a real answer
+      }
+      return { body: "OK;1+a+b+enable+0++門市" };
+    } });
+    h.lenovo.calls(true);                                      // still calling, reports degraded
+    await h.pass(1);
+    const a = h.add({ phoneStatus: "ok" }), b = h.add({ phoneStatus: "ok" });
+    h.lenovo.calls(true);
+    await h.job.tick();
+    expect(h.S.writes.map((w) => [w.store, w.result])).toEqual([["open", "written"], ["open", "written"]]);
+    expect([a.store, b.store]).toEqual(["open", "full"]);     // the give-up is replaced; the Lenovo's real answer wins
   });
 });
 
@@ -1205,6 +1230,17 @@ describe("B21 sql/179: the duty check is inside every function the server can wr
     expect(code.match(/delete from pc711_backup_log/g)?.length).toBe(1);   // the one place a log row is deleted
     expect(code).not.toMatch(/cron\./);
     expect(SQL).toContain("log_purged_on   date,");
+  });
+  it("\"unknown\" is not an answer: a real server answer replaces a later \"unknown\"; the Lenovo's real answer and the server's own \"unknown\" rules are in both verdict copies", () => {
+    const v = body("pc711_backup_verdict");
+    expect(v).toContain("into v_cur_phone, v_cur_store, v_store_at, v_phone_at, v_cur_store_status, v_cur_phone_status");
+    expect(v).toContain("and (p_seen_at is null or v_store_at is null or v_store_at <= p_seen_at\n                        or (v_cur_store_status = 'unknown' and p_store_full_status in ('open','full','company','not_found')));");
+    expect(v).toContain("and (p_seen_at is null or v_phone_at is null or v_phone_at <= p_seen_at\n                        or (v_cur_phone_status = 'unknown' and p_phone_check_status in ('ok','restricted')));");
+    // the extension's own rule is still there: "unknown" never replaces a real store answer
+    expect(v).toContain("when p_store_full_status = 'unknown' and store_full_status in ('open','full','company','not_found') then store_full_status");
+    const f = body("pc711_backup_frozen_verdict");
+    expect(f).toContain("if p_seen_at is not null and v_at is not null and v_at > p_seen_at\n     and (v_cur in ('ok', 'no_frozen') or (v_cur = 'unknown' and p_status = 'unknown')) then");
+    expect(f).toContain("when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end,");
   });
   it("the rollback removes every function and table of 179 and the switch row", () => {
     const made = [...SQL.matchAll(/create or replace function public\.(pc711_backup_[a-z_]+)\(/g)].map((m) => m[1]);
