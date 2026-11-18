@@ -38,7 +38,7 @@ const MARK = { guid: "MARKGUID-1111-2222", cookie: "MARKCOOKIEval", name: "陳�
 const GM1 = "GM1111111", GM2 = "GM2222222", GM3 = "GM3333333";
 type R = Record<string, unknown>;
 type Reply = { status?: number; body?: string; location?: string } | "timeout" | "network";
-type Parcel = { id: string; phone: string; store_id: string; customer_name: string; gm_id: string; store: string | null; storeAt: number; phoneStatus: string | null; phoneAt: number; message: string | null; until: string | null; frozen?: boolean; frozenStatus?: string | null; frozenAt?: number };
+type Parcel = { id: string; phone: string; store_id: string; customer_name: string; gm_id: string; createdAt: number; store: string | null; storeAt: number; phoneStatus: string | null; phoneAt: number; message: string | null; until: string | null; frozen?: boolean; frozenStatus?: string | null; frozenAt?: number };
 let seq = 0;
 const sid = () => `00000000-0000-0000-0000-${String(++seq).padStart(12, "0")}`;
 const OPENED = () => ({ store: { emap: { cookies: { [HOST]: `ASP.NET_SessionId=${MARK.cookie}` }, guid: MARK.guid, pageUrl: PAGE }, kind: "", steps: [{ step: "store.emap", http: 200 }] } });
@@ -109,9 +109,10 @@ function harness(o: { start?: number; enabled?: boolean; byid?: (store: string, 
       return "written";
     }),
     requeue: vi.fn(async (sinceMs: number) => {
+      S.calls.push("requeue");
       if (!dutyNow()) return -1;
       let n = 0;
-      for (const p of S.parcels.values()) if (p.store === "unknown") { p.store = null; p.storeAt = 0; n++; }
+      for (const p of S.parcels.values()) if (p.store === "unknown" && p.createdAt >= sinceMs) { p.store = null; p.storeAt = 0; n++; }
       S.requeues.push({ at: t, sinceMs, n });
       return n;
     }),
@@ -147,7 +148,7 @@ function harness(o: { start?: number; enabled?: boolean; byid?: (store: string, 
   const sdb = { pending: vi.fn(), dayMax: vi.fn(async () => ({})), saveDayMax: vi.fn(async () => {}), insert: vi.fn(async () => {}), purgeBefore: vi.fn(async () => {}) };
   const shadowCheck = vi.fn(async (i: R) => { events.push("shadow-phone"); t += 900; return o.phone ? o.phone(i) : { verdict: "ok", http: 200, ms: 900, kind: "", raw: "Status:true", steps: [] }; });
   const job = createPc711Shadow({ db: sdb, evidence: ev, check: shadowCheck, pc711: { status }, readSetting: async (k: string) => settings[k] ?? null, emap, backup, now: () => t, log: (l: string) => logs.push(l), sleep: async (ms: number) => { events.push(`sleep:${ms}`); t += ms; } });
-  const add = (over: Partial<Parcel> = {}): Parcel => { const p: Parcel = { id: sid(), phone: `09${String(10000000 + S.parcels.size).padStart(8, "0")}`, store_id: String(151000 + S.parcels.size), customer_name: MARK.name, gm_id: GM1, store: null, storeAt: 0, phoneStatus: null, phoneAt: 0, message: null, until: null, ...over }; S.parcels.set(p.id, p); return p; };
+  const add = (over: Partial<Parcel> = {}): Parcel => { const p: Parcel = { id: sid(), phone: `09${String(10000000 + S.parcels.size).padStart(8, "0")}`, store_id: String(151000 + S.parcels.size), customer_name: MARK.name, gm_id: GM1, createdAt: t, store: null, storeAt: 0, phoneStatus: null, phoneAt: 0, message: null, until: null, ...over }; S.parcels.set(p.id, p); return p; };
   return {
     job, backup, bdb, emap, S, logs, events, phoneInputs, emapCalls, opens, sent, alert, settings, evPass, shadowCheck, add, phoneCheck,
     /** the phone checks of PARCELS (the sender health probe left out) */
@@ -295,6 +296,16 @@ describe("B3 hand-back: the first lease call of a Lenovo that is NOT degraded", 
     const before = h.pp().length;
     await h.job.tick();                  // on duty again: checked in this very pass
     expect([h.S.onDuty, h.pp().length - before, p.phoneStatus]).toEqual([true, 1, "ok"]);
+  });
+  it("a new duty does not inherit the earlier duty's sender-health strike", async () => {
+    const h = harness({ phone: (i) => (i.phone === MARK.buyer ? PHONE_RESTRICTED : PHONE_OK) });
+    await h.pass(1);                        // duty 1: the probe says restricted once (1 of 2)
+    expect(h.backup._state().strikes).toBe(1);
+    h.lenovo.calls(false); await h.pass(1); // handed back before the confirmation
+    expect(h.S.onDuty).toBe(false);
+    h.advance(130_000);                     // the Lenovo stops again: 130 s with no call
+    await h.job.tick();                     // duty 2: its first probe says restricted → 1 of 2 again, the sender is NOT paused
+    expect([h.S.onDuty, h.backup._state().strikes, h.S.health.length]).toEqual([true, 1, 0]);
   });
   it("a new take-over needs the full condition again: 60 s of silence after a hand-back is not enough, 120 s is", async () => {
     const h = harness();
@@ -454,7 +465,7 @@ describe("B7 store: 15 / 30 / 60 / 120 s from the pass start; 'unknown' on the 5
   });
   it("… and after an E-Map recovery (the session is opened again): once per opening, and every backoff is forgotten", async () => {
     const h = harness({ byid: bad });
-    await h.pass(1);                     // take-over; the session is opened on duty → the first re-queue
+    await h.pass(1);                     // take-over: its ONE re-queue (the session opened in that same pass adds none)
     expect(h.S.requeues.length).toBe(1);
     const p = h.add({ phoneStatus: "ok" });
     await h.pass(3);                     // one failure → backoff; no further re-queue while the session lives
@@ -469,15 +480,6 @@ describe("B7 store: 15 / 30 / 60 / 120 s from the pass start; 'unknown' on the 5
     expect(p.store).toBeNull();
     h.advance(5000); await h.pass(5);
     expect(h.S.requeues.length).toBe(2);
-  });
-  it("a session that was already open when the server took over: no re-queue at take-over", async () => {
-    const h = harness();
-    h.lenovo.calls(false);
-    await h.pass(1);                     // follower
-    h.emap.onLogin(); await h.emap.refresh(false, null);
-    h.lenovo.silent(130);
-    await h.pass(4);
-    expect([h.S.onDuty, h.S.requeues.length]).toEqual([true, 0]);
   });
   it("a failed re-queue is tried again 60 s later, not sooner", async () => {
     const h = harness({ start: FIVE_AM - 60_000 });
@@ -496,6 +498,146 @@ describe("B7 store: 15 / 30 / 60 / 120 s from the pass start; 'unknown' on the 5
     await h.job.tick();
     expect(h.bdb.requeue.mock.calls.length).toBe(2);
     expect(h.S.requeues.length).toBe(1);
+  });
+});
+
+// ═══ B7b the take-over re-queue (Jeff 2026-11-18) ════════════════════════════════════════════════
+describe("B7b at take-over the stores given up in the last 6 hours go back in the queue — once", () => {
+  const ONE_AM = Date.parse("2026-11-18T17:00:00Z"); // 01:00 Taipei
+  // a follower that already keeps an E-Map session open (the usual state when the Lenovo stops)
+  const follower = async (o: Parameters<typeof harness>[0] = {}) => {
+    const h = harness(o);
+    h.lenovo.calls(false);
+    await h.pass(1);
+    h.emap.onLogin(); await h.emap.refresh(false, null);
+    expect(h.emap.usable()).toBe(true);
+    return h;
+  };
+  const takeOverLine = "[PC711_BACKUP] requeue after took_over rows=1";
+
+  it("a store the Lenovo gave up before it stopped is put back at take-over, checked by the server and gets a real answer — in the pass of the take-over", async () => {
+    const h = await follower();
+    const p = h.add({ phoneStatus: "ok", store: "unknown", storeAt: h.at() - 600_000 }); // given up 10 minutes ago
+    h.lenovo.silent(130);
+    const from = h.S.calls.length;
+    await h.job.tick();
+    expect(h.S.onDuty).toBe(true);
+    expect(h.S.requeues).toHaveLength(1);
+    expect(h.logs).toContain(takeOverLine);
+    const calls = h.S.calls.slice(from).filter((c) => c === "requeue" || c === "pending");
+    expect(calls).toEqual(["requeue", "pending"]); // put back BEFORE the first read of the duty
+    expect(p.store).toBe("open");
+    expect(h.S.writes).toHaveLength(1);
+    expect(h.S.writes[0]).toMatchObject({ id: p.id, store: "open", phone: null, result: "written" });
+  });
+  it("once per take-over, not every pass: a store given up later is not put back by the next passes", async () => {
+    const h = await follower();
+    h.add({ phoneStatus: "ok", store: "unknown" });
+    h.lenovo.silent(130);
+    await h.pass(1);
+    expect(h.S.requeues).toHaveLength(1);
+    const later = h.add({ phoneStatus: "ok", store: "unknown" }); // (given up after the take-over)
+    await h.pass(40);
+    expect(h.bdb.requeue.mock.calls.length).toBe(1);
+    expect(later.store).toBe("unknown");
+    expect(h.logs.filter((l) => l.startsWith("[PC711_BACKUP] requeue after")).length).toBe(1);
+  });
+  it("a new take-over: once again", async () => {
+    const h = await follower();
+    h.lenovo.silent(130);
+    await h.pass(2);
+    h.lenovo.calls(false); await h.pass(1);
+    expect([h.S.onDuty, h.S.requeues.length]).toEqual([false, 1]);
+    const p = h.add({ phoneStatus: "ok", store: "unknown" });
+    for (let i = 0; i < 10; i++) { h.lenovo.calls(false); await h.pass(1); }   // a follower never puts anything back
+    expect([h.S.requeues.length, p.store]).toEqual([1, "unknown"]);
+    h.lenovo.silent(125);
+    await h.pass(1);
+    expect([h.S.onDuty, h.S.requeues.length, p.store]).toEqual([true, 2, "open"]);
+    await h.pass(20);
+    expect(h.S.requeues.length).toBe(2);
+  });
+  it("no session open yet at take-over (it opens at the end of that pass): still ONE re-queue, the store is answered right after", async () => {
+    const h = harness();
+    const p = h.add({ phoneStatus: "ok", store: "unknown" });
+    await h.job.tick();
+    expect([h.S.onDuty, h.S.requeues.length, p.store, h.opens.mock.calls.length]).toEqual([true, 1, null, 1]);
+    h.advance(5000); await h.pass(3);
+    expect([p.store, h.S.requeues.length]).toEqual(["open", 1]);
+  });
+  it("only the last 6 hours (the extension's window): an older give-up stays as it is", async () => {
+    const h = await follower();
+    const old = h.add({ phoneStatus: "ok", store: "unknown", createdAt: h.at() - 7 * 3600_000 });
+    const recent = h.add({ phoneStatus: "ok", store: "unknown", createdAt: h.at() - 5 * 3600_000 });
+    h.lenovo.silent(130);
+    await h.pass(2);
+    expect(h.S.requeues[0].sinceMs).toBe(Number(h.S.requeues[0].at) - SHADOW_LOOKBACK_MS);
+    expect([old.store, recent.store]).toEqual(["unknown", "open"]);
+  });
+  it("a take-over between 01:00 and 05:00 Taipei: no re-queue then (the extension never does one in that window) — the 05:00 one does it, once", async () => {
+    const h = await follower({ start: NOW });            // a session opened by day …
+    h.set(NIGHT); h.lenovo.silent(130);                  // … the Lenovo stops at 02:00
+    const p = h.add({ phoneStatus: "ok", store: "unknown", createdAt: NIGHT - 3600_000 });
+    await h.pass(40);
+    expect(h.S.onDuty).toBe(true);
+    expect(h.bdb.requeue).not.toHaveBeenCalled();
+    expect(p.store).toBe("unknown");
+    h.set(FIVE_AM + 1000);
+    await h.pass(3);
+    expect(h.bdb.requeue.mock.calls.length).toBe(1);
+    expect(h.logs).toContain("[PC711_BACKUP] requeue after maintenance_end rows=1");
+    expect(p.store).not.toBe("unknown");
+    await h.pass(20);
+    expect(h.bdb.requeue.mock.calls.length).toBe(1);
+  });
+  it("a take-over re-queue that fails is tried again 60 s later, and still counts once", async () => {
+    const h = await follower();
+    const p = h.add({ phoneStatus: "ok", store: "unknown" });
+    let fail = true;
+    const real = h.bdb.requeue.getMockImplementation()!;
+    h.bdb.requeue.mockImplementation(async (s: number) => { if (fail) throw new Error("db"); return real(s); });
+    h.lenovo.silent(130);
+    await h.job.tick();
+    const first = h.at();
+    expect(h.logs).toContain("[PC711_BACKUP] requeue after took_over failed next=60s");
+    for (let i = 0; i < 8; i++) { h.advance(5000); await h.job.tick(); }
+    expect([h.bdb.requeue.mock.calls.length, p.store]).toEqual([1, "unknown"]);
+    fail = false;
+    h.set(first + BACKUP_REQUEUE_RETRY_MS + 1000);
+    await h.job.tick();
+    expect([h.bdb.requeue.mock.calls.length, h.S.requeues.length, p.store]).toEqual([2, 1, "open"]);
+    await h.pass(20);
+    expect(h.bdb.requeue.mock.calls.length).toBe(2);
+  });
+  it("… and when 01:00 comes before it could be done, it is left to the 05:00 re-queue", async () => {
+    const h = await follower({ start: ONE_AM - 45_000 });
+    const p = h.add({ phoneStatus: "ok", store: "unknown" });
+    let fail = true;
+    const real = h.bdb.requeue.getMockImplementation()!;
+    h.bdb.requeue.mockImplementation(async (s: number) => { if (fail) throw new Error("db"); return real(s); });
+    h.lenovo.silent(130);
+    await h.job.tick();                                  // 00:59 — the take-over; its re-queue fails
+    expect(h.at()).toBeLessThan(ONE_AM);
+    expect(h.bdb.requeue.mock.calls.length).toBe(1);
+    fail = false;
+    h.set(ONE_AM + 30_000);
+    await h.pass(30);                                    // 01:00 … 01:03
+    expect([h.bdb.requeue.mock.calls.length, p.store]).toEqual([1, "unknown"]);
+    h.set(FIVE_AM + 1000);
+    await h.pass(3);
+    expect(h.bdb.requeue.mock.calls.length).toBe(2);
+    expect(p.store).not.toBe("unknown");
+  });
+  it("a follower never puts anything back (switch off, or the Lenovo alive)", async () => {
+    const off = harness({ enabled: false });
+    off.add({ phoneStatus: "ok", store: "unknown" });
+    await off.pass(30);
+    expect(off.bdb.requeue).not.toHaveBeenCalled();
+    const on = harness();
+    const p = on.add({ phoneStatus: "ok", store: "unknown" });
+    for (let i = 0; i < 30; i++) { on.lenovo.calls(false); await on.pass(1); }
+    expect(on.bdb.requeue).not.toHaveBeenCalled();
+    expect(p.store).toBe("unknown");
   });
 });
 
@@ -1047,6 +1189,22 @@ describe("B21 sql/179: the duty check is inside every function the server can wr
     expect(t).toContain("'^[a-z_]{1,24}$'");
     const cols = t.split("\n").slice(1).map((l) => l.trim().split(/\s+/)[0]).filter(Boolean);
     expect(cols).toEqual(["id", "at", "scan_id", "kind", "word", "result"]); // no column for a phone, a name, a store or 7-11's message
+  });
+  it("the log clean-up lives inside the duty call: 30 days, once a Taipei day, the day marked before the delete, never failing the call; no cron job", () => {
+    const b = body("pc711_backup_duty");
+    expect(b).toContain("v_keep constant interval := interval '30 days';");
+    expect(b).toContain("v_today date := (v_now at time zone 'Asia/Taipei')::date;");
+    const gate = b.indexOf("if st.log_purged_on is distinct from v_today then");
+    const mark = b.indexOf("update pc711_backup_state set log_purged_on = v_today where id = 1;");
+    const del = b.indexOf("delete from pc711_backup_log where at < v_now - v_keep;");
+    expect(gate).toBeGreaterThan(-1);
+    expect(mark).toBeGreaterThan(gate);
+    expect(del).toBeGreaterThan(mark);
+    expect(b.slice(del, del + 120)).toContain("exception when others then null;");
+    const code = SQL.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+    expect(code.match(/delete from pc711_backup_log/g)?.length).toBe(1);   // the one place a log row is deleted
+    expect(code).not.toMatch(/cron\./);
+    expect(SQL).toContain("log_purged_on   date,");
   });
   it("the rollback removes every function and table of 179 and the switch row", () => {
     const made = [...SQL.matchAll(/create or replace function public\.(pc711_backup_[a-z_]+)\(/g)].map((m) => m[1]);

@@ -22,6 +22,10 @@
 --
 -- pc711_backup_log: one words-only row per backup write (parcel id, kind, verdict word, result).
 -- Never a phone, name or store number. No existing table, function or policy is changed.
+-- CLEAN-UP: rows of pc711_backup_log older than 30 days are deleted inside pc711_backup_duty (the call
+-- the server already makes), at most once a Taipei day (pc711_backup_state.log_purged_on). It touches
+-- nothing but this log, never fails the duty decision, and is the one thing that also runs with the
+-- switch off (old rows of an earlier duty still age out). No cron job is added or changed.
 -- ROLLBACK: 179_pc711_backup_rollback.sql
 
 begin;
@@ -36,8 +40,10 @@ create table if not exists public.pc711_backup_state (
   since           timestamptz,                       -- when the current duty started
   handed_back_at  timestamptz,                       -- when the last duty ended
   alerts          jsonb not null default '[]'::jsonb, -- alert kinds not sent yet, oldest first
+  log_purged_on   date,                              -- the Taipei day of the last log clean-up
   updated_at      timestamptz not null default now()
 );
+alter table public.pc711_backup_state add column if not exists log_purged_on date;
 insert into public.pc711_backup_state(id) values (1) on conflict (id) do nothing;
 alter table public.pc711_backup_state enable row level security;
 revoke all on public.pc711_backup_state from public, anon, authenticated;
@@ -108,12 +114,24 @@ returns jsonb language plpgsql set search_path = public as $$
 declare
   v_on text; st pc711_backup_state%rowtype; l record; v_now timestamptz := clock_timestamp();
   v_ttl constant interval := interval '120 seconds';
+  v_keep constant interval := interval '30 days';               -- how long a backup log row is kept
+  v_today date := (v_now at time zone 'Asia/Taipei')::date;
   v_change text := null; v_take text := null; v_eff boolean;
 begin
   select s.value into v_on from app_settings s where s.key = 'pc711_backup_enabled';
   insert into pc711_backup_state(id) values (1) on conflict (id) do nothing;
   select * into st from pc711_backup_state where id = 1 for update;
   select * into l from pc711_backup_lease();
+
+  -- The log clean-up: at most once a Taipei day. The day is marked FIRST, so a clean-up that fails is
+  -- not tried again before tomorrow; it never fails the duty decision below.
+  if st.log_purged_on is distinct from v_today then
+    update pc711_backup_state set log_purged_on = v_today where id = 1;
+    begin
+      delete from pc711_backup_log where at < v_now - v_keep;
+    exception when others then null;
+    end;
+  end if;
 
   if v_on is distinct from 'true' then
     if st.on_duty then                                           -- switched off while on duty: stop, no alert

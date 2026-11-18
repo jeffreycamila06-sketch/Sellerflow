@@ -5421,8 +5421,17 @@ CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
     5th failure, re-queue after a session re-open and at 05:00; phone never given up, "rejected" retried; each parcel's own shop;
     sender health every 5 min; night rules; frozen lane. **No safety brake on duty** (Jeff's decision); as a follower the brake is
     unchanged. Phone checks need no 7-11 login. Comparing with the extension pauses on duty and restarts from the hand-back time.
+  - **At take-over (Jeff 2026-11-18):** the stores given up in the last 6 hours go back in the queue ONCE (the extension's own
+    re-queue through `pc711_backup_requeue`), before the first pending read, then they are checked by the normal rules. Not
+    01:00–05:00 Taipei (the extension has no re-queue inside that window) — the 05:00 re-queue does it. A failed one is tried again
+    after 60 s; a session opened in the same pass adds no second one.
+  - **Log clean-up:** `pc711_backup_log` rows older than 30 days are deleted INSIDE `pc711_backup_duty` (the call the server already
+    makes — no cron job), at most once a Taipei day (`pc711_backup_state.log_purged_on`, marked before the delete); it never fails
+    the duty call and also runs with the switch off.
   - **Alerts (kept in `pc711_backup_state.alerts`, so once per change across restarts):** "Lenovo stopped. The server is checking
     now." / "…but it is logged out of 7-11. Log in from Admin." / "Lenovo is back. The server is a follower again."
+  - **Run the SQL proof from the repo:** `PGLITE_DIR=<folder with @electric-sql/pglite@0.2.17> node scripts/sql179-behaviour.mjs`
+    (PGlite is not a dependency of the repo; without it the script says how to get it).
   - **Proof:** `pc711Backup.server.test.ts` (fake 7-11 / lease / Telegram, virtual clock) + `scripts/sql179-behaviour.mjs` (PGlite:
     the copies write exactly what the live extension functions write — `scripts/fixtures/pc711_backup_originals_live.sql`, md5 = live
     2026-11-18). ⚠️ If an extension write function is changed later, change its `pc711_backup_*` copy and the fixture too.

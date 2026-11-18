@@ -19,6 +19,10 @@
 //     its OWN shop; one shop with no answer waits this pass, two make every phone wait; 01:00–05:00 Taipei
 //     failures are not counted and retry in 10 min; given-up stores go back in the queue after a recovery and
 //     at 05:00; the sender health check every 5 min (two "restricted" in a row pause all checks).
+//   • AT TAKE-OVER (Jeff 2026-11-18): the stores given up in the last 6 hours go back in the queue ONCE, by
+//     the extension's own re-queue (its window, the server copy), before the first pending read — then they
+//     are checked by the rules above. Not 01:00–05:00 Taipei: the extension never re-queues inside that
+//     window (no trigger of its re-queue can arise there); its 05:00 re-queue does it.
 //   • Phone checks need no 7-11 login: they keep running when the server is logged out. Store / frozen checks
 //     run while the kept E-Map session lives.
 //   • NO safety brake on duty (Jeff's decision). Nothing here is faster than the extension's timers.
@@ -139,7 +143,11 @@ export function createPc711Backup({ db, emap, phoneCheck, pc711, readSetting, al
     dutyFailAt = 0;
     dutyAt = now(); enabled = d.enabled; floor = d.floor;
     if (d.change) say(`${d.change}${d.change === "took_over" ? ` reason=${d.reason === "degraded" ? "degraded" : "silent"} logged_out=${loggedOut() ? 1 : 0}` : ""}`);
-    if (d.change === "took_over") { forget(); try { emap.takeRequeueDue(); } catch { /* nothing */ } }
+    if (d.change === "took_over") {
+      forget();
+      try { emap.takeRequeueDue(); } catch { /* nothing */ }   // a session opened in the follower time asks for nothing here
+      requeueDue = "took_over";   // the stores given up before the Lenovo stopped: back in the queue, once per take-over
+    }
     flushAlerts(d.alerts);
     onDuty = d.onDuty;
     return onDuty;
@@ -186,17 +194,22 @@ export function createPc711Backup({ db, emap, phoneCheck, pc711, readSetting, al
   }
 
   // pcRequeueUnknown (background.js:535): given-up stores (6 h) back in the queue, every backoff forgotten.
+  // → true when the database did it.
   async function requeue() {
     const t = now();
-    if (!requeueDue || t < requeueAt) return;
+    if (!requeueDue || t < requeueAt) return false;
     const why = requeueDue;
+    // 01:00–05:00 Taipei: no take-over re-queue (a take-over at night, or one that could not be done before
+    // 01:00) — the extension never re-queues inside the window; the 05:00 re-queue does it
+    if (why === "took_over" && inShadowMaint(t)) { requeueDue = ""; requeueAt = 0; return false; }
     backoff.clear();
     let n = null;
     try { n = await db.requeue(t - SHADOW_LOOKBACK_MS); } catch { n = null; }
-    if (n === null || !Number.isFinite(n)) { requeueAt = t + BACKUP_REQUEUE_RETRY_MS; say(`requeue after ${why} failed next=${BACKUP_REQUEUE_RETRY_MS / 1000}s`); return; }
+    if (n === null || !Number.isFinite(n)) { requeueAt = t + BACKUP_REQUEUE_RETRY_MS; say(`requeue after ${why} failed next=${BACKUP_REQUEUE_RETRY_MS / 1000}s`); return false; }
     requeueDue = ""; requeueAt = 0;
-    if (n < 0) { refused(); return; }
+    if (n < 0) { refused(); return false; }
     say(`requeue after ${why} rows=${n}`);
+    return true;
   }
 
   // The frozen lane (frozen-check.js sendOne / sendNight / readPending; not the warm-up): at most ONE frozen
@@ -237,6 +250,12 @@ export function createPc711Backup({ db, emap, phoneCheck, pc711, readSetting, al
     try { emap.pick(inMaint); } catch { /* never stops the pass */ }
     if (wasMaint === true && !inMaint) requeueDue = "maintenance_end";
     wasMaint = inMaint;
+    // the take-over re-queue runs BEFORE the pending read, so those stores are checked from this very pass
+    let requeuedAtTakeOver = false;
+    if (requeueDue === "took_over") {
+      requeuedAtTakeOver = await requeue();
+      if (!onDuty) return 0;
+    }
     if (!(await senderHealth())) return 0;
     let p = null;
     try { p = await db.pending(SHADOW_FETCH_LIMIT); } catch { p = null; say("pending read failed"); }
@@ -328,7 +347,8 @@ export function createPc711Backup({ db, emap, phoneCheck, pc711, readSetting, al
     try { await emap.keepalive(anyNeedStore, inShadowMaint(now())); } catch { /* never stops the pass */ }
     // recovery + re-open with NO brake hooks: no safety brake while on duty
     try { await emap.refresh(inShadowMaint(now()), null); } catch { /* never stops the pass */ }
-    try { if (emap.takeRequeueDue()) requeueDue = requeueDue || "recovery"; } catch { /* nothing */ }
+    // (a session opened in the pass of the take-over re-queue asks for nothing more: those stores were just put back)
+    try { if (emap.takeRequeueDue() && !requeuedAtTakeOver) requeueDue = requeueDue || "recovery"; } catch { /* nothing */ }
     await requeue();
     return checked;
   }

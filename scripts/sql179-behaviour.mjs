@@ -7,13 +7,29 @@
 //   4. the lease check inside EVERY write (a write after the Lenovo's call is refused, before the state flips)
 //   5. the Lenovo's answer wins (p_seen_at)
 //   6. the rollback removes everything; 179 applies again
-// Not part of CI (PGlite is not a dependency). Run from a scratch folder:
-//   mkdir /tmp/pg179 && cd /tmp/pg179 && npm i @electric-sql/pglite@0.2.17
-//   cp <repo>/scripts/sql179-behaviour.mjs . && node sql179-behaviour.mjs <repo>/sql <repo>/scripts/fixtures
-import { PGlite } from "@electric-sql/pglite";
-import { readFileSync } from "node:fs";
-const dir = process.argv[2];
-const fixtures = process.argv[3] || `${dir}/../scripts/fixtures`;
+//   7. the backup log keeps 30 days, cleaned inside the duty call at most once a Taipei day
+// Not part of CI (PGlite is not a dependency of the repo). PGlite is taken from the folder named in
+// PGLITE_DIR (or from wherever Node finds it):
+//   mkdir /tmp/pg179 && (cd /tmp/pg179 && npm i @electric-sql/pglite@0.2.17)
+//   PGLITE_DIR=/tmp/pg179 node scripts/sql179-behaviour.mjs            (from the repo root)
+// Optional arguments: <sql dir> <fixtures dir> (default: the repo's sql/ and scripts/fixtures/).
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+const here = dirname(fileURLToPath(import.meta.url));
+async function loadPGlite() {
+  try { return (await import("@electric-sql/pglite")).PGlite; } catch { /* not installed next to the repo: PGLITE_DIR */ }
+  const base = process.env.PGLITE_DIR ? resolve(process.env.PGLITE_DIR) : "";
+  const entry = join(base, "node_modules", "@electric-sql", "pglite", "dist", "index.js");
+  if (!base || !existsSync(entry)) {
+    console.log("PGlite not found. Run: mkdir /tmp/pg179 && (cd /tmp/pg179 && npm i @electric-sql/pglite@0.2.17) — then PGLITE_DIR=/tmp/pg179 node scripts/sql179-behaviour.mjs");
+    process.exit(2);
+  }
+  return (await import(pathToFileURL(entry).href)).PGlite;
+}
+const PGlite = await loadPGlite();
+const dir = process.argv[2] || join(here, "..", "sql");
+const fixtures = process.argv[3] || join(here, "fixtures");
 const src = (f) => readFileSync(`${dir}/${f}`, "utf8");
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
@@ -246,6 +262,44 @@ const onDuty = async (db) => (await q(db, `select public.pc711_backup_on_duty() 
   const db2 = await dutyDb();
   await db2.exec(`update app_settings set value = 'true' where key = 'pc711_backup_enabled'; ${lease(`'leader_id', null, 'leader_at', null, 'seen', jsonb_build_object('w2', clock_timestamp() - interval '30 seconds')`)}`);
   ok((await duty(db2)).on_duty === false, "no leader, but ANOTHER machine called 30 s ago → not silent, no take-over");
+}
+// ── 7. the backup log: 30 days, cleaned inside the duty call, at most once a Taipei day ───────────
+{
+  const db = await dutyDb();                                      // the switch is still 'false'
+  const old = async () => (await q(db, `select count(*)::int n from pc711_backup_log where at < now() - interval '30 days'`))[0].n;
+  const all = async () => (await q(db, `select count(*)::int n from pc711_backup_log`))[0].n;
+  const mark = async () => (await q(db, `select (log_purged_on = (clock_timestamp() at time zone 'Asia/Taipei')::date) today, log_purged_on is null nul from pc711_backup_state where id = 1`))[0];
+  const seedOld = `insert into pc711_backup_log(at, kind, word, result) values (now() - interval '31 days', 'store', 'open', 'written')`;
+  await db.exec(`${seedOld}; insert into pc711_backup_log(at, kind, word, result) values (now() - interval '40 days', 'duty', 'handed_back', 'written'), (now() - interval '29 days', 'phone', 'ok', 'written'), (now() - interval '1 hour', 'frozen', 'ok', 'kept');`);
+  const parcelsBefore = JSON.stringify(await q(db, `select id, store_full_status, phone_check_status, frozen_store_status from parcel_scans order by id`));
+  ok((await old()) === 2 && (await all()) === 4 && (await mark()).nul === true, "log clean-up: 2 rows older than 30 days, 2 newer, never cleaned yet");
+  const d0 = await duty(db);
+  ok((await old()) === 0 && (await all()) === 2, "a duty call deletes the rows older than 30 days; the 29-day-old row and today's row stay");
+  ok(d0.enabled === false && d0.on_duty === false && d0.change === null, "… the duty answer is unchanged by it (and it also runs with the switch off)");
+  ok((await mark()).today === true, "… the day is marked (the Taipei date)");
+  ok(JSON.stringify(await q(db, `select id, store_full_status, phone_check_status, frozen_store_status from parcel_scans order by id`)) === parcelsBefore, "… no parcel is touched");
+  await db.exec(seedOld);
+  await duty(db); await duty(db); await duty(db);
+  ok((await old()) === 1, "at most once a day: three more duty calls the same day delete nothing");
+  await db.exec(`update pc711_backup_state set log_purged_on = log_purged_on - 1 where id = 1`);
+  await duty(db);
+  ok((await old()) === 0 && (await mark()).today === true, "the next Taipei day: cleaned again, once");
+  // on duty too (the same call)
+  await db.exec(`update app_settings set value = 'true' where key = 'pc711_backup_enabled'; ${leaseAt(600)} update pc711_backup_state set log_purged_on = log_purged_on - 1 where id = 1; ${seedOld};`);
+  const d1 = await duty(db);
+  ok(d1.on_duty === true && d1.change === "took_over" && (await old()) === 0, "… and in the same call as a take-over: both happen");
+  ok((await q(db, `select count(*)::int n from pc711_backup_log where kind = 'duty' and word = 'took_over_silent'`))[0].n === 1, "… the new duty row is kept");
+  // a clean-up that fails never fails the duty call, and is not tried again that day
+  await db.exec(`create function public.t_no_delete() returns trigger language plpgsql as $$ begin raise exception 'no delete'; end $$;
+                 create trigger t_no_delete before delete on public.pc711_backup_log for each row execute function public.t_no_delete();
+                 update pc711_backup_state set log_purged_on = log_purged_on - 1 where id = 1; ${seedOld};`);
+  let threw = null, d2 = null;
+  try { d2 = await duty(db); } catch (e) { threw = e.message; }
+  ok(threw === null && d2 && d2.on_duty === true, `a clean-up that fails does not fail the duty call (${threw || "ok"})`);
+  ok((await old()) === 1 && (await mark()).today === true, "… the row stays and the day is marked: not tried again before tomorrow");
+  await db.exec(`drop trigger t_no_delete on public.pc711_backup_log; drop function public.t_no_delete();`);
+  await duty(db);
+  ok((await old()) === 1, "… (a later call the same day does not try again)");
 }
 // ── 5. the Lenovo's answer wins ──────────────────────────────────────────────────────────────────
 {
