@@ -3,7 +3,7 @@
 // request is ever made by these tests.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { createTelegramAlert, createAlertTestHandler, ALERT_TEXTS, TELEGRAM_SEND_MS, TELEGRAM_HOST } from "../../../../server/telegramAlert.js";
+import { createTelegramAlert, createAlertTestHandler, ALERT_TEXTS, TELEGRAM_SEND_MS, TELEGRAM_HOST, ALERT_TRIES, ALERT_RETRY_MS, ALERT_QUEUE_MAX } from "../../../../server/telegramAlert.js";
 
 const TOKEN = "123456789:MARKTOKENaaaaBBBBccccDDDDeeee_-1234";
 const CHAT = "-1001234567890";
@@ -21,11 +21,12 @@ function fake(rep: Reply | (() => Reply) = { json: { ok: true } }) {
   });
   return { f, sent };
 }
-const make = (env: Record<string, string>, rep?: Reply | (() => Reply)) => {
+const make = (env: Record<string, string>, rep?: Reply | (() => Reply), sleep?: (ms: number) => Promise<void>) => {
   const logs: string[] = [];
+  const sleeps: number[] = [];
   const t = fake(rep);
-  const alert = createTelegramAlert({ env, fetchImpl: t.f as never, log: (l: string) => logs.push(l) });
-  return { alert, logs, ...t };
+  const alert = createTelegramAlert({ env, fetchImpl: t.f as never, log: (l: string) => logs.push(l), sleep: sleep ?? (async (ms: number) => { sleeps.push(ms); }) });
+  return { alert, logs, sleeps, ...t };
 };
 
 describe("T1 one text, one HTTPS POST to api.telegram.org", () => {
@@ -171,5 +172,84 @@ describe("T9 server.js wiring", () => {
     expect(src).not.toMatch(/env\??\.TELEGRAM_BOT_TOKEN|env\[/); // server.js never reads the token itself
     expect(mod.split("TELEGRAM_BOT_TOKEN").length - 1).toBe(2); // the header comment + the one read
     for (const line of mod.split("\n").filter((l) => /\bsay\(|\blog\(/.test(l))) expect(line).not.toMatch(/token|chat\b|url|\be\b\.message/i);
+  });
+});
+
+// Jeff 2026-11-18: a lost alert must not be lost — up to 3 tries, 1 minute apart, for every alert kind.
+describe("T10 an alert is tried up to 3 times, 1 minute apart; the test button is ONE try", () => {
+  const seq = (...r: Reply[]) => { let i = 0; return () => r[Math.min(i++, r.length - 1)]; };
+  const OK: Reply = { json: { ok: true } };
+  it("the numbers: 3 tries, 60 s apart", () => {
+    expect([ALERT_TRIES, ALERT_RETRY_MS]).toEqual([3, 60_000]);
+  });
+  it("two failed tries then a sent one: 3 requests, 2 waits of 1 minute, ONE log word per failed try", async () => {
+    const h = make(ENV, seq("network", { status: 502, json: {} }, OK));
+    expect(await h.alert.deliver("logged_out")).toEqual({ ok: true });
+    expect(h.sent.length).toBe(3);
+    expect(h.sleeps).toEqual([ALERT_RETRY_MS, ALERT_RETRY_MS]);
+    expect(h.logs).toEqual(["[TG_ALERT] send failed network", "[TG_ALERT] send failed http_502"]);
+    for (const s of h.sent) expect(JSON.parse(s.body).text).toBe(ALERT_TEXTS.logged_out);
+  });
+  it("sent at the first try: 1 request, no wait", async () => {
+    const h = make(ENV);
+    expect(await h.alert.deliver("logged_in")).toEqual({ ok: true });
+    expect([h.sent.length, h.sleeps.length, h.logs.length]).toEqual([1, 0, 0]);
+  });
+  it("all tries fail: exactly 3 requests, 3 log lines, 2 waits — then it stops", async () => {
+    const h = make(ENV, "network");
+    expect(await h.alert.deliver("logged_out")).toEqual({ ok: false, word: "network" });
+    expect([h.sent.length, h.sleeps.length]).toEqual([ALERT_TRIES, ALERT_TRIES - 1]);
+    expect(h.logs).toEqual(Array(ALERT_TRIES).fill("[TG_ALERT] send failed network"));
+  });
+  it("alerts off (or a text that is not ours): nothing sent, no wait, no retry", async () => {
+    const off = make({});
+    expect(await off.alert.deliver("logged_out")).toEqual({ ok: false, word: "off" });
+    off.alert.fire("logged_in");
+    await Promise.resolve();
+    expect([off.sent.length, off.sleeps.length]).toEqual([0, 0]);
+    const on = make(ENV);
+    expect(await on.alert.deliver("hello")).toEqual({ ok: false, word: "unknown_text" });
+    expect([on.sent.length, on.sleeps.length]).toEqual([0, 0]);
+  });
+  it("fire() uses the retries and is never awaited: it returns at once while the 1-minute wait is still running", async () => {
+    let release = () => {};
+    const waits: number[] = [];
+    const h = make(ENV, seq("network", OK), (ms) => new Promise<void>((res) => { waits.push(ms); release = res; }));
+    const t0 = Date.now();
+    expect(h.alert.fire("logged_out")).toBeUndefined();
+    expect(Date.now() - t0).toBeLessThan(50);
+    await vi.waitFor(() => expect(waits).toEqual([ALERT_RETRY_MS]));
+    expect(h.sent.length).toBe(1); // the 2nd try waits for the minute
+    release();
+    await vi.waitFor(() => expect(h.sent.length).toBe(2));
+  });
+  it("alerts go out in the order they happened: the 2nd alert waits for the 1st alert's retries", async () => {
+    const h = make(ENV, seq("network", "network", OK, OK));
+    const a = h.alert.deliver("logged_out");
+    const b = h.alert.deliver("logged_in");
+    await Promise.all([a, b]);
+    expect(h.sent.map((s) => JSON.parse(s.body).text)).toEqual([ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_in]);
+  });
+  it("the test button stays ONE try that answers at once (no retry, no wait), also when it fails", async () => {
+    const h = make(ENV, "network");
+    expect(await h.alert.send("test")).toEqual({ ok: false, word: "network" });
+    const res = { code: 200, body: null as unknown, status(c: number) { this.code = c; return this; }, json(b: unknown) { this.body = b; return this; } };
+    await createAlertTestHandler({ alert: h.alert, allowed: () => true })({ authUserId: "u" }, res);
+    expect(res.body).toEqual({ sent: false, reason: "network" });
+    expect([h.sent.length, h.sleeps.length]).toEqual([2, 0]);
+  });
+  it("at most 20 alerts wait for their turn; one more is dropped with one log word", async () => {
+    let release = () => {};
+    const h = make(ENV, "network", () => new Promise<void>((res) => { release = res; }));
+    const all = Array.from({ length: ALERT_QUEUE_MAX + 1 }, () => h.alert.deliver("logged_out"));
+    expect(await all[ALERT_QUEUE_MAX]).toEqual({ ok: false, word: "queue_full" });
+    expect(h.logs).toContain("[TG_ALERT] send failed queue_full");
+    release();
+  });
+  it("the token never reaches a log line across the retries", async () => {
+    const h = make(ENV, seq({ status: 401, json: { description: TOKEN } }, "network", "bad_json"));
+    await h.alert.deliver("logged_out");
+    expect(h.logs.length).toBe(3);
+    expect(h.logs.join("\n")).not.toMatch(/MARKTOKEN|-100123/);
   });
 });

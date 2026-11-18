@@ -4,9 +4,16 @@
 //   • Messages are fixed texts chosen by a key (ALERT_TEXTS). Never a phone, name, store number, tracking
 //     number, cookie or token — send() has no way to take free text.
 //   • A failed send is logged with ONE word and resolves { ok: false, word }; send() never throws.
+//   • An alert (fire) is tried up to 3 times, 1 minute apart, so a lost alert is not lost; alerts go out
+//     one after another, in the order they happened. The test button (send) is ONE try and answers at once.
 //   • The token is never logged: the URL, the request and any error text never reach a log line.
 export const TELEGRAM_SEND_MS = 8000;
 export const TELEGRAM_HOST = "api.telegram.org";
+export const ALERT_TRIES = 3;              // an alert: up to 3 tries …
+export const ALERT_RETRY_MS = 60 * 1000;   // … 1 minute apart
+export const ALERT_QUEUE_MAX = 20;         // alerts waiting for their turn; one more is dropped (logged)
+// nothing was sent and trying again cannot help: alerts are off, or the text key is not one of ours
+const NO_RETRY = ["off", "bad_token_format", "bad_chat_format", "unknown_text"];
 export const ALERT_TEXTS = {
   logged_out: "7-11 server logged out. Log in from Admin.",
   logged_in: "7-11 server is logged in again.",
@@ -17,8 +24,10 @@ const TAG = "[TG_ALERT]";
 const TOKEN_RE = /^\d{3,20}:[A-Za-z0-9_-]{10,100}$/;
 const CHAT_RE = /^(-?\d{1,20}|@[A-Za-z0-9_]{3,64})$/;
 
-// opts: env, fetchImpl, log.
-export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log = console.log } = {}) {
+const waitUnref = (ms) => new Promise((resolve) => { const t = setTimeout(resolve, ms); if (t && typeof t.unref === "function") t.unref(); });
+
+// opts: env, fetchImpl, log, sleep (the wait between tries; tests pass their own).
+export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log = console.log, sleep = waitUnref } = {}) {
   const token = String(env?.TELEGRAM_BOT_TOKEN ?? "").trim();
   const chat = String(env?.TELEGRAM_CHAT_ID ?? "").trim();
   // off: one is missing. bad_format: both are set but one does not look like a Telegram value.
@@ -54,13 +63,36 @@ export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log 
     return { ok: true };
   }
 
+  // One alert: up to ALERT_TRIES sends, ALERT_RETRY_MS apart (each failed try = its one log word, from send).
+  async function tryAll(kind) {
+    let r = { ok: false, word: "error" };
+    for (let n = 1; n <= ALERT_TRIES; n++) {
+      r = await send(kind);
+      if (r.ok || NO_RETRY.includes(r.word)) return r;
+      if (n < ALERT_TRIES) await sleep(ALERT_RETRY_MS);
+    }
+    return r;
+  }
+  let chain = Promise.resolve();   // alerts go out one after another, in order
+  let waiting = 0;
+  /** An alert with its retries, after the alerts queued before it. Resolves { ok } | { ok: false, word }; never throws. */
+  function deliver(kind) {
+    if (waiting >= ALERT_QUEUE_MAX) { say("send failed queue_full"); return Promise.resolve({ ok: false, word: "queue_full" }); }
+    waiting += 1;
+    const mine = chain.then(() => tryAll(kind)).catch(() => ({ ok: false, word: "error" })).finally(() => { waiting -= 1; });
+    chain = mine.then(() => {}, () => {});
+    return mine;
+  }
+
   return {
     enabled: () => enabled,
     /** one word for the boot log: on | off | bad_token_format | bad_chat_format */
     stateWord: () => (enabled ? "on" : why),
+    /** ONE try, answers at once (the Admin test button). */
     send,
-    /** Fire and forget: never awaited by the caller, never throws, never slows the checker. */
-    fire(kind) { try { void send(kind).catch(() => {}); } catch { /* nothing */ } },
+    deliver,
+    /** Fire and forget (with the retries): never awaited by the caller, never throws, never slows the checker. */
+    fire(kind) { try { void deliver(kind).catch(() => {}); } catch { /* nothing */ } },
   };
 }
 

@@ -157,6 +157,19 @@ export function taipeiDayKey(iso: string): string {
   return d ? `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}` : "";
 }
 
+export interface Pc711AlertTest { sent: boolean; reason: string }
+/** The alert-test answer → sent / not sent + ONE safe word (never server text). */
+export function toPc711AlertTest(a: Pc711Answer): Pc711AlertTest {
+  if (a.ok && a.data.sent === true) return { sent: true, reason: "" };
+  const w = String(a.data.reason ?? "").replace(/[^a-z0-9_]/gi, "").slice(0, 24);
+  return { sent: false, reason: a.status === 429 ? "rate_limited" : w || (a.status === 0 ? "unreachable" : "failed") };
+}
+/** Which of the fixed lines to show for a not-sent answer: alerts not set up / too many tries / no answer. */
+export function alertTestLineKind(reason: string): "off" | "limit" | "failed" {
+  if (reason === "off" || reason === "bad_token_format" || reason === "bad_chat_format") return "off";
+  return reason === "rate_limited" ? "limit" : "failed";
+}
+
 export const pc711Api = {
   status: async (): Promise<Pc711Status | null> => { const a = await call("/admin/pc711/status"); return a.ok ? toPc711Status(a.data) : null; },
   start: () => call("/admin/pc711/login/start", {}),
@@ -167,6 +180,8 @@ export const pc711Api = {
   back: (flowId: string) => call("/admin/pc711/login/back", { flowId }),
   disconnect: () => call("/admin/pc711/disconnect", {}),
   test: () => call("/admin/pc-server-probe", {}),
+  // "Send test alert": one fixed Telegram text. → sent, or not sent + one word (off | rate_limited | timeout | …)
+  alertTest: async (): Promise<Pc711AlertTest> => toPc711AlertTest(await call("/admin/pc711/alert-test", {})),
   shadow: async (): Promise<Pc711Shadow | null> => { const a = await call("/admin/pc711/shadow"); return a.ok ? toPc711Shadow(a.data) : null; },
   shadowHistory: async (day: Pc711ShadowDay, filter: Pc711ShadowFilter, page: number, kind: Pc711ShadowKindFilter = "all"): Promise<Pc711ShadowHistory | null> => {
     const a = await call(`/admin/pc711/shadow/history?day=${encodeURIComponent(day)}&filter=${encodeURIComponent(filter)}&kind=${encodeURIComponent(kind)}&page=${Math.max(0, Math.floor(page))}`);
