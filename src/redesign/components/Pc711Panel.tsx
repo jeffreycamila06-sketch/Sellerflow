@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import Pc711EvidenceBlock from "./Pc711Evidence";
+import Pc711DutyCard from "./Pc711DutyCard";
+import { usePc711Duty, serverOnDuty } from "../adapters/pc711Duty";
 import { pc711Api, usePc711Status, fillSmsBoxes, hhmm, taipeiStamp, taipeiDayKey, alertTestLineKind, type Pc711AlertTest, type Pc711Status, type Pc711Shadow, type Pc711ShadowHistory, type Pc711ShadowDay, type Pc711ShadowFilter, type Pc711ShadowKindFilter, type Pc711ShadowRow } from "../adapters/pc711Login";
 
 type View = "status" | "step1" | "step2";
@@ -189,6 +191,8 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
   const [testResult, setTestResult] = useState(lastTestResult);
   const [tryAfter, setTryAfter] = useState("");
   const boxRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // "Who is checking": read when the status view opens, then every 30 s while the page is in front
+  const duty = usePc711Duty(view === "status");
 
   useEffect(() => { if (onChanged) onChanged(status); }, [status, onChanged]);
   // the 60 s "Send again" timer (runs only on step 2)
@@ -376,13 +380,14 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
 
   // status view
   if (!status) return <div data-testid="pc711-loading" style={{ fontSize: 13, color: "var(--text-dim)" }}>{t.rd_pc711_loading}</div>;
-  if (status.state === "key_missing") return <div data-testid="pc711-key-missing" style={{ ...card, fontSize: 13, color: "var(--text)", lineHeight: 1.45 }}>{t.rd_pc711_key_missing}</div>;
+  if (status.state === "key_missing") return <><div data-testid="pc711-key-missing" style={{ ...card, fontSize: 13, color: "var(--text)", lineHeight: 1.45 }}>{t.rd_pc711_key_missing}</div><Pc711DutyCard duty={duty} /></>;
   if (status.state === "not_connected") {
     return (
       <div data-testid="pc711-not-connected">
         <div style={card}><div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{t.rd_pc711_not_connected}</div><div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 5, lineHeight: 1.45 }}>{t.rd_pc711_not_connected_sub}</div></div>
         {errLine}
         <button type="button" data-testid="pc711-begin" disabled={busy} onClick={() => void begin()} style={{ ...primary, opacity: busy ? 0.55 : 1 }}>{t.rd_pc711_connect}</button>
+        <Pc711DutyCard duty={duty} />
         <AlertTestBlock />
       </div>
     );
@@ -398,7 +403,8 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
             <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{t.rd_pc711_lo_title}</span>
           </div>
           <div data-testid="pc711-lo-since" style={{ marginTop: 6, fontSize: 13, fontWeight: 700 }}>{tpl(t.rd_pc711_lo_since, { time: status.loggedOutSince ? taipeiStamp(status.loggedOutSince) : "—" })}</div>
-          <div data-testid="pc711-lo-paused" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)" }}>{t.rd_pc711_lo_paused}</div>
+          {/* not true while the server is the one checking (backup duty): hidden then */}
+          {serverOnDuty(duty) ? null : <div data-testid="pc711-lo-paused" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)" }}>{t.rd_pc711_lo_paused}</div>}
           <div data-testid="pc711-lo-auto" style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12.5, color: "var(--text)" }}>{t.rd_pc711_lo_auto}</div>
           <div data-testid="pc711-lo-last" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "var(--text)", overflowWrap: "anywhere" }}>
             {status.passive?.lastAt ? tpl(t.rd_pc711_lo_last, { time: taipeiStamp(status.passive.lastAt), kind: passiveKindLabel(status.passive.kind) }) : t.rd_pc711_lo_none}
@@ -407,6 +413,7 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
         </div>
         {errLine}
         <button type="button" data-testid="pc711-begin" disabled={busy} onClick={() => void begin()} style={{ ...primary, opacity: busy ? 0.55 : 1 }}>{t.rd_pc711_lo_btn}</button>
+        <Pc711DutyCard duty={duty} />
         <AlertTestBlock />
       </div>
     );
@@ -434,6 +441,7 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
         <button type="button" data-testid="pc711-test" disabled={busy || testing} aria-busy={testing} onClick={() => void testNow()} style={{ ...ghost, flex: 1, opacity: busy || testing ? 0.6 : 1 }}>{testing ? t.rd_pc711_testing : t.rd_pc711_test}</button>
         <button type="button" data-testid="pc711-disconnect" disabled={busy || testing} onClick={() => void disconnect()} style={{ ...ghost, flex: 1, color: "var(--danger)" }}>{t.rd_pc711_disconnect}</button>
       </div>
+      <Pc711DutyCard duty={duty} />
       <AlertTestBlock />
       <ShadowBlock />
       <Pc711EvidenceBlock />

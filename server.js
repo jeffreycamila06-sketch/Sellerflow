@@ -58,6 +58,7 @@ import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Ev
 import { createPc711Emap, EMAP_KEEPALIVE_STORE } from "./server/pc711Emap.js";
 import { createPc711Backup, createBackupDb } from "./server/pc711Backup.js";
 import { createKeepAliveFetch, keepAliveMsFrom, keepAliveLogLine, createPassSettings, createSerial } from "./server/pc711Speed.js";
+import { createDutyDb, createDutyReader, createDutyHandler } from "./server/pc711Duty.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1290,6 +1291,10 @@ app.post("/admin/pc711/disconnect", requireAuth, requireAdmin, pc711Json, pc711R
 const adminAlertTestAllowed = createWindowLimiter({ max: 5, windowMs: 10 * 60 * 1000 });
 app.post("/admin/pc711/alert-test", requireAuth, requireAdmin, pc711Json, createAlertTestHandler({ alert: adminAlert, allowed: adminAlertTestAllowed }));
 app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
+// "Who is checking" (server/pc711Duty.js): Admin only, READ ONLY — the lease the extension writes, the backup switch,
+// pc711_backup_state and pc711_backup_log. It never calls the duty function and answers counts and times only.
+const pc711DutyReader = createDutyReader({ db: serviceSb ? createDutyDb(serviceSb) : null, loginState: () => pc711.status().state });
+app.get("/admin/pc711/duty", requireAuth, requireAdmin, createDutyHandler({ reader: pc711DutyReader, allowed: pc711StatusAllowed }));
 const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
 app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed, windowMs: PC_PROBE_LIMIT_WINDOW_MS }));
