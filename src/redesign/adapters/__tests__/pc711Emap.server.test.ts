@@ -272,9 +272,11 @@ describe("R3 opening = the requests of the 選擇取貨門市 click, with main's
   it("server.js: the open() call gets the SAME session object as the store check on main (get, relogin, save, lost); main's two lines unchanged", () => {
     const line = SERVER.split("\n").find((l) => l.includes("openOnly: true")) || "";
     expect(line).toContain("session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }");
-    expect(SERVER.split("relogin: pc711.quickRelogin").length - 1).toBe(3); // main's two + the open call
+    expect(SERVER.split("relogin: pc711.quickRelogin").length - 1).toBe(4); // main's two + the open call + the light read's step (claude/pc711-speed-keepalive)
     expect(SERVER).toContain("const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });");
-    expect(SERVER).toContain("const r = await runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: input, gate: false, log: () => {} });");
+    // claude/pc711-speed-keepalive: the same call with the same session object; only where the settings are read
+    // (once a pass) and which connection carries the request (kept open) were added
+    expect(SERVER).toContain("const r = await runPcServerProbe({ readSetting: pc711Settings.read, fetchImpl: input && input.kind === \"phone\" ? pc711Net.anon : pc711Net.session, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: input, gate: false, log: () => {} });");
     expect(readFileSync("server/pc711Emap.js", "utf8")).not.toMatch(/quickRelogin|openpoint|\/auth\//i); // no new login code
     // (the old "pc711Login.js has no change vs main" pin ended with its branch: Part A of claude/pc711-backup renames
     //  two quick re-login words there on Jeff's order — its requests, steps and limits are pinned in pc711Login.server.test.ts)

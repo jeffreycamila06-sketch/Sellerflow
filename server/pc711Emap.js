@@ -211,6 +211,10 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
   }
   /** doStore needs the tab: present and not on error.aspx (the extension's emapTabId). */
   const usable = () => Boolean(e.present && !e.error);
+  /** The kept session still answers: there is one, it is not on error.aspx, and it has not been given up
+   *  ("dead": two re-loads and still no answer). Then a lost 7-11 login stops no check (server/pc711Shadow.js)
+   *  — the login is only needed to open the NEXT session. */
+  const answering = () => usable() && emapDerive(now(), e, false) !== "dead";
 
   /** The store half of a parcel: the check + the extension's evidence (verdict / miss handled by the caller's ladder). */
   async function checkStore(storeId) { return check(storeId); }
@@ -320,7 +324,7 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
   function onLogin() { loginKick = true; }
 
   return {
-    pick, usable, checkStore, checkFrozen, keepalive, refresh, onLogin,
+    pick, usable, answering, checkStore, checkFrozen, keepalive, refresh, onLogin,
     /** the keepalive's clock (frozen-check.js laneBusy is NOT copied: the server sends one request at a time) */
     /** the store half's verdict / miss (pcEmapVerdict / pcEmapMiss), and the once-per-generation counter */
     verdict: () => verdict(now()),

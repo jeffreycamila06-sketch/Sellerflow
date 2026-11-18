@@ -1107,9 +1107,11 @@ describe("B18 the server never calls the lease and never writes the extension's 
     expect(SERVER).toContain("const pc711Backup = createPc711Backup({ db: createBackupDb(serviceSb), emap: pc711Emap, phoneCheck: pc711BackupPhone, pc711, readSetting, alert: adminAlert });");
     expect(SERVER).toContain("emap: pc711Emap, backup: pc711Backup });");
     const line = SERVER.split("\n").find((l) => l.includes('target: { kind: "phone", ...input }')) || "";
-    expect(line).toContain("runPcServerProbe({ readSetting, target:");
+    // claude/pc711-speed-keepalive: the settings come from the pass (read once a pass) and the request rides the
+    // kept-open connection of the checks sent WITHOUT the login — still no login session on this call
+    expect(line).toContain("runPcServerProbe({ readSetting: pc711Settings.read, fetchImpl: pc711Net.anon, target:");
     expect(line).not.toContain("session");
-    expect(SERVER.split("relogin: pc711.quickRelogin").length - 1).toBe(3); // unchanged: main's two + the E-Map open
+    expect(SERVER.split("relogin: pc711.quickRelogin").length - 1).toBe(4); // main's two + the E-Map open + the light read's step (the SAME object)
   });
 });
 

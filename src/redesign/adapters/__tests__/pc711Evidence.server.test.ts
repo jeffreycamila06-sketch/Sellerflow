@@ -526,7 +526,8 @@ describe("wiring", () => {
     for (const r of ['"/admin/pc711/evidence/totals"', '"/admin/pc711/evidence"', '"/admin/pc711/evidence/:id"']) {
       expect(server).toContain(`app.get(${r}, requireAuth, requireAdmin,`);
     }
-    expect(server).toContain("createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, emap: pc711Emap, backup: pc711Backup })");
+    // passStart (claude/pc711-speed-keepalive): the settings read in a pass are reused for that pass
+    expect(server).toContain("createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, passStart: pc711Settings.reset, emap: pc711Emap, backup: pc711Backup })");
   });
   it("neither module writes parcel_scans or touches /cart/finish; the evidence module only READS one parcel for a re-ask", () => {
     for (const f of ["server/pc711Evidence.js", "server/pc711Shadow.js"]) {
