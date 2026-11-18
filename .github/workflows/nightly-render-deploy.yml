@@ -1,0 +1,56 @@
+# Nightly Render deploy — sends the server code on main to Render while everyone sleeps.
+# How to use it (Jeff): docs/ops/nightly-render-deploy.md
+#
+# When: every night at 04:00 Asia/Taipei (20:00 UTC; Taiwan has no summer time), and by hand with
+#       Actions → Nightly Render deploy → Run workflow.
+# What: it calls the Render Deploy Hook ONLY when all three hold — otherwise it ends green with one
+#       line that says why:
+#         1. main differs from the last deployed commit in server code
+#            (the list is in scripts/nightly-deploy/decide.mjs; app-only changes never deploy);
+#         2. the CI run of that exact main commit finished and passed;
+#         3. the repository secret RENDER_DEPLOY_HOOK_URL is set.
+#       After the call it does not wait for Render.
+# The last deployed commit is the tag "render-deployed". Only this workflow moves it.
+name: Nightly Render deploy
+
+on:
+  schedule:
+    - cron: "0 20 * * *"   # 20:00 UTC = 04:00 Asia/Taipei
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only tell me what would happen (deploys nothing)"
+        type: boolean
+        default: false
+
+# contents: write — to move the tag "render-deployed" (GitHub has no smaller permission for a tag).
+# actions: read   — to read the CI result of the commit.
+permissions:
+  contents: write
+  actions: read
+
+# Never two at once (a run started by hand during the nightly run waits for it).
+concurrency:
+  group: nightly-render-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The whole history, so the files that changed since the tag can be listed.
+      # The checkout keeps no login: the token below is given to ONE step only.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # No packages are installed: the script uses only what Node has built in.
+      - name: Decide, and deploy when there is something to deploy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          NIGHTLY_DEPLOY_PAUSE_UNTIL: ${{ vars.NIGHTLY_DEPLOY_PAUSE_UNTIL }}
+          NIGHTLY_DEPLOY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: node scripts/nightly-deploy/run.mjs

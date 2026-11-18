@@ -5523,3 +5523,48 @@ Admin only. Says who does the 7-11 checks now: the checker laptop (extension) or
 - Tests: `pc711Duty.server.test.ts` (the route; the server's REAL `requireAdmin` lifted from server.js refuses a non-admin
   with zero reads), `pc711Duty.test.tsx` (the 30 s refresh, hidden page), `Pc711DutyCard.test.tsx`, `Pc711Panel.duty.test.tsx`.
 - No help-guide change: the panel is Admin only (sellers never see it).
+
+## 2026-11-18 — NIGHTLY RENDER DEPLOY + "NEW VERSION" TELEGRAM ALERT (branch `claude/nightly-render-deploy`, NOT merged; no SQL; OFF until the secret `RENDER_DEPLOY_HOOK_URL` is saved)
+Jeff's how-to: `docs/ops/nightly-render-deploy.md`.
+- **Workflow `.github/workflows/nightly-render-deploy.yml`:** every night 04:00 Asia/Taipei (`0 20 * * *` UTC) + the
+  Run workflow button (one box: "Only tell me what would happen"). It runs `node scripts/nightly-deploy/run.mjs`
+  (no packages installed). Permissions: `contents: write` (move a tag) + `actions: read` (read the CI result).
+- **It calls the Render Deploy Hook ONLY when all three hold** — else it ends green with ONE line that says why:
+  (1) main differs from the last deployed commit in server code; (2) the CI run (`ci.yml`) of that exact main commit
+  finished and passed; (3) the repository secret `RENDER_DEPLOY_HOOK_URL` is set.
+  A broken setting ends RED and deploys nothing (secret that is not a Render hook address, pause value that is not a
+  date, Render refusing the hook, GitHub not answering).
+- **Server code** (`SERVER_DIRS` / `SERVER_FILES` in `scripts/nightly-deploy/decide.mjs`): `server.js`, `server/**`,
+  `package.json`, `package-lock.json`, the three shared files the server imports (`src/lib/errCodes.js`,
+  `src/lib/helpBotGuard.js`, `src/lib/receiptLayout.js`), and `render.yaml` / `.node-version` / `.nvmrc` / `.npmrc`
+  (none exists today). NOT `docs/support/sfl-guide.md` (the bot reads the guide from the database; the file is the
+  fallback). ⚠️ When the server starts importing a new file outside `server/`, add it to `SERVER_FILES` —
+  `nightlyDeploy.paths.test.ts` walks the server's real imports and fails until it is there.
+- **The last deployed commit = the git tag `render-deployed`** (lightweight; only this workflow moves it, through the
+  GitHub API, AFTER Render accepted the hook). No tag yet → the first run deploys once. The files that changed =
+  `git diff --name-only --no-renames <tag> origin/main`.
+- **The hook call:** ONE POST to the saved address + `ref=<the full commit>` (Render deploys exactly that commit),
+  30 s limit, redirects not followed, the answer's body never read. It does not wait for Render. The address is never
+  printed; every printed line is a fixed sentence (a 7-character commit, a count, a date, a CI word, plain file names).
+- **Pause:** repository VARIABLE `NIGHTLY_DEPLOY_PAUSE_UNTIL` = a date like `2026-11-20` → nightly runs are skipped up
+  to and including that Taipei day; a run started by hand ignores it. Off for good = Disable workflow.
+- **Telegram (server, needs a Render deploy):** `server/versionAlert.js` — when the server starts on a commit it has
+  not announced yet: "Server restarted on a new version. <7 characters>" through `server/telegramAlert.js`
+  (text key `new_version`; its value can only be 7 characters 0-9 a-f). Commit = Render's env `RENDER_GIT_COMMIT`;
+  missing / not a commit → no alert, nothing read or written, log `[VERSION] commit_unknown`.
+  Once per new commit: the server keeps the last announced 7 characters in ONE `app_settings` row it writes itself
+  (key `server_version_announced`, made at the first start; readable by signed-in sellers like most settings — it holds
+  the 7 characters only). The row is changed FIRST, the alert goes out only when this start changed it. Telegram off →
+  nothing read or written. Database not answering → 3 tries, 1 min apart. Started in the `server.listen` callback.
+- ⚠️ **After the secret is saved, a merge to main that touches server code goes to Render at the next 04:00** (CI
+  green). "Needs a manual Render deploy" notes above then mean "live after the next 04:00, or deploy by hand sooner".
+  A branch whose server half must wait for SQL: apply the SQL before merging, or pause the nightly run.
+- **Known limits:** a deploy started by hand in Render is not seen (the next night may deploy the same commit once
+  more); the tag means "Render accepted the hook", not "Render finished" (the Telegram message is the proof; delete
+  the tag to make the next run deploy again); the run does not look at who is live at 04:00.
+- **Not proven on the real services:** the hook call itself (the secret is not saved; `ref=` and the Deploy Hook's
+  place in Render's Settings are from Render's docs as found by search — render.com is blocked in this container) and
+  moving the tag (never done for real). Proven on GitHub (run 1 of the workflow, "only tell me" mode from the branch):
+  the tag read (none yet), the CI read (passed for 16b4bb9), git on the runner.
+- Tests: `nightlyDeploy.decide.test.ts` · `nightlyDeploy.run.test.ts` (fake GitHub / fake Render, real git in a
+  throw-away folder, the real script as a process) · `nightlyDeploy.paths.test.ts` · `versionAlert.server.test.ts`.
