@@ -5442,3 +5442,36 @@ CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
     `sql/179_pc711_backup_rollback.sql`.
   - ⚠️ Nothing was run against the real 7-11 or the real Telegram. No Admin screen line shows "server on duty" (Telegram + the two
     tables do). During a `degraded` take-over the Lenovo may still check the half whose tab works (its answer wins).
+
+## 2026-11-18 — 7-11 SERVER: SPEED + HOURLY LIGHT READ OF THE SAVED LOGIN (branch `claude/pc711-speed-keepalive`, NOT merged; no SQL; needs a Render deploy)
+Measured first (evidence table, 12:13–17:42 Taipei Nov 18): one parcel cost the server ~3.1 s of work, the extension ~0.3 s.
+Server only, no new request to 7-11, no rule changed (the extension's order, rests, timers and limits stay as copied).
+- **`server/pc711Speed.js` (new):**
+  - `createKeepAliveFetch` → `pc711Net.anon` (phone checks, sent without the login) and `pc711Net.session` (the E-Map open + the
+    kept E-Map session). The connections to the two 7-11 hosts (賣貨便, E-Map) stay open **50 s** unused (Node's own fetch: 4 s).
+    Same fetch, same requests — only the pool (`dispatcher`), built from Node's OWN pool class (no package). Render env
+    **`PC711_KEEPALIVE_MS`**: `0` = off, 5000–120000 = that long. Start line `[PC711_KEEPALIVE] on idle=50s`.
+    ⚠️ A far server that says "close sooner" (Keep-Alive hint) or closes by itself WINS — whether 7-11 allows more than 4 s is
+    only measurable after deploy (store check `store.byid` ms: ~230 warm vs ~1,070 cold, by the gap since the last request).
+    The login module, the test probe and the light read's step keep the plain fetch.
+  - `createPassSettings` → `pc711Settings`: the three probe settings are read once a pass (the job calls `passStart` =
+    `pc711Settings.reset` first thing in every pass; a failed read is not kept).
+  - `createSerial` → `pc711CartLock`: the E-Map open and the light read's step never run at the same time.
+- **`server/pc711Shadow.js`:** a store half that has a phone half saves its REAL answer after the phone's request (before the
+  phone's own rows). Every other save (error row, logged-out row, store-only row) is written at once as before.
+- **A lost login stops nothing while the kept E-Map session still answers** (`emap.answering()` = there is a session, not on
+  error.aspx, not given up/"dead"): the pass runs as when connected, the mirror switch is not touched. No such session →
+  exactly the old rule (mirror off once, no check until the next connect). The backup checker already worked this way.
+- **Hourly light read (`pc711Login.lightRead(step)`, woken once a minute by `pc711LightTimer`):** only while connected, no login
+  flow open, not 01:00–05:00 Taipei; due an hour after the login was last used AND an hour after the last read; the first read
+  is ≥ 1 h after a server start. ONE GET of the cart page with the saved cookies, redirects not followed.
+  logged in → `saveCookies` (last-used time; `since` unchanged) · no answer / error page / blocked → nothing, count reset ·
+  logged out (`logged_out` / `login_page`) → a second read 10 min later; logged out again → `step()` ONCE =
+  `pc711CartStep` = the probe's **`cartOnly`** (the store chain's cart step alone) with the SAME session object
+  (`get / relogin / save / lost`) → the existing quick re-login (10-min gap, 6 a day), needs_login + Telegram only if it fails.
+  `quickRelogin` is not edited (its text is hash-pinned to main). Logs: `[PC711_LOGIN] light …` / `light_step …`, words only.
+- **Tests:** `pc711Speed.server.test.ts` (real local connections counted) · `pc711LightRead.server.test.ts`. Three wiring pins
+  of older suites were updated to the new server.js lines (same session object).
+- **After deploy, measure** (same queries as the Nov 18 report): time between two answers in a row (was 5.1 s), `store.byid` /
+  `phone.token` ms by gap, phone "read → check starts" for parcels seen waiting (was 2.1 s), and `pc711_session.last_ok_at`
+  moving about hourly when no E-Map open happens.
