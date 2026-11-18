@@ -535,15 +535,18 @@ describe("C2 every other case saves exactly as before", () => {
     expect(noReads(h.events)).toEqual(["byid:parcel", "byid:parcel", "phone", "save:compare:phone", "save:evidence:phone", `sleep:${SHADOW_ROW_GAP_MS}`]);
     expect(h.evRows.map((r) => r.kind)).toEqual(["phone"]);
   });
-  it("the store's ERROR row (the ladder is used up) is saved at once, right after its own check — only a real answer waits", async () => {
+  it("the store's ERROR row (the ladder is used up) is saved at once, BEFORE the phone check of the same parcel — only a real answer waits", async () => {
     let odd = false;
-    const h = await ready(harness({ byid: () => (odd ? { body: "odd page" } : { body: "OK;123456+店+addr+enable+0++門市" }) }), parcel());
+    // the phone half has no answer either, so both halves of the parcel are still to do on every pass
+    const noPhone = { verdict: "unknown", http: 200, ms: 1, kind: "html", raw: "", steps: [{ step: "phone.token", http: 200, ms: 1, ok: false, note: "kind=html" }] };
+    const h = await ready(harness({ byid: () => (odd ? { body: "odd page" } : { body: "OK;123456+店+addr+enable+0++門市" }), phone: () => noPhone }), parcel());
     odd = true;
     for (let i = 0; i <= SHADOW_STORE_BACKOFF_MS.length && !h.evRows.some((r) => r.kind === "store"); i++) { h.clear(); await h.job.tick(); h.advance(3 * 60_000); }
     const row = h.evRows.find((r) => r.kind === "store")!;
     expect(row).toMatchObject({ srv_verdict: "unknown", fail_reason: "unexpected_answer" });
-    const i = h.events.indexOf("save:evidence:store");
-    expect(h.events.slice(i - 3, i + 1)).toEqual(["byid:parcel", "byid:parcel", "save:compare:store", "save:evidence:store"]); // its two map addresses, then its rows
+    // that pass: the store's two map addresses, its rows, THEN the phone check
+    expect(noReads(h.events).slice(0, 5)).toEqual(["byid:parcel", "byid:parcel", "save:compare:store", "save:evidence:store", "phone"]);
+    expect(h.evRows.filter((r) => r.kind === "phone")).toHaveLength(0);   // the phone half is still on its own ladder
   });
   it("the phone check stops the job (logged out, no kept session that answers) → the store's answer is still saved, once", async () => {
     const h = await ready(harness({ phone: () => ({ verdict: "unknown", http: 0, ms: 1, kind: "no_session", raw: "", steps: [] }) }), parcel());
