@@ -205,6 +205,7 @@ describe("B1 the switch off (the default): the server is only a follower", () =>
     expect([h.phoneInputs.length, h.S.writes.length, h.sent.length]).toEqual([0, 0, 0]);
     expect(h.emapCalls.filter((c) => c.k !== EMAP_KEEPALIVE_STORE).length).toBe(0);
     expect(h.bdb.pending).not.toHaveBeenCalled();
+    expect(BACKUP_OFF_RECHECK_MS).toBe(60_000);
     expect(h.bdb.duty.mock.calls.length).toBe(3); // 0 s, 60 s, 120 s
     expect(h.evPass.mock.calls.length).toBe(36);  // the follower's own pass runs every time
   });
@@ -1003,7 +1004,7 @@ describe("B20 logs hold no phone, name, store number, shop, cookie, message or g
     expect(mine.some((l) => l.includes("wrote frozen="))).toBe(true);
     expect(mine).toContain("[PC711_BACKUP] handed_back");
     noData(h.logs, h);
-    for (const l of mine) expect(l).toMatch(/^\[PC711_BACKUP\] [a-z0-9_ =\-.\/:]+$/i);
+    for (const l of mine) expect(l).toMatch(/^\[PC711_BACKUP\] [a-z0-9_ =.:/-]+$/i);
   });
 });
 
