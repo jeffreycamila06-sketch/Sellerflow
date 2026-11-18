@@ -44,6 +44,8 @@ export const PC711_IMAGE_MAX = 300 * 1024;
 // While logged out (needs_login, a saved session kept): ONE read of the cart page every 10 minutes with the
 // saved cookies. Logged in → connected again (the checks resume). It never sends a login request.
 export const PC711_PASSIVE_EVERY_MS = 10 * 60 * 1000;
+// quickRelogin: two cases that used to share ONE word each have their own now (log word AND last_problem word)
+export const PC711_QUICK_WORDS = { cartNotLoggedIn: "cart_not_logged_in", noClientId: "no_client_id" };
 export const PC711_PASSIVE_KINDS = ["logged_in", "logged_out", "login_page", "error", "blocked", "other", "config_missing"];
 const MYSHIP = "myship.7-11.com.tw";
 const OPENPOINT = "bu-group.openpoint.com.tw"; // the password and the SMS code may only be sent here
@@ -209,8 +211,17 @@ export function cartReadKind(res) {
   return "other";
 }
 
+/** The saved login's state change worth an Admin alert: connected → needs_login = "logged_out",
+ *  needs_login → connected = "logged_in"; anything else (same state, first connect, disconnect) = "". Pure. */
+export function pc711StateChange(before, after) {
+  return before === "connected" && after === "needs_login" ? "logged_out" : before === "needs_login" && after === "connected" ? "logged_in" : "";
+}
+
 // ── the login ────────────────────────────────────────────────────────────────
-// opts: fetchImpl, now, log, store ({ load, save, clear }), env, readSetting, newId.
+// opts: fetchImpl, now, log, store ({ load, save, clear }), env, readSetting, newId,
+// onState (optional): called with "logged_out" when THIS server sees the saved login go connected →
+//   needs_login, and "logged_in" when it goes needs_login → connected. Once per change; never at load
+//   (a restart in the same state calls nothing). Never awaited; a throw is ignored.
 export function createPc711Login(opts = {}) {
   const { fetchImpl = fetch, now = Date.now, log = console.log, store = null, env = process.env, readSetting = null } = opts;
   const newId = opts.newId || (() => crypto.randomBytes(16).toString("hex"));
@@ -356,7 +367,10 @@ export function createPc711Login(opts = {}) {
   // ── saved row ───────────────────────────────────────────────────────────────
   async function persist(patch) {
     const wasOut = Boolean(row) && row.state === "needs_login";
+    const before = row ? row.state : null;
     row = { ...(row || {}), ...patch, updated_at: new Date(now()).toISOString() };
+    const change = pc711StateChange(before, row.state);
+    if (change && typeof opts.onState === "function") { try { void Promise.resolve(opts.onState(change)).catch(() => {}); } catch { /* an alert never stops the login module */ } }
     if (row.state === "needs_login" && !wasOut) loggedOutAt = now();
     if (row.state !== "needs_login") loggedOutAt = 0;
     if (store) await store.save(row);
@@ -659,18 +673,21 @@ export function createPc711Login(opts = {}) {
     if (lastAt && t - lastAt < PC711_QUICK_GAP_MS) { say("quick", 0, 0, "too_soon"); return null; }
     if (dayCount >= PC711_QUICK_PER_DAY) { say("quick", 0, 0, "day_limit"); return null; }
     await persist({ last_quick_at: new Date(t).toISOString(), quick_day: day, quick_day_count: dayCount + 1 });
-    const needsLogin = async (w) => { say("quick", 0, 0, w); await persist({ state: "needs_login", last_problem: "needs_login" }); return null; };
+    // problem (optional): the word saved as last_problem; without it the saved word stays "needs_login"
+    const needsLogin = async (w, problem = "needs_login") => { say("quick", 0, 0, w); await persist({ state: "needs_login", last_problem: problem }); return null; };
     const jar = createPc711Jar(sessionCookies() || {});
     const auth = await follow(jar, await request(jar, PC711_LOGIN_URL));
     if (auth.fail) { say("quick", 0, auth.ms, auth.fail); await persist({ last_problem: auth.fail }); return null; }
     if (auth.host === MYSHIP) {
       const li = await checkLoggedIn(jar);
       if (li.ok) { await saveSession(jar.dump(), { last_ok_at: new Date(now()).toISOString(), auto_logins: Number(row.auto_logins || 0) + 1 }); say("quick", li.res?.status, li.res?.ms, "ok_cookie"); return { cookies: jar.dump() }; }
-      return needsLogin("asks_login");
+      // the login address came back to 賣貨便, but the cart is still not logged in
+      return needsLogin(PC711_QUICK_WORDS.cartNotLoggedIn, PC711_QUICK_WORDS.cartNotLoggedIn);
     }
     const vars = readScriptVars(auth.text, PC711_PAGE_VARS);
     const cid = vars.oidc_client_id || vars.clientId || "";
-    if (!cid) return needsLogin("asks_login");
+    // the OpenPoint page had no client id to read
+    if (!cid) return needsLogin(PC711_QUICK_WORDS.noClientId, PC711_QUICK_WORDS.noClientId);
     const tokenF = vars.token ? { token: vars.token } : {};
     // the quick-login calls are JSON (postQuickLoginJson), not urlencoded
     const cand = await ajaxJson(jar, PC711_ROUTES.quickCandidates, { oidc_client_id: cid, ...tokenF }, auth.url);

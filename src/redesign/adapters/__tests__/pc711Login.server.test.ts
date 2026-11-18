@@ -635,3 +635,125 @@ describe("pc711 login — passive cart read while logged out", () => {
     expect(cartReadKind(r({ text: "<html>hi</html>" }))).toBe("other");
   });
 });
+
+// Jeff 2026-11-18 (Part A): the quick re-login wrote "asks_login" for two different cases. Each has its own
+// word now — in the log line AND as last_problem. No request, step, limit or timing changed.
+import { PC711_QUICK_WORDS, pc711StateChange } from "../../../../server/pc711Login.js";
+describe("pc711 login — quick re-login: one word per case", () => {
+  const relogin = async (s2: ReturnType<typeof site>) => {
+    const m = memStore();
+    await connectAll(make(fullSite().f, { store: m.store }).login);
+    const logs: string[] = [];
+    const login2 = createPc711Login({ fetchImpl: s2.f as never, now: () => Date.UTC(2026, 10, 14, 5), log: (l: string) => logs.push(l), store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login2.load();
+    const out = await login2.quickRelogin();
+    return { out, logs, login2, m, calls: s2.calls.map((c) => `${c.method} ${c.host}${c.path}`) };
+  };
+  it("the login address came back to 賣貨便 but the cart is still not logged in → cart_not_logged_in", async () => {
+    const r = await relogin(fullSite({
+      "GET myship.7-11.com.tw/Member/Login/": { status: 302, location: "https://myship.7-11.com.tw/" },
+      [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage("") },
+    }));
+    expect(r.out).toBeNull();
+    expect(PC711_QUICK_WORDS.cartNotLoggedIn).toBe("cart_not_logged_in");
+    expect(r.logs.filter((l) => l.includes(" quick "))).toEqual(["[PC711_LOGIN] quick http=0 ms=0 cart_not_logged_in"]);
+    expect(r.login2.status()).toMatchObject({ state: "needs_login", lastProblem: "cart_not_logged_in" });
+    expect((r.m.row as Record<string, unknown>).last_problem).toBe("cart_not_logged_in");
+    // the same requests as before, nothing more
+    expect(r.calls).toEqual(["GET myship.7-11.com.tw/Member/Login/", "GET myship.7-11.com.tw/", `GET myship.7-11.com.tw/cart/easy/${GM}`]);
+  });
+  it("the OpenPoint page had no client id to read → no_client_id", async () => {
+    const r = await relogin(fullSite({ [`GET ${OP}/auth/service/authorize`]: { body: authorizePage({ oidc_client_id: "" }) } }));
+    expect(r.out).toBeNull();
+    expect(PC711_QUICK_WORDS.noClientId).toBe("no_client_id");
+    expect(r.logs.filter((l) => l.includes(" quick "))).toEqual(["[PC711_LOGIN] quick http=0 ms=0 no_client_id"]);
+    expect(r.login2.status()).toMatchObject({ state: "needs_login", lastProblem: "no_client_id" });
+    expect((r.m.row as Record<string, unknown>).last_problem).toBe("no_client_id");
+    expect(r.calls).toEqual(["GET myship.7-11.com.tw/Member/Login/", `GET ${OP}/auth/service/authorize`]);
+  });
+  it("the two words differ, the old shared word is gone, and every other case keeps last_problem needs_login", async () => {
+    expect(PC711_QUICK_WORDS.cartNotLoggedIn).not.toBe(PC711_QUICK_WORDS.noClientId);
+    expect(readFileSync(resolve("server/pc711Login.js"), "utf8")).not.toContain("asks_login");
+    const r = await relogin(fullSite({ [`POST ${OP}${PC711_ROUTES.quickCandidates}`]: { ct: JSONH, body: JSON.stringify({ candidates: [{ id: "x", type: "passkey" }] }) } }));
+    expect(r.logs.filter((l) => l.includes(" quick "))).toEqual(["[PC711_LOGIN] quick http=0 ms=0 asks_secret"]);
+    expect((r.m.row as Record<string, unknown>).last_problem).toBe("needs_login");
+  });
+  it("limits unchanged: both cases still use up one quick try (10-minute gap, 6 a day)", async () => {
+    const r = await relogin(fullSite({ [`GET ${OP}/auth/service/authorize`]: { body: authorizePage({ oidc_client_id: "" }) } }));
+    expect((r.m.row as Record<string, unknown>).quick_day_count).toBe(1);
+    expect(PC711_QUICK_GAP_MS).toBe(10 * 60 * 1000);
+    expect(PC711_QUICK_PER_DAY).toBe(6);
+  });
+});
+
+// Jeff 2026-11-18 (Part B): the login module tells its owner when the saved login changes state — once per
+// change, never at load (a restart in the same state says nothing).
+describe("pc711 login — onState (for the Admin alert)", () => {
+  it("only two changes count: connected → needs_login and needs_login → connected (every other pair says nothing)", () => {
+    const states = [null, undefined, "connected", "needs_login", "not_connected"];
+    for (const a of states) for (const b of states) {
+      const want = a === "connected" && b === "needs_login" ? "logged_out" : a === "needs_login" && b === "connected" ? "logged_in" : "";
+      expect(pc711StateChange(a, b)).toBe(want);
+    }
+  });
+  const withHook = (f: unknown, m: ReturnType<typeof memStore>, t: () => number, hook: (c: string) => unknown) =>
+    createPc711Login({ fetchImpl: f as never, now: t, log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]), onState: hook } as never);
+  it("first connect says nothing; connected → needs_login says logged_out ONCE; staying logged out says nothing more", async () => {
+    const seen: string[] = [];
+    const m = memStore();
+    const login = withHook(fullSite().f, m, () => Date.UTC(2026, 10, 17, 0, 6), (c) => seen.push(c));
+    await login.load();
+    await connectAll(login);
+    expect(seen).toEqual([]);
+    await login.saveCookies({ "myship.7-11.com.tw": "a=1" }); // connected → connected
+    expect(seen).toEqual([]);
+    await login.markLoggedOut("cart_logged_out");
+    expect(seen).toEqual(["logged_out"]);
+    await login.markLoggedOut("cart_logged_out");
+    expect(seen).toEqual(["logged_out"]);
+  });
+  it("a restart while logged out says nothing; passive reads that stay logged out say nothing; back in → logged_in ONCE", async () => {
+    let t = Date.UTC(2026, 10, 17, 0, 6);
+    const m = memStore();
+    const first = withHook(fullSite().f, m, () => t, () => {});
+    await first.load(); await connectAll(first); await first.markLoggedOut("cart_logged_out");
+    const seen: string[] = [];
+    let sid = "";
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: () => ({ body: cartPage(sid) }) });
+    const login = withHook(s.f, m, () => t, (c) => seen.push(c)); // the restarted server
+    await login.load();
+    expect(seen).toEqual([]);
+    for (let i = 0; i < 3; i++) { t += PC711_PASSIVE_EVERY_MS; await login.passiveCheck(); }
+    expect(login.status().state).toBe("needs_login");
+    expect(seen).toEqual([]);
+    sid = "SID12345"; t += PC711_PASSIVE_EVERY_MS;
+    await login.passiveCheck();
+    expect(login.status().state).toBe("connected");
+    expect(seen).toEqual(["logged_in"]);
+    t += PC711_PASSIVE_EVERY_MS; await login.passiveCheck();
+    expect(seen).toEqual(["logged_in"]);
+  });
+  it("a failed quick re-login says logged_out once; Jeff logging in from Admin says logged_in", async () => {
+    const m = memStore();
+    await connectAll(make(fullSite().f, { store: m.store }).login);
+    const seen: string[] = [];
+    const login = withHook(fullSite({ [`GET ${OP}/auth/service/authorize`]: { body: authorizePage({ oidc_client_id: "" }) } }).f, m, () => Date.UTC(2026, 10, 14, 5), (c) => seen.push(c));
+    await login.load();
+    await login.quickRelogin();
+    expect(seen).toEqual(["logged_out"]);
+    const again = withHook(fullSite().f, m, () => Date.UTC(2026, 10, 14, 6), (c) => seen.push(c));
+    await again.load();
+    await connectAll(again);
+    expect(seen).toEqual(["logged_out", "logged_in"]);
+  });
+  it("a hook that throws or rejects never stops the login module, and is never waited for", async () => {
+    const m = memStore();
+    for (const hook of [() => { throw new Error("x"); }, () => Promise.reject(new Error("y")), () => new Promise(() => {})]) {
+      const login = withHook(fullSite().f, m, () => Date.UTC(2026, 10, 17, 0, 6), hook);
+      await login.load(); await connectAll(login);
+      expect(await login.markLoggedOut("cart_logged_out")).toBe(true);
+      expect(login.status().state).toBe("needs_login");
+      await login.disconnect();
+    }
+  });
+});
