@@ -5475,3 +5475,8 @@ Server only, no new request to 7-11, no rule changed (the extension's order, res
 - **After deploy, measure** (same queries as the Nov 18 report): time between two answers in a row (was 5.1 s), `store.byid` /
   `phone.token` ms by gap, phone "read → check starts" for parcels seen waiting (was 2.1 s), and `pc711_session.last_ok_at`
   moving about hourly when no E-Map open happens.
+  The queries are in `docs/ops/pc711-speed-metrics.sql` (read-only, numbers and words only).
+- 🐛 **Flaky under CI load (NOT part of this branch, not touched):** `Admin.downgrade.test.tsx` → "an upgrade / the same plan
+  never reads the accounts and never opens the dialog" — `changePlan` called 1 time, 2 expected (CI run 1841, Nov 18; green
+  on the 10 runs before it and 3 of 3 locally). The second plan button is clicked right after the first `changePlan` call
+  is seen, while that change may still be settling. Same family as the ParcelScan race (wait for the button to be ready).
