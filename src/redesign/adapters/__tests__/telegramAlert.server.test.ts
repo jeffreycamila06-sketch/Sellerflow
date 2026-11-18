@@ -40,11 +40,14 @@ describe("T1 one text, one HTTPS POST to api.telegram.org", () => {
     expect(JSON.parse(h.sent[0].body)).toMatchObject({ chat_id: CHAT, text: "7-11 server logged out. Log in from Admin." });
     expect(h.logs).toEqual([]); // a sent alert logs nothing
   });
-  it("the three fixed texts, word for word", () => {
+  it("the fixed texts, word for word", () => {
     expect(ALERT_TEXTS).toEqual({
       logged_out: "7-11 server logged out. Log in from Admin.",
       logged_in: "7-11 server is logged in again.",
       test: "SellerFlowLive test alert. Alerts are working.",
+      took_over: "Lenovo stopped. The server is checking now.",
+      took_over_logged_out: "Lenovo stopped. The server is checking now, but it is logged out of 7-11. Log in from Admin.",
+      handed_back: "Lenovo is back. The server is a follower again.",
     });
   });
 });

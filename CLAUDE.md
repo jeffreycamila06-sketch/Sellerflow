@@ -5402,3 +5402,32 @@ CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
   `scripts/sql165-behaviour.mjs`. 116b regenerated from the merged guide: 51 ids, every invite + Website id kept.
   sql/166 rollback text = the live settings-tiles / signup rows (md5 checked 2026-11-16); it does not touch the
   Website row. Settings shows the Invite friends card AND the Website row (`SettingsHub.inviteWebsite.test.tsx`).
+
+## 2026-11-18 — 7-11 SERVER: TELEGRAM ALERTS (branch `claude/pc711-backup`) + BACKUP CHECKER (branch `claude/pc711-takeover`, on top) — NOT merged; sql/179 NOT applied; needs a Render deploy
+- **Telegram alerts (`server/telegramAlert.js`):** env `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` on Render (either missing = alerts
+  off). Fixed texts only (`ALERT_TEXTS`); 8 s limit; an alert = up to 3 tries, 1 min apart, in order (`deliver` / `fire`); the Admin
+  button (`POST /admin/pc711/alert-test`, Admin → 7-11 Login → "Send test alert") = ONE try. The token is never logged.
+  Alerts: 7-11 login lost / back (`pc711StateChange`), and the three backup-checker texts below.
+- **Backup checker (`server/pc711Backup.js`, sql/179):** the Chrome extension on the Lenovo stays the main checker. Switch
+  **`app_settings.pc711_backup_enabled`** (created `'false'` by sql/179; exact `'true'` = on). The decision is made IN THE DATABASE
+  (`pc711_backup_duty`, database clock) from the lease the extension already writes — the server only READS
+  `parcel_check_worker_lease`; it never calls `admin_parcel_worker_lease` and never writes `parcel_check_worker_state`.
+  - **Take over:** no extension machine called the lease for 120 s, OR the leader is calling and reports `leader_state.degraded`.
+    **Hand back:** the first lease call of a leader that is not degraded. A new take-over needs the full condition again.
+  - **Writes** go through service-role copies of the extension's functions (`pc711_backup_pending / _verdict / _requeue /
+    _frozen_pending / _frozen_verdict / _sender_health`); each one checks the switch + duty itself (`pc711_backup_on_duty()`) →
+    `not_on_duty` after the Lenovo's return. The Lenovo's answer wins (`p_seen_at`). One words-only row per write in `pc711_backup_log`.
+  - **On duty = the extension's rules:** store then phone then 2 s, ≤ 5 parcels a pass; store ladder 15/30/60/120 s, "unknown" on the
+    5th failure, re-queue after a session re-open and at 05:00; phone never given up, "rejected" retried; each parcel's own shop;
+    sender health every 5 min; night rules; frozen lane. **No safety brake on duty** (Jeff's decision); as a follower the brake is
+    unchanged. Phone checks need no 7-11 login. Comparing with the extension pauses on duty and restarts from the hand-back time.
+  - **Alerts (kept in `pc711_backup_state.alerts`, so once per change across restarts):** "Lenovo stopped. The server is checking
+    now." / "…but it is logged out of 7-11. Log in from Admin." / "Lenovo is back. The server is a follower again."
+  - **Proof:** `pc711Backup.server.test.ts` (fake 7-11 / lease / Telegram, virtual clock) + `scripts/sql179-behaviour.mjs` (PGlite:
+    the copies write exactly what the live extension functions write — `scripts/fixtures/pc711_backup_originals_live.sql`, md5 = live
+    2026-11-18). ⚠️ If an extension write function is changed later, change its `pc711_backup_*` copy and the fixture too.
+  - **Order:** merge → Render deploy (quiet window) → apply sql/179 (switch stays 'false') → set the switch `'true'`. Before sql/179
+    the server logs `[PC711_BACKUP] duty read failed` once an hour and stays a follower. Rollback: switch `'false'` (instant), or
+    `sql/179_pc711_backup_rollback.sql`.
+  - ⚠️ Nothing was run against the real 7-11 or the real Telegram. No Admin screen line shows "server on duty" (Telegram + the two
+    tables do). During a `degraded` take-over the Lenovo may still check the half whose tab works (its answer wins).

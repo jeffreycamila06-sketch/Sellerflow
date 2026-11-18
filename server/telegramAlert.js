@@ -18,6 +18,10 @@ export const ALERT_TEXTS = {
   logged_out: "7-11 server logged out. Log in from Admin.",
   logged_in: "7-11 server is logged in again.",
   test: "SellerFlowLive test alert. Alerts are working.",
+  // the backup checker (server/pc711Backup.js, sql/179)
+  took_over: "Lenovo stopped. The server is checking now.",
+  took_over_logged_out: "Lenovo stopped. The server is checking now, but it is logged out of 7-11. Log in from Admin.",
+  handed_back: "Lenovo is back. The server is a follower again.",
 };
 const TAG = "[TG_ALERT]";
 // A bot token is "<digits>:<letters, digits, _ or ->"; a chat id is a number (groups are negative) or @name.

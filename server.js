@@ -56,6 +56,7 @@ import { createTelegramAlert, createAlertTestHandler } from "./server/telegramAl
 import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipeiDay } from "./server/pc711Shadow.js";
 import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Evidence.js";
 import { createPc711Emap, EMAP_KEEPALIVE_STORE } from "./server/pc711Emap.js";
+import { createPc711Backup, createBackupDb } from "./server/pc711Backup.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1302,7 +1303,16 @@ if (serviceSb) {
   const pc711Emap = createPc711Emap({
     open: () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, openOnly: true, log: () => {} }),
   });
-  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, emap: pc711Emap });
+  // the BACKUP checker (server/pc711Backup.js, sql/179): off until app_settings pc711_backup_enabled = 'true'.
+  // When the Lenovo stops it checks parcels and writes the answers; it only READS the extension's lease.
+  // A phone check needs no 7-11 login, so it gets no session (and can never reach a login step).
+  const pc711BackupPhone = async (input) => {
+    const r = await runPcServerProbe({ readSetting, target: { kind: "phone", ...input }, gate: false, log: () => {} });
+    const p = (r && r.phone) || {};
+    return { verdict: p.verdict || "unknown", kind: p.kind || "", steps: p.steps || [], message: p.message ?? null, until: p.until ?? null };
+  };
+  const pc711Backup = createPc711Backup({ db: createBackupDb(serviceSb), emap: pc711Emap, phoneCheck: pc711BackupPhone, pc711, readSetting, alert: adminAlert });
+  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, evidence: pc711EvidenceDb, check: pc711ShadowCheck, pc711, readSetting, emap: pc711Emap, backup: pc711Backup });
   pc711ShadowJob.start();
   app.get("/admin/pc711/shadow", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });

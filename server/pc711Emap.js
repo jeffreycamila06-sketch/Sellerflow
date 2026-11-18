@@ -104,7 +104,10 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
   const say = (line) => { try { log(line); } catch { /* a log never stops a check */ } };
 
   // pcEmapVerdict / pcEmapMiss — the ONLY writers of the miss ladder
+  let requeueDue = false;                   // pcEv.requeueDue = "recovery" (background.js:597, :732)
   function verdict(t) {
+    // the lane is back after a real outage (a streak of counted misses, or a re-load) → given-up stores go back in the queue
+    if (e.misses >= EMAP_RECOVER_MIN_MISSES || e.reloads > 0) requeueDue = true;
     e.lastVerdictAt = t; e.misses = 0; e.firstMissAt = 0; e.lastMissReason = ""; e.reloads = 0;
     verdictGen += 1;
     e.remint = { tried: false, result: "" };
@@ -261,6 +264,7 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     // adopt: a fresh ladder, verify at once (pcAdoptRemintedTab)
     e.present = true; e.guid = true; e.error = false;
     e.remint.result = ""; e.reloads = 0; e.misses = 0; e.firstMissAt = 0; e.reloadAt = 0; lastKeepaliveAt = 0;
+    requeueDue = true;                      // the session was re-opened (pcAdoptRemintedTab)
     say(`${TAG} open result=ok`);
     return { ok: true, kind: "", http: info.http, step: info.step };
   }
@@ -322,6 +326,8 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
     verdict: () => verdict(now()),
     miss: (reason, transient, inMaint) => miss(now(), reason, transient, inMaint),
     gen: () => verdictGen,
+    /** true once after a recovery / re-open (then cleared): the backup checker re-queues given-up stores */
+    takeRequeueDue: () => { const d = requeueDue; requeueDue = false; return d; },
     state: () => ({ state: e.state, present: e.present, guid: e.guid, error: e.error, misses: e.misses, reloads: e.reloads, lastVerdictAt: e.lastVerdictAt || null, remintTried: e.remint.tried, remintResult: e.remint.result, openFails, nextOpenAt: nextOpenAt || null, unanswered }),
     _e: () => e, _session: () => s, _lastKeepaliveAt: () => lastKeepaliveAt,
   };
