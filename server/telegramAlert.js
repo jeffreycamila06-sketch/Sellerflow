@@ -3,6 +3,8 @@
 //   • Env TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (set on Render). Missing either = alerts off; nothing else changes.
 //   • Messages are fixed texts chosen by a key (ALERT_TEXTS). Never a phone, name, store number, tracking
 //     number, cookie or token — send() has no way to take free text.
+//   • ONE text carries a value after it: "new_version" + the 7-character commit the server started on
+//     (ALERT_VALUE_SHAPES: 7 characters 0-9 a-f, nothing else passes). Every other text takes no value.
 //   • A failed send is logged with ONE word and resolves { ok: false, word }; send() never throws.
 //   • An alert (fire) is tried up to 3 times, 1 minute apart, so a lost alert is not lost; alerts go out
 //     one after another, in the order they happened. The test button (send) is ONE try and answers at once.
@@ -22,7 +24,18 @@ export const ALERT_TEXTS = {
   took_over: "Lenovo stopped. The server is checking now.",
   took_over_logged_out: "Lenovo stopped. The server is checking now, but it is logged out of 7-11. Log in from Admin.",
   handed_back: "Lenovo is back. The server is a follower again.",
+  // the server started on a commit it had not announced yet (server/versionAlert.js) + that commit
+  new_version: "Server restarted on a new version.",
 };
+// The texts that carry ONE value after them, and the only shape that value may have. Never free text.
+export const ALERT_VALUE_SHAPES = { new_version: /^[0-9a-f]{7}$/ };
+const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+/** PURE — the whole message for `kind`, or "" when the key is not ours or its value has the wrong shape. */
+export function alertText(kind, value) {
+  if (typeof kind !== "string" || !own(ALERT_TEXTS, kind)) return "";
+  if (!own(ALERT_VALUE_SHAPES, kind)) return ALERT_TEXTS[kind];   // no value: whatever was passed is never read
+  return typeof value === "string" && ALERT_VALUE_SHAPES[kind].test(value) ? `${ALERT_TEXTS[kind]} ${value}` : "";
+}
 const TAG = "[TG_ALERT]";
 // A bot token is "<digits>:<letters, digits, _ or ->"; a chat id is a number (groups are negative) or @name.
 const TOKEN_RE = /^\d{3,20}:[A-Za-z0-9_-]{10,100}$/;
@@ -39,9 +52,9 @@ export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log 
   const enabled = why === "";
   const say = (line) => { try { log(`${TAG} ${line}`); } catch { /* a log never stops anything */ } };
 
-  /** Send the fixed text of `kind`. → { ok: true } | { ok: false, word }. Never throws. */
-  async function send(kind) {
-    const text = Object.prototype.hasOwnProperty.call(ALERT_TEXTS, kind) ? ALERT_TEXTS[kind] : "";
+  /** Send the fixed text of `kind` (+ its value, for the one text that has one). → { ok: true } | { ok: false, word }. Never throws. */
+  async function send(kind, value) {
+    const text = alertText(kind, value);
     if (!text) return { ok: false, word: "unknown_text" };
     if (!enabled) return { ok: false, word: why };
     const ctl = new AbortController();
@@ -68,10 +81,10 @@ export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log 
   }
 
   // One alert: up to ALERT_TRIES sends, ALERT_RETRY_MS apart (each failed try = its one log word, from send).
-  async function tryAll(kind) {
+  async function tryAll(kind, value) {
     let r = { ok: false, word: "error" };
     for (let n = 1; n <= ALERT_TRIES; n++) {
-      r = await send(kind);
+      r = await send(kind, value);
       if (r.ok || NO_RETRY.includes(r.word)) return r;
       if (n < ALERT_TRIES) await sleep(ALERT_RETRY_MS);
     }
@@ -80,10 +93,10 @@ export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log 
   let chain = Promise.resolve();   // alerts go out one after another, in order
   let waiting = 0;
   /** An alert with its retries, after the alerts queued before it. Resolves { ok } | { ok: false, word }; never throws. */
-  function deliver(kind) {
+  function deliver(kind, value) {
     if (waiting >= ALERT_QUEUE_MAX) { say("send failed queue_full"); return Promise.resolve({ ok: false, word: "queue_full" }); }
     waiting += 1;
-    const mine = chain.then(() => tryAll(kind)).catch(() => ({ ok: false, word: "error" })).finally(() => { waiting -= 1; });
+    const mine = chain.then(() => tryAll(kind, value)).catch(() => ({ ok: false, word: "error" })).finally(() => { waiting -= 1; });
     chain = mine.then(() => {}, () => {});
     return mine;
   }
@@ -96,7 +109,7 @@ export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log 
     send,
     deliver,
     /** Fire and forget (with the retries): never awaited by the caller, never throws, never slows the checker. */
-    fire(kind) { try { void deliver(kind).catch(() => {}); } catch { /* nothing */ } },
+    fire(kind, value) { try { void deliver(kind, value).catch(() => {}); } catch { /* nothing */ } },
   };
 }
 

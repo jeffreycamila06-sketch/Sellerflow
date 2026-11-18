@@ -48,6 +48,7 @@ describe("T1 one text, one HTTPS POST to api.telegram.org", () => {
       took_over: "Lenovo stopped. The server is checking now.",
       took_over_logged_out: "Lenovo stopped. The server is checking now, but it is logged out of 7-11. Log in from Admin.",
       handed_back: "Lenovo is back. The server is a follower again.",
+      new_version: "Server restarted on a new version.",
     });
   });
 });

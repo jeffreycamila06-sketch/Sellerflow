@@ -22,13 +22,6 @@ on:
         description: "Only tell me what would happen (deploys nothing)"
         type: boolean
         default: false
-  # TEMPORARY (removed before this branch is finished): a push to this branch runs the
-  # "only tell me" mode once, to see the real GitHub answers. It can never deploy.
-  push:
-    branches: [claude/nightly-render-deploy]
-    paths:
-      - ".github/workflows/nightly-render-deploy.yml"
-      - "scripts/nightly-deploy/**"
 
 # contents: write — to move the tag "render-deployed" (GitHub has no smaller permission for a tag).
 # actions: read   — to read the CI result of the commit.
@@ -59,5 +52,5 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           NIGHTLY_DEPLOY_PAUSE_UNTIL: ${{ vars.NIGHTLY_DEPLOY_PAUSE_UNTIL }}
-          NIGHTLY_DEPLOY_DRY_RUN: ${{ (github.event_name == 'push' || inputs.dry_run) && '1' || '0' }}
+          NIGHTLY_DEPLOY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
         run: node scripts/nightly-deploy/run.mjs

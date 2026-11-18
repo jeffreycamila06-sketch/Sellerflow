@@ -53,6 +53,7 @@ import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEna
 import { runPcLoginWalk } from "./server/pcLoginWalk.js";
 import { createPc711Login, createPc711Handlers, createPc711Store } from "./server/pc711Login.js";
 import { createTelegramAlert, createAlertTestHandler } from "./server/telegramAlert.js";
+import { createVersionAnnouncer, createVersionStore } from "./server/versionAlert.js";
 import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipeiDay } from "./server/pc711Shadow.js";
 import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Evidence.js";
 import { createPc711Emap, EMAP_KEEPALIVE_STORE } from "./server/pc711Emap.js";
@@ -3029,9 +3030,14 @@ app.post("/admin/accounts/stop-removed", requireAuth, requireAdmin, async (req, 
 // never Express's trace page (server/finalErrorHandler.js). Must stay after every route.
 app.use(finalErrorHandler());
 
+// "Server restarted on a new version." + the 7-character commit — ONE Telegram alert per new commit, not
+// at every restart (server/versionAlert.js). Render's env RENDER_GIT_COMMIT; missing = no alert.
+const versionAnnouncer = createVersionAnnouncer({ env: process.env, store: serviceSb ? createVersionStore(serviceSb) : null, alert: adminAlert });
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
+  versionAnnouncer.start();   // never awaited, never throws
 });
 
 // Parcel tracking job worker (Stage 2) — needs the service role; one job at a time.

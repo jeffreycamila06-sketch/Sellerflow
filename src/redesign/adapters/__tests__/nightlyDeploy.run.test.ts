@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runNightlyDeploy, callRenderHook, createGithub, createGit, createSay, Stop, HOOK_TIMEOUT_MS } from "../../../../scripts/nightly-deploy/run.mjs";
+import ts from "typescript";
+import { runNightlyDeploy, callRenderHook, createGithub, createGit, createSay, Stop, HOOK_TIMEOUT_MS, GITHUB_TIMEOUT_MS } from "../../../../scripts/nightly-deploy/run.mjs";
 import { decide, ciState, hookState, pauseState, taipeiDay } from "../../../../scripts/nightly-deploy/decide.mjs";
 
 const HEAD = "16b4bb93aaaabbbbccccddddeeeeffff00001111";
@@ -431,6 +432,27 @@ describe("R7 createGithub: the tag and the CI result", () => {
       expect(h.sent.length).toBe(0);
     }
   });
+  it("a GitHub that never answers is cut at 20 seconds (the read stops, the tag move says false)", async () => {
+    vi.useFakeTimers();
+    try {
+      expect(GITHUB_TIMEOUT_MS).toBe(20000);
+      const hang = vi.fn((_url: string, init: { signal?: AbortSignal }) => new Promise((_res, rej) => {
+        if (!init.signal) return;                                  // no time limit = it would hang for ever
+        init.signal.addEventListener("abort", () => rej(Object.assign(new Error("aborted"), { name: "AbortError" })));
+      }));
+      const api = createGithub({ token: TOKEN, repo: "jeff/sellerflow", fetchImpl: hang as never });
+      let read: unknown = "waiting";
+      void api.readTag().then(() => { read = "answered"; }, (e: unknown) => { read = e; });
+      let moved: unknown = "waiting";
+      void api.moveTag(HEAD, true).then((v: boolean) => { moved = v; });
+      await vi.advanceTimersByTimeAsync(GITHUB_TIMEOUT_MS - 1);
+      expect([read, moved]).toEqual(["waiting", "waiting"]);
+      await vi.advanceTimersByTimeAsync(2);
+      expect(read).toBeInstanceOf(Stop);
+      expect((read as Stop).line).toContain("(answer 0)");
+      expect(moved).toBe(false);
+    } finally { vi.useRealTimers(); }
+  });
   it("the token goes to the GitHub API address only", async () => {
     const h = gh(() => ({ status: 200, json: tagJson() }), { apiUrl: "https://api.github.com/" });
     await h.api.readTag();
@@ -514,6 +536,53 @@ describe("R9 createSay: one line to the log and to the run's summary", () => {
   });
 });
 
+describe("R11 the script as the workflow starts it (a real process; none of these cases reaches the network)", () => {
+  const start = (env: Record<string, string>) => {
+    const dirTmp = mkdtempSync(join(tmpdir(), "nightly-run-"));
+    const summary = join(dirTmp, "summary.md");
+    writeFileSync(summary, "");
+    let code = 0;
+    let out: string;
+    try {
+      out = execFileSync(process.execPath, ["scripts/nightly-deploy/run.mjs"], {
+        encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+        env: { PATH: process.env.PATH ?? "", GITHUB_STEP_SUMMARY: summary, GITHUB_REPOSITORY: "jeff/sellerflow", ...env },
+      });
+    } catch (e) {
+      const err = e as { status?: number; stdout?: string; stderr?: string };
+      code = err.status ?? -1;
+      out = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+    }
+    const sum = readFileSync(summary, "utf8");
+    rmSync(dirTmp, { recursive: true, force: true });
+    return { code, out: out.trim(), sum: sum.trim() };
+  };
+  it("not on main → one line, exit 0, the same line in the run's summary", () => {
+    const r = start({ GITHUB_REF: "refs/heads/claude/x", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK });
+    expect(r).toEqual({ code: 0, out: "Skipped: this run is not on main. The nightly deploy only works from main.", sum: "Skipped: this run is not on main. The nightly deploy only works from main." });
+  });
+  it("secret missing → one line, exit 0", () => {
+    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule" });
+    expect([r.code, r.out]).toEqual([0, "Skipped: the Render Deploy Hook is not saved yet (repository secret RENDER_DEPLOY_HOOK_URL)."]);
+  });
+  it("a secret that is not a Render Deploy Hook → exit 1, and no part of it in the output", () => {
+    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: `https://example.com/deploy?key=${KEY}` });
+    expect(r.code).toBe(1);
+    expect(r.out).toBe("Stopped: the saved secret RENDER_DEPLOY_HOOK_URL is not a Render Deploy Hook address. Copy it again from Render. Nothing was deployed.");
+    expect(`${r.out}${r.sum}`).not.toContain(KEY);
+  });
+  it("no GitHub token → exit 1 before anything is asked of Render, and the hook is not in the output", () => {
+    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK });
+    expect(r.code).toBe(1);
+    expect(r.out).toBe("Stopped: GitHub did not answer the question about the tag render-deployed (answer 0). Nothing was deployed.");
+    expect(`${r.out}${r.sum}`).not.toContain(KEY);
+  });
+  it("paused → one line, exit 0 (the pause date is far ahead)", () => {
+    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK, NIGHTLY_DEPLOY_PAUSE_UNTIL: "2999-01-01" });
+    expect([r.code, r.out]).toEqual([0, "Skipped: the nightly deploy is paused until 2999-01-01 (variable NIGHTLY_DEPLOY_PAUSE_UNTIL)."]);
+  });
+});
+
 describe("R10 the script's own text: the hook is never near a print", () => {
   const src = readFileSync("scripts/nightly-deploy/run.mjs", "utf8");
   const code = src.split("\n").filter((l) => !/^(\/\/|\/\*|\*)/.test(l.trim())).join("\n");   // comments are not code
@@ -535,8 +604,10 @@ describe("R10 the script's own text: the hook is never near a print", () => {
     expect(code).not.toContain("console.error");
   });
   it("no packages: only Node's own modules and decide.mjs", () => {
-    const froms = [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]).sort();
-    expect(froms).toEqual(["./decide.mjs", "node:child_process", "node:fs", "node:url"]);
+    // every kind of import (with or without "from", and import("…")), read by TypeScript's own reader
+    const imported = ts.preProcessFile(src, true, true).importedFiles.map((f) => f.fileName).sort();
+    expect(imported).toEqual(["./decide.mjs", "node:child_process", "node:fs", "node:url"]);
+    expect(ts.preProcessFile(readFileSync("scripts/nightly-deploy/decide.mjs", "utf8"), true, true).importedFiles).toEqual([]);
     const decideSrc = readFileSync("scripts/nightly-deploy/decide.mjs", "utf8");
     expect(decideSrc).not.toMatch(/\bimport\b|\brequire\(|process\.|fetch\(|Date\.now|console\./);   // pure
   });
