@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import Pc711EvidenceBlock from "./Pc711Evidence";
-import { pc711Api, usePc711Status, fillSmsBoxes, hhmm, taipeiStamp, taipeiDayKey, type Pc711Status, type Pc711Shadow, type Pc711ShadowHistory, type Pc711ShadowDay, type Pc711ShadowFilter, type Pc711ShadowKindFilter, type Pc711ShadowRow } from "../adapters/pc711Login";
+import { pc711Api, usePc711Status, fillSmsBoxes, hhmm, taipeiStamp, taipeiDayKey, alertTestLineKind, type Pc711AlertTest, type Pc711Status, type Pc711Shadow, type Pc711ShadowHistory, type Pc711ShadowDay, type Pc711ShadowFilter, type Pc711ShadowKindFilter, type Pc711ShadowRow } from "../adapters/pc711Login";
 
 type View = "status" | "step1" | "step2";
 
@@ -139,6 +139,30 @@ function ShadowBlock() {
             <button type="button" data-testid="pc711-sh-next" disabled={!h.more} onClick={() => { setPage((p) => p + 1); setH(undefined); }} style={{ ...ghost, flex: 1, opacity: h.more ? 1 : 0.5 }}>{t.rd_pc711_sh_next}</button>
           </div>
         </div>}
+    </div>
+  );
+}
+
+// "Telegram alerts" card: one button that sends the fixed test text; says sent or not sent (Admin only —
+// the whole panel is). Shown in every state of the panel: alerts do not depend on the 7-11 login.
+function AlertTestBlock() {
+  const t = useT();
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<Pc711AlertTest | null>(null);
+  const send = async () => { // the button is off while sending, so a second tap cannot start another send
+    setSending(true); setResult(null);
+    let r: Pc711AlertTest;
+    try { r = await pc711Api.alertTest(); } catch { r = { sent: false, reason: "failed" }; }
+    setResult(r); setSending(false);
+  };
+  const kind = result && !result.sent ? alertTestLineKind(result.reason) : null;
+  const line = !result ? null : result.sent ? t.rd_pc711_al_sent : kind === "off" ? t.rd_pc711_al_off : kind === "limit" ? t.rd_pc711_al_limit : t.rd_pc711_al_failed;
+  return (
+    <div data-testid="pc711-alert" style={{ ...card, marginTop: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{t.rd_pc711_al_title}</div>
+      <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 4, lineHeight: 1.45 }}>{t.rd_pc711_al_sub}</div>
+      <button type="button" data-testid="pc711-alert-test" disabled={sending} aria-busy={sending} onClick={() => void send()} style={{ ...ghost, width: "100%", marginTop: 10, opacity: sending ? 0.6 : 1 }}>{sending ? t.rd_pc711_al_sending : t.rd_pc711_al_btn}</button>
+      {line ? <div role="status" data-testid="pc711-alert-result" data-sent={result?.sent ? "1" : "0"} style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: result?.sent ? "var(--ok)" : "var(--danger)", lineHeight: 1.4, overflowWrap: "anywhere" }}>{line}</div> : null}
     </div>
   );
 }
@@ -359,6 +383,7 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
         <div style={card}><div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{t.rd_pc711_not_connected}</div><div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 5, lineHeight: 1.45 }}>{t.rd_pc711_not_connected_sub}</div></div>
         {errLine}
         <button type="button" data-testid="pc711-begin" disabled={busy} onClick={() => void begin()} style={{ ...primary, opacity: busy ? 0.55 : 1 }}>{t.rd_pc711_connect}</button>
+        <AlertTestBlock />
       </div>
     );
   }
@@ -382,6 +407,7 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
         </div>
         {errLine}
         <button type="button" data-testid="pc711-begin" disabled={busy} onClick={() => void begin()} style={{ ...primary, opacity: busy ? 0.55 : 1 }}>{t.rd_pc711_lo_btn}</button>
+        <AlertTestBlock />
       </div>
     );
   }
@@ -408,6 +434,7 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
         <button type="button" data-testid="pc711-test" disabled={busy || testing} aria-busy={testing} onClick={() => void testNow()} style={{ ...ghost, flex: 1, opacity: busy || testing ? 0.6 : 1 }}>{testing ? t.rd_pc711_testing : t.rd_pc711_test}</button>
         <button type="button" data-testid="pc711-disconnect" disabled={busy || testing} onClick={() => void disconnect()} style={{ ...ghost, flex: 1, color: "var(--danger)" }}>{t.rd_pc711_disconnect}</button>
       </div>
+      <AlertTestBlock />
       <ShadowBlock />
       <Pc711EvidenceBlock />
     </div>

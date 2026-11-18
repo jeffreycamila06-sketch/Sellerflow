@@ -430,6 +430,18 @@ export async function runPcServerProbe(opts = {}) {
   // target phone: the parcel's own buyer phone / name / store (the extension's CheckoutValidation body).
   const targetPhone = target && target.kind === "phone" && /^09\d{8}$/.test(String(target.phone ?? "").trim()) ? String(target.phone).trim() : "";
   const buyer = target ? targetPhone : cfg.buyer;
+  // the backup checker (server/pc711Backup.js): the parcel's OWN shop and sender, as the extension's
+  // pending read gives them (config: { cgdmId: row.gm_id, ordMobile: row.sender_phone }). A value that is
+  // not a shop id / a phone is refused (config_missing) — nothing is requested with it.
+  const ownShop = Boolean(target && target.kind === "phone" && (target.gm !== undefined || target.sender !== undefined));
+  if (ownShop) {
+    cfg = {
+      ...cfg,
+      gm: /^GM\d{6,20}$/.test(String(target.gm ?? "")) ? String(target.gm) : "",
+      sender: /^09\d{8}$/.test(String(target.sender ?? "").trim()) ? String(target.sender).trim() : "",
+    };
+  }
+  const phoneCartUrl = cfg.gm ? `https://${MYSHIP}/cart/easy/${cfg.gm}` : "";
   try {
     if (!want("phone")) { /* the shadow asked for the store only */ }
     else if (target && !targetPhone) {
@@ -443,10 +455,10 @@ export async function runPcServerProbe(opts = {}) {
       // getVerificationToken) — target.tokenMs per GET, and ONE immediate second GET only after a
       // timeout / network error when target.tokenRetry is true. Without these the probe is as before.
       const tokenInit = target && Number(target.tokenMs) > 0 ? { timeoutMs: Number(target.tokenMs) } : {};
-      let page = await request(null, cartUrl, tokenInit);
+      let page = await request(null, phoneCartUrl, tokenInit);
       if (target && target.tokenRetry === true && (page.fail === "timeout" || page.fail === "network")) {
         record(phone, stepOf("phone.token", page, false, `kind=${page.fail} retry=1`));
-        page = await request(null, cartUrl, tokenInit);
+        page = await request(null, phoneCartUrl, tokenInit);
       }
       const token = !page.fail && page.status === 200 ? (page.text.match(TOKEN_RE) || [])[1] || "" : "";
       const pageKind = page.fail ? page.fail : page.status >= 300 && page.status < 400 ? "redirect" : page.status !== 200 ? "http" : token ? "" : "html";
@@ -461,7 +473,7 @@ export async function runPcServerProbe(opts = {}) {
           method: "POST", body,
           headers: {
             "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest",
-            VerificationToken: token, origin: `https://${MYSHIP}`, referer: cartUrl,
+            VerificationToken: token, origin: `https://${MYSHIP}`, referer: phoneCartUrl,
           },
         });
         let verdict = "unknown", kind = "";
@@ -474,7 +486,15 @@ export async function runPcServerProbe(opts = {}) {
           try { j = JSON.parse(res.text); } catch { j = null; }
           if (j && j.Status === true) { verdict = "ok"; phone.raw = "Status:true"; }
           else if (j && j.Status === false) {
-            if (RESTRICTION_RE.test(String(j.Message || ""))) { verdict = "restricted"; phone.raw = "Status:false-restricted"; }
+            if (RESTRICTION_RE.test(String(j.Message || ""))) {
+              verdict = "restricted"; phone.raw = "Status:false-restricted";
+              // 7-11's own sentence and its date (chrome-extension/myship-711.js:148-152): handed back to the
+              // caller only (the backup checker writes them for the seller) — never logged, never in a step.
+              const msg = String(j.Message || "").slice(0, 500);
+              const dm = msg.match(/(\d{4})年(\d{2})月(\d{2})日/);
+              phone.message = msg || null;
+              phone.until = dm ? `${dm[1]}-${dm[2]}-${dm[3]}` : null;
+            }
             else { kind = "rejected"; phone.raw = "Status:false-other"; }
           }
           else kind = "bad_json";

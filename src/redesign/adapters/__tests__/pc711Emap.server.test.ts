@@ -4,7 +4,6 @@
 // shadow job and the REAL kept E-Map session run on a fake 7-11 and a virtual clock — no real request is made.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
 import { createPc711Shadow, SHADOW_FROZEN_STORE_GAP_MS, SHADOW_FROZEN_SLOW_PAUSE_MS, phoneBackoffDelay, storeBackoffDelay, rowsOf, SHADOW_ROW_GAP_MS, SHADOW_LIMIT, SHADOW_PHONE_TOKEN_MS, SHADOW_PHONE_TOKEN_RETRY_FAILS,
   SHADOW_STORE_BACKOFF_MS, SHADOW_PHONE_BACKOFF_MS, SHADOW_MAINT_RETRY_MS, SHADOW_POLL_MS, SHADOW_FETCH_LIMIT } from "../../../../server/pc711Shadow.js";
 import {
@@ -277,7 +276,8 @@ describe("R3 opening = the requests of the 選擇取貨門市 click, with main's
     expect(SERVER).toContain("const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });");
     expect(SERVER).toContain("const r = await runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: input, gate: false, log: () => {} });");
     expect(readFileSync("server/pc711Emap.js", "utf8")).not.toMatch(/quickRelogin|openpoint|\/auth\//i); // no new login code
-    expect(execSync("git diff origin/main -- server/pc711Login.js").toString()).toBe(""); // the login module untouched
+    // (the old "pc711Login.js has no change vs main" pin ended with its branch: Part A of claude/pc711-backup renames
+    //  two quick re-login words there on Jeff's order — its requests, steps and limits are pinned in pc711Login.server.test.ts)
   });
 });
 

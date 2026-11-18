@@ -275,7 +275,10 @@ export function createShadowDb(sb) {
 // the probe's target mode). pc711 = the login module (status()). Never throws.
 // emap (server/pc711Emap.js, optional): with it, the evidence pass runs the extension's row loop on ONE kept
 // E-Map session (pcPollMulti → pcEmapKeepalive → pcRefreshTabStatus); without it, the pass is as before.
-export function createPc711Shadow({ db, evidence = null, check, pc711, readSetting, emap = null, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+// backup (server/pc711Backup.js, optional): asked first on every pass. While it is ON DUTY (the Lenovo stopped,
+// sql/179) it does the pass itself and this job does nothing — comparing pauses, and so does the safety brake.
+// As a follower everything below is unchanged (the brake included).
+export function createPc711Shadow({ db, evidence = null, check, pc711, readSetting, emap = null, backup = null, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   let running = false;
   let lastEnd = -Infinity;     // when the last 7-11 check finished (2 s between parcels)
   let day = "";                // the Taipei day the purge last ran for
@@ -471,7 +474,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     say(`${TAG} mirror self-stop rule=login_lost ${stopped ? "switched_off" : "already_off"}`);
   }
 
-  async function tickEvidence() {
+  async function tickEvidence(floor = 0) {
     // no check request while not connected / stopped / paused (memory only; the one exception: the mirror
     // login_lost stop above, a single write while the mirror switch was on)
     const st = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
@@ -481,7 +484,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     stoppedSince = null;
     const t = now();
     if (pausedUntil > t) return { skipped: "paused" };
-    const since = new Date(t - SHADOW_LOOKBACK_MS).toISOString();
+    // parcels answered before the last hand-back were answered by this server itself: not compared
+    const since = new Date(Math.max(t - SHADOW_LOOKBACK_MS, Number(floor) || 0)).toISOString();
     const mirrorAllowed = !inShadowMaint(t);
     // the ONE request of an idle pass: the shadow switch comes back in it (off → nothing else is read or done)
     // the self-stop's numbers ride on the same call, every 10 min of mirror-on time (window: last 60 min of it)
@@ -680,7 +684,14 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     if (running) return { skipped: "running" };
     running = true;
     try {
-      if (evidence) return await tickEvidence();
+      let floor = 0;
+      if (backup) {
+        let d = null;
+        try { d = await backup.tick(); } catch { d = null; }
+        if (d && d.onDuty) return { duty: true, checked: d.checked ?? 0 };
+        floor = (d && Number(d.floor)) || 0;
+      }
+      if (evidence) return await tickEvidence(floor);
       let on = "";
       try { on = String((await readSetting(SHADOW_SWITCH)) ?? ""); } catch { on = ""; }
       if (on !== "true") return { skipped: "off" };
