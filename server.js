@@ -52,6 +52,7 @@ import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow
 import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
 import { runPcLoginWalk } from "./server/pcLoginWalk.js";
 import { createPc711Login, createPc711Handlers, createPc711Store } from "./server/pc711Login.js";
+import { createTelegramAlert, createAlertTestHandler } from "./server/telegramAlert.js";
 import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipeiDay } from "./server/pc711Shadow.js";
 import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Evidence.js";
 import { createPc711Emap, EMAP_KEEPALIVE_STORE } from "./server/pc711Emap.js";
@@ -1252,7 +1253,11 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 // 7-11 checker login (server/pc711Login.js): the server's own 7-11 session, connected by the admin
 // in Admin → 7-11 Login. Admin only, 4kb bodies, its own limiter (20 per 10 minutes). The probe's
 // STORE step uses this session (and its one quick re-login). Loaded at boot so a deploy keeps it.
-const pc711 = createPc711Login({ store: createPc711Store(serviceSb), readSetting, env: process.env });
+// Telegram alerts to the Admin (server/telegramAlert.js): off unless TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are set.
+// The saved 7-11 login tells it when it goes connected → needs_login and back (once per change, never at boot).
+const adminAlert = createTelegramAlert({ env: process.env });
+console.log(`[TG_ALERT] ${adminAlert.stateWord()}`);
+const pc711 = createPc711Login({ store: createPc711Store(serviceSb), readSetting, env: process.env, onState: (change) => adminAlert.fire(change) });
 pc711.load().catch(() => {});
 // While logged out of 7-11 (needs_login): ONE passive read of the cart page every 10 minutes (the module keeps
 // the 10-minute timing; this only wakes it once a minute). Logged in → checks resume. It never logs in.
@@ -1269,6 +1274,9 @@ app.post("/admin/pc711/login/sms", requireAuth, requireAdmin, pc711Json, pc711Ro
 app.post("/admin/pc711/login/resend", requireAuth, requireAdmin, pc711Json, pc711Routes.resend);
 app.post("/admin/pc711/login/back", requireAuth, requireAdmin, pc711Json, pc711Routes.back);
 app.post("/admin/pc711/disconnect", requireAuth, requireAdmin, pc711Json, pc711Routes.disconnect);
+// "Send test alert" (Admin only): one fixed Telegram text; answers sent / failed + one word. 5 per 10 minutes.
+const adminAlertTestAllowed = createWindowLimiter({ max: 5, windowMs: 10 * 60 * 1000 });
+app.post("/admin/pc711/alert-test", requireAuth, requireAdmin, pc711Json, createAlertTestHandler({ alert: adminAlert, allowed: adminAlertTestAllowed }));
 app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
 const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
