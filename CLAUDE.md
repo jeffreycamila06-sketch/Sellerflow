@@ -5476,7 +5476,22 @@ Server only, no new request to 7-11, no rule changed (the extension's order, res
   `phone.token` ms by gap, phone "read → check starts" for parcels seen waiting (was 2.1 s), and `pc711_session.last_ok_at`
   moving about hourly when no E-Map open happens.
   The queries are in `docs/ops/pc711-speed-metrics.sql` (read-only, numbers and words only).
-- 🐛 **Flaky under CI load (NOT part of this branch, not touched):** `Admin.downgrade.test.tsx` → "an upgrade / the same plan
-  never reads the accounts and never opens the dialog" — `changePlan` called 1 time, 2 expected (CI run 1841, Nov 18; green
-  on the 10 runs before it and 3 of 3 locally). The second plan button is clicked right after the first `changePlan` call
-  is seen, while that change may still be settling. Same family as the ParcelScan race (wait for the button to be ready).
+- ✅ **`Admin.downgrade.test.tsx` flake (CI run 1841) — fixed on `claude/pc711-duty-card`, tests only:** the panel takes no
+  new tap until a plan change has finished; the test tapped the second plan right after the first change was SENT. Proven:
+  make `changePlan` answer 30 ms later → "called 1 time, 2 expected" every run. The test now forces that delay in every run
+  and repeats the second tap until the panel takes it. NOT the toast-timer cause below.
+
+## 2026-11-18 — PICKUP STATUS TOAST TIMERS (CI run 1843) + "WHO IS CHECKING" CARD PICTURES (branch `claude/pc711-duty-card`, NOT merged; no SQL; no Render)
+- **CI run 1843 (main):** all 9,543 tests passed, then 1 unhandled error "window is not defined" — the 1.5 s "Copied" toast
+  timer of `screens/ParcelTracking.tsx` fired after the test page was gone. The screen had three toast timers nobody stopped.
+  **Fix:** every toast goes through `showToast`; each toast still hides after its own time (nothing the seller sees changed —
+  an older toast's timer still hides a newer toast, kept on purpose); the screen stops every pending one when it closes
+  (`toastTimers`), and an answer that arrives after the screen closed starts no new one (`screenOpen`).
+  Test `ParcelTracking.toastTimers.test.tsx`: `withThePageGone` removes `window` and runs the clock — any late state update
+  throws the CI error. On main's old file 9 of its 12 tests fail.
+- 🔑 **PATTERN:** `setTimeout(() => setX(...))` in a screen with no clean-up = the same CI error whenever a test file ends
+  inside the timer's time. Still in 10 other files (16 places, e.g. ParcelScan 6, InviteFriends 2) — NOT touched here.
+- **"Who is checking" card = PICTURES ONLY, nothing built:** `docs/design/pc711-duty-card/` (README = states, placement,
+  reused styles, the planned read-only route `GET /admin/pc711/duty`, refresh every 30 s while the panel is open).
+  Waiting for Jeff's approval. Production today: sql/179 is NOT applied (no `pc711_backup_state` / `_log`, no switch row) →
+  the card would show grey "Backup: off"; the lease's machine label is "Lenovo".
