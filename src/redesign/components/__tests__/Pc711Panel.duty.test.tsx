@@ -159,7 +159,7 @@ describe("logged out: the \"checks are paused\" sentence", () => {
 
 describe("Telegram alerts card", () => {
   it("its text names the take-over and hand-back alerts too — in every state of the panel", async () => {
-    const TEXT = "You get a Telegram message when the server is logged out of 7-11 and when it is logged in again. You also get one when the server takes over the checks because the Lenovo stopped, and when the Lenovo is back.";
+    const TEXT = "You get a Telegram message when the server is logged out of 7‑11 and when it is logged in again. You also get one when the server takes over the checks because the Lenovo stopped, and when the Lenovo is back.";
     for (const s of [CONNECTED, LOGGED_OUT, { state: "not_connected" }]) {
       const r = await open(s, { body: duty() });
       expect(screen.getByTestId("pc711-alert").textContent).toBe(`Telegram alerts${TEXT}Send test alert`);
@@ -171,6 +171,7 @@ describe("Telegram alerts card", () => {
     const line = src.split("\n").find((l) => l.trimStart().startsWith("rd_pc711_al_sub:"))!;
     expect(line.match(/You also get one when the server takes over the checks because the Lenovo stopped, and when the Lenovo is back\./g)).toHaveLength(8);
     expect(line).not.toContain("7-11, and when it is logged in again.");
+    expect(line).not.toContain("7-11");                                  // "7‑11" is written so that it never breaks over two lines
   });
 });
 

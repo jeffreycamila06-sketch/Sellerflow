@@ -65,6 +65,12 @@ export function isMissingTable(error) {
 
 const reasonOf = (v) => (DUTY_REASONS.includes(v) ? v : null);
 
+/** A database error code as it may be logged: 5 capitals / digits (SQLSTATE) or PGRST + 3 digits. Pure. */
+export function codeWord(code) {
+  const c = typeof code === "string" ? code : "";
+  return /^[0-9A-Z]{5}$/.test(c) || /^PGRST\d{3}$/.test(c) ? c : "error";
+}
+
 /** The last FINISHED take-over: the newest hand-back / switch-off row, and the newest take-over row
  *  before it. rows = the newest "duty" rows of the log, newest first. When the log no longer holds
  *  the pair and the server is not on duty now, the state row's own times are used. Pure. */
@@ -148,10 +154,12 @@ export function createDutyReader({ db, loginState = () => null, now = Date.now, 
   let running = null;    // the read in flight
   let count = { since: null, lastId: 0, ids: new Set() };
   let saidAt = -Infinity;
-  const say = (word) => {
+  // at most one line a minute; the only detail is the database's error CODE in its fixed shape
+  // ("57014", "PGRST205") — anything else is the word "error" (never the database's own sentence)
+  const say = (code) => {
     if (now() - saidAt < 60 * 1000) return;
     saidAt = now();
-    try { log(`${TAG} read failed ${String(word || "error").replace(/[^A-Za-z0-9_]/g, "").slice(0, 16) || "error"}`); } catch { /* a log never fails the answer */ }
+    try { log(`${TAG} read failed ${codeWord(code)}`); } catch { /* a log never fails the answer */ }
   };
 
   async function countAnswered(since) {
@@ -183,7 +191,7 @@ export function createDutyReader({ db, loginState = () => null, now = Date.now, 
     let answered = null, more = false;
     if (since) {
       // the count never fails the answer: a read error = no number this time
-      try { ({ answered, more } = await countAnswered(since)); } catch (e) { answered = null; more = false; say((e && e.code) || "count"); }
+      try { ({ answered, more } = await countAnswered(since)); } catch (e) { answered = null; more = false; say(e && e.code); }
     } else {
       count = { since: null, lastId: 0, ids: new Set() };
     }
@@ -198,7 +206,7 @@ export function createDutyReader({ db, loginState = () => null, now = Date.now, 
       if (!running) {
         running = read().then(
           (answer) => { cache = { at: now(), answer }; running = null; return answer; },
-          (e) => { running = null; say((e && e.code) || "error"); throw e; },
+          (e) => { running = null; say(e && e.code); throw e; },
         );
       }
       return running;

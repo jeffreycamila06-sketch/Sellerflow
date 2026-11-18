@@ -199,6 +199,18 @@ describe("C — when the server is asked", () => {
     expect(dutyCalls()).toBe(2);
     r.unmount();
   });
+  it("the browser says \"in front\" again while the page already is → no second timer, no extra read", async () => {
+    const r = render(<Probe />);
+    await settle();
+    expect(vi.getTimerCount()).toBe(1);
+    for (let i = 0; i < 5; i++) act(() => { document.dispatchEvent(new Event("visibilitychange")); });   // still "visible"
+    expect(vi.getTimerCount()).toBe(1);
+    await tick(30_000);
+    expect(dutyCalls()).toBe(2);
+    await tick(30_000);
+    expect(dutyCalls()).toBe(3);
+    r.unmount();
+  });
   it("the page is hidden when the panel opens → nothing is asked until it is in front", async () => {
     vis = "hidden";
     const r = render(<Probe />);
@@ -218,6 +230,20 @@ describe("C — when the server is asked", () => {
     await tick(29_999);
     vis = "hidden";                                      // hidden, and the page did not tell us (no event)
     await tick(10_000);
+    expect(dutyCalls()).toBe(1);
+    r.unmount();
+  });
+  it("an answer that arrives while the page is hidden is shown, but plans no further read", async () => {
+    const h = hold();
+    next.push({ hold: h.p, body: answer(ON_DUTY) });
+    const r = render(<Probe />);
+    await settle();
+    setInFront(false);
+    h.release();
+    await settle();
+    expect(kind(r)).toBe("duty");
+    expect(vi.getTimerCount()).toBe(0);
+    await tick(10 * 60_000);
     expect(dutyCalls()).toBe(1);
     r.unmount();
   });
@@ -272,9 +298,16 @@ describe("C — when the server is asked", () => {
     next.push({ body: { something: "else" } });
     await tick(30_000);
     expect(kind(r)).toBe("failed");
+    // a refused request is never read as an answer, even when its body looks like one
+    next.push({ ok: false, status: 500, body: answer(ON_DUTY) });
+    await tick(30_000);
+    expect(kind(r)).toBe("failed");
+    next.push({ ok: false, status: 403, body: answer() });
+    await tick(30_000);
+    expect(kind(r)).toBe("failed");
     await tick(30_000);
     expect(kind(r)).toBe("normal");
-    expect(dutyCalls()).toBe(5);
+    expect(dutyCalls()).toBe(7);
     r.unmount();
   });
 });
@@ -288,11 +321,17 @@ describe("C — after the panel closes nothing is left", () => {
     return () => { if (d) Object.defineProperty(globalThis, "window", d); };
   };
   it("no timer, no listener, no request", async () => {
+    const added = vi.spyOn(document, "addEventListener");
+    const removed = vi.spyOn(document, "removeEventListener");
+    const ours = (spy: typeof added) => spy.mock.calls.filter((c) => c[0] === "visibilitychange").map((c) => c[1]);
     const r = render(<Probe />);
     await settle();
     expect(vi.getTimerCount()).toBe(1);
+    expect(ours(added)).toHaveLength(1);
     r.unmount();
     expect(vi.getTimerCount()).toBe(0);
+    expect(ours(removed as unknown as typeof added)).toEqual(ours(added));   // the very same listener is taken away
+    added.mockRestore(); removed.mockRestore();
     vis = "hidden"; document.dispatchEvent(new Event("visibilitychange"));
     vis = "visible"; document.dispatchEvent(new Event("visibilitychange"));
     expect(vi.getTimerCount()).toBe(0);

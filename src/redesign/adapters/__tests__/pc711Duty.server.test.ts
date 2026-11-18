@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import express from "express";
 import { readFileSync } from "node:fs";
 import {
-  machineLabel, parseLease, isMissingTable, lastTakeOver, dutyAnswer, isoOrNull,
+  machineLabel, parseLease, isMissingTable, lastTakeOver, dutyAnswer, isoOrNull, codeWord,
   createDutyDb, createDutyReader, createDutyHandler,
   DUTY_PAGE, DUTY_MAX_PAGES, DUTY_CACHE_MS, DUTY_LOG_ROWS, DUTY_LEASE_KEY, DUTY_SWITCH_KEY, DUTY_ANSWER_KINDS,
 } from "../../../../server/pc711Duty.js";
@@ -331,10 +331,15 @@ describe("D — one read serves many requests; a failed read is clean", () => {
       const h = reader(tables, { logs });
       await expect(h.r.get()).rejects.toBeTruthy();
       expect(logs).toHaveLength(1);
-      expect(logs[0]).toMatch(/^\[PC711_DUTY\] read failed [A-Za-z0-9_]{1,16}$/);
+      expect(logs[0]).toMatch(/^\[PC711_DUTY\] read failed ([0-9A-Z]{5}|PGRST\d{3})$/);
       // a failed read is not kept: the next request reads again (and the log says so at most once a minute)
+      const readsSoFar = h.calls.length;
       await expect(h.r.get()).rejects.toBeTruthy();
+      expect(h.calls.length).toBeGreaterThan(readsSoFar);
       expect(logs).toHaveLength(1);
+      h.nowRef.ms += 60_001;
+      await expect(h.r.get()).rejects.toBeTruthy();
+      expect(logs).toHaveLength(2);
     }
   });
   it("no database client at all → the request fails (never a made-up \"off\")", async () => {
@@ -423,10 +428,15 @@ describe("F — nothing private in the answer", () => {
     const h = reader({ app_settings: { code: "XX000", message: `could not read row of ${NAME} ${PHONE} store ${STORE} ${TRACK}` } }, { logs });
     await expect(h.r.get()).rejects.toBeTruthy();
     expect(logs).toEqual(["[PC711_DUTY] read failed XX000"]);
-    const logs2: string[] = [];
-    const h2 = reader({ app_settings: { message: `${NAME} ${PHONE}` } }, { logs: logs2 });
-    await expect(h2.r.get()).rejects.toBeTruthy();
-    expect(logs2).toEqual(["[PC711_DUTY] read failed error"]);
+    // no code, or a "code" that is not a database code (it could be anything) → the word "error"
+    for (const code of [undefined, PHONE, `${NAME}`, STORE, TRACK, "x".repeat(40), "42p01", 42501]) {
+      const logs2: string[] = [];
+      const h2 = reader({ app_settings: { code: code as never, message: `${NAME} ${PHONE}` } }, { logs: logs2 });
+      await expect(h2.r.get()).rejects.toBeTruthy();
+      expect(logs2, String(code)).toEqual(["[PC711_DUTY] read failed error"]);
+    }
+    expect(["57014", "42P01", "XX000", "PGRST205"].map(codeWord)).toEqual(["57014", "42P01", "XX000", "PGRST205"]);
+    expect([PHONE, STORE, TRACK, NAME, "", null, undefined, 5, "PGRST20", "pgrst205", "4250"].map(codeWord)).toEqual(Array(11).fill("error"));
   });
 });
 

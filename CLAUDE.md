@@ -5491,7 +5491,35 @@ Server only, no new request to 7-11, no rule changed (the extension's order, res
   throws the CI error. On main's old file 9 of its 12 tests fail.
 - 🔑 **PATTERN:** `setTimeout(() => setX(...))` in a screen with no clean-up = the same CI error whenever a test file ends
   inside the timer's time. Still in 10 other files (16 places, e.g. ParcelScan 6, InviteFriends 2) — NOT touched here.
-- **"Who is checking" card = PICTURES ONLY, nothing built:** `docs/design/pc711-duty-card/` (README = states, placement,
-  reused styles, the planned read-only route `GET /admin/pc711/duty`, refresh every 30 s while the panel is open).
-  Waiting for Jeff's approval. Production today: sql/179 is NOT applied (no `pc711_backup_state` / `_log`, no switch row) →
-  the card would show grey "Backup: off"; the lease's machine label is "Lenovo".
+- **"Who is checking" card — BUILT (pictures approved Nov 18):** see the next block.
+
+## 2026-11-18 — ADMIN 7-11 LOGIN: "WHO IS CHECKING" CARD (branch `claude/pc711-duty-card`, NOT merged; no SQL; needs a Render deploy for the route)
+Admin only. Says who does the 7-11 checks now: the checker laptop (extension) or the server (backup checker, sql/179).
+- **Card (`components/Pc711DutyCard.tsx`, texts `rd_pc711_duty_*` — the same English in all 8 languages):** four states —
+  green "The Lenovo is checking · Server: standby" + the Lenovo's last call · orange "The server is checking now" + since /
+  why / parcels answered in this duty · red = the same + "The server is logged out. Log in above." · grey "Backup: off" +
+  the Lenovo's last call. Under it one small line: the last finished take-over (nothing when there was none).
+  Read failed → "Couldn't read who is checking." (never "Backup: off"). No button.
+- **Where:** in `Pc711Panel.tsx`, under the top card and its button(s), above Telegram alerts — connected, logged out,
+  not connected, no session key. Not inside the two login steps.
+- **Refresh (`adapters/pc711Duty.ts` `usePc711Duty(open)`):** once when the status view opens, then every 30 s while the
+  page is in front (`DUTY_REFRESH_MS`); a hidden page asks nothing; back in front a due read runs at once; one read at a
+  time; every timer and listener is removed on close. The "… ago" numbers count by themselves (server's clock, `skewMs`).
+- **Route `GET /admin/pc711/duty` (`server/pc711Duty.js`, MANUAL Render deploy):** requireAuth → requireAdmin, the panel's
+  status limiter. READ ONLY: selects on `app_settings` (the lease `parcel_check_worker_lease` + the switch
+  `pc711_backup_enabled`), `pc711_backup_state`, `pc711_backup_log`. It calls NO database function (never
+  `pc711_backup_duty`, which writes) and writes nothing. Answer = fixed keys, counts and times only
+  (`backup, onDuty, loggedOut, reason, since, answered, answeredMore, checker{label,lastCallAt}, last{start,end,reason}, now`).
+  The only free text is the checker laptop's device label, answered only as one plain word ("Lenovo") or the extension's
+  default "<platform> <4 chars>" (`machineLabel`); else "" → "the checker laptop".
+  Tables missing (sql/179 not applied) or switch not exactly 'true' → `backup: "off"`. Any other read error → 500
+  (never a made-up "off"). Parcels of a duty = distinct `scan_id` with a `written` store / phone / frozen row since the duty
+  started, read 1,000 rows a page, continued from the last answer (the ids stay in server memory). One answer is kept 10 s.
+- **Two changes next to it:** the logged-out card hides "Store and phone checks are paused…" while the server is on duty
+  (`serverOnDuty`); the Telegram alerts sentence (`rd_pc711_al_sub`) also names the take-over and hand-back alerts.
+- **Before the Render deploy** the card says "Couldn't read who is checking." (the route is not there yet); the rest of the
+  panel is unchanged. **Today in production** sql/179 is not applied → after the deploy the card shows grey "Backup: off".
+- Pictures of the real card: `docs/design/pc711-duty-card/` (360 / 390 / 430 / 1280 px, dark, other panel states).
+- Tests: `pc711Duty.server.test.ts` (the route; the server's REAL `requireAdmin` lifted from server.js refuses a non-admin
+  with zero reads), `pc711Duty.test.tsx` (the 30 s refresh, hidden page), `Pc711DutyCard.test.tsx`, `Pc711Panel.duty.test.tsx`.
+- No help-guide change: the panel is Admin only (sellers never see it).
