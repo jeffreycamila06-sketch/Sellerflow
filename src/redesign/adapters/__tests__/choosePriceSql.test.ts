@@ -47,7 +47,7 @@ describe("sql/180 contract", () => {
     expect(down).toContain("drop function if exists public.seller_price_choices_distinct(numeric[]);");
     expect((down.match(/drop /g) || []).length).toBe(2);
   });
-  it("the app writes only what the table takes: user_id, enabled, prices, updated_at (+ show_free, sql/182, only when it is ON or being changed)", () => {
+  it("the app writes only what the table takes: user_id, enabled, prices, updated_at (+ show_free, sql/184, only when it is ON or being changed)", () => {
     const hook = readFileSync("src/redesign/adapters/useChoosePrice.ts", "utf8");
     expect(hook).toContain("const row: Record<string, unknown> = { user_id: uid, enabled: nextEnabled, prices: nextPrices, updated_at: new Date().toISOString() };");
     expect(hook).toContain("if (free.send) row.show_free = free.next;");
@@ -57,21 +57,21 @@ describe("sql/180 contract", () => {
   });
 });
 
-// sql/182 — "Show Free button": one add-only column on seller_price_choices.
-describe("sql/182 contract", () => {
-  const up182 = code(read("182_choose_price_free.sql"));
-  const down182 = code(read("182_choose_price_free_rollback.sql"));
+// sql/184 — "Show Free button": one add-only column on seller_price_choices.
+describe("sql/184 contract", () => {
+  const up184 = code(read("184_choose_price_free.sql"));
+  const down184 = code(read("184_choose_price_free_rollback.sql"));
   it("ONE statement inside a transaction: add the column if it is not there, default false (nobody is switched on)", () => {
-    expect(up182.trimStart().startsWith("begin;")).toBe(true);
-    expect(up182.trimEnd().endsWith("commit;")).toBe(true);
-    const stmts = up182.split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x && x !== "begin" && x !== "commit");
+    expect(up184.trimStart().startsWith("begin;")).toBe(true);
+    expect(up184.trimEnd().endsWith("commit;")).toBe(true);
+    const stmts = up184.split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x && x !== "begin" && x !== "commit");
     expect(stmts).toEqual(["alter table public.seller_price_choices add column if not exists show_free boolean not null default false"]);
   });
   it("touches nothing else: no order / session table, no drop, no update of existing rows, no policy or grant change", () => {
-    expect(up182).not.toMatch(/live_session_orders|\borders\b|seller_same_price|drop |update |delete |truncate|policy|grant|revoke/);
+    expect(up184).not.toMatch(/live_session_orders|\borders\b|seller_same_price|drop |update |delete |truncate|policy|grant|revoke/);
   });
   it("the rollback only removes that column (safe when it is already gone)", () => {
-    const stmts = down182.split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x && x !== "begin" && x !== "commit");
+    const stmts = down184.split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x && x !== "begin" && x !== "commit");
     expect(stmts).toEqual(["alter table public.seller_price_choices drop column if exists show_free"]);
   });
 });

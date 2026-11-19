@@ -5718,7 +5718,7 @@ create the order at once). ON = a price pop-up before each 1-Click and each auto
   `GeneralSettings.choosePrice.test.tsx`, `scripts/sql180-behaviour.mjs` (PGlite, 26 checks). Pictures: `docs/design/choose-price/`.
 - **Order:** apply sql/180 → merge (Vercel) → apply sql/181 (guide, 5 rows).
 
-## 2026-11-19 — "FREE" BUTTON for Choose price before print (branch `claude/choose-price-free`, NOT merged; sql/182 + sql/183 NOT applied; no Render)
+## 2026-11-19 — "FREE" BUTTON for Choose price before print (branch `claude/choose-price-free`; renumbered 182/183→184/185 at merge because main took sql/182 for the FamilyMart fix; sql/184 + sql/185 NOT applied; no Render)
 Web only. Settings → Live setup → Choose price before print → **Show Free button** (default OFF). ON = the price
 pop-up shows a green **Free** cell, always last, never the default. One tap = an order at price 0 whose sticker
 prints **FREE** (English in every language) where a price prints.
@@ -5732,10 +5732,10 @@ prints **FREE** (English in every language) where a price prints.
 - **Same guards as a price tap:** the sheet's `send(price, soldOutOk, free)` — 400 ms tap guard, per-item double-tap
   guard, blocked keeps the sheet, sold-out question (answered → `onPick(0, true, true)`), free-limit drop.
   A price tap still calls `onPick(price, soldOutOk)` with two arguments.
-- **Switch storage:** `seller_price_choices.show_free` (**sql/182**, add-only, default false, rollback). `useChoosePrice`
-  → `showFree` / `setShowFree`. SAFE IN EITHER ORDER with sql/182: the read is `select("*")` (no column = OFF); a save
+- **Switch storage:** `seller_price_choices.show_free` (**sql/184**, add-only, default false, rollback). `useChoosePrice`
+  → `showFree` / `setShowFree`. SAFE IN EITHER ORDER with sql/184: the read is `select("*")` (no column = OFF); a save
   sends `show_free` ONLY when it is ON or is the thing being changed — a seller who never touches it sends the same
-  request as before; turning it on before sql/182 = the normal "Couldn't save" + back to OFF. The localStorage copy
+  request as before; turning it on before sql/184 = the normal "Couldn't save" + back to OFF. The localStorage copy
   gets `showFree: true` only when ON (an old copy reads OFF).
 - **"Free" word instead of a 0 amount** (`rd_cpp_free`, 8 languages, green `--ok`): Orders row (`ord-free`), the buyer
   card line, the Orders export Amount cell. Totals unchanged: Today / Sales count it as +1 order, +0 revenue.
@@ -5755,6 +5755,6 @@ prints **FREE** (English in every language) where a price prints.
   the Free call and the price call on one line).
 - Proof: `freeSticker.proof.test.ts` (every picture path × size × QR, text-sticker commands, laptop),
   `freeOrder.flow.test.tsx`, `choosePrice.app.test.tsx` "Free button", `Orders.free.test.tsx`,
-  `GeneralSettings.chooseFree.test.tsx`, `scripts/sql182-behaviour.mjs` (PGlite, 23 checks). Pictures:
+  `GeneralSettings.chooseFree.test.tsx`, `scripts/sql184-behaviour.mjs` (PGlite, 23 checks). Pictures:
   `docs/design/choose-price-free/`. Printing map: row 35 + the P13 trigger row.
-- **Order:** merge (Vercel) and sql/182 in either order → sql/183 (guide: choose-price, orders-search, tiktok-send).
+- **Order:** merge (Vercel) and sql/184 in either order → sql/185 (guide: choose-price, orders-search, tiktok-send).

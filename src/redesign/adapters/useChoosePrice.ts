@@ -11,8 +11,8 @@
 //   prices  — kept while OFF. First = the default (highlighted in the pop-up).
 //   active  — enabled && prices.length > 0 → the pop-up asks before each 1-Click / pin print.
 //             RedesignApp also requires "Same price" to be OFF (only one can be on).
-//   showFree — "Show Free button" (sql/182 column show_free, default false). Kept while the
-//             switch is OFF; not one of the prices. SAFE BEFORE sql/182: the read asks for the
+//   showFree — "Show Free button" (sql/184 column show_free, default false). Kept while the
+//             switch is OFF; not one of the prices. SAFE BEFORE sql/184: the read asks for the
 //             whole row (a missing column simply reads as OFF) and a save sends `show_free` ONLY
 //             when it is ON or is the thing being changed — a seller who never touches it sends
 //             exactly the request sent before this switch existed.
@@ -126,7 +126,7 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
     void (async () => {
       const { data, error } = await supabase
         .from("seller_price_choices")
-        .select("*")   // the whole row: before sql/182 there is no show_free column and it reads as OFF
+        .select("*")   // the whole row: before sql/184 there is no show_free column and it reads as OFF
         .eq("user_id", uid)
         .maybeSingle();
       if (!alive) return;

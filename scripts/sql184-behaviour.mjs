@@ -1,20 +1,20 @@
-// Runs sql/180 then sql/182 (+ its rollback) on a real Postgres (PGlite, WASM) with a stub auth schema.
-// Proves: before sql/182 a save WITH show_free is refused and a save WITHOUT it works (the app's two
-// requests); sql/182 applies twice; existing rows read show_free = false and keep their values; a
+// Runs sql/180 then sql/184 (+ its rollback) on a real Postgres (PGlite, WASM) with a stub auth schema.
+// Proves: before sql/184 a save WITH show_free is refused and a save WITHOUT it works (the app's two
+// requests); sql/184 applies twice; existing rows read show_free = false and keep their values; a
 // signed-in seller reads / saves show_free on their OWN row only (the sql/180 grants and policies
 // cover the new column) and a visitor has no access; a save without the key keeps the stored value;
-// the rollback removes only the column and can run twice; sql/182 applies again after it.
+// the rollback removes only the column and can run twice; sql/184 applies again after it.
 // Not part of CI (PGlite is not a dependency). Run from a scratch folder:
-//   mkdir /tmp/pg182 && cd /tmp/pg182 && npm i @electric-sql/pglite@0.2.17
-//   cp <repo>/scripts/sql182-behaviour.mjs . && node sql182-behaviour.mjs <repo>/sql
+//   mkdir /tmp/pg184 && cd /tmp/pg184 && npm i @electric-sql/pglite@0.2.17
+//   cp <repo>/scripts/sql184-behaviour.mjs . && node sql184-behaviour.mjs <repo>/sql
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 
 const dir = process.argv[2];
-if (!dir) { console.error("usage: node sql182-behaviour.mjs <repo>/sql"); process.exit(2); }
+if (!dir) { console.error("usage: node sql184-behaviour.mjs <repo>/sql"); process.exit(2); }
 const BASE = readFileSync(`${dir}/180_choose_price.sql`, "utf8");
-const UP = readFileSync(`${dir}/182_choose_price_free.sql`, "utf8");
-const DOWN = readFileSync(`${dir}/182_choose_price_free_rollback.sql`, "utf8");
+const UP = readFileSync(`${dir}/184_choose_price_free.sql`, "utf8");
+const DOWN = readFileSync(`${dir}/184_choose_price_free_rollback.sql`, "utf8");
 const db = new PGlite();
 let pass = 0, fail = 0;
 const ok = (c, msg) => { if (c) { pass++; console.log(`ok   ${msg}`); } else { fail++; console.log(`FAIL ${msg}`); } };
@@ -44,18 +44,18 @@ insert into auth.users values ('${A}'), ('${B}');
 `);
 await db.exec(BASE);
 
-// ── BEFORE sql/182 (the web app is updated first) ──
+// ── BEFORE sql/184 (the web app is updated first) ──
 await as("authenticated", A, async () => {
   await db.exec(plain(A, true, "{39,59}"));
-  ok(true, "before 182: the plain save (no show_free) works — a seller who never touches the switch");
-  await refused(withFree(A, true, "{39,59}", true), "before 182: a save WITH show_free");
+  ok(true, "before 184: the plain save (no show_free) works — a seller who never touches the switch");
+  await refused(withFree(A, true, "{39,59}", true), "before 184: a save WITH show_free");
   const r = (await db.query(`select * from ${T}`)).rows[0];
-  ok(r.enabled === true && !("show_free" in r), "before 182: the row is unchanged and has no show_free (reads as OFF in the app)");
+  ok(r.enabled === true && !("show_free" in r), "before 184: the row is unchanged and has no show_free (reads as OFF in the app)");
 });
 
 // ── apply, twice ──
-await db.exec(UP); ok(true, "sql/182 applies");
-await db.exec(UP); ok(true, "sql/182 applies a second time (nothing breaks)");
+await db.exec(UP); ok(true, "sql/184 applies");
+await db.exec(UP); ok(true, "sql/184 applies a second time (nothing breaks)");
 ok((await cols()).join(",") === "user_id,enabled,prices,updated_at,show_free", "one new column, at the end");
 const before = (await db.query(`select enabled, prices::text as p, show_free from ${T} where user_id='${A}'`)).rows[0];
 ok(before.show_free === false && before.enabled === true && before.p === "{39,59}", "the existing row: show_free false, switch and prices kept");
@@ -90,7 +90,7 @@ const kept = (await db.query(`select enabled, prices::text as p from ${T} where 
 ok(kept.enabled === false && kept.p === "{59,39}", "the row's switch and prices are untouched by the rollback");
 await as("authenticated", A, async () => { await db.exec(plain(A, true, "{39}")); ok(true, "after the rollback the plain save still works"); });
 await db.exec(UP);
-ok((await db.query(`select show_free from ${T} where user_id='${A}'`)).rows[0].show_free === false, "sql/182 applies again after the rollback (OFF for everyone)");
+ok((await db.query(`select show_free from ${T} where user_id='${A}'`)).rows[0].show_free === false, "sql/184 applies again after the rollback (OFF for everyone)");
 
 console.log(`\n${pass} PASS, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

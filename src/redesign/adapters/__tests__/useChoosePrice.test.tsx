@@ -223,7 +223,7 @@ describe("ready at app start — the copy kept on the device, per user", () => {
   });
 });
 
-// ── "Show Free button" (sql/182 column show_free) ──────────────────────────────────────────────
+// ── "Show Free button" (sql/184 column show_free) ──────────────────────────────────────────────
 describe("Show Free button", () => {
   const ready = async (uid: string | null = "u1") => {
     const h = renderHook(() => useChoosePrice(uid));
@@ -282,7 +282,7 @@ describe("Show Free button", () => {
     expect(JSON.parse(localStorage.getItem(choiceCacheKey("u1"))!)).toEqual({ enabled: true, prices: [39] });
   });
 
-  it("the save fails (e.g. before sql/182) → back to OFF, the error is counted, nothing else changes, nothing is remembered", async () => {
+  it("the save fails (e.g. before sql/184) → back to OFF, the error is counted, nothing else changes, nothing is remembered", async () => {
     maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39, 59] }, error: null });
     const { result } = await ready();
     upsert.mockResolvedValue({ error: { message: "column show_free does not exist" } });

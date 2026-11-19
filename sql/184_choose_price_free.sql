@@ -1,4 +1,4 @@
--- 182 — "Show Free button" for Choose price before print (sql/180).
+-- 184 — "Show Free button" for Choose price before print (sql/180).
 -- NOT APPLIED. ADD-ONLY: one new column on seller_price_choices, default false — nobody is
 -- switched on by this file, no existing row changes its meaning. No order / session table is
 -- touched. Safe to run twice (the second run changes nothing).
@@ -13,7 +13,7 @@
 --   web first  → the switch reads OFF; turning it on fails with the normal "Couldn't save" line
 --                and goes back to OFF. A seller who never touches it sends the same request as before.
 --   this first → nothing reads the column until the web app is updated.
--- Rollback: sql/182_choose_price_free_rollback.sql
+-- Rollback: sql/184_choose_price_free_rollback.sql
 begin;
 
 alter table public.seller_price_choices
