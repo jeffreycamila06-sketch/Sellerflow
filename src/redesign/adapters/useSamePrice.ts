@@ -55,8 +55,9 @@ export interface UseSamePrice {
   loading: boolean;
   // Toggle. ON comes from the Settings sheet's "Turn on" with the typed `draft`
   // price (committed with it); ON with no valid price is a no-op. OFF keeps the
-  // price remembered.
-  setEnabled: (on: boolean, draft?: unknown) => Promise<void>;
+  // price remembered. Answers true when the change was kept, false when it was refused (no
+  // price) or the save failed and the value went back.
+  setEnabled: (on: boolean, draft?: unknown) => Promise<boolean>;
   // Bumps when a DB write fails; the optimistic value REVERTS (the DB is the
   // cross-device source of truth). The UI watches this to show a notice.
   saveErrors: number;
@@ -96,10 +97,10 @@ export function useSamePrice(): UseSamePrice {
     return () => { active = false; };
   }, [uid]); // READ-ON-LOAD ONLY — no interval/poll
 
-  const persist = useCallback(async (nextEnabled: boolean, nextPrice: number | null, prevEnabled: boolean, prevPrice: number | null) => {
-    if (!isSupabaseConfigured || !supabase) return;
+  const persist = useCallback(async (nextEnabled: boolean, nextPrice: number | null, prevEnabled: boolean, prevPrice: number | null): Promise<boolean> => {
+    if (!isSupabaseConfigured || !supabase) return true;
     const id = await uid();
-    if (!id) return;
+    if (!id) return true;
     const { error } = await supabase
       .from("seller_same_price")
       .upsert({ user_id: id, enabled: nextEnabled, same_price: nextPrice, updated_at: new Date().toISOString() });
@@ -107,15 +108,17 @@ export function useSamePrice(): UseSamePrice {
       log.error("Same-price save error:", error.message);
       setEnabledState(prevEnabled); setPriceState(prevPrice); // revert — DB is source of truth
       setSaveErrors((c) => c + 1);
+      return false;
     }
+    return true;
   }, [uid]);
 
   const setEnabled = useCallback(async (on: boolean, draft?: unknown) => {
     const p = draft !== undefined ? normalizeSamePrice(draft) : price;
-    if (on && !canEnableSamePrice(p)) return; // blocked — UI shows "Enter a price first"
+    if (on && !canEnableSamePrice(p)) return false; // blocked — UI shows "Enter a price first"
     const prevEnabled = enabled, prevPrice = price;
     setEnabledState(on); if (draft !== undefined) setPriceState(p); // optimistic
-    await persist(on, p, prevEnabled, prevPrice);
+    return persist(on, p, prevEnabled, prevPrice);
   }, [enabled, price, persist]);
 
   return { enabled, price, active: activeSamePrice(enabled, price), loading, setEnabled, saveErrors };

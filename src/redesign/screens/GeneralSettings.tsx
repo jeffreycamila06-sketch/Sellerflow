@@ -10,6 +10,7 @@ import { profileToDisplay, planLabel } from "../adapters/useAuthSession";
 import { useLang } from "../i18n/langContext";
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import { normalizeSamePrice, canEnableSamePrice } from "../adapters/useSamePrice";
+import { addChoicePrice, removeChoicePrice, makeDefaultPrice, normalizeChoicePrice, type AddPriceResult } from "../adapters/useChoosePrice";
 import LiveSettingModal from "../components/LiveSettingModal";
 import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
@@ -34,7 +35,7 @@ const rowTitle: CSSProperties = { fontSize: 13.5, fontWeight: 700, color: "var(-
 const rowSub: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)" };
 
 // ── Live session rows (approved mockup): title + toggle / value / chevron only ──
-type LsKey = "awake" | "pin" | "auto" | "sp";
+type LsKey = "awake" | "pin" | "auto" | "sp" | "cpp";
 const lsRow: CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "15px 14px", borderBottom: "1px solid var(--border)", minHeight: 56, boxSizing: "border-box" };
 const lsLabel: CSSProperties = { flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: "var(--text)" };
 const lsVal: CSSProperties = { fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-mono)", flexShrink: 0 };
@@ -67,6 +68,7 @@ export default function GeneralSettings({
   keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, deductOneClick = false, onToggleDeductOneClick,
   liveSessionOpen, onToggleLiveSession,
   cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
+  choosePriceEnabled = false, choosePrices = [], onSetChoosePriceEnabled, onSetChoosePrices, choosePriceError = 0,
   onToast,
   motionOn = true, onToggleMotion,
   onBack,
@@ -98,7 +100,14 @@ export default function GeneralSettings({
   // across OFF). onSetSamePriceEnabled(on, draft): ON comes only from the modal's
   // "Turn on" (commits the typed price; blocked when no price > 0).
   samePriceEnabled?: boolean; samePrice?: number | null;
-  onSetSamePriceEnabled?: (on: boolean, draft?: unknown) => void; samePriceError?: number;
+  // (the handler may answer false = "not saved": then the other switch is left alone)
+  onSetSamePriceEnabled?: (on: boolean, draft?: unknown) => void | boolean | Promise<boolean | void>; samePriceError?: number;
+  // "Choose price before print" — ON/OFF + up to 6 saved prices (first = default). RedesignApp
+  // owns useChoosePrice. No handler → no row. Only one of this and Same price is ON: turning one
+  // on here turns the other off (both keep their saved values) and shows a one-line note.
+  choosePriceEnabled?: boolean; choosePrices?: number[];
+  onSetChoosePriceEnabled?: (on: boolean, prices?: number[]) => void | boolean | Promise<boolean | void>;
+  onSetChoosePrices?: (prices: number[]) => void; choosePriceError?: number;
   // Live-session toggles turned OFF show a bottom toast (RedesignApp's global toast).
   onToast?: (msg: string) => void;
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
@@ -126,12 +135,23 @@ export default function GeneralSettings({
   const spInputRef = useRef<HTMLInputElement>(null);
   const spValid = canEnableSamePrice(normalizeSamePrice(spDraft));
   const spErr = spDraft !== "" && !spValid;
+  // Choose price: the modal's first price (only when the list is empty) + the "add a price" field.
+  const [cppDraft, setCppDraft] = useState("");
+  const cppDraftValid = normalizeChoicePrice(cppDraft) != null;
+  const cppNeedsPrice = choosePrices.length === 0;
+  // If both ever read ON (two devices), Same price wins — here as on the Live screen: this
+  // switch shows OFF (turning it on then turns Same price off, as usual).
+  const cppOn = choosePriceEnabled && !samePriceEnabled;
+  const [cppAdd, setCppAdd] = useState("");
+  const [cppAddErr, setCppAddErr] = useState<Exclude<AddPriceResult, { ok: true }>["reason"] | null>(null);
+  const [exclNote, setExclNote] = useState<string | null>(null); // "… was turned off" (one line)
   const openModal = (k: LsKey) => {
     setModalKey(k); setModalOpen(true);
     if (k === "sp") {
       setSpDraft(samePrice != null && samePrice > 0 ? String(samePrice) : "");
       setTimeout(() => spInputRef.current?.focus(), 220); // after the modal fade-in
     }
+    if (k === "cpp") setCppDraft("");
   };
   const closeModal = () => setModalOpen(false);
   const fmtPrice = (p: number | null) => `${cur}${p != null ? fmtMoney(p) : ""}`;
@@ -141,13 +161,36 @@ export default function GeneralSettings({
     if (k === "awake") { onToggleKeepAwake?.(); onToast?.(t.rd_lss_off_awake); }
     else if (k === "pin") { onTogglePinPrint?.(); onToast?.(t.rd_lss_off_pin); }
     else if (k === "auto") { auto.toggle(); onToast?.(t.rd_lss_off_auto); }
+    else if (k === "cpp") { onSetChoosePriceEnabled?.(false); onToast?.(t.rd_cpp_off_toast); }
     else { onSetSamePriceEnabled?.(false); onToast?.(tpl(t.rd_lss_off_sp, { price: fmtPrice(samePrice) })); }
   };
   // "Turn on" — the only path that flips a Live-session toggle ON. Guarded on
   // modalOpen so a second tap during the fade-out can't flip it back off.
   const turnOn = () => {
     if (!modalOpen || !modalKey) return;
-    if (modalKey === "sp") { if (!spValid) return; onSetSamePriceEnabled?.(true, spDraft); }
+    // Only one of Same price / Choose price is ON. The OTHER one is turned off — and the note is
+    // shown — only AFTER this one was really saved (a failed save changes nothing else).
+    if (modalKey === "sp") {
+      if (!spValid) return;
+      const otherOn = choosePriceEnabled;
+      setExclNote(null);
+      void Promise.resolve(onSetSamePriceEnabled?.(true, spDraft)).then((ok) => {
+        if (ok === false || !otherOn || !onSetChoosePriceEnabled) return;
+        void onSetChoosePriceEnabled(false);          // its prices stay saved
+        setExclNote(t.rd_cpp_note_cpp_off);
+      });
+    }
+    else if (modalKey === "cpp") {
+      const first = normalizeChoicePrice(cppDraft);
+      if (cppNeedsPrice && first == null) return; // an empty list needs a price first
+      const otherOn = samePriceEnabled;
+      setExclNote(null);
+      void Promise.resolve(onSetChoosePriceEnabled?.(true, cppNeedsPrice && first != null ? [first] : choosePrices)).then((ok) => {
+        if (ok === false || !otherOn || !onSetSamePriceEnabled) return;
+        void onSetSamePriceEnabled(false);            // its price stays remembered
+        setExclNote(t.rd_cpp_note_sp_off);
+      });
+    }
     else if (modalKey === "awake") onToggleKeepAwake?.();
     else if (modalKey === "pin") onTogglePinPrint?.();
     else auto.toggle();
@@ -158,7 +201,15 @@ export default function GeneralSettings({
     pin: { icon: ICON_PIN, title: t.rd_set_pinprint, text: t.rd_lss_pin_text },
     auto: { icon: ICON_AUTO, title: t.rd_set_auto_mode, text: t.rd_lss_auto_text },
     sp: { icon: ICON_TAG, title: t.rd_smp_row_title, text: t.rd_lss_sp_text },
+    cpp: { icon: ICON_TAG, title: t.rd_cpp_row_title, text: t.rd_cpp_text },
   };
+  // Choose price list edits (while ON). Add = at the end; ★ = make default (moves to first).
+  const cppAddNow = () => {
+    const r = addChoicePrice(choosePrices, cppAdd);
+    if ("reason" in r) { setCppAddErr(r.reason); return; }
+    setCppAddErr(null); setCppAdd(""); onSetChoosePrices?.(r.prices);
+  };
+  const cppErrText = cppAddErr === "dup" ? t.rd_cpp_err_dup : cppAddErr === "max" ? t.rd_cpp_err_max : cppAddErr === "bad" ? t.rd_cpp_err_bad : "";
   // Same price row value (mono): "NT$199" when ON, "NT$199 saved" when OFF.
   const spRowVal = samePrice != null && samePrice > 0 ? (samePriceEnabled ? fmtPrice(samePrice) : tpl(t.rd_lss_saved, { price: fmtPrice(samePrice) })) : "";
 
@@ -356,7 +407,7 @@ export default function GeneralSettings({
         <div>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_live_session}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-            <button type="button" onClick={toggleLiveOpen} data-testid="ls-header" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+            <button type="button" onClick={() => { setExclNote(null); toggleLiveOpen(); }} data-testid="ls-header" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg></div>
               <div style={{ flex: 1, minWidth: 0 }}><div style={rowTitle}>{t.rd_set_ls_title}</div><div style={{ ...rowSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lsSummary}</div></div>
               <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: liveOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0, display: "inline-block" }}>▾</span>
@@ -399,12 +450,61 @@ export default function GeneralSettings({
               </div>
             )}
             {samePriceError > 0 && <div style={{ padding: "0 14px 12px", fontSize: 11, color: "var(--danger)" }} data-testid="samePrice-error">{t.rd_smp_error}</div>}
+            {/* 6. Choose price before print — directly under Same price. While ON, the price list opens under the switch. */}
+            {onSetChoosePriceEnabled && (
+              <div style={lsRow} data-testid="cpp-row">
+                <span style={lsLabel}>{t.rd_cpp_row_title}</span>
+                <LsToggle on={cppOn} title={t.rd_cpp_row_title} testId="cpp-toggle" onClick={() => lsToggle("cpp", cppOn)} />
+              </div>
+            )}
+            {onSetChoosePriceEnabled && cppOn && (
+              <div data-testid="cpp-area" style={{ padding: "12px 14px 14px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 10 }}>{t.rd_cpp_list_hint}</div>
+                {/* ☆ and × are 44×44 tap targets with a gap between them (one chip per row on phones). */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8, marginBottom: 10 }}>
+                  {choosePrices.map((p, i) => {
+                    const label = `${cur}${fmtMoney(p)}`;
+                    const iconBtn: CSSProperties = { width: 44, height: 44, flexShrink: 0, border: 0, borderRadius: 10, background: "transparent", color: "var(--text-muted)", fontSize: 20, cursor: "pointer", touchAction: "manipulation" };
+                    return (
+                      <div key={p} data-testid={`cpp-chip-${i}`} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 48, minWidth: 0, boxSizing: "border-box", borderRadius: 12, padding: "0 2px 0 12px", border: i === 0 ? "2px solid var(--accent)" : "1.5px solid var(--border-strong)", background: "var(--surface)" }}>
+                        <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--font-mono)", fontSize: [...label].length > 9 ? 13 : 15, fontWeight: 800, color: "var(--text)", whiteSpace: "nowrap" }}>{label}</span>
+                        {i === 0
+                          ? <span data-testid="cpp-default-badge" style={{ flexShrink: 0, marginRight: choosePrices.length > 1 ? 0 : 10, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", borderRadius: 999, padding: "2px 7px" }}>{t.rd_cpp_default}</span>
+                          : <button type="button" onClick={() => onSetChoosePrices?.(makeDefaultPrice(choosePrices, p))} aria-label={tpl(t.rd_cpp_make_default, { price: label })} title={tpl(t.rd_cpp_make_default, { price: label })} data-testid={`cpp-make-default-${i}`}
+                              style={iconBtn}>☆</button>}
+                        {choosePrices.length > 1 && (
+                          <button type="button" onClick={() => onSetChoosePrices?.(removeChoicePrice(choosePrices, p))} aria-label={tpl(t.rd_cpp_remove, { price: label })} title={tpl(t.rd_cpp_remove, { price: label })} data-testid={`cpp-remove-${i}`}
+                            style={iconBtn}>×</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {choosePrices.length < 6 && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div className="sfl-lsm-field" style={{ flex: 1, minWidth: 0, marginBottom: 0, padding: "9px 12px" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)", fontSize: 14 }}>{cur}</span>
+                      <input inputMode="decimal" autoComplete="off" value={cppAdd} placeholder={t.rd_smp_placeholder} aria-label={t.rd_smp_placeholder}
+                        onChange={(e) => { setCppAdd(priceInput(e.target.value, cur)); setCppAddErr(null); }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); cppAddNow(); } }}
+                        data-testid="cpp-add-input"
+                        style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 600, color: "var(--text)", outline: "none", padding: 0 }} />
+                    </div>
+                    <button type="button" onClick={cppAddNow} data-testid="cpp-add-btn" style={{ minWidth: 72, minHeight: 44, border: 0, borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{t.rd_cpp_add}</button>
+                  </div>
+                )}
+                {(cppErrText || choosePrices.length >= 6) && <div data-testid="cpp-add-err" style={{ marginTop: 6, fontSize: 12, color: cppErrText ? "var(--danger)" : "var(--text-muted)" }}>{cppErrText || t.rd_cpp_err_max}</div>}
+                {choosePrices.length === 1 && <div data-testid="cpp-keep-one" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_cpp_keep_one}</div>}
+              </div>
+            )}
+            {choosePriceError > 0 && <div style={{ padding: "8px 14px 12px", fontSize: 11, color: "var(--danger)" }} data-testid="cpp-error">{t.rd_smp_error}</div>}
+            {exclNote && <div data-testid="ls-excl-note" role="status" style={{ padding: "10px 14px", fontSize: 12.5, fontWeight: 600, color: "var(--accent-fg)", lineHeight: 1.4 }}>{exclNote}</div>}
             </div>)}
           </div>
           {/* Centered explainer modal (portaled) — opens only when a Live-session toggle is turned ON */}
           {modalKey && (
             <LiveSettingModal open={modalOpen} icon={MODAL[modalKey].icon} title={MODAL[modalKey].title} text={MODAL[modalKey].text}
-              primaryLabel={t.rd_lss_turn_on} primaryDisabled={modalKey === "sp" && !spValid} onPrimary={turnOn}
+              primaryLabel={t.rd_lss_turn_on} primaryDisabled={(modalKey === "sp" && !spValid) || (modalKey === "cpp" && cppNeedsPrice && !cppDraftValid)} onPrimary={turnOn}
               cancelLabel={t.rd_sp_cancel} onCancel={closeModal}>
               {modalKey === "sp" && (
                 <>
@@ -417,6 +517,19 @@ export default function GeneralSettings({
                       style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 600, color: "var(--text)", outline: "none", padding: 0 }} />
                   </div>
                   <div data-testid="lsm-sp-hint" style={{ fontSize: 12, color: spErr ? "var(--danger)" : "var(--text-muted)", minHeight: 16, marginBottom: 10 }}>{spErr ? t.rd_lss_sp_err : t.rd_lss_sp_hint}</div>
+                </>
+              )}
+              {modalKey === "cpp" && cppNeedsPrice && (
+                <>
+                  <div className="sfl-lsm-field">
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)", fontSize: 14 }}>{cur}</span>
+                    <input inputMode="decimal" autoComplete="off" value={cppDraft} placeholder={t.rd_smp_placeholder} aria-label={t.rd_smp_placeholder}
+                      onChange={(e) => setCppDraft(priceInput(e.target.value, cur))}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); turnOn(); } }}
+                      data-testid="cpp-first-input"
+                      style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 600, color: "var(--text)", outline: "none", padding: 0 }} />
+                  </div>
+                  <div data-testid="cpp-first-hint" style={{ fontSize: 12, color: cppDraft !== "" && !cppDraftValid ? "var(--danger)" : "var(--text-muted)", minHeight: 16, marginBottom: 10 }}>{cppDraft !== "" && !cppDraftValid ? t.rd_cpp_err_bad : t.rd_cpp_need_one}</div>
                 </>
               )}
             </LiveSettingModal>

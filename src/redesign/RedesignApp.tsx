@@ -114,6 +114,9 @@ import { signOutAndReload, sessionEnded, appReload } from "./adapters/logoutRese
 import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useSamePrice, effectiveOrderPrice, entPrefill } from "./adapters/useSamePrice";
+import { useChoosePrice } from "./adapters/useChoosePrice";
+import { EMPTY_PRICE_QUEUE, enqueuePriceChoice, dropPriceChoice, queueItems, clearedCount, type PriceChoiceItem, type PriceCommit, type PickResult } from "./adapters/priceChoiceQueue";
+import ChoosePriceSheet from "./components/ChoosePriceSheet";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
@@ -470,6 +473,21 @@ export default function RedesignApp() {
   // no auto-clear on new session). Applied at the order call sites below (1-Click / Pin /
   // Auto override the price INPUT; Enterprise pre-fills but the seller-typed price wins).
   const samePriceCfg = useSamePrice();
+  // "Choose price before print" (sql/180, default OFF) — a price pop-up before each 1-Click /
+  // pinned-comment print. Only one of this and Same price is ON (Settings turns the other off);
+  // if both ever read ON (two devices), Same price wins and no pop-up shows.
+  // The hook starts from this user's last known setting (saved on the device), so an ON seller
+  // gets the pop-up from the first tap; with nothing saved it is OFF at once — nothing waits.
+  const choosePriceCfg = useChoosePrice(authed ? authUserId : null);
+  const choosePriceOn = choosePriceCfg.active && !samePriceCfg.enabled;
+  // The comments waiting for a price, in arrival order (one pop-up at a time). The queue belongs to
+  // ONE live session: the key changes when the session ends / a new one starts / the switch goes
+  // off → the old items are gone (priceChoiceQueue). React state, so it survives re-renders.
+  const priceQueueKey = `${choosePriceOn ? "on" : "off"}|${sessionInstance.ended || sessionInstance.closed ? "ended" : String(sessionInstance.currentSessionId ?? liveSession.dayId ?? "")}`;
+  const [priceQueue, setPriceQueue] = useState(EMPTY_PRICE_QUEUE);
+  const priceItems = queueItems(priceQueue, priceQueueKey);
+  const queuePriceChoice = (item: PriceChoiceItem) => setPriceQueue((q) => enqueuePriceChoice(q, priceQueueKey, item));
+  const dropPriceItem = (key: string) => setPriceQueue((q) => dropPriceChoice(q, priceQueueKey, key));
   // Pending connect awaiting a session pick (the required picker modal). Non-null =
   // modal open + the connect to run once a length is chosen. Union so the Live Source
   // flow (Option E) can also start a session-first SHOPEE connect through the SAME
@@ -990,6 +1008,14 @@ export default function RedesignApp() {
   // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
   // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+  // Choose price: the session ended / changed, the switch went off or Same price came on while
+  // comments were still waiting → they are dropped for good, with ONE toast saying how many
+  // (adjust-during-render: no effect, no extra pass with stale items on screen).
+  const priceCleared = clearedCount(priceQueue, priceQueueKey);
+  if (priceCleared > 0) {
+    setPriceQueue({ sessionKey: priceQueueKey, items: [] });
+    setToast({ msg: priceCleared === 1 ? tApp.rd_cpp_cleared_one : tpl(tApp.rd_cpp_cleared, { n: priceCleared }), kind: "ok" });
+  }
   // one-sticker fallbacks (picture failed / not ready in 8 s / too wide → today's sticker) are counted
   useEffect(() => {
     setStickerRouteNoticeHandler((n) => { if (n.reason.startsWith("one-sticker")) track("one_sticker_fallback", { reason: n.reason, detail: n.detail.slice(0, 120) }); });
@@ -2169,16 +2195,34 @@ export default function RedesignApp() {
     if (!prod) return;
     const soCode = soldOutCodeForComment(prod.comment);
     if (soCode && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_auto_manual_soldout_confirm, { code: soCode }))) return;
-    // Same-price override: 1-Click's base price is 0 → fixed when set, else 0 (byte-identical).
-    const order = orders.createOrder(prod, effectiveOrderPrice(0, samePriceCfg.active));
-    if (order) {
-      setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
-      const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
-      reprintByIdRef.current.set(id, snap);
-      jobToCommentRef.current.set(String(order.orderNum), { cid: id, msgId: (prod as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
-      liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
-      deductOneClickStock(prod.comment, (prod as ProdComment & { msgId?: string }).msgId || String(order.orderNum));
+    // Choose price ON → wait for the seller's price in the pop-up (nothing is created yet). The
+    // FULL comment rides on the queue item: the order is made from it, never re-read from the feed.
+    // Over the free order limit → today's path (the limit pop-up, no price question).
+    if (choosePriceOn && !orderCappedFor(prod.platform)) {
+      const msgId = String((prod as ProdComment & { msgId?: string }).msgId || "");
+      queuePriceChoice({ key: `click:${id}`, kind: "click", rowId: id, msgId, name: prod.name || "", handle: prod.handle || "", comment: prod.comment || "", source: prod, soldOutOk: !!soCode });
+      return;
     }
+    // Same-price override: 1-Click's base price is 0 → fixed when set, else 0 (byte-identical).
+    commitOneClick(id, prod, effectiveOrderPrice(0, samePriceCfg.active));
+  };
+  // Same test as the order hub's own free-limit block (useOrders isCapped).
+  const orderCappedFor = (platform: string) => freeCap.freeCapped && freeCapAppliesTo(platform, shopeeBetaRowActive);
+  // The 1-Click order itself (also used by the Choose price pop-up with the picked price).
+  // Answers what happened: "duplicate" = that comment already has an order; "blocked" = nothing
+  // was created for another reason (orders paused, order limit) — the caller may try again.
+  const commitOneClick = (id: string, prod: ProdComment, price: number): PriceCommit => {
+    const pm = (prod as ProdComment & { msgId?: string }).msgId;
+    const dup = !!pm && liveSession.orderedMsgIds.has(pm);
+    const order = orders.createOrder(prod, price);
+    if (!order) return dup ? "duplicate" : "blocked";
+    setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
+    const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
+    reprintByIdRef.current.set(id, snap);
+    jobToCommentRef.current.set(String(order.orderNum), { cid: id, msgId: (prod as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
+    liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
+    deductOneClickStock(prod.comment, (prod as ProdComment & { msgId?: string }).msgId || String(order.orderNum));
+    return "ordered";
   };
   // PIN-TO-PRINT (Phase 2, Option A): a relayed pin = 1-Click on that comment.
   // Runs through the SAME orders.createOrder path as a manual tap — createOrder
@@ -2367,6 +2411,28 @@ export default function RedesignApp() {
     setWlBusy(r.id);
     void setWaitlistStatus(r.id, "skipped").then(() => { setWlBusy(null); reloadWaitlist(); });
   };
+  // The pin order itself (also used by the Choose price pop-up with the picked price).
+  const commitPin = (c: ProdComment & { msgId: string }, price: number): PriceCommit => {
+    const dup = !!c.msgId && liveSession.orderedMsgIds.has(c.msgId);
+    const order = orders.createOrder(c, price); // 1-Click equivalent
+
+    if (!order) return dup ? "duplicate" : "blocked";  // dup / capped / blocked — createOrder already dedups the msgId
+    const pid = `pin:${c.msgId}`;
+    const snap = snapshotFromCreate(c, order);
+    reprintByIdRef.current.set(pid, snap);
+    jobToCommentRef.current.set(String(order.orderNum), { cid: pid, msgId: c.msgId });
+    liveSession.addOrderedMsgId(c.msgId, snap);
+    deductOneClickStock(c.comment, c.msgId || String(order.orderNum));
+    // Cosmetic: if the pinned comment is in the visible feed, flip its row to
+    // the ordered/Reprint state like a manual tap would (event-handler context,
+    // not an effect — no cascading-render lint class).
+    const row = liveFeed.comments.find((fc) => fc.msgId === c.msgId);
+    if (row) {
+      setPrinted((pr) => ({ ...pr, [row.id]: "order" }));
+      reprintByIdRef.current.set(row.id, snap);
+    }
+    return "ordered";
+  };
   // Returns true when the pin is DONE (ordered, or nothing to do) — only then does useLiveFeed
   // mark it seen. false = not handled yet (gate off, or held while orders are paused).
   const handlePinned = (p: PinPayload): boolean => {
@@ -2385,23 +2451,14 @@ export default function RedesignApp() {
     if (!isActionablePin(p)) return true;
     const c = buildPinComment(p);
     if (shouldSkipPin(soldOutCodeForComment(c.comment))) return true;
-    const order = orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.active)); // 1-Click equivalent
-
-    if (!order) return true;                                // dup / capped / blocked — createOrder already dedups the msgId
-    const pid = `pin:${c.msgId}`;
-    const snap = snapshotFromCreate(c, order);
-    reprintByIdRef.current.set(pid, snap);
-    jobToCommentRef.current.set(String(order.orderNum), { cid: pid, msgId: c.msgId });
-    liveSession.addOrderedMsgId(c.msgId, snap);
-    deductOneClickStock(c.comment, c.msgId || String(order.orderNum));
-    // Cosmetic: if the pinned comment is in the visible feed, flip its row to
-    // the ordered/Reprint state like a manual tap would (event-handler context,
-    // not an effect — no cascading-render lint class).
-    const row = liveFeed.comments.find((fc) => fc.msgId === c.msgId);
-    if (row) {
-      setPrinted((pr) => ({ ...pr, [row.id]: "order" }));
-      reprintByIdRef.current.set(row.id, snap);
+    // Choose price ON → the pin waits in the pop-up queue (it counts as handled, so the same pin
+    // never comes back). An already-ordered comment stays a silent no-op, as today.
+    if (choosePriceOn && !orderCappedFor(c.platform)) {
+      if (c.msgId && liveSession.orderedMsgIds.has(c.msgId)) return true;
+      queuePriceChoice({ key: `pin:${c.msgId}`, kind: "pin", rowId: null, msgId: String(c.msgId || ""), name: c.name || "", handle: c.handle || "", comment: c.comment || "", source: c, soldOutOk: false });
+      return true;
     }
+    commitPin(c, effectiveOrderPrice(0, samePriceCfg.active));
     return true;
   };
   useEffect(() => { pinHandlerRef.current = handlePinned; }); // effect mirror — freshest closure, no render-time ref write
@@ -2409,6 +2466,41 @@ export default function RedesignApp() {
   // Enterprise: pre-fill the price field with the fixed price when "Same price" is set,
   // but the seller can type over it (e.g. a discount) — whatever they type wins.
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(entPrefill(samePriceCfg.active)); };
+  // "Choose price before print" pop-up actions. A picked (or typed) price creates the order through
+  // the SAME 1-Click / pin path — only the price differs — from the comment kept on the queue item.
+  // NEVER LOSE A BUYER: the item leaves the queue only when its order exists (or it was already
+  // ordered). Orders paused / nothing created → "blocked": the sheet stays open and says so, and
+  // the double-tap guard is released so the seller can tap again.
+  // pricePickedRef = sync double-tap guard (money path): the queue update is async, so two taps in
+  // one batch would both see the item.
+  const pricePickedRef = useRef<WeakSet<PriceChoiceItem>>(new WeakSet());
+  const priceCur = priceItems[0] ?? null;
+  const pickChoicePrice = (item: PriceChoiceItem, price: number, soldOutOk = false): PickResult => {
+    if (pricePickedRef.current.has(item)) return "busy";
+    // The code went sold out while the comment waited → the sheet asks (no browser dialog).
+    if (!soldOutOk && !item.soldOutOk) { const so = soldOutCodeForComment(item.comment); if (so) return { soldOut: so }; }
+    // Orders paused (the board is loading / reloading) → nothing is created, the comment keeps waiting.
+    if (liveSession.state === "loading" || !liveSession.canOrder() || (item.kind === "pin" && !liveSession.orderedLoaded)) return "blocked";
+    pricePickedRef.current.add(item);
+    let r: PriceCommit;
+    try {
+      r = item.kind === "click" && item.rowId
+        ? (printed[item.rowId] ? "duplicate" : commitOneClick(item.rowId, item.source, price)) // "duplicate": ordered meanwhile (the row's own Type price)
+        : commitPin(item.source as ProdComment & { msgId: string }, price);
+    } catch (e) {
+      // The order step threw → nothing is lost: the comment keeps waiting and can be tapped again.
+      log.warn("choose price: the order step failed", e);
+      pricePickedRef.current.delete(item);
+      return "blocked";
+    }
+    // The free order limit was reached while this comment waited → not "session still loading":
+    // the item goes quietly (the limit pop-up explains); the 1-Click row can be tapped again as today.
+    if (r === "blocked" && orderCappedFor(item.source.platform)) { dropPriceItem(item.key); return "capped"; }
+    if (r === "blocked") { pricePickedRef.current.delete(item); return r; }
+    dropPriceItem(item.key);
+    return r;
+  };
+  const skipChoicePrice = (item: PriceChoiceItem) => { pricePickedRef.current.add(item); dropPriceItem(item.key); };
   // Enterprise: create the order at the typed price. ONE code path for BOTH
   // triggers — Enter (desktop/Android/iPad) AND the in-app ✓ button (the
   // iPhone fix: the iOS number pad has NO return key, so Enter can never be
@@ -2929,7 +3021,11 @@ export default function RedesignApp() {
               deductOneClick={deductOneClick} onToggleDeductOneClick={featureSw.inventoryV2 ? toggleDeductOneClick : undefined}
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
               /* "Same price for all items" — Live-session row (toggle + remembered price, set via the sheet). */
-              cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
+              cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
+              /* "Choose price before print" — directly under Same price (only one of the two is ON). */
+              choosePriceEnabled={choosePriceCfg.enabled} choosePrices={choosePriceCfg.prices}
+              onSetChoosePriceEnabled={(on, prices) => choosePriceCfg.setEnabled(on, prices)}
+              onSetChoosePrices={(prices) => void choosePriceCfg.setPrices(prices)} choosePriceError={choosePriceCfg.saveErrors}
               /* Live-session toggles turned OFF → bottom toast. */
               onToast={(msg) => setToast({ msg, kind: "ok" })}
               motionOn={motionOn} onToggleMotion={toggleMotion}
@@ -3287,6 +3383,20 @@ export default function RedesignApp() {
             kind={printerGuide}
             onOk={() => { setPrinterGuide(null); setScreen("printersettings"); }}
             onClose={() => setPrinterGuide(null)}
+          />
+        )}
+
+        {/* "Choose price before print" — one pop-up at a time, waits for the seller (no timer). */}
+        {authed && choosePriceOn && priceCur && !freeCap.capPopup && (
+          <ChoosePriceSheet
+            key={priceCur.key}
+            item={priceCur}
+            prices={choosePriceCfg.prices}
+            cur={cur}
+            waiting={priceItems.length - 1}
+            onPick={(p, soldOutOk) => pickChoicePrice(priceCur, p, soldOutOk)}
+            onSkip={() => skipChoicePrice(priceCur)}
+            blockedText={tApp.rd_sess_order_blocked}
           />
         )}
 

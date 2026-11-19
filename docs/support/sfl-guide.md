@@ -47,13 +47,13 @@ Tap **Settings** in the bottom bar. You will see tiles:
 - **Log out** — logs out this device only.
 
 ## general-settings — General Settings
-Last checked: 2026-11-11
+Last checked: 2026-11-19
 Keywords: general settings, profile, shop name, phone, live setup, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料
 
 **Settings → General Settings** has these parts:
 
 - **BASIC INFORMATION** — tap **Edit** to change **Shop name**, **Owner name** and **Phone**, then **Save changes**. Your email can't be changed here.
-- **LIVE SETUP** — tap **Live setup** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
+- **LIVE SETUP** — tap **Live setup** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**, **Choose price before print**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
 - **APPEARANCE** — Theme (☀ Light / ☾ Dark), Accent color, Language, Currency.
 - **CHANNELS** — TikTok Live and Facebook Live rows. Tap one to manage your accounts.
 - **Printer Settings** — tap **Printer**, then under **CHOOSE PRINTER** pick the WiFi receipt printer or the Bluetooth sticker printer.
@@ -258,12 +258,12 @@ If you see "Couldn't load this session's buyers", check your internet and tap **
 If numbers look wrong, fully close the app on every device and open it again, then tap Connect once.
 
 ## one-click-orders — 1-Click and Type price orders
-Last checked: 2026-10-14
+Last checked: 2026-11-19
 Keywords: 1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, 一键, 一鍵下單, 输入价格
 
 Every comment on the **Live** screen has two buttons:
 
-- **1-Click** — creates the order and prints the sticker right away with the comment text. The price is 0 unless **Same price for all items** is on.
+- **1-Click** — creates the order and prints the sticker right away with the comment text. The price is 0 unless **Same price for all items** is on. With **Choose price before print** on, you tap the price first.
 - **Type price** — type the price, then tap ✓ (or press Enter) to **Print this order**.
 
 After an order, the row shows **Printed** and a **Reprint** button.
@@ -273,7 +273,7 @@ If the comment is a sold-out Auto mode code, the app asks "{code} is sold out. C
 Tags like **NEW** or **CHECK** warn you about risky buyers.
 
 ## same-price — Same price for all items
-Last checked: 2026-11-11
+Last checked: 2026-11-19
 Keywords: same price, fixed price, all items, price, isang presyo, pare-pareho presyo, 统一价, 同價, 固定價格
 
 **Settings → General Settings → LIVE SETUP → Same price for all items**.
@@ -281,6 +281,28 @@ Keywords: same price, fixed price, all items, price, isang presyo, pare-pareho p
 1. Turn it on, type the price, and tap **Turn on**.
 2. While it is on, every **1-Click** and **Auto** order prints this price, whatever the buyer types. In **Type price**, the price is filled in for you but you can still change it.
 3. Turn it off with the switch in Settings, or tap **×** on the "All items …" chip on the Live screen. The app remembers the price for next time.
+
+Only one of **Same price for all items** and **Choose price before print** can be on. Turning one on turns the other off; both keep their prices.
+
+## choose-price — Choose price before print
+Last checked: 2026-11-19
+Keywords: choose price, pick price, price before print, different prices, premium item, price buttons, pumili ng presyo, ibang presyo, 选择价格, 選擇價格, 打印前选择价格
+
+**Settings → General Settings → LIVE SETUP → Choose price before print** (under **Same price for all items**).
+
+1. Turn it on. If you have no prices yet, type one and tap **Turn on**.
+2. Under the switch, add up to 6 prices. The first one is the default. Tap ☆ to make a price the default, or × to remove it.
+3. During the live, tap **1-Click** (or pin a comment with **Auto-print pinned comments** on). A window shows the buyer, the comment and your prices. Tap a price and the sticker prints.
+4. For another price, tap **Type price**, type it in the window and tap **Print**. **Back** shows your prices again.
+5. Tap **Skip** to make no order.
+
+- If several comments come in, they wait in line and show one at a time ("2 more waiting after this"). Nothing prints until you tap a price.
+- If the window says the session is still loading, wait a moment and tap the price again. The comment stays in the window.
+- If the comment is a sold-out Auto mode code, the window asks "{code} is sold out. Print anyway?" Tap **Print anyway** or **Skip**.
+- Comments still waiting are cleared when the live session changes or when you turn the switch off. The app tells you how many.
+- The **Type price** button on each comment still works as before.
+
+**Auto mode** orders still use each code's own price. Turning the switch off keeps your prices for next time.
 
 ## auto-mode — Auto mode (live codes)
 Last checked: 2026-11-11
@@ -300,12 +322,14 @@ During the live:
 Use each code for one product only.
 
 ## auto-print-pinned — Auto-print pinned comments
-Last checked: 2026-11-11
+Last checked: 2026-11-19
 Keywords: pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtomatikong print, 置顶, 置頂留言, 自动打印
 
 **Settings → General Settings → LIVE SETUP → Auto-print pinned comments** (TikTok).
 
 Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.
+
+With **Choose price before print** on, a pinned comment first opens the price window. Tap a price and it prints. See "Choose price before print".
 
 ## products-stock — Products, codes and stock
 Last checked: 2026-11-15
