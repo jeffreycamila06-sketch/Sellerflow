@@ -117,6 +117,7 @@ import { useSamePrice, effectiveOrderPrice, entPrefill } from "./adapters/useSam
 import { useChoosePrice } from "./adapters/useChoosePrice";
 import { EMPTY_PRICE_QUEUE, enqueuePriceChoice, dropPriceChoice, queueItems, clearedCount, type PriceChoiceItem, type PriceCommit, type PickResult } from "./adapters/priceChoiceQueue";
 import ChoosePriceSheet from "./components/ChoosePriceSheet";
+import { FREE_ITEM } from "../lib/freeOrder";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
@@ -2211,10 +2212,13 @@ export default function RedesignApp() {
   // The 1-Click order itself (also used by the Choose price pop-up with the picked price).
   // Answers what happened: "duplicate" = that comment already has an order; "blocked" = nothing
   // was created for another reason (orders paused, order limit) — the caller may try again.
-  const commitOneClick = (id: string, prod: ProdComment, price: number): PriceCommit => {
+  // free (the pop-up's Free button ONLY): the order is made at price 0 with the item text "FREE"
+  // (lib/freeOrder) — that text prints where the price prints, is saved with the order and comes
+  // back on a reload / Reprint. Every other caller passes no `free` → createOrder exactly as before.
+  const commitOneClick = (id: string, prod: ProdComment, price: number, free = false): PriceCommit => {
     const pm = (prod as ProdComment & { msgId?: string }).msgId;
     const dup = !!pm && liveSession.orderedMsgIds.has(pm);
-    const order = orders.createOrder(prod, price);
+    const order = free ? orders.createOrder(prod, 0, { itemOverride: FREE_ITEM }) : orders.createOrder(prod, price);
     if (!order) return dup ? "duplicate" : "blocked";
     setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
     const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
@@ -2412,9 +2416,9 @@ export default function RedesignApp() {
     void setWaitlistStatus(r.id, "skipped").then(() => { setWlBusy(null); reloadWaitlist(); });
   };
   // The pin order itself (also used by the Choose price pop-up with the picked price).
-  const commitPin = (c: ProdComment & { msgId: string }, price: number): PriceCommit => {
+  const commitPin = (c: ProdComment & { msgId: string }, price: number, free = false): PriceCommit => {
     const dup = !!c.msgId && liveSession.orderedMsgIds.has(c.msgId);
-    const order = orders.createOrder(c, price); // 1-Click equivalent
+    const order = free ? orders.createOrder(c, 0, { itemOverride: FREE_ITEM }) : orders.createOrder(c, price); // 1-Click equivalent
 
     if (!order) return dup ? "duplicate" : "blocked";  // dup / capped / blocked — createOrder already dedups the msgId
     const pid = `pin:${c.msgId}`;
@@ -2475,7 +2479,8 @@ export default function RedesignApp() {
   // one batch would both see the item.
   const pricePickedRef = useRef<WeakSet<PriceChoiceItem>>(new WeakSet());
   const priceCur = priceItems[0] ?? null;
-  const pickChoicePrice = (item: PriceChoiceItem, price: number, soldOutOk = false): PickResult => {
+  // free = the Free button: same path and guards as a price tap; only the order differs (see commitOneClick).
+  const pickChoicePrice = (item: PriceChoiceItem, price: number, soldOutOk = false, free = false): PickResult => {
     if (pricePickedRef.current.has(item)) return "busy";
     // The code went sold out while the comment waited → the sheet asks (no browser dialog).
     if (!soldOutOk && !item.soldOutOk) { const so = soldOutCodeForComment(item.comment); if (so) return { soldOut: so }; }
@@ -2485,8 +2490,8 @@ export default function RedesignApp() {
     let r: PriceCommit;
     try {
       r = item.kind === "click" && item.rowId
-        ? (printed[item.rowId] ? "duplicate" : commitOneClick(item.rowId, item.source, price)) // "duplicate": ordered meanwhile (the row's own Type price)
-        : commitPin(item.source as ProdComment & { msgId: string }, price);
+        ? (printed[item.rowId] ? "duplicate" : commitOneClick(item.rowId, item.source, price, free)) // "duplicate": ordered meanwhile (the row's own Type price)
+        : commitPin(item.source as ProdComment & { msgId: string }, price, free);
     } catch (e) {
       // The order step threw → nothing is lost: the comment keeps waiting and can be tapped again.
       log.warn("choose price: the order step failed", e);
@@ -3026,6 +3031,7 @@ export default function RedesignApp() {
               choosePriceEnabled={choosePriceCfg.enabled} choosePrices={choosePriceCfg.prices}
               onSetChoosePriceEnabled={(on, prices) => choosePriceCfg.setEnabled(on, prices)}
               onSetChoosePrices={(prices) => void choosePriceCfg.setPrices(prices)} choosePriceError={choosePriceCfg.saveErrors}
+              chooseShowFree={choosePriceCfg.showFree} onSetChooseShowFree={(on) => void choosePriceCfg.setShowFree(on)}
               /* Live-session toggles turned OFF → bottom toast. */
               onToast={(msg) => setToast({ msg, kind: "ok" })}
               motionOn={motionOn} onToggleMotion={toggleMotion}
@@ -3394,7 +3400,8 @@ export default function RedesignApp() {
             prices={choosePriceCfg.prices}
             cur={cur}
             waiting={priceItems.length - 1}
-            onPick={(p, soldOutOk) => pickChoicePrice(priceCur, p, soldOutOk)}
+            showFree={choosePriceCfg.showFree}
+            onPick={(p, soldOutOk, free) => pickChoicePrice(priceCur, p, soldOutOk, free)}
             onSkip={() => skipChoicePrice(priceCur)}
             blockedText={tApp.rd_sess_order_blocked}
           />

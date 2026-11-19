@@ -15,7 +15,7 @@ const H = vi.hoisted(() => ({
   feed: [] as unknown[],
   toRow: { fn: null as ((c: unknown) => { id: string }) | null },
   createOrder: { fn: null as Mock<(...args: unknown[]) => unknown> | null },
-  cp: { enabled: false, prices: [] as number[] },
+  cp: { enabled: false, prices: [] as number[], showFree: false },
   sp: { enabled: false, price: null as number | null },
   dayId: { v: "2026-11-19" },
   canOrder: { v: true },                    // orders paused (board loading / reloading) when false
@@ -65,7 +65,7 @@ vi.mock("../adapters/useLiveSession", async (orig) => ({
 }));
 vi.mock("../adapters/useChoosePrice", async (orig) => ({
   ...(await orig() as object),
-  useChoosePrice: () => ({ enabled: H.cp.enabled, prices: H.cp.prices, active: H.cp.enabled && H.cp.prices.length > 0, loading: false, setEnabled: vi.fn(async () => {}), setPrices: vi.fn(async () => {}), saveErrors: 0 }),
+  useChoosePrice: () => ({ enabled: H.cp.enabled, prices: H.cp.prices, active: H.cp.enabled && H.cp.prices.length > 0, loading: false, setEnabled: vi.fn(async () => {}), setPrices: vi.fn(async () => {}), showFree: H.cp.showFree, setShowFree: vi.fn(async () => true), saveErrors: 0 }),
 }));
 vi.mock("../adapters/useSamePrice", async (orig) => ({
   ...(await orig() as object),
@@ -117,7 +117,7 @@ beforeEach(() => {
   H.canOrder.v = true; H.state.v = "empty"; H.capped.v = false; H.stock.v = 5;
   localStorage.clear();
   H.feed.length = 0;
-  H.cp.enabled = false; H.cp.prices = [];
+  H.cp.enabled = false; H.cp.prices = []; H.cp.showFree = false;
   H.sp.enabled = false; H.sp.price = null;
   H.dayId.v = "2026-11-19";
   H.createOrder.fn = vi.fn((c: unknown, price: unknown) => ({ orderNum: Date.now(), item: String((c as ProdComment).comment), qty: 1, price, total: price, time: "", handle: (c as ProdComment).handle, name: (c as ProdComment).name, bNum: 1, platform: "TikTok", status: "New", date: "2026-11-19" }));
@@ -564,6 +564,194 @@ describe("the queue is cleared, with one toast", () => {
     H.dayId.v = "2026-11-20";
     await app.rerender();
     expect(screen.queryByTestId("app-toast")).toBeNull();
+  });
+});
+
+// ── The Free button ("Show Free button" switch) ────────────────────────────────────────────────
+describe("Free button", () => {
+  const FREE_OPTS = { itemOverride: "FREE" };
+  beforeEach(() => { H.cp.enabled = true; H.cp.prices = [39, 59, 89]; H.cp.showFree = true; });
+
+  it("switch OFF (or never set) → the pop-up has NO Free button; a price tap calls createOrder with two arguments, as before", async () => {
+    H.cp.showFree = false;
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    expect(screen.getByTestId("cpp-sheet")).toBeTruthy();
+    expect(screen.queryByTestId("cpp-free")).toBeNull();
+    settle();
+    await tap("cpp-price-1");
+    expect(H.createOrder.fn!.mock.calls).toHaveLength(1);
+    expect(H.createOrder.fn!.mock.calls[0]).toHaveLength(2);           // (comment, price) — no options at all
+    expect(H.createOrder.fn!.mock.calls[0][1]).toBe(59);
+  });
+
+  it("switch ON → Free is the LAST cell of the grid and is not the default", async () => {
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    const free = screen.getByTestId("cpp-free");
+    const grid = free.parentElement!;
+    expect(grid.lastElementChild).toBe(free);
+    expect(grid.children).toHaveLength(4);
+    expect(free.getAttribute("data-default")).toBeNull();
+    expect(screen.getByTestId("cpp-price-0").getAttribute("data-default")).toBe("1");
+    expect(free.textContent).toBe("Free");
+    expect(free.querySelector("svg")).toBeTruthy();                     // a drawn icon, no emoji
+    expect(/\p{Extended_Pictographic}/u.test(free.textContent || "")).toBe(false);
+  });
+
+  it("1-Click + Free → exactly ONE order: price 0, item text FREE; the sheet closes", async () => {
+    H.feed.push(comment(1, "mine po"));
+    await mount();
+    tapOneClick("Buyer 1");
+    settle();
+    await tap("cpp-free");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    const [c, price, opts] = H.createOrder.fn!.mock.calls[0];
+    expect((c as ProdComment).name).toBe("Buyer 1");
+    expect((c as ProdComment).comment).toBe("mine po");
+    expect(price).toBe(0);
+    expect(opts).toEqual(FREE_OPTS);
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+  });
+
+  it("a pin + Free → the pinned comment is ordered at 0 with the item text FREE", async () => {
+    await mount();
+    sendPin(pin(1));
+    await flush();
+    settle();
+    await tap("cpp-free");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    const [c, price, opts] = H.createOrder.fn!.mock.calls[0];
+    expect((c as ProdComment & { msgId: string }).msgId).toBe("p1");
+    expect(price).toBe(0);
+    expect(opts).toEqual(FREE_OPTS);
+  });
+
+  it("a PRICE tap with the switch ON is still a plain price order (no FREE text)", async () => {
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    settle();
+    await tap("cpp-price-0");
+    expect(H.createOrder.fn!.mock.calls[0]).toHaveLength(2);
+    expect(H.createOrder.fn!.mock.calls[0][1]).toBe(39);
+  });
+
+  it("TAP-THROUGH: two buyers waiting + two fast taps on Free → ONE order; the second buyer is untouched", async () => {
+    H.feed.push(comment(1), comment(2));
+    await mount();
+    tapOneClick("Buyer 1");
+    tapOneClick("Buyer 2");
+    settle();
+    await tap("cpp-free");                                   // Buyer 1 → the next sheet appears on the same spot
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2");
+    await tap("cpp-free");                                   // at once → ignored (tap guard)
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect((H.createOrder.fn!.mock.calls[0][0] as ProdComment).name).toBe("Buyer 1");
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2"); // still waiting for the seller
+    settle();
+    await tap("cpp-free");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
+    expect((H.createOrder.fn!.mock.calls[1][0] as ProdComment).name).toBe("Buyer 2");
+  });
+
+  it("a double tap on Free makes ONE order", async () => {
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    settle();
+    const free = screen.getByTestId("cpp-free");
+    fireEvent.click(free); fireEvent.click(free);
+    await flush();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("never lose a buyer: the order could not be made → the sheet stays with the message; the next Free tap makes it", async () => {
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    settle();
+    H.createOrder.fn!.mockReturnValueOnce(null);
+    await tap("cpp-free");
+    expect(screen.getByTestId("cpp-sheet")).toBeTruthy();
+    expect(screen.getByTestId("cpp-blocked").textContent).toBe(t.rd_sess_order_blocked);
+    await tap("cpp-free");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
+    expect(H.createOrder.fn!.mock.calls[1][2]).toEqual(FREE_OPTS);
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+  });
+
+  it("orders paused → Free tries nothing and the sheet stays", async () => {
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    settle();
+    H.canOrder.v = false;
+    await tap("cpp-free");
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cpp-blocked")).toBeTruthy();
+  });
+
+  it("sold out while waiting → asked inside the sheet; \"Print anyway\" makes the FREE order (still price 0)", async () => {
+    H.stock.v = 1;
+    H.feed.push(comment(1, "D"));
+    await mount({ auto: true });
+    await flush();
+    tapOneClick("Buyer 1");
+    act(() => { H.onComment.fn?.(comment(5, "D")); });       // another buyer takes the last piece (Auto mode)
+    await flush();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    settle();
+    await tap("cpp-free");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);       // nothing yet — the question shows
+    expect(screen.getByTestId("cpp-soldout")).toBeTruthy();
+    await tap("cpp-soldout-yes");                            // the same fast tap → ignored
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    settle();
+    await tap("cpp-soldout-yes");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
+    expect(H.createOrder.fn!.mock.calls[1][1]).toBe(0);
+    expect(H.createOrder.fn!.mock.calls[1][2]).toEqual(FREE_OPTS);
+  });
+
+  it("the free order limit is reached while the comment waits → Free drops the item quietly (no \"Session still loading\")", async () => {
+    H.feed.push(comment(1), comment(2));
+    const app = await mount();
+    tapOneClick("Buyer 1");
+    tapOneClick("Buyer 2");
+    settle();
+    H.capped.v = true;                                       // the limit was reached meanwhile
+    H.createOrder.fn = vi.fn(() => null);
+    await app.rerender();
+    await tap("cpp-free");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("cpp-blocked")).toBeNull();
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2"); // only THAT item left the queue
+  });
+
+  it("a normal 1-Click / pin with Choose price OFF is unchanged even when the Free switch is saved ON", async () => {
+    H.cp.enabled = false;
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    sendPin(pin(1));
+    await flush();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
+    for (const call of H.createOrder.fn!.mock.calls) { expect(call).toHaveLength(2); expect(call[1]).toBe(0); }
+  });
+
+  it("Auto mode with the Free switch ON: the code's own price and item, no pop-up", async () => {
+    H.feed.push(comment(1, "D"));
+    await mount({ auto: true });
+    await flush();
+    act(() => { H.onComment.fn?.(comment(7, "D")); });
+    await flush();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect((H.createOrder.fn!.mock.calls[0][2] as { itemOverride?: string }).itemOverride).not.toBe("FREE");
   });
 });
 

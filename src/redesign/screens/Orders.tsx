@@ -39,6 +39,7 @@ import { usePaidFlags, isPaidExpired, orderKey } from "../adapters/ordersPaid";
 import PostsBody, { type PostsUi } from "./PostSales";
 import { markPostsSeen, postsSeen } from "../adapters/fbPostSales";
 import { useScreenTimers } from "../adapters/useScreenTimers";
+import { isFreeOrder } from "../../lib/freeOrder";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -232,7 +233,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
       { header: t.rd_ord_col_time, width: 12 },
     ];
     const vis = [...shown, ...shownHist];
-    const rows = vis.map((o) => [o.id, o.buyer, fbHandleIsId(o.platform, o.buyer, o.handle) ? o.buyer : o.handle, o.items, `${cur}${fmt(o.total)}`, o.status === "New" ? t.rd_ord_st_new : o.status, o.platform, o.time]);
+    const rows = vis.map((o) => [o.id, o.buyer, fbHandleIsId(o.platform, o.buyer, o.handle) ? o.buyer : o.handle, o.items, isFreeOrder({ price: o.total, item: o.items }) ? t.rd_cpp_free : `${cur}${fmt(o.total)}`, o.status === "New" ? t.rd_ord_st_new : o.status, o.platform, o.time]);
     const s = orderSummary(vis);
     const smry = [
       { label: t.rd_ord_sum_orders, value: s.count },
@@ -297,7 +298,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{o.id}</div>
-          <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 1 }}>{cur}{fmt(o.total)}</div>
+          {isFreeOrder({ price: o.total, item: o.items })
+            ? <div data-testid="ord-free" style={{ fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 800, color: "var(--ok)", marginTop: 1 }}>{t.rd_cpp_free}</div>
+            : <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 1 }}>{cur}{fmt(o.total)}</div>}
         </div>
       </div>
       <div data-testid="ord-row-foot" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)", ...(fbPolish ? { flexWrap: "wrap" as const, rowGap: 6 } : null) }}>
@@ -535,7 +538,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
                 <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "6px 0" }}>
                   <span style={{ fontFamily: mono, fontSize: 11.5, color: "var(--text-muted)", flexShrink: 0, width: 22, textAlign: "right" }}>{i + 1}.</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--text-dim)", overflowWrap: "anywhere" }}>{ln.item}</span>
-                  <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>{cur}{fmt(ln.total)}</span>
+                  {isFreeOrder({ price: ln.total, item: ln.item })
+                    ? <span data-testid="ord-line-free" style={{ fontSize: 13, fontWeight: 800, color: "var(--ok)", flexShrink: 0 }}>{t.rd_cpp_free}</span>
+                    : <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>{cur}{fmt(ln.total)}</span>}
                 </div>
               ))}
             </div>
