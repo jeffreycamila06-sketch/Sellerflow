@@ -10,6 +10,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
 import { copyText, INVITE_URL } from "../components/inviteShare";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 import {
   claimReferral, inviteCodeAvailable, inviteCodeFormatOk, loadReferralSummary, normInviteCode, randomInviteCode,
   setMyInviteCode, shareTextFor, typedInviteCode, checkInviteCode, type InviteRow, type ReferralSummary,
@@ -140,7 +141,8 @@ function ChooseCode({ onSaved }: { onSaved: () => void }) {
 function MyCode({ code, monthDays, eligible, ios }: { code: string; monthDays: number; eligible: boolean; ios: boolean }) {
   const t = useT();
   const [note, setNote] = useState<"" | "copied" | "failed">("");
-  const flash = (n: "copied" | "failed") => { setNote(n); window.setTimeout(() => setNote(""), 2000); };
+  const later = useScreenTimers();
+  const flash = (n: "copied" | "failed") => { setNote(n); later(() => setNote(""), 2000); };
   const onCopy = async () => flash((await copyText(code)) ? "copied" : "failed");
   const onShare = async () => {
     const text = shareTextFor(code, t.rd_ref_share_text);
@@ -194,6 +196,7 @@ function EnterInviterCode({ onSaved }: { onSaved: () => void }) {
   const [val, setVal] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const later = useScreenTimers(); // the short wait before the screen re-reads; stopped when it closes
   const check = useInviteCodeCheck(val, checkInviteCode);
   const formatOk = inviteCodeFormatOk(val);
   const canSave = formatOk && !busy && !(check.kind === "done" && check.value === false);
@@ -205,9 +208,9 @@ function EnterInviterCode({ onSaved }: { onSaved: () => void }) {
     setBusy(true); setMsg(null);
     const r = await claimReferral(val, "settings");
     setBusy(false);
-    if (r.ok) { setMsg({ ok: true, text: t.rd_ref_enter_ok }); window.setTimeout(onSaved, 1200); return; }
+    if (r.ok) { setMsg({ ok: true, text: t.rd_ref_enter_ok }); later(onSaved, 1200); return; }
     setMsg({ ok: false, text: reasonText(r.reason) });
-    if (r.reason === "already_linked" || r.reason === "already_paid") window.setTimeout(onSaved, 1500);
+    if (r.reason === "already_linked" || r.reason === "already_paid") later(onSaved, 1500);
   };
   const stateText = check.kind === "checking" ? t.rd_ref_checking : check.kind === "done" && check.value === true ? t.rd_ref_found
     : check.kind === "done" && check.value === false ? t.rd_ref_not_found : " ";
@@ -230,6 +233,7 @@ function EnterInviterCode({ onSaved }: { onSaved: () => void }) {
 function ShareApp() {
   const t = useT();
   const [note, setNote] = useState("");
+  const later = useScreenTimers();
   const onShare = async () => {
     const message = t.rd_inv_share;
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
@@ -237,7 +241,7 @@ function ShareApp() {
     }
     const ok = await copyText(`${message} ${INVITE_URL}`);
     setNote(ok ? t.rd_inv_copied : t.rd_inv_copy_failed);
-    window.setTimeout(() => setNote(""), 2500);
+    later(() => setNote(""), 2500);
   };
   return (
     <div>

@@ -103,9 +103,9 @@ describe("T4 a failed send: one word in the log, never a throw", () => {
   }
 });
 
-describe("T5 8 s limit", () => {
-  it("a Telegram that never answers is cut at 8 s → word timeout", async () => {
-    expect(TELEGRAM_SEND_MS).toBe(8000);
+describe("T5 20 s limit, the same for every send", () => {
+  it("a Telegram that never answers is cut at 20 s → word timeout", async () => {
+    expect(TELEGRAM_SEND_MS).toBe(20000);
     vi.useFakeTimers();
     try {
       const h = make(ENV, "hang");
@@ -116,6 +116,133 @@ describe("T5 8 s limit", () => {
       expect(await p).toEqual({ ok: false, word: "timeout" });
       expect(h.logs).toEqual(["[TG_ALERT] send failed timeout"]);
     } finally { vi.useRealTimers(); }
+  });
+  it("ONE limit in the module: one request line, one timer, and it is TELEGRAM_SEND_MS", () => {
+    const code = readFileSync("server/telegramAlert.js", "utf8").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    expect(code.split("fetchImpl(").length - 1).toBe(1);
+    expect(code.match(/setTimeout\(\(\) => ctl\.abort\(\), ([A-Z_0-9]+)\)/)?.[1]).toBe("TELEGRAM_SEND_MS");
+    expect(code.split("ctl.abort()").length - 1).toBe(1);
+    expect(code).not.toMatch(/\b8000\b/);
+  });
+  it("a send that got its answer (sent or failed) leaves no 20 s timer behind", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const rep of [{ json: { ok: true } }, { status: 502, json: {} }, "network", "bad_json"] as Reply[]) {
+        const h = make(ENV, rep);
+        await h.alert.send("test");
+        expect(vi.getTimerCount(), JSON.stringify(rep)).toBe(0);
+        expect(h.sent[0].signal?.aborted).toBe(false);
+      }
+    } finally { vi.useRealTimers(); }
+  });
+  it("every try of a real alert has the same 20 s: 3 tries, each cut 20 s after it started", async () => {
+    vi.useFakeTimers();
+    try {
+      const cuts: number[] = [];
+      const starts: number[] = [];
+      const f = vi.fn((_url: string, init: { signal?: AbortSignal }) => new Promise((_res, rej) => {
+        starts.push(Date.now());
+        init.signal?.addEventListener("abort", () => { cuts.push(Date.now()); rej(Object.assign(new Error("aborted"), { name: "AbortError" })); });
+      }));
+      const alert = createTelegramAlert({ env: ENV, fetchImpl: f as never, log: () => {} });
+      const p = alert.deliver("logged_out");
+      await vi.advanceTimersByTimeAsync(3 * TELEGRAM_SEND_MS + 2 * ALERT_RETRY_MS);
+      expect(await p).toEqual({ ok: false, word: "timeout" });
+      expect(cuts.map((c, i) => c - starts[i])).toEqual([TELEGRAM_SEND_MS, TELEGRAM_SEND_MS, TELEGRAM_SEND_MS]);
+      expect(starts.map((s0) => s0 - starts[0])).toEqual([0, TELEGRAM_SEND_MS + ALERT_RETRY_MS, 2 * (TELEGRAM_SEND_MS + ALERT_RETRY_MS)]);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+// A Telegram that DELIVERS the message when the request arrives, and answers "ok" only `answerMs` later
+// (a request that was cut before that gets no answer). `delivered` = how many copies reached the chat.
+function slowTelegram(answerMs: number | ((n: number) => number)) {
+  const state = { delivered: 0, requests: 0 };
+  const f = vi.fn((_url: string, init: { signal?: AbortSignal }) => new Promise((res, rej) => {
+    state.requests += 1;
+    state.delivered += 1;
+    const ms = typeof answerMs === "function" ? answerMs(state.requests) : answerMs;
+    const t = setTimeout(() => res({ status: 200, json: async () => ({ ok: true }) }), ms);
+    init.signal?.addEventListener("abort", () => { clearTimeout(t); rej(Object.assign(new Error("aborted"), { name: "AbortError" })); });
+  }));
+  return { f, state };
+}
+describe("T11 a slow Telegram (Nov 19 2026: delivered, but the answer came after the old 8 s limit)", () => {
+  const handlerAnswer = async (alert: ReturnType<typeof createTelegramAlert>) => {
+    const res = { code: 200, body: null as unknown, status(c: number) { this.code = c; return this; }, json(b: unknown) { this.body = b; return this; } };
+    const p = createAlertTestHandler({ alert, allowed: () => true })({ authUserId: "u" }, res);
+    return { p, res };
+  };
+  for (const answerMs of [8001, 9000, 15000, 19999]) {
+    it(`the test button: Telegram answers after ${answerMs} ms → the panel is told "sent", one request`, async () => {
+      vi.useFakeTimers();
+      try {
+        const t = slowTelegram(answerMs);
+        const logs: string[] = [];
+        const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: (l: string) => logs.push(l) });
+        const { p, res } = await handlerAnswer(alert);
+        await vi.advanceTimersByTimeAsync(answerMs);
+        await p;
+        expect(res.body).toEqual({ sent: true });
+        expect([t.state.requests, t.state.delivered, logs.length]).toEqual([1, 1, 0]);
+      } finally { vi.useRealTimers(); }
+    });
+  }
+  it("the test button: no answer inside 20 s → \"not sent\" + the word timeout (ONE try, never a second request)", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = slowTelegram(20001);
+      const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: () => {} });
+      const { p, res } = await handlerAnswer(alert);
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      await p;
+      expect(res.body).toEqual({ sent: false, reason: "timeout" });
+      expect(t.state.requests).toBe(1);
+    } finally { vi.useRealTimers(); }
+  });
+  it("a real alert answered after 9 s (or 15 s): ONE copy, no second try — with the 8 s limit this was a second copy a minute later", async () => {
+    for (const answerMs of [9000, 15000]) {
+      vi.useFakeTimers();
+      try {
+        const t = slowTelegram(answerMs);
+        const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: () => {} });
+        const p = alert.deliver("new_version", "16b4bb9");
+        await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+        expect(await p).toEqual({ ok: true });
+        expect([t.state.requests, t.state.delivered]).toEqual([1, 1]);
+      } finally { vi.useRealTimers(); }
+    }
+  });
+  // The honest answer to "can a slow-but-delivered alert arrive twice?": YES, still — only rarer.
+  // These two pin what the module does TODAY; they change the day the retry stops sending blind.
+  it("KNOWN, not fixed here: delivered, but the answer takes longer than 20 s → the same alert is sent again (3 copies)", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = slowTelegram(25000);
+      const logs: string[] = [];
+      const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: (l: string) => logs.push(l) });
+      const p = alert.deliver("logged_out");
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(await p).toEqual({ ok: false, word: "timeout" });
+      expect([t.state.requests, t.state.delivered]).toEqual([ALERT_TRIES, ALERT_TRIES]);
+      expect(logs).toEqual(Array(ALERT_TRIES).fill("[TG_ALERT] send failed timeout"));
+    } finally { vi.useRealTimers(); }
+  });
+  it("KNOWN, not fixed here: only the FIRST send is that slow (a cold start) → 2 copies, and the alert reports sent", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = slowTelegram((n) => (n === 1 ? 25000 : 300));
+      const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: () => {} });
+      const p = alert.deliver("new_version", "16b4bb9");
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(await p).toEqual({ ok: true });
+      expect([t.state.requests, t.state.delivered]).toEqual([2, 2]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("a truly failed send is still tried again (nothing was delivered → no copy is lost, none doubled)", async () => {
+    const h = make(ENV, (() => { let i = 0; return () => (i++ === 0 ? "network" : { json: { ok: true } }) as Reply; })());
+    expect(await h.alert.deliver("logged_out")).toEqual({ ok: true });
+    expect([h.sent.length, h.sleeps]).toEqual([2, [ALERT_RETRY_MS]]);
   });
 });
 

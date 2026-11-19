@@ -52,22 +52,45 @@ describe("approved printers read", () => {
 describe("Admin → Printer testers", () => {
   const REPORT = { id: "r1", email: "t@x.com", printer_name: "LabelThing-9", lang: "cpcl", sticker_size: "60x40mm", send_ok: true, send_code: null, clean: true, photo_path: "u/1.jpg", created_at: "2026-11-15T00:00:00Z", ble_facts: {} };
   const NOT_CLEAN = { ...REPORT, id: "r2", clean: false, photo_path: null };
-  function rpcs(over: Record<string, unknown> = {}) {
+  // slowMs: how long each of the named calls takes to answer (a call not named answers at once).
+  function rpcs(over: Record<string, unknown> = {}, slowMs: Record<string, number> = {}) {
     h.rpc.mockImplementation(async (fn: string) => {
       const base: Record<string, unknown> = { admin_printer_testers: [{ email: "t@x.com", created_at: "2026-11-14T00:00:00Z" }], admin_printer_test_reports: [REPORT, NOT_CLEAN], admin_approved_printers: [], admin_printer_tester_add: true, admin_printer_tester_remove: true, admin_approve_printer: "a1", admin_set_approved_printer_active: true, ...over };
+      if (slowMs[fn]) await new Promise((res) => setTimeout(res, slowMs[fn]));
       return { data: base[fn], error: null };
     });
   }
+  const callsOf = (fn: string) => h.rpc.mock.calls.filter((c) => c[0] === fn).length;
   const renderPanel = () => render(<TProvider lang="en"><PrinterTestersPanel /></TProvider>);
   it("add / remove a tester calls the admin RPCs", async () => {
-    rpcs();
+    // The Add answers a moment later in EVERY run, as it does under CI load (run 1849: "remove" was
+    // never called, 7 calls). While a change is on its way the panel's buttons are off — a tap then
+    // does nothing — so the test taps Remove only once the button is on again.
+    rpcs({}, { admin_printer_tester_add: 30 });
     renderPanel();
     await screen.findByText("t@x.com");
+    const remove = () => screen.getByTestId("pt-remove") as HTMLButtonElement;
     fireEvent.change(screen.getByTestId("pt-email"), { target: { value: " New@X.com " } });
     fireEvent.click(screen.getByTestId("pt-add"));
     await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("admin_printer_tester_add", { p_email: "new@x.com" }));
-    fireEvent.click(screen.getByTestId("pt-remove"));
+    await waitFor(() => expect(remove().disabled).toBe(false));
+    fireEvent.click(remove());
     await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("admin_printer_tester_remove", { p_email: "t@x.com" }));
+  });
+  it("while one change is on its way, a second tap does nothing (no double add, no remove in between)", async () => {
+    rpcs({}, { admin_printer_tester_add: 30 });
+    renderPanel();
+    await screen.findByText("t@x.com");
+    const add = () => screen.getByTestId("pt-add") as HTMLButtonElement;
+    const remove = () => screen.getByTestId("pt-remove") as HTMLButtonElement;
+    fireEvent.change(screen.getByTestId("pt-email"), { target: { value: "new@x.com" } });
+    fireEvent.click(add());
+    expect([add().disabled, remove().disabled]).toEqual([true, true]);   // at once, before the answer
+    fireEvent.click(add());
+    fireEvent.click(remove());
+    await waitFor(() => expect(remove().disabled).toBe(false));           // the Add has answered
+    expect([callsOf("admin_printer_tester_add"), callsOf("admin_printer_tester_remove")]).toEqual([1, 0]);
+    await waitFor(() => expect((screen.getByTestId("pt-email") as HTMLInputElement).value).toBe(""));   // the box is emptied after a saved Add
   });
   it("reports: Clean / Not clean; only a clean one offers 'Add to printer list' (default prefix, editable)", async () => {
     rpcs();

@@ -5405,7 +5405,7 @@ CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
 
 ## 2026-11-18 — 7-11 SERVER: TELEGRAM ALERTS (branch `claude/pc711-backup`) + BACKUP CHECKER (branch `claude/pc711-takeover`, on top) — NOT merged; sql/179 NOT applied; needs a Render deploy
 - **Telegram alerts (`server/telegramAlert.js`):** env `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` on Render (either missing = alerts
-  off). Fixed texts only (`ALERT_TEXTS`); 8 s limit; an alert = up to 3 tries, 1 min apart, in order (`deliver` / `fire`); the Admin
+  off). Fixed texts only (`ALERT_TEXTS`); 20 s limit (8 s until 2026-11-19); an alert = up to 3 tries, 1 min apart, in order (`deliver` / `fire`); the Admin
   button (`POST /admin/pc711/alert-test`, Admin → 7-11 Login → "Send test alert") = ONE try. The token is never logged.
   Alerts: 7-11 login lost / back (`pc711StateChange`), and the three backup-checker texts below.
 - **Backup checker (`server/pc711Backup.js`, sql/179):** the Chrome extension on the Lenovo stays the main checker. Switch
@@ -5490,7 +5490,8 @@ Server only, no new request to 7-11, no rule changed (the extension's order, res
   Test `ParcelTracking.toastTimers.test.tsx`: `withThePageGone` removes `window` and runs the clock — any late state update
   throws the CI error. On main's old file 9 of its 12 tests fail.
 - 🔑 **PATTERN:** `setTimeout(() => setX(...))` in a screen with no clean-up = the same CI error whenever a test file ends
-  inside the timer's time. Still in 10 other files (16 places, e.g. ParcelScan 6, InviteFriends 2) — NOT touched here.
+  inside the timer's time. The other screens: fixed on `claude/ci-flakes` (see the 2026-11-19 block — it also corrects
+  the "10 other files (16 places)" count first written here).
 - **"Who is checking" card — BUILT (pictures approved Nov 18):** see the next block.
 
 ## 2026-11-18 — ADMIN 7-11 LOGIN: "WHO IS CHECKING" CARD (branch `claude/pc711-duty-card`, NOT merged; no SQL; needs a Render deploy for the route)
@@ -5568,3 +5569,45 @@ Jeff's how-to: `docs/ops/nightly-render-deploy.md`.
   the tag read (none yet), the CI read (passed for 16b4bb9), git on the runner.
 - Tests: `nightlyDeploy.decide.test.ts` · `nightlyDeploy.run.test.ts` (fake GitHub / fake Render, real git in a
   throw-away folder, the real script as a process) · `nightlyDeploy.paths.test.ts` · `versionAlert.server.test.ts`.
+
+## 2026-11-19 — CI FLAKES: printer-testers test · short screen timers stop on close · Telegram limit 20 s (branch `claude/ci-flakes`, NOT merged; no SQL; the Telegram half needs a Render deploy)
+Tests and timers only. `chrome-extension/` untouched. Nothing a seller sees changed (no help-guide change).
+- **CI run 1849 (main `de0d4ff9`), `printerTestersDb.test.tsx` "add / remove a tester calls the admin RPCs":** the same family
+  as `Admin.downgrade` — the panel takes no new tap while a change is on its way (`busy`), and the test tapped Remove right
+  after Add was SENT. Proven: `admin_printer_tester_add` answering 30 ms later → fails every run with the CI message. The panel
+  is right and was NOT changed (every button is off while busy; `run` cannot stay busy — the adapter never throws). The test
+  now makes Add answer late in every run and waits for the Remove button to be on; a second test pins the busy state.
+- 🔑 **PATTERN (a tap while the screen is busy):** after a tap that starts a save, wait for the NEXT button to be enabled
+  before tapping it. "The call was made" is not "the screen is ready".
+- **CI run 1818 (main, Nov 17), `websitePreviewPortal.test.tsx` "Close and Escape…" (found while counting the red runs — own
+  commit, test only):** the preview sheet is on the page BEFORE its `useEffect` (scroll lock + Escape key) has run; the test
+  checked the lock right after seeing the sheet. Proven: React's after-paint work made 20 ms late → the old test fails every
+  run with the CI message ("expected '' to be 'hidden'"). The test now waits for the lock; the 20 ms delay stays in the file.
+- 🔑 **PATTERN:** "the element is on the page" is not "its useEffect has run" — wait for what the effect does.
+- Red CI runs on main, last 12 (Nov 16–18): 3 — runs 1818, 1843 (fixed Nov 18), 1849. All three were timing in a test.
+- **Short screen timers — `adapters/useScreenTimers.ts`:** `const later = useScreenTimers(); later(fn, ms)` = setTimeout that
+  is stopped when the screen closes and starts nothing after the close. While the screen is open it is exactly setTimeout
+  (same delay; an older toast's timer still hides a newer toast). 16 timers in 7 files use it: InviteFriendsCard 2 ·
+  InviteFriends 4 · CustomerDetails 1 · FmCustomerDetails 1 · ParcelScan 5 · Products 1 · Orders 2 (the Reprint button's 2 s
+  rest — its own commit). **A new short timer in a screen → `later`, never a bare `setTimeout`.**
+- ⚠️ **Correction of the Nov 18 note "10 other files (16 places)":** that was a text count, never read line by line. Read one
+  by one: 6 of those 16 lines were already stopped (RaffleWheel, RedesignApp, the ParcelScan attention toast, the Products
+  note, the FmParcelScan flash, usePostSales) and 10 were not (5 files); reading every timer in `src/redesign` found 6 more
+  that the count missed (InviteFriendsCard ×1, InviteFriends `onSaved` ×2, Products `bumpQuota`, Orders ×2). None of the 7
+  files is on the printing list (`scripts/printing-paths.mjs`).
+- **Tests:** `useScreenTimers.test.tsx` + one `*.timers.test.tsx` per screen; helper `adapters/__tests__/pageGone.ts`
+  (`expectNothingLate()` removes `window` and runs the clock = the error of CI run 1843; `until()` waits without moving the
+  clock; `tick(ms)` moves it).
+  🔑 **They use `vi.useFakeTimers()` with the clock moved BY HAND.** Never `shouldAdvanceTime` for a timing check: real time
+  leaks into the test clock, so on a slow machine a "still shown after 2.4 s" check fails. Never findBy / waitFor on a
+  stopped clock (they never finish) — use `until()`. The test browser starts a 0 ms timer for every localStorage write:
+  `await tick(0)` before counting timers.
+- **Telegram (`server/telegramAlert.js` — Render deploy: by hand, or the nightly one):** `TELEGRAM_SEND_MS` 8000 → 20000, ONE
+  limit for every send (the test button and each try of an alert). Cause (Nov 19 02:06 Taipei): the first send after a
+  restart was delivered, but its answer came after 8 s → the panel said "Not sent".
+  **KNOWN, not fixed (two tests in T11 pin it):** a try that gets no answer inside the limit is tried again a minute later,
+  so an alert Telegram delivered but answered late can arrive 2–3 times — rarer at 20 s, not impossible. The alert most
+  exposed is `new_version` (always the first send after a restart). Proposal (Nov 19 report, not built): after the limit keep
+  listening to the SAME request instead of sending again; send again only when Telegram answered with an error, the connection
+  failed, or a long hard stop passed. Telegram's sendMessage has no "same message as before" key, so one case stays: delivered,
+  and the answer never arrives at all → a second copy (kept on purpose: a doubled alert is harmless, a lost one is not).

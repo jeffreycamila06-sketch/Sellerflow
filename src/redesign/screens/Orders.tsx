@@ -38,6 +38,7 @@ import BuyerTagPill from "../components/BuyerTagPill";
 import { usePaidFlags, isPaidExpired, orderKey } from "../adapters/ordersPaid";
 import PostsBody, { type PostsUi } from "./PostSales";
 import { markPostsSeen, postsSeen } from "../adapters/fbPostSales";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -106,6 +107,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const showPosts = !!posts && postsView === "posts";
   const openPosts = () => { setPostsView("posts"); if (postsDot) { markPostsSeen(); setPostsDot(false); } };
   const [reprintingKey, setReprintingKey] = useState("");
+  const later = useScreenTimers(); // ends the 2 s "Printing…" rest of the Reprint button; stopped when the screen closes
   // Batch 1 — TOP-OF-SCREEN view controls (all additive; rows/Reprint untouched).
   const [platformFilterRaw, setPlatformFilter] = useState<PlatformFilter>("all"); // F2
   // A hidden Facebook pill can never stay selected (an admin switching "View as platform").
@@ -262,7 +264,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
       setReprintingKey(key);
       onReprintOrder?.(o);
     }
-    setTimeout(() => setReprintingKey(""), 2000);
+    later(() => setReprintingKey(""), 2000);
   };
   const confirmOldReprint = () => {
     const o = reprintAsk;
@@ -273,7 +275,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
     if (!r || reprintingKey) return;
     setReprintingKey(reprintKeyOf(o));
     onReprintRow?.(r);
-    setTimeout(() => setReprintingKey(""), 2000);
+    later(() => setReprintingKey(""), 2000);
   };
 
   const row = (o: Order, idx: number, hist: boolean) => (

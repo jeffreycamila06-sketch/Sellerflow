@@ -3,7 +3,15 @@
 // reached the shop) and under the bottom bar: see-through, overlapping, bottom bar on top.
 // Now: a portal to document.body, opaque, above everything, with its own Close bar.
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+// React does its after-paint work (useEffect — here the scroll lock and the Escape key) on setImmediate.
+// Make that 20 ms late in EVERY run: the preview sheet is then on the page BEFORE its scroll lock is set,
+// the order CI run 1818 hit on a loaded machine ("expected '' to be 'hidden'"). So a test here must wait
+// for the lock itself — seeing the sheet is not enough. (The real setImmediate is still what is called.)
+vi.hoisted(() => {
+  const real = globalThis.setImmediate;
+  globalThis.setImmediate = ((fn: (...a: unknown[]) => void, ...a: unknown[]) => real(() => { setTimeout(() => fn(...a), 20); })) as never;
+});
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { TProvider } from "../../i18n";
 import WebsiteEditor from "../WebsiteEditor";
@@ -55,18 +63,34 @@ describe("Preview on top of the whole app", () => {
     expect(within(sheet).getByTestId("wed-preview-body").contains(close)).toBe(false); // never covered by the shop
   });
 
+  // The sheet's effect has run: the page behind is locked and the Escape key is listened to.
+  const locked = () => waitFor(() => expect(document.body.style.overflow).toBe("hidden"));
+  it("the sheet is on the page first, its scroll lock a moment later (why the test below waits for the lock)", async () => {
+    inAppShell();
+    fireEvent.click(await screen.findByTestId("wed-preview"));
+    let lockWhenSheetAppeared: string | null = null;
+    const seen = new MutationObserver(() => {
+      if (lockWhenSheetAppeared === null && document.querySelector("[data-testid='wed-preview-sheet']")) lockWhenSheetAppeared = document.body.style.overflow;
+    });
+    seen.observe(document.body, { childList: true, subtree: true });
+    await locked();
+    seen.disconnect();
+    expect(lockWhenSheetAppeared).toBe("");
+  });
   it("Close and Escape remove it from the page; the page can scroll again afterwards", async () => {
     inAppShell();
     fireEvent.click(await screen.findByTestId("wed-preview"));
     await screen.findByTestId("wed-preview-sheet");
-    expect(document.body.style.overflow).toBe("hidden");
+    await locked();
     fireEvent.click(screen.getByTestId("wed-preview-close"));
     expect(screen.queryByTestId("wed-preview-sheet")).toBeNull();
     expect(document.body.style.overflow).toBe("");
     fireEvent.click(screen.getByTestId("wed-preview"));
     await screen.findByTestId("wed-preview-sheet");
+    await locked();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByTestId("wed-preview-sheet")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
     expect(document.body.childElementCount).toBe(1); // only the render container
   });
 
