@@ -6,10 +6,16 @@
 //   • ONE text carries a value after it: "new_version" + the 7-character commit the server started on
 //     (ALERT_VALUE_SHAPES: 7 characters 0-9 a-f, nothing else passes). Every other text takes no value.
 //   • A failed send is logged with ONE word and resolves { ok: false, word }; send() never throws.
-//   • An alert (fire) is tried up to 3 times, 1 minute apart, so a lost alert is not lost; alerts go out
-//     one after another, in the order they happened. The test button (send) is ONE try and answers at once.
-//   • KNOWN: a try that gets no answer inside the limit is tried again, although Telegram may have delivered
-//     it — the same alert can then arrive more than once. A longer limit makes that rarer, not impossible.
+//   • An alert (fire / deliver) gets up to 3 tries. The test button (send) is ONE try with the 20 s limit.
+//   • NO SECOND COPY OF A DELIVERED ALERT (Jeff 2026-11-19). A try of an alert is not cut at 20 s: its
+//     request is kept until the next try is due (20 s + 1 minute after it was sent). A late "ok" inside
+//     that time means delivered and ends the tries. The next try goes out only when Telegram answered
+//     with an error or the connection broke (1 minute later, as before), or nothing at all came back by
+//     the time it was due (then at once). A try that truly failed still gets all 3 tries.
+//   • The 2nd and 3rd try end with " (sent again)", so a copy that does arrive twice is recognisable.
+//     What cannot be excluded: delivered, and the answer never arrives at all — Telegram has no way to
+//     mark a message as "the same as before".
+//   • Alerts go out one after another, in the order they happened.
 //   • The token is never logged: the URL, the request and any error text never reach a log line.
 // How long ONE send waits for Telegram's answer. 8 s until 2026-11-19: the first send after a server
 // restart was delivered, but its answer came later than 8 s and the Admin panel said "Not sent".
@@ -17,9 +23,11 @@ export const TELEGRAM_SEND_MS = 20000;
 export const TELEGRAM_HOST = "api.telegram.org";
 export const ALERT_TRIES = 3;              // an alert: up to 3 tries …
 export const ALERT_RETRY_MS = 60 * 1000;   // … 1 minute apart
+// How long ONE try of an alert is kept after it was sent = the time its next try is due when nothing
+// comes back. Until then a late "ok" still counts as delivered; the request is ended only then.
+export const ALERT_KEEP_MS = TELEGRAM_SEND_MS + ALERT_RETRY_MS;
+export const ALERT_AGAIN = " (sent again)";   // the end of the 2nd and 3rd try's text
 export const ALERT_QUEUE_MAX = 20;         // alerts waiting for their turn; one more is dropped (logged)
-// nothing was sent and trying again cannot help: alerts are off, or the text key is not one of ours
-const NO_RETRY = ["off", "bad_token_format", "bad_chat_format", "unknown_text"];
 export const ALERT_TEXTS = {
   logged_out: "7-11 server logged out. Log in from Admin.",
   logged_in: "7-11 server is logged in again.",
@@ -45,7 +53,8 @@ const TAG = "[TG_ALERT]";
 const TOKEN_RE = /^\d{3,20}:[A-Za-z0-9_-]{10,100}$/;
 const CHAT_RE = /^(-?\d{1,20}|@[A-Za-z0-9_]{3,64})$/;
 
-const waitUnref = (ms) => new Promise((resolve) => { const t = setTimeout(resolve, ms); if (t && typeof t.unref === "function") t.unref(); });
+const unref = (t) => { if (t && typeof t.unref === "function") t.unref(); return t; };   // a waiting timer never keeps the server alive
+const waitUnref = (ms) => new Promise((resolve) => { unref(setTimeout(resolve, ms)); });
 
 // opts: env, fetchImpl, log, sleep (the wait between tries; tests pass their own).
 export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log = console.log, sleep = waitUnref } = {}) {
@@ -56,43 +65,69 @@ export function createTelegramAlert({ env = process.env, fetchImpl = fetch, log 
   const enabled = why === "";
   const say = (line) => { try { log(`${TAG} ${line}`); } catch { /* a log never stops anything */ } };
 
-  /** Send the fixed text of `kind` (+ its value, for the one text that has one). → { ok: true } | { ok: false, word }. Never throws. */
+  // ONE request to Telegram with one finished text. `answer` resolves "" (Telegram said ok) or ONE word and
+  // never rejects; stop() ends our side of the request (its answer is then "timeout").
+  function post(text) {
+    const ctl = new AbortController();
+    const answer = (async () => {
+      try {
+        const r = await fetchImpl(`https://${TELEGRAM_HOST}/bot${token}/sendMessage`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }),
+          redirect: "error", signal: ctl.signal,
+        });
+        const status = Number(r && r.status) || 0;
+        if (status < 200 || status >= 300) return `http_${status}`;
+        let j = null;
+        try { j = await r.json(); } catch { j = null; }
+        return !j || j.ok !== true ? "not_ok" : "";
+      } catch (e) {
+        return e?.name === "AbortError" || ctl.signal.aborted ? "timeout" : "network";
+      }
+    })();
+    return { answer, stop: () => ctl.abort() };
+  }
+
+  /** Send the fixed text of `kind` (+ its value, for the one text that has one) ONCE, with the 20 s limit.
+   *  → { ok: true } | { ok: false, word }. Never throws. (The Admin test button.) */
   async function send(kind, value) {
     const text = alertText(kind, value);
     if (!text) return { ok: false, word: "unknown_text" };
     if (!enabled) return { ok: false, word: why };
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), TELEGRAM_SEND_MS);
-    let word = "";
-    try {
-      const r = await fetchImpl(`https://${TELEGRAM_HOST}/bot${token}/sendMessage`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }),
-        redirect: "error", signal: ctl.signal,
-      });
-      const status = Number(r && r.status) || 0;
-      if (status < 200 || status >= 300) word = `http_${status}`;
-      else {
-        let j = null;
-        try { j = await r.json(); } catch { j = null; }
-        if (!j || j.ok !== true) word = "not_ok";
-      }
-    } catch (e) {
-      word = e?.name === "AbortError" || ctl.signal.aborted ? "timeout" : "network";
-    } finally { clearTimeout(timer); }
+    const req = post(text);
+    const timer = setTimeout(req.stop, TELEGRAM_SEND_MS);
+    const word = await req.answer;
+    clearTimeout(timer);
     if (word) { say(`send failed ${word}`); return { ok: false, word }; }
     return { ok: true };
   }
 
-  // One alert: up to ALERT_TRIES sends, ALERT_RETRY_MS apart (each failed try = its one log word, from send).
+  // One ALERT: up to ALERT_TRIES sends. Each failed try = one log word; a try that is slow but answered "ok"
+  // = delivered (one line says it was late). See the header for when the next try goes out.
   async function tryAll(kind, value) {
-    let r = { ok: false, word: "error" };
+    const text = alertText(kind, value);
+    if (!text) return { ok: false, word: "unknown_text" };
+    if (!enabled) return { ok: false, word: why };
+    let word = "error";
     for (let n = 1; n <= ALERT_TRIES; n++) {
-      r = await send(kind, value);
-      if (r.ok || NO_RETRY.includes(r.word)) return r;
-      if (n < ALERT_TRIES) await sleep(ALERT_RETRY_MS);
+      const sentAt = Date.now();
+      const req = post(n === 1 ? text : text + ALERT_AGAIN);
+      let slow = false, gaveUp = false;
+      // 20 s: nothing yet — NOT sent again, the same request is kept
+      const slowTimer = unref(setTimeout(() => { slow = true; say(`no answer yet try=${n}, still waiting`); }, TELEGRAM_SEND_MS));
+      // the next try is due and nothing came back: this request is ended
+      const keepTimer = unref(setTimeout(() => { gaveUp = true; req.stop(); }, ALERT_KEEP_MS));
+      word = await req.answer;
+      clearTimeout(slowTimer); clearTimeout(keepTimer);
+      if (!word) {
+        if (slow) say(`late ok try=${n} after=${Math.round((Date.now() - sentAt) / 1000)}s`);
+        return { ok: true };
+      }
+      say(`send failed ${word}`);
+      // an error answer / a broken connection: the next try a minute later. Nothing came back: it is due now.
+      if (n < ALERT_TRIES && !gaveUp) await sleep(ALERT_RETRY_MS);
     }
-    return r;
+    return { ok: false, word };
   }
   let chain = Promise.resolve();   // alerts go out one after another, in order
   let waiting = 0;

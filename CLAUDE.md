@@ -5605,9 +5605,34 @@ Tests and timers only. `chrome-extension/` untouched. Nothing a seller sees chan
 - **Telegram (`server/telegramAlert.js` — Render deploy: by hand, or the nightly one):** `TELEGRAM_SEND_MS` 8000 → 20000, ONE
   limit for every send (the test button and each try of an alert). Cause (Nov 19 02:06 Taipei): the first send after a
   restart was delivered, but its answer came after 8 s → the panel said "Not sent".
+  ✅ **Built on `claude/telegram-no-double` — see the next block; the "KNOWN, not fixed" text below is how main stood before it.**
   **KNOWN, not fixed (two tests in T11 pin it):** a try that gets no answer inside the limit is tried again a minute later,
   so an alert Telegram delivered but answered late can arrive 2–3 times — rarer at 20 s, not impossible. The alert most
   exposed is `new_version` (always the first send after a restart). Proposal (Nov 19 report, not built): after the limit keep
   listening to the SAME request instead of sending again; send again only when Telegram answered with an error, the connection
   failed, or a long hard stop passed. Telegram's sendMessage has no "same message as before" key, so one case stays: delivered,
   and the answer never arrives at all → a second copy (kept on purpose: a doubled alert is harmless, a lost one is not).
+
+## 2026-11-19 — TELEGRAM ALERTS: NO SECOND COPY OF A DELIVERED ALERT + "(sent again)" (branch `claude/telegram-no-double`, NOT merged; no SQL; needs a Render deploy)
+Server only: `server/telegramAlert.js` (+ its test, one line in `docs/ops/nightly-render-deploy.md`). Jeff's decision (Nov 19): build both.
+- **A. A try of an ALERT is no longer cut at 20 s.** Its request is kept until the next try is due =
+  `ALERT_KEEP_MS` = 80 s (20 s + the minute) after it was sent. A late "ok" inside that time = delivered → the tries end
+  (`deliver` answers `{ ok: true }`). The next try goes out only when: Telegram answered with an error or the connection
+  broke → 1 minute later (as before); or nothing at all came back by 80 s → at once (the old request is ended then).
+  A dead Telegram: sends at 0 s, 80 s, 160 s (the same moments as before), given up at 240 s (was 180 s — the alert behind
+  it in the queue waits 1 minute longer). Never more than 3 sends; one request at a time.
+- **B. The 2nd and 3rd try end with `" (sent again)"`** (`ALERT_AGAIN`), whatever the reason for the retry. So when the
+  first try truly failed, the ONE message that arrives ends with "(sent again)". The first try and the test button's text
+  are unchanged. Version alert: `Server restarted on a new version. 16b4bb9 (sent again)`.
+- **The test button (`send`) is unchanged:** one try, cut at 20 s, no mark. An answer after 20 s still shows "Not sent"
+  there (the button must answer the Admin screen).
+- **What cannot be excluded:** delivered, and the answer never arrives within 80 s → a 2nd copy, marked "(sent again)".
+  Telegram's sendMessage has no "same message as before" key (from memory — `core.telegram.org` is blocked in the session).
+- **Log lines (fixed words + small numbers, never the token / chat id / an answer's text):**
+  `[TG_ALERT] no answer yet try=N, still waiting` (at 20 s) · `late ok try=N after=NNs` · `send failed <word>` (unchanged).
+- **Callers untouched and still not awaiting:** `server.js` `onState → adminAlert.fire`, `versionAlert.js` `alert.fire`,
+  `pc711Backup.js` `void Promise.resolve(alert.deliver(kind))…` (it takes the alert off its queue when the tries are over,
+  sent or given up — so a longer wait re-sends nothing).
+- Tests: `telegramAlert.server.test.ts` T12 — a scripted fake Telegram on `vi.useFakeTimers()` moved by hand
+  (`scripted` / `begin` / `move`). ⚠️ In that suite an answer needs the clock moved (`await move(1)`), even an instant one.
+
