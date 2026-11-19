@@ -1,0 +1,97 @@
+iphone390  en    @ella.tw   Drop off before Nov  ⏎  26
+iphone390  en    @faye_ukay Leaves this list Nov  ⏎  27
+iphone390  en    @ivy_live  Leaves this list Nov  ⏎  27
+iphone390  en    @hana_q    Leaves this list at  ⏎  the next check
+iphone390  fil   @ella.tw   Ihulog bago ang  ⏎  Nob 26
+iphone390  fil   @faye_ukay Aalisin sa listahan  ⏎  sa Nob 27
+iphone390  fil   @ivy_live  Aalisin sa listahan  ⏎  sa Nob 27
+iphone390  fil   @hana_q    Aalisin sa listahan  ⏎  sa susunod na  ⏎  check
+iphone390  zh    @ella.tw   请在 11月26日 前寄  ⏎  件   ← ONE-CHARACTER LINE
+iphone390  zh    @faye_ukay 11月27日 移出列表
+iphone390  zh    @ivy_live  11月27日 移出列表
+iphone390  zh    @hana_q    下次检查时移出列表
+iphone390  zh-TW @ella.tw   請在 11月26日 前寄  ⏎  件   ← ONE-CHARACTER LINE
+iphone390  zh-TW @faye_ukay 11月27日 移出清單
+iphone390  zh-TW @ivy_live  11月27日 移出清單
+iphone390  zh-TW @hana_q    下次檢查時移出清單
+iphone390  vi    @ella.tw   Gửi trước 26 thg 11
+iphone390  vi    @faye_ukay Rời danh sách ngày  ⏎  27 thg 11
+iphone390  vi    @ivy_live  Rời danh sách ngày  ⏎  27 thg 11
+iphone390  vi    @hana_q    Rời danh sách ở  ⏎  lần kiểm tra tới
+iphone390  th    @ella.tw   ส่งก่อน 26 พ.ย.
+iphone390  th    @faye_ukay ออกจากรายการ 27  ⏎  พ.ย.
+iphone390  th    @ivy_live  ออกจากรายการ 27  ⏎  พ.ย.
+iphone390  th    @hana_q    ออกจากรายการเมื่อ  ⏎  ตรวจครั้งถัดไป
+iphone390  id    @ella.tw   Antar sebelum 26  ⏎  Nov
+iphone390  id    @faye_ukay Keluar dari daftar  ⏎  27 Nov
+iphone390  id    @ivy_live  Keluar dari daftar  ⏎  27 Nov
+iphone390  id    @hana_q    Keluar dari daftar di  ⏎  pengecekan  ⏎  berikutnya
+iphone390  bg    @ella.tw   Предай преди  ⏎  26.11
+iphone390  bg    @faye_ukay Отпада от списъка  ⏎  на 27.11
+iphone390  bg    @ivy_live  Отпада от списъка  ⏎  на 27.11
+iphone390  bg    @hana_q    Отпада при  ⏎  следващата  ⏎  проверка
+android360 en    @ella.tw   Drop off before  ⏎  Nov 26
+android360 en    @faye_ukay Leaves this list  ⏎  Nov 27
+android360 en    @ivy_live  Leaves this list  ⏎  Nov 27
+android360 en    @hana_q    Leaves this list at  ⏎  the next check
+android360 fil   @ella.tw   Ihulog bago ang  ⏎  Nob 26
+android360 fil   @faye_ukay Aalisin sa listahan  ⏎  sa Nob 27
+android360 fil   @ivy_live  Aalisin sa listahan  ⏎  sa Nob 27
+android360 fil   @hana_q    Aalisin sa listahan  ⏎  sa susunod na  ⏎  check
+android360 zh    @ella.tw   请在 11月26日 前  ⏎  寄件
+android360 zh    @faye_ukay 11月27日 移出列  ⏎  表   ← ONE-CHARACTER LINE
+android360 zh    @ivy_live  11月27日 移出列  ⏎  表   ← ONE-CHARACTER LINE
+android360 zh    @hana_q    下次检查时移出列  ⏎  表   ← ONE-CHARACTER LINE
+android360 zh-TW @ella.tw   請在 11月26日 前  ⏎  寄件
+android360 zh-TW @faye_ukay 11月27日 移出清  ⏎  單   ← ONE-CHARACTER LINE
+android360 zh-TW @ivy_live  11月27日 移出清  ⏎  單   ← ONE-CHARACTER LINE
+android360 zh-TW @hana_q    下次檢查時移出清  ⏎  單   ← ONE-CHARACTER LINE
+android360 vi    @ella.tw   Gửi trước 26 thg  ⏎  11
+android360 vi    @faye_ukay Rời danh sách  ⏎  ngày 27 thg 11
+android360 vi    @ivy_live  Rời danh sách  ⏎  ngày 27 thg 11
+android360 vi    @hana_q    Rời danh sách ở  ⏎  lần kiểm tra tới
+android360 th    @ella.tw   ส่งก่อน 26 พ.ย.
+android360 th    @faye_ukay ออกจากรายการ  ⏎  27 พ.ย.
+android360 th    @ivy_live  ออกจากรายการ  ⏎  27 พ.ย.
+android360 th    @hana_q    ออกจากรายการ  ⏎  เมื่อตรวจครั้งถัดไป
+android360 id    @ella.tw   Antar sebelum 26  ⏎  Nov
+android360 id    @faye_ukay Keluar dari daftar  ⏎  27 Nov
+android360 id    @ivy_live  Keluar dari daftar  ⏎  27 Nov
+android360 id    @hana_q    Keluar dari daftar  ⏎  di pengecekan  ⏎  berikutnya
+android360 bg    @ella.tw   Предай преди  ⏎  26.11
+android360 bg    @faye_ukay Отпада от  ⏎  списъка на 27.11
+android360 bg    @ivy_live  Отпада от  ⏎  списъка на 27.11
+android360 bg    @hana_q    Отпада при  ⏎  следващата  ⏎  проверка
+laptop1280 en    @ella.tw   Drop off before Nov  ⏎  26
+laptop1280 en    @faye_ukay Leaves this list Nov  ⏎  27
+laptop1280 en    @ivy_live  Leaves this list Nov  ⏎  27
+laptop1280 en    @hana_q    Leaves this list at  ⏎  the next check
+laptop1280 fil   @ella.tw   Ihulog bago ang  ⏎  Nob 26
+laptop1280 fil   @faye_ukay Aalisin sa listahan  ⏎  sa Nob 27
+laptop1280 fil   @ivy_live  Aalisin sa listahan  ⏎  sa Nob 27
+laptop1280 fil   @hana_q    Aalisin sa listahan  ⏎  sa susunod na  ⏎  check
+laptop1280 zh    @ella.tw   请在 11月26日 前寄  ⏎  件   ← ONE-CHARACTER LINE
+laptop1280 zh    @faye_ukay 11月27日 移出列表
+laptop1280 zh    @ivy_live  11月27日 移出列表
+laptop1280 zh    @hana_q    下次检查时移出列  ⏎  表   ← ONE-CHARACTER LINE
+laptop1280 zh-TW @ella.tw   請在 11月26日 前寄  ⏎  件   ← ONE-CHARACTER LINE
+laptop1280 zh-TW @faye_ukay 11月27日 移出清單
+laptop1280 zh-TW @ivy_live  11月27日 移出清單
+laptop1280 zh-TW @hana_q    下次檢查時移出清  ⏎  單   ← ONE-CHARACTER LINE
+laptop1280 vi    @ella.tw   Gửi trước 26 thg 11
+laptop1280 vi    @faye_ukay Rời danh sách  ⏎  ngày 27 thg 11
+laptop1280 vi    @ivy_live  Rời danh sách  ⏎  ngày 27 thg 11
+laptop1280 vi    @hana_q    Rời danh sách ở  ⏎  lần kiểm tra tới
+laptop1280 th    @ella.tw   ส่งก่อน 26 พ.ย.
+laptop1280 th    @faye_ukay ออกจากรายการ 27  ⏎  พ.ย.
+laptop1280 th    @ivy_live  ออกจากรายการ 27  ⏎  พ.ย.
+laptop1280 th    @hana_q    ออกจากรายการเมื่อ  ⏎  ตรวจครั้งถัดไป
+laptop1280 id    @ella.tw   Antar sebelum 26  ⏎  Nov
+laptop1280 id    @faye_ukay Keluar dari daftar  ⏎  27 Nov
+laptop1280 id    @ivy_live  Keluar dari daftar  ⏎  27 Nov
+laptop1280 id    @hana_q    Keluar dari daftar di  ⏎  pengecekan  ⏎  berikutnya
+laptop1280 bg    @ella.tw   Предай преди  ⏎  26.11
+laptop1280 bg    @faye_ukay Отпада от списъка  ⏎  на 27.11
+laptop1280 bg    @ivy_live  Отпада от списъка  ⏎  на 27.11
+laptop1280 bg    @hana_q    Отпада при  ⏎  следващата  ⏎  проверка
+lines checked: 96 · one-character lines: 12 · dates cut over two lines: 0

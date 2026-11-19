@@ -61,12 +61,29 @@ npx vite --config docs/design/fm-pickup-accuracy-2/harness/vite.config.mjs --por
 node docs/design/fm-pickup-accuracy-2/harness/shoot.cjs
 ```
 
+## Fix round 1 — the right-hand line never leaves one character alone
+
+Before: on a phone the Traditional Chinese line wrapped as "請在 11月26日 前寄 ⏎ 件" (and "11月27日 移出清 ⏎ 單"),
+and in English, Thai, Indonesian and Vietnamese the date itself was cut in two ("Nov ⏎ 26", "26 ⏎ Nov").
+Now each line may wrap only between whole pieces (`src/redesign/adapters/keepTogether.ts`): the date is one
+piece, every word group between spaces of up to 6 characters is one piece, and a longer run without spaces
+is split into words of 2+ characters. Chinese, Traditional Chinese and Thai also get evened-out lines
+("下次檢查時 ⏎ 移出清單"). The words themselves are unchanged. This covers the "Drop off before" line on every
+全家 in-transit row, not only the new group.
+
+- `wrap/sheet_before_<device>.png`, `wrap/sheet_after_<device>.png` — the group rows, iPhone 390 and Android
+  360, the 8 languages; `wrap/<before|after>_<device>_<lang>.png` one by one.
+- `proof/wrap-before.txt`, `proof/wrap-after.txt` — every right-hand line, read character by character on a
+  real browser, iPhone 390 / Android 360 / laptop 1280, 8 languages (96 lines): before 12 one-character
+  lines and dates cut in English / Thai / Indonesian / Vietnamese; after 0 one-character lines, 0 dates
+  cut, 0 lines wider than their cell. Made with `harness/wrap-check.cjs` (and `harness/wrap-shoot.cjs`).
+
 ## Proof
 
-- `proof/without-the-code.txt` — the new tests run against main's source files: 52 fail, 9 pass
-  (each of the 9 checks that something stays as before), and the SQL pin file cannot load
+- `proof/without-the-code.txt` — the new tests run against main's source files: 55 fail, 9 pass
+  (each of the 9 checks that something stays as before), and the SQL pins + wrapping tests cannot load
   (sql/186 is not on main).
-- `proof/on-purpose-breaks.txt` — 52 one-line breaks of this branch: 52 of 52 make a test fail.
+- `proof/on-purpose-breaks.txt` — 60 one-line breaks of this branch (incl. 8 for fix round 1): 60 of 60 make a test fail.
   The list: `proof/on-purpose-breaks.py`.
 - `proof/seven-scopes-vs-main.txt` — main's worker and this branch's worker side by side over
   4,000 generated jobs: the 7-11 part, the shared scope and the automatic check are the same in

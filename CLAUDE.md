@@ -5814,11 +5814,19 @@ not touched (`git diff origin/main -- server/` = fmTracking.js, fmTrackingRunner
   off yet", chips `pt-no-record` / `pt-not-dropped`, right column "Leaves this list {date}" / "…at the next check".
   i18n: `rd_pt_fm_no_record`, `rd_pt_fm_leaves_on`, `rd_pt_fm_leaves_next`, `rd_pt_fm_group_hint` (8 languages);
   the title reuses `rd_pt_fm_not_dropped`.
+- **Fix round 1 — right-hand lines wrap only between whole pieces** (`adapters/keepTogether.ts`, drawn by
+  `KeepTogether` in ParcelTracking.tsx for "Drop off before {date}", "Leaves this list {date}", "…at the next
+  check"): the date = one `nowrap` piece (`data-date`), a word group between spaces of ≤ 6 characters = one
+  piece, a longer run without spaces → the language's words (Intl.Segmenter) with one-character words joined
+  to a neighbour; `text-wrap: balance` only for zh / zh-TW / th. No Intl.Segmenter → a long run is left as
+  before. Measured on a real browser (`harness/wrap-check.cjs`, 96 lines): before 12 one-character lines +
+  dates cut in en/th/id/vi; after 0 / 0 / no overflow.
 - **Guide:** pickup-status section + 116b; `sql/187_guide_fm_not_dropped.sql` (+ rollback = the live row, md5
   checked 2026-11-19) — only that row. NOT applied; apply last.
 - **Order:** sql/186 → Render → Vercel → sql/187. sql/182 (optional) any time.
 - Tests: `fmSiteAnswer.server.test.ts`, `parcelTrackingFmSite.test.ts`, `ParcelTracking.fmSite.test.tsx`,
-  `fmSiteAnswerSql.test.ts`. Pictures + proofs: `docs/design/fm-pickup-accuracy-2/`.
+  `fmSiteAnswerSql.test.ts`, `keepTogether.test.ts`. ⚠️ `fmShipTypeSql.test.ts` no longer checks "no number above
+  182" (main's later sql/184/185 made it false; main's CI run 1865 was red on it). Pictures + proofs: `docs/design/fm-pickup-accuracy-2/`.
 - **Known limits:** the 10 days count from when the row was first saved (a re-issued delivery number on an old
   order is not handled); after the 30-day delete a later upload that still lists the order adds it again as new;
   the seller is not told when more than 60 全家 parcels were left for the next press; `not_dropped` with a passed

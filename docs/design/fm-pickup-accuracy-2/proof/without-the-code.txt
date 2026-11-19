@@ -1,150 +1,69 @@
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > rowToTracking — the saved answer > read only when the column came back; an unknown word is no answer
-   → expected { id: 'a', trackingNo: '', …(14) } to match object { fmSiteState: 'not_found', …(1) }
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > isFmNothingYet > a 全家 parcel in transit, unfinished, with one of the two saved answers → yes
-   → isFmNothingYet is not a function
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > isFmNothingYet > anything else → no
-   → isFmNothingYet is not a function
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > saved day (Taipei) + 10 days
-   → expected undefined to be 10 // Object.is equality
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > FamilyMart does not know the number + a drop-off date → the day after it, when sooner
-   → fmLeaves is not a function
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > not such a row / no readable saved time → null
-   → fmLeaves is not a function
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > In transit: the moving parcels first, then the group
-   → expected [ 'h1', 'm1', 'h2', 's1' ] to deeply equal [ 'm1', 's1', 'h1', 'h2' ]
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > the In transit number counts the moving parcels only; the group has its own number
-   → expected 4 to be 2 // Object.is equality
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > exact numbers from the database win
-   → fmNotDroppedCount is not a function
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > without the saved answer (7-11, 全家 off, sql/185 not applied) nothing changes
-   → fmNotDroppedCount is not a function
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — 全家 on, sql/185 applied > 8 questions; the In transit count leaves the group out; the group has its own exact count
-   → expected [ [ [ 'select', …(1) ], …(5) ], …(6) ] to have a length of 8 but got 7
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — sql/185 NOT applied yet > the first read says 'no such column' → read again exactly as before (same select, 7 questions); later reads go straight to it
-   → expected [ [ [ 'select', …(1) ], …(5) ], …(6) ] to have a length of 15 but got 7
- × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — sql/185 NOT applied yet > Load more falls back the same way
-   → expected [ Array(1) ] to deeply equal [ …(2) ]
- ✓ src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — sql/185 NOT applied yet > another read error is not retried (never partial — as before)
- ✓ src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > 全家 off — the read of before, byte for byte > PT_SELECT alone, 6 questions (as on main), no saved-answer filter
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > saves the fact: not_found → 'not_found', not_shipped → 'not_dropped' (the two words the database allows)
-   → fmNothingYet is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > leaves at 10 Taipei calendar days after the save, not one day sooner — for both answers
-   → expected undefined to be 10 // Object.is equality
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > the site does not know the number AND the drop-off date has passed → leaves now
-   → fmNothingYet is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > the site knows the order (not handed in) and the date has passed → stays (FamilyMart's own void step removes such orders)
-   → fmNothingYet is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > the drop-off date is read on the Taipei day: 23:59 Taipei of the date is still 'not passed'
-   → fmNothingYet is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > no readable saved time → the 10-day rule cannot decide (the date rule still can)
-   → fmNothingYet is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > never for a row the site has really answered once, a row that is not in transit, another answer, or no row
-   → fmNothingYet is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > a real answer clears the saved fact; plain = exactly the write of before
-   → expected undefined to be null
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > 'nothing yet' that stays → the fact and the check time; nothing else
-   → expected { action: 'update', patch: { …(1) } } to deeply equal { action: 'update', …(3) }
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > 'nothing yet' that leaves → finished, status and message untouched; plain never finishes the row
-   → expected { Object (last_polled_at) } to deeply equal { …(3) }
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > a row already answered once → the check time only, as before (no fact)
-   → expected { Object (last_polled_at) } to be undefined // Object.is equality
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > an unknown code / a void order with other steps → the check time, and the fact is cleared (the site said something)
-   → unknown: expected { action: 'update', patch: { …(1) } } to deeply equal { action: 'update', …(2) }
  ✓ src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > a void order is still removed (unchanged)
- × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the check writes the fact (sql/185 applied) > each parcel: the fact saved, cleared, left — and the counts
-   → expected { id: 'found', …(13) } to match object { status: 'at_store', …(2) }
- × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the check writes the fact (sql/185 applied) > the write of a parcel that leaves: only the check time, the fact and 'finished' — status untouched
-   → expected [ Array(1) ] to deeply equal [ { …(3) } ]
- × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the check writes the fact (sql/185 applied) > the written words are only the two the database allows
-   → expected [] to deeply equal [ 'not_dropped', 'not_found', null ]
+ × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the check writes the fact (sql/186 applied) > each parcel: the fact saved, cleared, left — and the counts
+ × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the check writes the fact (sql/186 applied) > the write of a parcel that leaves: only the check time, the fact and 'finished' — status untouched
+ × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the check writes the fact (sql/186 applied) > the written words are only the two the database allows
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the server's own read gives the check what it needs > a parcel answered once before keeps no 'nothing yet' mark — through selectFmRows, not rows handed in
-   → fm_answered_at: expected false to be true // Object.is equality
- × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > sql/185 not applied yet — the check writes exactly what it wrote before > first 'column not found' → warned once, written again without the fact; every later write is the old one
-   → expected [] to have a length of 1 but got +0
- × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > sql/185 not applied yet — the check writes exactly what it wrote before > the error test: only a missing column counts
-   → fmStateColumnMissing is not a function
- ✓ src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > sql/185 not applied yet — the check writes exactly what it wrote before > any OTHER write error is not retried and changes nothing (as before)
+ × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > sql/186 not applied yet — the check writes exactly what it wrote before > first 'column not found' → warned once, written again without the fact; every later write is the old one
+ × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > sql/186 not applied yet — the check writes exactly what it wrote before > the error test: only a missing column counts
+ ✓ src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > sql/186 not applied yet — the check writes exactly what it wrote before > any OTHER write error is not retried and changes nothing (as before)
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the run's counts are saved with the 全家 health row > fm_not_found / fm_not_shipped / fm_left on the row of the run; 'left=' in the done line
-   → expected { …(13) } to match object { kind: 'fm', job_id: 'J1', …(4) }
- ✓ src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the run's counts are saved with the 全家 health row > sql/185 not applied → the health row of before (no count columns), written once
+ ✓ src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the run's counts are saved with the 全家 health row > sql/186 not applied → the health row of before (no count columns), written once
  ✓ src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > the run's counts are saved with the 全家 health row > no parcel number, buyer name or phone in any log line of the run
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > A — fmScopeForJob: manual = every parcel, the 7-11 order; the other jobs unchanged > no 24-hour skip: a parcel checked an hour ago is asked again
-   → fmScopeForJob is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > A — fmScopeForJob: manual = every parcel, the 7-11 order; the other jobs unchanged > order: at a store first, nearest pickup deadline first; then the rest, least recently checked first (never checked first)
-   → fmScopeForJob is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > A — fmScopeForJob: manual = every parcel, the 7-11 order; the other jobs unchanged > keeps the 60-per-job limit; capped = some were left for the next check
-   → fmScopeForJob is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > A — fmScopeForJob: manual = every parcel, the 7-11 order; the other jobs unchanged > urgent / new_parcels / health / anything else → exactly scopeForJob (unchanged)
-   → fmScopeForJob is not a function
  × src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > A — fmScopeForJob: manual = every parcel, the 7-11 order; the other jobs unchanged > the worker uses it for the 全家 part of every non-automatic job; the 7-11 part and the automatic check are not touched
-   → expected '// Parcel tracking — the on-demand jo…' to contain ': fmScopeForJob(job, list, now(), { .…'
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > rowToTracking — the saved answer > read only when the column came back; an unknown word is no answer
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > isFmNothingYet > a 全家 parcel in transit, unfinished, with one of the two saved answers → yes
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > isFmNothingYet > anything else → no
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > saved day (Taipei) + 10 days
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > FamilyMart does not know the number + a drop-off date → the day after it, when sooner
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > not such a row / no readable saved time → null
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > In transit: the moving parcels first, then the group
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > the In transit number counts the moving parcels only; the group has its own number
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > exact numbers from the database win
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > the list and the numbers > without the saved answer (7-11, 全家 off, sql/186 not applied) nothing changes
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — 全家 on, sql/186 applied > 8 questions; the In transit count leaves the group out; the group has its own exact count
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — sql/186 NOT applied yet > the first read says 'no such column' → read again exactly as before (same select, 7 questions); later reads go straight to it
+ × src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — sql/186 NOT applied yet > Load more falls back the same way
+ ✓ src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — sql/186 NOT applied yet > another read error is not retried (never partial — as before)
+ ✓ src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > 全家 off — the read of before, byte for byte > PT_SELECT alone, 6 questions (as on main), no saved-answer filter
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > the In transit card counts the moving parcels only and says '+4 Not dropped off yet' under it
-   → expected 6 to be 2 // Object.is equality
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > In transit: the moving parcels, then the group with its head and number (inside it: the date that comes first, first)
-   → expected [ 'gone_soon', 'ella_tw', …(4) ] to deeply equal [ 'seven_moving', 'fm_moving', …(5) ]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > the labels and the right-hand column of each row
-   → expected { chip: null, left: '—' } to deeply equal { chip: 'Not dropped off yet', …(1) }
  ✓ src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > Waiting and Picked up show no group
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > exact numbers from the database: the card and the group head use them
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > the 7-11 store filter: no group, no card line; FamilyMart: the group of FamilyMart's parcels
-   → expected [ 'gone_soon', 'ella_tw', …(3) ] to deeply equal [ 'fm_moving', 'GROUP', …(4) ]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > search: the group shows the matches only
-   → expected [ 'ivy_live' ] to deeply equal [ 'GROUP', 'ivy_live' ]
- ✓ src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > no saved answer on any row (7-11 only, 全家 off, sql/185 not applied) → exactly as before: no group, no card line
+ ✓ src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > PHONE > no saved answer on any row (7-11 only, 全家 off, sql/186 not applied) → exactly as before: no group, no card line
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > LAPTOP > the In transit tab counts the moving parcels; the table has the group row before the first such parcel
-   → expected 'In transit 6' to match /2$/
  ✓ src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > LAPTOP > All lists every parcel and shows no group head
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > en
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > fil
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > zh
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > zh-TW
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > vi
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > th
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > id
-   → Unable to find an element by: [data-testid="pt-card-held"]
  × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > every app language > bg
-   → Unable to find an element by: [data-testid="pt-card-held"]
+ × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > the right-hand line keeps the date and the words together > Traditional Chinese: 請在 · 11月25日 · 前寄件 are three whole pieces (never 前寄 ⏎ 件)
+ × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > the right-hand line keeps the date and the words together > English: the date is one piece (never Nov ⏎ 25)
+ × src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx > the right-hand line keeps the date and the words together > every language: the date of each line is one piece, and the text is the label word for word
  FAIL  src/redesign/adapters/__tests__/fmSiteAnswerSql.test.ts [ src/redesign/adapters/__tests__/fmSiteAnswerSql.test.ts ]
-⎯⎯⎯⎯⎯⎯ Failed Tests 52 ⎯⎯⎯⎯⎯⎯⎯
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > saves the fact: not_found → 'not_found', not_shipped → 'not_dropped' (the two words the database allows)
-     29|   it("saves the fact: not_found → 'not_found', not_shipped → 'not_drop…
-     37|     // saved 2026-11-10 00:00 Taipei → 9 days → stays
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > the site does not know the number AND the drop-off date has passed → leaves now
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > the site knows the order (not handed in) and the date has passed → stays (FamilyMart's own void step removes such orders)
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmNothingYet — what a 'nothing yet' answer just received means for the row > no readable saved time → the 10-day rule cannot decide (the date rule still can)
-     61|   it("no readable saved time → the 10-day rule cannot decide (the date…
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > 'nothing yet' that stays → the fact and the check time; nothing else
-     86|   it("'nothing yet' that stays → the fact and the check time; nothing …
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > 'nothing yet' that leaves → finished, status and message untouched; plain never finishes the row
-     93|   it("'nothing yet' that leaves → finished, status and message untouch…
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > a row already answered once → the check time only, as before (no fact)
-    104|   it("an unknown code / a void order with other steps → the check time…
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > fmRowChange — what is written, and the write of before (plain) > an unknown code / a void order with other steps → the check time, and the fact is cleared (the site said something)
-    104|   it("an unknown code / a void order with other steps → the check time…
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > sql/185 not applied yet — the check writes exactly what it wrote before > first 'column not found' → warned once, written again without the fact; every later write is the old one
- FAIL  src/redesign/adapters/__tests__/fmSiteAnswer.server.test.ts > A — fmScopeForJob: manual = every parcel, the 7-11 order; the other jobs unchanged > urgent / new_parcels / health / anything else → exactly scopeForJob (unchanged)
-+ // inserts new rows (trigger) → a row lands in parcel_tracking_jobs → this worker claims
-+ // answer only (still not dropped → leaves Pickup Status; anything else → a normal update). So a
-+ export const CLEANUP_IDLE_PAUSE_MS = 30 * 60 * 1000;   // nothing to do / a read failed → look again in 30 min
-+ //   manual      → all of them, in check order (at-store first), never capped
-+ //   new_parcels → none (no 7-11 check at Sync; the job still runs its 全家 part)
-+ //   urgent      → as before (at-store due today or tomorrow, plan cap)
-+ //   health      → the first one in check order
-+   // probe. Any read error → none (the job then finishes 0/0, as before).
- FAIL  src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > isFmNothingYet > a 全家 parcel in transit, unfinished, with one of the two saved answers → yes
- FAIL  src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > isFmNothingYet > anything else → no
-     85|   it("anything else → no", () => {
- FAIL  src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > FamilyMart does not know the number + a drop-off date → the day after it, when sooner
-    105|   it("FamilyMart does not know the number + a drop-off date → the day …
- FAIL  src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > fmLeaves — the day it leaves the list (the server's two rules) > not such a row / no readable saved time → null
-    112|   it("not such a row / no readable saved time → null", () => {
- FAIL  src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts > loadParcelTracking — sql/185 NOT applied yet > the first read says 'no such column' → read again exactly as before (same select, 7 questions); later reads go straight to it
- Test Files  4 failed (4)
-      Tests  52 failed | 9 passed (61)
+ FAIL  src/redesign/adapters/__tests__/keepTogether.test.ts [ src/redesign/adapters/__tests__/keepTogether.test.ts ]
+⎯⎯⎯⎯⎯⎯ Failed Tests 55 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  5 failed (5)
+      Tests  55 failed | 9 passed (64)

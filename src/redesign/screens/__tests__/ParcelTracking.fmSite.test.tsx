@@ -190,3 +190,49 @@ describe("every app language", () => {
     });
   }
 });
+
+// Fix round 1 (2026-11-19): the right-hand line may wrap only between whole pieces — the date and every
+// short word group are each one unbreakable piece. (jsdom has no layout: the real wrapping is measured on a
+// real browser by docs/design/fm-pickup-accuracy-2/harness/wrap-check.cjs → proof/wrap-after.txt.)
+describe("the right-hand line keeps the date and the words together", () => {
+  beforeEach(() => { M.narrow = true; });
+  const whole = (el: HTMLElement) => [...el.querySelectorAll("span")].filter((s) => s.style.whiteSpace === "nowrap").map((s) => s.textContent);
+  const openTransit = async (lang: Lang) => {
+    const r = view(lang);
+    fireEvent.click(await r.findByTestId("pt-card-transit"));
+    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(6));
+    return r;
+  };
+  it("Traditional Chinese: 請在 · 11月25日 · 前寄件 are three whole pieces (never 前寄 ⏎ 件)", async () => {
+    const r = await openTransit("zh-TW");
+    const left = within(rowOf(r, "ella_tw")).getByTestId("pt-left");
+    expect(left.textContent).toBe("請在 11月25日 前寄件");
+    expect(whole(left)).toEqual(["請在", "11月25日", "前寄件"]);
+    expect(left.querySelector("[data-date]")?.textContent).toBe("11月25日");
+    expect(whole(within(rowOf(r, "gone_soon")).getByTestId("pt-left"))).toEqual(["下次", "檢查時", "移出", "清單"]);
+    expect(whole(within(rowOf(r, "faye_ukay")).getByTestId("pt-left"))).toEqual(["11月25日", "移出清單"]);
+  });
+  it("English: the date is one piece (never Nov ⏎ 25)", async () => {
+    const r = await openTransit("en");
+    const left = within(rowOf(r, "ella_tw")).getByTestId("pt-left");
+    expect(left.textContent).toBe("Drop off before Nov 25");
+    expect(left.querySelector("[data-date]")?.textContent).toBe("Nov 25");
+    expect(whole(left)).toEqual(["Drop", "off", "before", "Nov 25"]);
+  });
+  it("every language: the date of each line is one piece, and the text is the label word for word", async () => {
+    for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as Lang[]) {
+      const t = buildT(lang) as unknown as Record<string, string>;
+      const r = await openTransit(lang);
+      for (const who of ["ella_tw", "faye_ukay", "ivy_live"]) {
+        const left = within(rowOf(r, who)).getByTestId("pt-left");
+        const date = left.querySelector("[data-date]");
+        expect(date, `${lang} ${who}`).toBeTruthy();
+        expect(date!.parentElement, `${lang} ${who}`).toBe(left);
+        expect((date as HTMLElement).style.whiteSpace).toBe("nowrap");
+        const tmpl = who === "ella_tw" ? t.rd_pt_fm_drop_by : t.rd_pt_fm_leaves_on;
+        expect(left.textContent, `${lang} ${who}`).toBe(tmpl.replace("{date}", date!.textContent ?? ""));
+      }
+      r.unmount();
+    }
+  });
+});

@@ -25,6 +25,7 @@ import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
 import { syncFromExport, type SyncResult } from "../adapters/parcelExportRead";
 import { uploadFmExport, type FmUploadResult } from "../adapters/fmPickup";
+import { keepTogetherPieces, keepTogetherBalanced } from "../adapters/keepTogether";
 import {
   loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, fmDropOff, isUnchecked, tabRows, tabCounts,
   isFmNothingYet, fmLeaves, fmNotDroppedCount,
@@ -81,31 +82,48 @@ function FmGroupHead({ n, t }: { n: number; t: T }) {
 // Where the group head goes in a list: before the first such row. held undefined = no group here.
 const fmGroupAt = (rows: ParcelTrackingRow[], held: number | undefined) => (held === undefined ? -1 : rows.findIndex(isFmNothingYet));
 
+// A right-hand label that may wrap only between whole pieces: the date and every short word group stay
+// together, so no line ever holds one lonely character ("請在 11月26日 ⏎ 前寄件", not "…前寄 ⏎ 件").
+// The text is exactly tpl(template, {date}); only where the line may break changes (adapters/keepTogether).
+function KeepTogether({ template, date, lang }: { template: string; date: string | null; lang: string }) {
+  return (
+    <>
+      {keepTogetherPieces(template, date, lang).map((p, i) => (p.keep
+        ? <span key={i} style={{ whiteSpace: "nowrap" }} {...(p.date ? { "data-date": "" } : {})}>{p.text}</span>
+        : <Fragment key={i}>{p.text}</Fragment>))}
+    </>
+  );
+}
+const leftLabel: CSSProperties = { fontSize: 12.5, color: "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" };
+// Languages written without spaces between words: the browser evens out the two lines ("下次檢查時 ⏎
+// 移出清單"). Elsewhere the plain wrap reads better ("Drop off before ⏎ Nov 26"). Older phones ignore it.
+const balanced = (lang: string): CSSProperties => (keepTogetherBalanced(lang) ? { textWrap: "balance" } : {});
+
 function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t: T }) {
   const lang = useLang();
   // 全家 parcel FamilyMart has nothing for yet: when it leaves the list (sql/186).
   const leaves = fmLeaves(row, today);
   if (leaves?.next) {
     return (
-      <span style={{ fontSize: 12.5, color: "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
-        data-testid="pt-left" data-leaves={leaves.date} data-urgent="0">{t.rd_pt_fm_leaves_next}</span>
+      <span style={{ ...leftLabel, ...balanced(lang) }} data-testid="pt-left" data-leaves={leaves.date} data-urgent="0">
+        <KeepTogether template={t.rd_pt_fm_leaves_next} date={null} lang={lang} />
+      </span>
     );
   }
   const drop = fmDropOff(row, today);
   if (drop) {
     return (
-      <span style={{ fontSize: 12.5, fontWeight: drop.urgent ? 600 : 400, color: drop.urgent ? "var(--danger)" : "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
+      <span style={{ ...leftLabel, ...balanced(lang), fontWeight: drop.urgent ? 600 : 400, color: drop.urgent ? "var(--danger)" : "var(--text-dim)" }}
         data-testid="pt-left" data-dropoff={drop.deadline} data-urgent={drop.urgent ? "1" : "0"}>
-        {tpl(t.rd_pt_fm_drop_by, { date: shortDate(drop.deadline, lang) })}
+        <KeepTogether template={t.rd_pt_fm_drop_by} date={shortDate(drop.deadline, lang)} lang={lang} />
       </span>
     );
   }
   // …with no drop-off date from the file (that line wins above): the day it leaves.
   if (leaves) {
     return (
-      <span style={{ fontSize: 12.5, color: "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
-        data-testid="pt-left" data-leaves={leaves.date} data-urgent="0">
-        {tpl(t.rd_pt_fm_leaves_on, { date: shortDate(leaves.date, lang) })}
+      <span style={{ ...leftLabel, ...balanced(lang) }} data-testid="pt-left" data-leaves={leaves.date} data-urgent="0">
+        <KeepTogether template={t.rd_pt_fm_leaves_on} date={shortDate(leaves.date, lang)} lang={lang} />
       </span>
     );
   }

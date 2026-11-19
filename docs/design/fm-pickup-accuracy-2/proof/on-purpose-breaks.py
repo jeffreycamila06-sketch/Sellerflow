@@ -10,10 +10,12 @@ TESTS = [
     "src/redesign/adapters/__tests__/parcelTrackingFmSite.test.ts",
     "src/redesign/screens/__tests__/ParcelTracking.fmSite.test.tsx",
     "src/redesign/adapters/__tests__/fmSiteAnswerSql.test.ts",
+    "src/redesign/adapters/__tests__/keepTogether.test.ts",
 ]
 I18N = ["src/redesign/i18n"]
 SRV = "server/fmTracking.js"; RUN = "server/fmTrackingRunner.js"; WRK = "server/parcelTrackingWorker.js"
 APP = "src/redesign/adapters/parcelTracking.ts"; SCR = "src/redesign/screens/ParcelTracking.tsx"
+KT = "src/redesign/adapters/keepTogether.ts"
 SQL = "sql/186_fm_site_answer.sql"; BACK = "sql/186_fm_site_answer_rollback.sql"; LANG = "src/redesign/i18n/index.tsx"
 STAYS = " or public.fm_upload_stays_out(t.terminal, t.status, t.fm_site_state, excluded.status)"
 
@@ -67,6 +69,15 @@ BREAKS = [
     ("group head on every tab", SCR, 'const heldHere = tab !== "transit" ? undefined : ', "const heldHere = "),
     ("no 'No record yet' label", SCR, 'const noRecord = isFmNothingYet(row) && row.fmSiteState === "not_found";', "const noRecord = false;"),
     ("no 'next check' line", SCR, "if (leaves?.next) {", "if (false) {"),
+    # ── fix round 1: right-hand lines wrap only between whole pieces ──
+    ("the date can be cut", KT, "out.push({ text: date as string, keep: true, date: true });", "out.push({ text: date as string, keep: false, date: true });"),
+    ("short word groups can be cut", KT, "if (graphemeCount(tok) <= SHORT_CHUNK) { out.push({ text: tok, keep: true }); continue; }", "if (graphemeCount(tok) <= SHORT_CHUNK) { out.push({ text: tok, keep: false }); continue; }"),
+    ("one-character words left alone", KT, "if (words.length && graphemeCount(segment) === 1) words[words.length - 1] += segment; // join to the word before\n    else words.push(segment);", "words.push(segment);"),
+    ("short chunk limit 1", KT, "export const SHORT_CHUNK = 6;", "export const SHORT_CHUNK = 1;"),
+    ("lines evened out for every language", KT, "(NO_SPACE_LANGS as readonly string[]).includes(lang);", "true;"),
+    ("drop-off line back to plain text", SCR, "<KeepTogether template={t.rd_pt_fm_drop_by} date={shortDate(drop.deadline, lang)} lang={lang} />", "{tpl(t.rd_pt_fm_drop_by, { date: shortDate(drop.deadline, lang) })}"),
+    ("leaves-on line back to plain text", SCR, "<KeepTogether template={t.rd_pt_fm_leaves_on} date={shortDate(leaves.date, lang)} lang={lang} />", "{tpl(t.rd_pt_fm_leaves_on, { date: shortDate(leaves.date, lang) })}"),
+    ("whole pieces drawn without nowrap", SCR, "<span key={i} style={{ whiteSpace: \"nowrap\" }}", "<span key={i} style={{}}"),
     # ── words ──
     ("Traditional Chinese 'No record yet' empty", LANG, '"zh-TW": "查無資料"', '"zh-TW": ""'),
     # ── SQL ──
