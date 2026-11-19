@@ -121,8 +121,12 @@ describe("RedesignApp wiring (source contract)", () => {
   const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
   const body = (name: string) => { const i = src.indexOf(`const ${name} = `); return src.slice(i, src.indexOf("\n  };", i)); };
   it("1-Click and pin deduct post-hoc; Enterprise and Auto never do", () => {
-    expect(body("onOneClick")).toContain("deductOneClickStock(prod.comment");
-    expect(body("handlePinned")).toContain("deductOneClickStock(c.comment");
+    // Choose price (sql/180): the order + its stock step live in commitOneClick / commitPin,
+    // which the 1-Click tap and the pin call (and the price pop-up, with the picked price).
+    expect(body("onOneClick")).toContain("commitOneClick(id, prod, effectiveOrderPrice(0, samePriceCfg.active));");
+    expect(body("commitOneClick")).toContain("deductOneClickStock(prod.comment");
+    expect(body("handlePinned")).toContain("commitPin(c, effectiveOrderPrice(0, samePriceCfg.active));");
+    expect(body("commitPin")).toContain("deductOneClickStock(c.comment");
     expect(body("submitEnt")).not.toContain("deductOneClickStock");
     const d = body("deductOneClickStock");
     expect(d).toContain("if (!featureSw.inventoryV2 || !deductOneClick) return;");

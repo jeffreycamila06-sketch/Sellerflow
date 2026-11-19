@@ -624,6 +624,18 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
   .sfl-toast-in { animation: none; }
 }
 
+/* ── "Choose price before print" pop-up ──
+   Phone: a bottom sheet (full width, rounded top, safe-area bottom padding, one-thumb reach).
+   720px and wider (tablet / laptop): a centered dialog. No transition (it must appear at once). */
+.sfl-cpp-backdrop { position: fixed; inset: 0; z-index: 1350; display: flex; align-items: flex-end; justify-content: center; background: rgba(20, 22, 40, .45); box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.sfl-cpp-sheet { width: 100%; max-height: calc(100% - 24px); overflow-y: auto; box-sizing: border-box; background: var(--surface); border-radius: 22px 22px 0 0; padding: 10px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -12px 40px rgba(0, 0, 0, .25); }
+.sfl-cpp-grip { width: 40px; height: 5px; border-radius: 999px; background: var(--border-strong); margin: 0 auto 12px; }
+@media (min-width: 720px) {
+  .sfl-cpp-backdrop { align-items: center; padding: 16px; }
+  .sfl-cpp-sheet { width: min(440px, 92vw); max-height: calc(100vh - 32px); border-radius: 20px; padding: 22px 20px 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .28); }
+  .sfl-cpp-grip { display: none; }
+}
+
 
 /* Pickup Status — "Checking…" on the Check now button while a job is active.
    Hourglass flips (1.4s), dots pulse in sequence (1.2s, .2s apart). transform/opacity

@@ -35,10 +35,10 @@ Every other screen has **‹ Back** at the top left. It takes you back to where 
 - **Need help? Contact us** — shows a short message. Tap **Proceed** to open Telegram @SellerFlowLive.
 - **Delete Account**
 - **Log out** — logs out this device only.'),
-  ('general-settings', 'General Settings', '2026-11-11'::date, 'general settings, profile, shop name, phone, live setup, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料', '**Settings → General Settings** has these parts:
+  ('general-settings', 'General Settings', '2026-11-19'::date, 'general settings, profile, shop name, phone, live setup, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料', '**Settings → General Settings** has these parts:
 
 - **BASIC INFORMATION** — tap **Edit** to change **Shop name**, **Owner name** and **Phone**, then **Save changes**. Your email can''t be changed here.
-- **LIVE SETUP** — tap **Live setup** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
+- **LIVE SETUP** — tap **Live setup** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**, **Choose price before print**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
 - **APPEARANCE** — Theme (☀ Light / ☾ Dark), Accent color, Language, Currency.
 - **CHANNELS** — TikTok Live and Facebook Live rows. Tap one to manage your accounts.
 - **Printer Settings** — tap **Printer**, then under **CHOOSE PRINTER** pick the WiFi receipt printer or the Bluetooth sticker printer.
@@ -181,9 +181,9 @@ Switching to another live platform asks "Switch live source?". Tap **Switch** to
 If you see "Couldn''t load this session''s buyers", check your internet and tap **Retry**. If you see "Session still loading — that order wasn''t created", wait a moment and try again.
 
 If numbers look wrong, fully close the app on every device and open it again, then tap Connect once.'),
-  ('one-click-orders', '1-Click and Type price orders', '2026-10-14'::date, '1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, 一键, 一鍵下單, 输入价格', 'Every comment on the **Live** screen has two buttons:
+  ('one-click-orders', '1-Click and Type price orders', '2026-11-19'::date, '1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, 一键, 一鍵下單, 输入价格', 'Every comment on the **Live** screen has two buttons:
 
-- **1-Click** — creates the order and prints the sticker right away with the comment text. The price is 0 unless **Same price for all items** is on.
+- **1-Click** — creates the order and prints the sticker right away with the comment text. The price is 0 unless **Same price for all items** is on. With **Choose price before print** on, you tap the price first.
 - **Type price** — type the price, then tap ✓ (or press Enter) to **Print this order**.
 
 After an order, the row shows **Printed** and a **Reprint** button.
@@ -191,11 +191,23 @@ After an order, the row shows **Printed** and a **Reprint** button.
 If the comment is a sold-out Auto mode code, the app asks "{code} is sold out. Continue anyway?" You can still sell it.
 
 Tags like **NEW** or **CHECK** warn you about risky buyers.'),
-  ('same-price', 'Same price for all items', '2026-11-11'::date, 'same price, fixed price, all items, price, isang presyo, pare-pareho presyo, 统一价, 同價, 固定價格', '**Settings → General Settings → LIVE SETUP → Same price for all items**.
+  ('same-price', 'Same price for all items', '2026-11-19'::date, 'same price, fixed price, all items, price, isang presyo, pare-pareho presyo, 统一价, 同價, 固定價格', '**Settings → General Settings → LIVE SETUP → Same price for all items**.
 
 1. Turn it on, type the price, and tap **Turn on**.
 2. While it is on, every **1-Click** and **Auto** order prints this price, whatever the buyer types. In **Type price**, the price is filled in for you but you can still change it.
-3. Turn it off with the switch in Settings, or tap **×** on the "All items …" chip on the Live screen. The app remembers the price for next time.'),
+3. Turn it off with the switch in Settings, or tap **×** on the "All items …" chip on the Live screen. The app remembers the price for next time.
+
+Only one of **Same price for all items** and **Choose price before print** can be on. Turning one on turns the other off; both keep their prices.'),
+  ('choose-price', 'Choose price before print', '2026-11-19'::date, 'choose price, pick price, price before print, different prices, premium item, price buttons, pumili ng presyo, ibang presyo, 选择价格, 選擇價格, 打印前选择价格', '**Settings → General Settings → LIVE SETUP → Choose price before print** (under **Same price for all items**).
+
+1. Turn it on. If you have no prices yet, type one and tap **Turn on**.
+2. Under the switch, add up to 6 prices. The first one is the default. Tap ☆ to make a price the default, or × to remove it.
+3. During the live, tap **1-Click** (or pin a comment with **Auto-print pinned comments** on). A window shows the buyer, the comment and your prices. Tap a price and the sticker prints.
+4. Tap **Type price** to type a different price, or **Skip** to make no order.
+
+If several comments come in, they wait in line and show one at a time ("2 more waiting after this"). Nothing prints until you tap a price.
+
+**Auto mode** orders still use each code''s own price. Turning the switch off keeps your prices for next time.'),
   ('auto-mode', 'Auto mode (live codes)', '2026-11-11'::date, 'auto mode, auto, code, live code, automatic order, sold out, awtomatiko, code ng item, 自动, 自動下單, 代码, 口令', 'Auto mode turns comments into orders by itself.
 
 Set up:
@@ -532,5 +544,5 @@ on conflict (id) do update set
   body = excluded.body, updated_at = now()
 where (support_guide.title, support_guide.checked, support_guide.keywords, support_guide.body)
   is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body);
-delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'invite-friends', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
+delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'choose-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'invite-friends', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
 commit;

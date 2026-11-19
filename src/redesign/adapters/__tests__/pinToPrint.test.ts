@@ -64,7 +64,9 @@ describe("wiring pins (source contracts)", () => {
     // Same-price override (seller_same_price): the pin is a 1-Click equivalent — base
     // price 0, replaced by the active fixed price when "Same price" is ON. Still the
     // REAL createOrder (dedup / free-cap), just with the price input overridden.
-    expect(block).toContain("orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.active))");
+    // Choose price (sql/180): the order itself lives in commitPin (also used with the picked price).
+    expect(block).toContain("commitPin(c, effectiveOrderPrice(0, samePriceCfg.active));");
+    expect(block).toContain("const order = orders.createOrder(c, price); // 1-Click equivalent");
     expect(block).toContain("liveSession.addOrderedMsgId(c.msgId, snap)");
     // the handler rides the onComment-style seam (each relay fires it once —
     // the listener's msgId seen-set is the once-guard):

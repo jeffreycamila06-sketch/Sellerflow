@@ -114,6 +114,9 @@ import { signOutAndReload, sessionEnded, appReload } from "./adapters/logoutRese
 import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useSamePrice, effectiveOrderPrice, entPrefill } from "./adapters/useSamePrice";
+import { useChoosePrice } from "./adapters/useChoosePrice";
+import { EMPTY_PRICE_QUEUE, enqueuePriceChoice, dropPriceChoice, queueItems, type PriceChoiceItem } from "./adapters/priceChoiceQueue";
+import ChoosePriceSheet from "./components/ChoosePriceSheet";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
@@ -470,6 +473,22 @@ export default function RedesignApp() {
   // no auto-clear on new session). Applied at the order call sites below (1-Click / Pin /
   // Auto override the price INPUT; Enterprise pre-fills but the seller-typed price wins).
   const samePriceCfg = useSamePrice();
+  // "Choose price before print" (sql/180, default OFF) — a price pop-up before each 1-Click /
+  // pinned-comment print. Only one of this and Same price is ON (Settings turns the other off);
+  // if both ever read ON (two devices), Same price wins and no pop-up shows.
+  const choosePriceCfg = useChoosePrice();
+  const choosePriceOn = choosePriceCfg.active && !samePriceCfg.enabled;
+  // The comments waiting for a price, in arrival order (one pop-up at a time). The queue belongs to
+  // ONE live session: the key changes when the session ends / a new one starts / the switch goes
+  // off → the old items are gone (priceChoiceQueue). React state, so it survives re-renders.
+  const priceQueueKey = `${choosePriceOn ? "on" : "off"}|${sessionInstance.ended || sessionInstance.closed ? "ended" : String(sessionInstance.currentSessionId ?? liveSession.dayId ?? "")}`;
+  const [priceQueue, setPriceQueue] = useState(EMPTY_PRICE_QUEUE);
+  // Session ended / changed (or the switch went off) → the old items are dropped for good
+  // (adjust-during-render: no effect, no extra pass with stale items on screen).
+  if (priceQueue.sessionKey !== priceQueueKey && priceQueue.items.length > 0) setPriceQueue({ sessionKey: priceQueueKey, items: [] });
+  const priceItems = queueItems(priceQueue, priceQueueKey);
+  const queuePriceChoice = (item: PriceChoiceItem) => setPriceQueue((q) => enqueuePriceChoice(q, priceQueueKey, item));
+  const dropPriceItem = (key: string) => setPriceQueue((q) => dropPriceChoice(q, priceQueueKey, key));
   // Pending connect awaiting a session pick (the required picker modal). Non-null =
   // modal open + the connect to run once a length is chosen. Union so the Live Source
   // flow (Option E) can also start a session-first SHOPEE connect through the SAME
@@ -2169,8 +2188,18 @@ export default function RedesignApp() {
     if (!prod) return;
     const soCode = soldOutCodeForComment(prod.comment);
     if (soCode && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_auto_manual_soldout_confirm, { code: soCode }))) return;
+    // Choose price ON → wait for the seller's price in the pop-up (nothing is created yet).
+    if (choosePriceOn) {
+      const msgId = String((prod as ProdComment & { msgId?: string }).msgId || "");
+      queuePriceChoice({ key: `click:${id}`, kind: "click", rowId: id, msgId, name: prod.name || "", handle: prod.handle || "", comment: prod.comment || "" });
+      return;
+    }
     // Same-price override: 1-Click's base price is 0 → fixed when set, else 0 (byte-identical).
-    const order = orders.createOrder(prod, effectiveOrderPrice(0, samePriceCfg.active));
+    commitOneClick(id, prod, effectiveOrderPrice(0, samePriceCfg.active));
+  };
+  // The 1-Click order itself (also used by the Choose price pop-up with the picked price).
+  const commitOneClick = (id: string, prod: ProdComment, price: number) => {
+    const order = orders.createOrder(prod, price);
     if (order) {
       setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
       const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
@@ -2367,6 +2396,26 @@ export default function RedesignApp() {
     setWlBusy(r.id);
     void setWaitlistStatus(r.id, "skipped").then(() => { setWlBusy(null); reloadWaitlist(); });
   };
+  // The pin order itself (also used by the Choose price pop-up with the picked price).
+  const commitPin = (c: ProdComment & { msgId: string }, price: number) => {
+    const order = orders.createOrder(c, price); // 1-Click equivalent
+
+    if (!order) return;                                // dup / capped / blocked — createOrder already dedups the msgId
+    const pid = `pin:${c.msgId}`;
+    const snap = snapshotFromCreate(c, order);
+    reprintByIdRef.current.set(pid, snap);
+    jobToCommentRef.current.set(String(order.orderNum), { cid: pid, msgId: c.msgId });
+    liveSession.addOrderedMsgId(c.msgId, snap);
+    deductOneClickStock(c.comment, c.msgId || String(order.orderNum));
+    // Cosmetic: if the pinned comment is in the visible feed, flip its row to
+    // the ordered/Reprint state like a manual tap would (event-handler context,
+    // not an effect — no cascading-render lint class).
+    const row = liveFeed.comments.find((fc) => fc.msgId === c.msgId);
+    if (row) {
+      setPrinted((pr) => ({ ...pr, [row.id]: "order" }));
+      reprintByIdRef.current.set(row.id, snap);
+    }
+  };
   // Returns true when the pin is DONE (ordered, or nothing to do) — only then does useLiveFeed
   // mark it seen. false = not handled yet (gate off, or held while orders are paused).
   const handlePinned = (p: PinPayload): boolean => {
@@ -2385,23 +2434,14 @@ export default function RedesignApp() {
     if (!isActionablePin(p)) return true;
     const c = buildPinComment(p);
     if (shouldSkipPin(soldOutCodeForComment(c.comment))) return true;
-    const order = orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.active)); // 1-Click equivalent
-
-    if (!order) return true;                                // dup / capped / blocked — createOrder already dedups the msgId
-    const pid = `pin:${c.msgId}`;
-    const snap = snapshotFromCreate(c, order);
-    reprintByIdRef.current.set(pid, snap);
-    jobToCommentRef.current.set(String(order.orderNum), { cid: pid, msgId: c.msgId });
-    liveSession.addOrderedMsgId(c.msgId, snap);
-    deductOneClickStock(c.comment, c.msgId || String(order.orderNum));
-    // Cosmetic: if the pinned comment is in the visible feed, flip its row to
-    // the ordered/Reprint state like a manual tap would (event-handler context,
-    // not an effect — no cascading-render lint class).
-    const row = liveFeed.comments.find((fc) => fc.msgId === c.msgId);
-    if (row) {
-      setPrinted((pr) => ({ ...pr, [row.id]: "order" }));
-      reprintByIdRef.current.set(row.id, snap);
+    // Choose price ON → the pin waits in the pop-up queue (it counts as handled, so the same pin
+    // never comes back). An already-ordered comment stays a silent no-op, as today.
+    if (choosePriceOn) {
+      if (c.msgId && liveSession.orderedMsgIds.has(c.msgId)) return true;
+      queuePriceChoice({ key: `pin:${c.msgId}`, kind: "pin", rowId: null, msgId: String(c.msgId || ""), name: c.name || "", handle: c.handle || "", comment: c.comment || "", pin: c });
+      return true;
     }
+    commitPin(c, effectiveOrderPrice(0, samePriceCfg.active));
     return true;
   };
   useEffect(() => { pinHandlerRef.current = handlePinned; }); // effect mirror — freshest closure, no render-time ref write
@@ -2409,6 +2449,35 @@ export default function RedesignApp() {
   // Enterprise: pre-fill the price field with the fixed price when "Same price" is set,
   // but the seller can type over it (e.g. a discount) — whatever they type wins.
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(entPrefill(samePriceCfg.active)); };
+  // "Choose price before print" pop-up actions. A picked price creates the order through the SAME
+  // 1-Click / pin path (only the price differs). pickedRef = sync double-tap guard (money path):
+  // the queue update is async, so two taps in one batch would both see the item.
+  const pricePickedRef = useRef<WeakSet<PriceChoiceItem>>(new WeakSet());
+  const priceCur = priceItems[0] ?? null;
+  const pickChoicePrice = (item: PriceChoiceItem, price: number) => {
+    if (pricePickedRef.current.has(item)) return;
+    pricePickedRef.current.add(item);
+    dropPriceItem(item.key);
+    if (item.kind === "click" && item.rowId) {
+      if (printed[item.rowId]) return;                 // ordered meanwhile (e.g. Type price)
+      const prod = liveFeed.getComment(item.rowId);
+      if (prod) commitOneClick(item.rowId, prod, price);
+    } else if (item.pin) commitPin(item.pin, price);
+  };
+  // "Type price" → the existing Type price field of that comment's row on the Live screen.
+  const choiceRowFor = (item: PriceChoiceItem): string | null =>
+    item.rowId ?? (item.msgId ? (liveFeed.comments.find((fc) => fc.msgId === item.msgId)?.id ?? null) : null);
+  const typeChoicePrice = (item: PriceChoiceItem) => {
+    const rowId = choiceRowFor(item);
+    if (!rowId || pricePickedRef.current.has(item)) return;
+    pricePickedRef.current.add(item);
+    dropPriceItem(item.key);
+    if (screen !== "dashboard") setScreen("dashboard");
+    onOpenEnt(rowId);
+  };
+  const skipChoicePrice = (item: PriceChoiceItem) => { pricePickedRef.current.add(item); dropPriceItem(item.key); };
+  // Whether the first waiting comment has a feed row to type into (a pin may not be in the feed).
+  const priceCurHasRow = !!priceCur && (!!priceCur.rowId || (!!priceCur.msgId && liveFeed.comments.some((fc) => fc.msgId === priceCur.msgId)));
   // Enterprise: create the order at the typed price. ONE code path for BOTH
   // triggers — Enter (desktop/Android/iPad) AND the in-app ✓ button (the
   // iPhone fix: the iOS number pad has NO return key, so Enter can never be
@@ -2930,6 +2999,10 @@ export default function RedesignApp() {
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
               /* "Same price for all items" — Live-session row (toggle + remembered price, set via the sheet). */
               cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
+              /* "Choose price before print" — directly under Same price (only one of the two is ON). */
+              choosePriceEnabled={choosePriceCfg.enabled} choosePrices={choosePriceCfg.prices}
+              onSetChoosePriceEnabled={(on, prices) => void choosePriceCfg.setEnabled(on, prices)}
+              onSetChoosePrices={(prices) => void choosePriceCfg.setPrices(prices)} choosePriceError={choosePriceCfg.saveErrors}
               /* Live-session toggles turned OFF → bottom toast. */
               onToast={(msg) => setToast({ msg, kind: "ok" })}
               motionOn={motionOn} onToggleMotion={toggleMotion}
@@ -3287,6 +3360,20 @@ export default function RedesignApp() {
             kind={printerGuide}
             onOk={() => { setPrinterGuide(null); setScreen("printersettings"); }}
             onClose={() => setPrinterGuide(null)}
+          />
+        )}
+
+        {/* "Choose price before print" — one pop-up at a time, waits for the seller (no timer). */}
+        {authed && choosePriceOn && priceCur && (
+          <ChoosePriceSheet
+            key={priceCur.key}
+            item={priceCur}
+            prices={choosePriceCfg.prices}
+            cur={cur}
+            waiting={priceItems.length - 1}
+            onPick={(p) => pickChoicePrice(priceCur, p)}
+            onType={priceCurHasRow ? () => typeChoicePrice(priceCur) : undefined}
+            onSkip={() => skipChoicePrice(priceCur)}
           />
         )}
 
