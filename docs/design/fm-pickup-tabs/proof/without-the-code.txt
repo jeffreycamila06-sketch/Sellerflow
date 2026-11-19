@@ -1,0 +1,47 @@
+     × a 全家 row saved as 全家店寄店取 (the 70 live rows) → yes
+     × a 全家 row saved as C2C (the older file's 店到店, and every new upload) → yes
+     × a 全家 row whose saved text says home delivery / community pickup → no (as before)
+     × the saved words are exactly the two that exist in the live table
+     × a 7-11 row is never helped by the 全家 words: only isChaseable decides
+     × a 全家 row with a special flow is not a plain store pickup (same rule as 7-11)
+     × each row is in its status group — none in 'other'
+     × rowTab gives the status tab for every status, and agrees with groupParcels
+     × tab counts (derived) count them; each status tab lists them
+     × a waiting 全家 row has its days-left countdown (red at 2 days or fewer), a picked-up one says done
+     × in the 'all' list a waiting 全家 row ranks with the waiting rows, not at the bottom
+     × the store filter's list (全家 rows only, grouped the same way) is no longer empty
+     × 全家 on: Waiting and In transit count the 全家店寄店取 rows
+     × the numbers agree with the lists the screen builds from the same rows
+     × 全家 on: the same number of questions as before (7), only the delivery-type filter differs
+     × +寄件日期 → in transit, fields read from the v2 names; @username from 商品名稱
+     × the saved word for a store pickup is C2C — the word Pickup Status and its counts look for
+     × fmShipType: the two real texts, and every other text that does not say 宅配 / 社區 → C2C
+     × fmShipType: a text that says home delivery (宅配) or community pickup (社區) keeps its own words — not a store pickup
+     × fmShipType: the store words win when a text carries both
+     × Order export (配送方式): 全家店寄店取, 冷凍店到店, an unknown text, an EMPTY cell → C2C
+     × Order export with NO 配送方式 column at all → C2C
+     × Good-selling version (運送方式): 全家店寄店取 → C2C — the 70 live rows' case
+     × Good-selling version: every status of a 全家店寄店取 order is saved as C2C (at store, in transit, picked up, returned, not dropped off)
+     × Good-selling version: frozen (配送溫層 冷凍) is a temperature, still a store pickup → C2C
+     × Good-selling version: a filled 宅配取件地址 / 社區取件 cell never decides — only the 運送方式 text does
+     × Good-selling version (運送方式): 宅配 / 社區取件 keep their own words; an empty 運送方式 → C2C
+     × what is sent to the database for a 全家店寄店取 order carries ship_type C2C
+     × each card counts the 全家店寄店取 rows of its status
+     × Waiting lists the 全家 rows, most urgent first, each with its FamilyMart label and its days left
+     × a waiting 全家 row has its Chase action (a plain username → Chase)
+     × In transit, Picked up and Returned list them too
+     × the FamilyMart filter: the cards count the 全家 rows (not 0) and the list shows them
+     × every status tab counts the 全家店寄店取 rows; All is the total
+     × the Waiting tab (opened first) lists the three 全家 rows with days left, not '—'
+     × a 全家 home-delivery row (text says 宅配) stays out of the status tabs: under All only, no Chase
+⎯⎯⎯⎯⎯⎯ Failed Tests 36 ⎯⎯⎯⎯⎯⎯⎯
+TypeError: fmShipType is not a function
+TypeError: fmShipType is not a function
+TypeError: fmShipType is not a function
+TypeError: inStatusTabs is not a function
+TypeError: inStatusTabs is not a function
+TypeError: inStatusTabs is not a function
+TypeError: inStatusTabs is not a function
+TypeError: inStatusTabs is not a function
+ Test Files  3 failed (3)
+      Tests  36 failed | 54 passed (90)

@@ -8,7 +8,7 @@ vi.mock("../../../lib/log", () => ({ log: { warn: (...a: unknown[]) => warn(...a
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildZip, crc32 } from "../shippingXlsmPatch";
-import { headerMatches, fmStatusOf, fmBuyerUsername, fmDate, fmTimestamp, fmDropOffDeadline, parseFmExport, uploadFmExport, FM_MAX_ROWS } from "../fmPickup";
+import { headerMatches, fmStatusOf, fmBuyerUsername, fmDate, fmTimestamp, fmDropOffDeadline, parseFmExport, uploadFmExport, FM_MAX_ROWS, fmShipType, FM_STORE_PICKUP } from "../fmPickup";
 
 // The real 好賣+ "Order export" header row (row 1, 38 columns), copied from Jeff's file. Several
 // headers carry a note after the name — the reader must still find them.
@@ -229,7 +229,7 @@ describe("Good-selling version Order export (46 columns, one row per product)", 
       order_no: "G26B01TEST", status: "in_transit", status_message: "配送中", tracking_no: "16351746626",
       pickup_deadline: null, picked_up_at: null, returned_at: null, buyer_username: "test_buyer.1",
       recipient_name: "T*s*", recipient_phone: "0*0*****0*", store_id: "022131", rec_store: "測試店",
-      order_amount: 339, ship_type: "全家店寄店取",
+      order_amount: 339, ship_type: "C2C", // 全家店寄店取 = a store pickup → the same "C2C" as 店到店 (2026-11-19)
     }]);
   });
   it("取貨日期 → picked up; 包裹未取退回日期 → returned; 取消日期 → hide", async () => {
@@ -293,6 +293,89 @@ describe("orders without a delivery number (處理中) are not shown, and counte
     expect(sent).toEqual([["L26A110WW1", "L26A110WW3", "L26A110WW5"], ["L26A110WW1", "L26A110WW3", "L26A110WW5"]]);
     const sql = readFileSync(resolve(__dirname, "../../../../sql/119_fm_pickup.sql"), "utf8");
     expect(sql).toMatch(/on conflict \(user_id, cm_order_no\) where carrier = 'fm' do update set/);
+  });
+});
+
+// 2026-11-19 — 70 of 76 live 全家 rows were saved with ship_type "全家店寄店取" (the Good-selling
+// file's 運送方式). Only "C2C" is a store pickup for Pickup Status, so those rows were in no status
+// tab and in no tab count. A store pickup is now saved as "C2C" WHATEVER the file calls it.
+describe("配送方式 / 運送方式 → ship_type: every 全家 row is a store pickup unless the text says 宅配 or 社區", () => {
+  const shippedV1 = (method: string | undefined, no = "L26A110WW1") => {
+    const r: Record<string, Cell> = { ...REAL, "訂單編號": no, "訂單狀態": "配送中", "寄件編號": "16351746626", "寄件日期": "2026/10/12" };
+    if (method === undefined) delete r["配送方式"]; else r["配送方式"] = method;
+    return r;
+  };
+  const shippedV2 = (over: Record<string, Cell>) => ({ ...V2, "訂單狀態": "配送中", "寄件編號": "16351746626", "寄件日期": "2026/11/02", ...over });
+  const typeOf = async (file: Uint8Array) => { const r = await parseFmExport(file); if (!r.ok) throw new Error("rejected"); return r.rows.map((x) => x.ship_type); };
+
+  it("the saved word for a store pickup is C2C — the word Pickup Status and its counts look for", () => {
+    expect(FM_STORE_PICKUP).toBe("C2C");
+  });
+  it("fmShipType: the two real texts, and every other text that does not say 宅配 / 社區 → C2C", () => {
+    for (const store of ["常溫店到店", "全家店寄店取", "冷凍店到店", "店到店", "全家店到店", "  全家店寄店取  ", "", "   ", "超商取貨", "FamilyMart pickup", "C2C", "冷凍", "常溫"]) {
+      expect(fmShipType(store), JSON.stringify(store)).toBe("C2C");
+    }
+    expect(fmShipType(undefined as never)).toBe("C2C");
+    expect(fmShipType(null as never)).toBe("C2C");
+  });
+  it("fmShipType: a text that says home delivery (宅配) or community pickup (社區) keeps its own words — not a store pickup", () => {
+    for (const other of ["宅配", "全家宅配", "常溫宅配", "冷凍宅配", "社區取件", "社區取貨", " 宅配 "]) {
+      expect(fmShipType(other), other).toBe(other.trim());
+      expect(fmShipType(other)).not.toBe("C2C");
+    }
+  });
+  it("fmShipType: the store words win when a text carries both", () => {
+    expect(fmShipType("店到店(非宅配)")).toBe("C2C");
+    expect(fmShipType("全家店寄店取／社區")).toBe("C2C");
+  });
+
+  it("Order export (配送方式): 常溫店到店 → C2C, as before", async () => {
+    expect(await typeOf(xlsx([shippedV1("常溫店到店")]))).toEqual(["C2C"]);
+  });
+  it("Order export (配送方式): 全家店寄店取, 冷凍店到店, an unknown text, an EMPTY cell → C2C", async () => {
+    expect(await typeOf(xlsx([shippedV1("全家店寄店取", "A1"), shippedV1("冷凍店到店", "A2"), shippedV1("超商取貨", "A3"), shippedV1("", "A4")]))).toEqual(["C2C", "C2C", "C2C", "C2C"]);
+  });
+  it("Order export with NO 配送方式 column at all → C2C", async () => {
+    expect(await typeOf(xlsx([shippedV1(undefined)], HEADERS.filter((h) => h !== "配送方式")))).toEqual(["C2C"]);
+  });
+  it("Order export (配送方式): 宅配 / 社區取件 keep their own words", async () => {
+    expect(await typeOf(xlsx([shippedV1("宅配", "A1"), shippedV1("社區取件", "A2")]))).toEqual(["宅配", "社區取件"]);
+  });
+
+  it("Good-selling version (運送方式): 全家店寄店取 → C2C — the 70 live rows' case", async () => {
+    expect(await typeOf(xlsx([shippedV2({})], HEADERS_V2))).toEqual(["C2C"]);
+  });
+  it("Good-selling version: every status of a 全家店寄店取 order is saved as C2C (at store, in transit, picked up, returned, not dropped off)", async () => {
+    const rows = [
+      shippedV2({ "訂單編號": "G1", "訂單狀態": "已到店" }),
+      shippedV2({ "訂單編號": "G2" }),
+      shippedV2({ "訂單編號": "G3", "訂單狀態": "已取貨", "取貨日期": "2026/11/04 下午 03:00:00" }),
+      shippedV2({ "訂單編號": "G4", "訂單狀態": "已退回", "包裹未取退回日期": "2026/11/12" }),
+      { ...V2, "訂單編號": "G5", "訂單狀態": "出貨中", "寄件編號": "16351746627" },
+    ];
+    const r = await parseFmExport(xlsx(rows, HEADERS_V2));
+    if (!r.ok) throw new Error("rejected");
+    expect(r.rows.map((x) => [x.order_no, x.status, x.ship_type])).toEqual([
+      ["G1", "at_store", "C2C"], ["G2", "in_transit", "C2C"], ["G3", "picked_up", "C2C"], ["G4", "returned", "C2C"], ["G5", "in_transit", "C2C"],
+    ]);
+  });
+  it("Good-selling version: frozen (配送溫層 冷凍) is a temperature, still a store pickup → C2C", async () => {
+    expect(await typeOf(xlsx([shippedV2({ "配送溫層": "冷凍" })], HEADERS_V2))).toEqual(["C2C"]);
+  });
+  it("Good-selling version: a filled 宅配取件地址 / 社區取件 cell never decides — only the 運送方式 text does", async () => {
+    // what 好賣+ writes in these cells for a store pickup is not known: a filled cell must not hide a store-pickup row
+    expect(await typeOf(xlsx([shippedV2({ "宅配取件地址": "某某路 1 號", "社區取件名稱": "某社區", "社區取件地址": "某某路 2 號" })], HEADERS_V2))).toEqual(["C2C"]);
+  });
+  it("Good-selling version (運送方式): 宅配 / 社區取件 keep their own words; an empty 運送方式 → C2C", async () => {
+    expect(await typeOf(xlsx([shippedV2({ "訂單編號": "G1", "運送方式": "宅配" }), shippedV2({ "訂單編號": "G2", "運送方式": "社區取件" }), shippedV2({ "訂單編號": "G3", "運送方式": "" })], HEADERS_V2)))
+      .toEqual(["宅配", "社區取件", "C2C"]);
+  });
+  it("what is sent to the database for a 全家店寄店取 order carries ship_type C2C", async () => {
+    rpc.mockReset();
+    rpc.mockResolvedValue({ data: { ok: true, inserted: 1, updated: 0, hidden: 0, skipped: 0 }, error: null });
+    await uploadFmExport(xlsx([shippedV2({})], HEADERS_V2));
+    const sent = (rpc.mock.calls[0][1] as { p_rows: { ship_type: string }[] }).p_rows;
+    expect(sent.map((x) => x.ship_type)).toEqual(["C2C"]);
   });
 });
 

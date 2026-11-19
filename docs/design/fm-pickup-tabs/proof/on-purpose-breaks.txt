@@ -1,0 +1,43 @@
+ok   1 the reader of the 好賣+ file | the old rule: only a text with 店到店 is saved as C2C (the bug) → 11 tests fail 
+ok   1 the reader of the 好賣+ file | 全家店寄店取 is saved as C2C, but any other unknown text keeps its words → 2 tests fail 
+ok   1 the reader of the 好賣+ file | an empty 配送方式 is saved empty → 4 tests fail 
+ok   1 the reader of the 好賣+ file | 店寄店取 is not a store word (a text with both words is not a store pickup) → 1 tests fail 
+ok   1 the reader of the 好賣+ file | 店到店 is not a store word → 1 tests fail 
+ok   1 the reader of the 好賣+ file | home delivery (宅配) is saved as a store pickup → 3 tests fail 
+ok   1 the reader of the 好賣+ file | community pickup (社區) is saved as a store pickup → 3 tests fail 
+ok   1 the reader of the 好賣+ file | the not-store words win over the store words → 1 tests fail 
+ok   1 the reader of the 好賣+ file | a store pickup is saved under another word than C2C → 16 tests fail 
+ok   1 the reader of the 好賣+ file | the text is not trimmed before it is kept → 1 tests fail 
+ok   1 the reader of the 好賣+ file | the parser does not use the rule (stores the file's text) → 12 tests fail 
+ok   1 the reader of the 好賣+ file | frozen (a 冷凍 text) is not a store pickup → 1 tests fail 
+ok   1 the reader of the 好賣+ file | a filled 宅配取件地址 cell makes the row a home delivery → 1 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | the saved words 全家店寄店取 are not accepted (the bug) → 16 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | a 7-11 row with the 全家 words is accepted too → 2 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | every 全家 row is in a status tab (home delivery too) → 5 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | a 全家 row with a special flow is in a status tab → 1 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | the saved text is not trimmed → 1 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | a 全家 C2C row is NOT in a status tab (only the old words are) → 8 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | groupParcels still uses the old rule → 13 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | rowTab still uses the old rule → 6 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | the old words are typed wrongly (全家店到店) → 20 tests fail 
+ok   2 the tabs (groupParcels / rowTab) | a 全家 row not checked yet goes to In transit like a 7-11 one → 3 tests fail 
+ok   3 the exact tab counts | the counts still ask for ship_type = C2C only (the bug) → 3 tests fail 
+ok   3 the exact tab counts | with 全家 OFF the count question changes too → 1 tests fail 
+ok   3 the exact tab counts | the counts ask for the old words only (a C2C row is not counted) → 4 tests fail 
+ok   3 the exact tab counts | the counts count every 全家 row (home delivery too) → 4 tests fail 
+ok   3 the exact tab counts | the counts drop the 'no special flow' condition when 全家 is on → 5 tests fail 
+ok   3 the exact tab counts | the on/off of the count rule is the wrong way round → 4 tests fail 
+ok   4 the SQL file | it changes rows of every carrier → 1 tests fail 
+ok   4 the SQL file | it changes every 全家 row, whatever its words → 2 tests fail 
+ok   4 the SQL file | it writes another word than C2C → 2 tests fail 
+ok   4 the SQL file | it also changes the status → 1 tests fail 
+ok   4 the SQL file | the helper table is readable from a browser (no row security) → 1 tests fail 
+ok   4 the SQL file | the helper table is not kept away from browser roles → 1 tests fail 
+ok   4 the SQL file | the changed rows are not noted (no exact rollback) → 1 tests fail 
+ok   4 the SQL file | no transaction → 1 tests fail 
+ok   4 the SQL file | the rollback sets back every 全家 C2C row (the 6 that were C2C too) → 1 tests fail 
+ok   4 the SQL file | the rollback leaves the helper table → 1 tests fail 
+ok   4 the SQL file | the rollback also touches a row whose words changed since → 1 tests fail 
+
+DONE breaks=40 caught=40 other=0 not_applied=0 seconds=197
+EXIT 0
