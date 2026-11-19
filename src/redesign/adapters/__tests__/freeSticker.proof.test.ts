@@ -122,7 +122,23 @@ const rows: string[] = [];
 const save = (file: string, a: FullRaster, b: FullRaster) => { if (OUT) { mkdirSync(OUT, { recursive: true }); writeFileSync(`${OUT}/${file}.png`, pairPng(a, b)); } };
 
 /** The shared check: `b` (with FREE) against `a` (with a price in the same place). Returns the two words' boxes. */
-function sameButTheWord(a: FullRaster, b: FullRaster): { f: Box; p: Box } {
+// A whole "FREE" is wider than "150" on every layout (measured 1.33–1.42×: 4 letters vs 3 digits).
+// A cut word ("FRE", "FR") is about as wide as "150" or narrower, so 1.2× tells a whole FREE from a cut one.
+const WHOLE_FREE_RATIO = 1.2;
+
+// KNOWN LIMIT — the ONE combination where FREE does NOT print whole. Listed here on purpose, never
+// skipped: today's sticker in the compact v2 layout (admins and listed accounts only), 70×50,
+// Comment size 3×, QR on.
+// There the QR keeps the price line to 3 letters, so FREE prints as "FRE". It is NOT new: on main a
+// typed "1500" prints as "150" at the same settings (checked 2026-11-19 — same picture as "150" with
+// the QR on, the 4th digit prints with the QR off). The sticker drawing (stickerRaster.ts) is not
+// changed in this branch. These cases assert the cut IS there, so the day it is fixed this test goes
+// red and the entry has to be removed (with printing map row 35).
+const KNOWN_FREE_CUT = new Set(PATHS.filter((x) => x !== "niimbot").map((x) => `today|${x}|70x50|newer|comment3|qr`));
+const caseKey = (kind: string, path: Path, w: number, h: number, newer: boolean, comment: number, qr: boolean) =>
+  `${kind}|${path}|${w}x${h}|${newer ? "newer" : "usual"}|comment${comment}|${qr ? "qr" : "noqr"}`;
+
+function sameButTheWord(a: FullRaster, b: FullRaster, knownCut = false): { f: Box; p: Box } {
   expect([b.w, b.h]).toEqual([a.w, a.h]);                         // same picture size
   const d = diffBox(a, b);
   expect(d.x1, "the two pictures differ").toBeGreaterThan(-1);
@@ -135,6 +151,9 @@ function sameButTheWord(a: FullRaster, b: FullRaster): { f: Box; p: Box } {
   // …and it is whole: ≥ 1 mm from the right edge and ≥ 1 mm from the bottom of the picture
   expect(b.w - 1 - f.x1).toBeGreaterThanOrEqual(8);
   expect(b.h - 1 - f.y1).toBeGreaterThanOrEqual(8);
+  // …and every letter of it printed: FREE is wider than the 3-digit price (a cut "FRE" is not)
+  if (knownCut) expect(wOf(f), "KNOWN_FREE_CUT case now prints FREE whole — remove it from the list (and update printing map row 35)").toBeLessThan(WHOLE_FREE_RATIO * wOf(p));
+  else expect(wOf(f), `FREE ${wOf(f)} dots vs "150" ${wOf(p)} dots — FREE is cut`).toBeGreaterThanOrEqual(WHOLE_FREE_RATIO * wOf(p));
   return { f, p };
 }
 const line = (kind: string, where: string, size: string, how: string, b: FullRaster, f: Box, p: Box) =>
@@ -160,14 +179,19 @@ const fresh = (path: Path, w: number, h: number, b: Buyer, o: { comment?: number
 const eachPathSize = (fn: (path: Path, w: number, h: number) => void) => { for (const path of PATHS) for (const [w, h] of SIZES) { if (path === "niimbot" && !(w === 50 && h === 30)) continue; fn(path, w, h); } }; // Niimbot B1 / B21 take 50×30
 
 describe("today's sticker — FREE prints in the price's place and fits (measured on the FREE letters themselves)", () => {
+  it("the known-limit list is exactly the 4 picture printers at that one combination", () => {
+    expect([...KNOWN_FREE_CUT].sort()).toEqual(["cpcl", "d520", "escpos", "tspl"].map((x) => `today|${x}|70x50|newer|comment3|qr`));
+  });
   for (const newer of [false, true]) for (const comment of [1, 2, 3]) for (const qr of [false, true]) eachPathSize((path, w, h) => {
     const how = `${newer ? "newer layout" : "usual layout"}, comment ${comment}×, QR ${qr ? "on" : "off"}`;
     it(`${NAME[path]} · ${w}×${h} · ${how}`, async () => {
       const a = await today(path, w, h, priced(), { newer, comment, qr }), b = await today(path, w, h, free(), { newer, comment, qr });
-      const { f, p } = sameButTheWord(a, b);
-      rows.push(line("today", NAME[path], `${w}x${h}`, how, b, f, p));
+      const knownCut = KNOWN_FREE_CUT.has(caseKey("today", path, w, h, newer, comment, qr));
+      const { f, p } = sameButTheWord(a, b, knownCut);
+      rows.push(line("today", NAME[path], `${w}x${h}`, how, b, f, p) + (knownCut ? " | KNOWN LIMIT: FREE cut at the QR (prints FRE)" : ""));
       if (!qr && comment === 1) save(`${newer ? "today-newer" : "today"}_${path}_${w}x${h}`, a, b);
       if (!qr && !newer && comment === 3 && path === "d520") save(`today_d520_${w}x${h}_comment-x3`, a, b);
+      if (knownCut && path === "d520") save(`known-limit_today-newer_d520_${w}x${h}_comment-x3_qr-on`, a, b);
     }, 60000);
   });
 });

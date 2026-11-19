@@ -40,6 +40,7 @@ Sizes: 50×30 · 60×40 · 70×50 · 80×50 · 80×60 · 100×60 (Niimbot: 50×3
 | `facebook_*` | a Facebook buyer with a long name (2 lines), 50×30 · 60×40 · 100×60, AIMO and Xprinter, today's and the new sticker |
 | `chinese-name_*` | a buyer named 陳小美, same sizes and printers |
 | `reprint-past-session_today_d520_60x40` | a Reprint of an order from 3 days earlier (the sticker carries that day's date) |
+| `known-limit_today-newer_d520_70x50_comment-x3_qr-on` | **the one known limit:** today's sticker in the compact v2 layout (admins and listed accounts only), 70×50, Comment size 3×, QR on — the QR cut keeps the price line to 3 letters, so FREE prints "FRE" (a typed "1500" prints "150" there on main today too). Same on AIMO, Xprinter / Flash, ESC-POS and CPCL |
 
 **Two orders on one sticker (Print screen)** — which orders show is today's rule, FREE does not change it
 (a price in FREE's place gives the same sticker except that word):
@@ -52,6 +53,8 @@ Sizes: 50×30 · 60×40 · 70×50 · 80×50 · 80×60 · 100×60 (Niimbot: 50×3
 
 So on a first-order-only size, a buyer whose first order is Free and second is 150 gets a sticker that says
 FREE only — the same way a buyer with "200" then "150" gets "200" only today.
+
+Every other case: FREE prints whole — the proof checks that FREE is at least 1.2× as wide as "150" (measured 1.33–1.42×; a cut "FRE" is as wide as "150").
 
 `stickers/measurements.txt` — every case: the FREE letters' own size and place, the "150" beside it, the
 free room to the right and bottom edges; today's sticker in both layouts at Comment size 1× / 2× / 3×, the

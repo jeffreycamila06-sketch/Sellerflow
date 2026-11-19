@@ -22,10 +22,16 @@ describe("isFreeOrder", () => {
     expect(isFreeOrder({ price: 0, item: "Live comment order" })).toBe(false);
     expect(isFreeOrder({ price: 0 })).toBe(false);
     expect(isFreeOrder({ item: "FREE" })).toBe(false);                       // no price at all
-    expect(isFreeOrder({ price: "", item: "FREE" })).toBe(true);             // "" reads as 0, like the app's own Number(price) || 0
     expect(isFreeOrder({ price: "abc", item: "FREE" })).toBe(false);
     expect(isFreeOrder(null)).toBe(false);
     expect(isFreeOrder(undefined)).toBe(false);
+  });
+  it("the price must be a real number: null, undefined, \"\", spaces and NaN are NOT free", () => {
+    for (const price of [null, undefined, "", "   ", NaN, "NaN", Infinity, -Infinity, "Infinity", {}, [], true, false])
+      expect(isFreeOrder({ price, item: "FREE" }), String(price)).toBe(false);
+    expect(isFreeOrder({ item: "FREE" })).toBe(false);                       // no price key at all
+    expect(isFreeOrder({ price: -0, item: "FREE" })).toBe(true);             // -0 is a real 0
+    expect(isFreeOrder({ price: " 0 ", item: "FREE" })).toBe(true);          // a number written as text, spaces around
   });
   it("allFree: at least one line and every line free", () => {
     expect(allFree([])).toBe(false);

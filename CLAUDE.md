@@ -5738,8 +5738,14 @@ prints **FREE** (English in every language) where a price prints.
   request as before; turning it on before sql/182 = the normal "Couldn't save" + back to OFF. The localStorage copy
   gets `showFree: true` only when ON (an old copy reads OFF).
 - **"Free" word instead of a 0 amount** (`rd_cpp_free`, 8 languages, green `--ok`): Orders row (`ord-free`), the buyer
-  card line, the Orders export Amount cell, the Send to TikTok line (`SendLine.free`, `lineAmount` — a price typed on
-  that line shows the price). Totals unchanged: Today / Sales count it as +1 order, +0 revenue.
+  card line, the Orders export Amount cell. Totals unchanged: Today / Sales count it as +1 order, +0 revenue.
+- **Send to TikTok (fix round 1):** a Free line reads `1. FREE` — nothing after it (`messageLine` / `lineAmount` → null);
+  in the sheet its price box starts EMPTY (not "0"). A price typed on it shows `— NT$20` and goes into the total.
+- **`isFreeOrder` needs a real number** (fix round 1): null / undefined / "" / spaces / NaN / Infinity / non-numbers →
+  not free; a number or a numeric string ("0", "0.00") → checked as before.
+- ⚠️ **Known limit (proof `KNOWN_FREE_CUT`, printing map row 35):** today's sticker in the compact v2 layout (admins +
+  listed accounts), 70×50, Comment 3×, QR on → FREE prints "FRE" — the existing QR cut (a typed "1500" prints "150"
+  there on main). Everywhere else the proof checks FREE ≥ 1.2× the width of "150". stickerRaster.ts untouched.
 - **NOT changed (Jeff, separate small branch later): the Messenger receipt.** A FREE line is drawn with no price and ONE
   such line makes the receipt total read "to be confirmed" (`receiptLayout.js`), phone sheet and automatic receipt.
 - **Print screen, a buyer with a FREE order + a priced order:** which orders show is today's rule (printing map row

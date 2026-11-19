@@ -8,10 +8,14 @@
 // The word on the sticker is always English, in every app language.
 export const FREE_ITEM = "FREE";
 
+// The price must be a REAL number 0: a number, or a number written as text (the database can give
+// "0" / "0.00"). null, undefined, "" and anything that is not a number are NOT free (Number("") and
+// Number(null) are 0 in JavaScript — they must not count).
 export function isFreeOrder(o: { price?: unknown; item?: unknown } | null | undefined): boolean {
-  if (!o) return false;
-  const price = typeof o.price === "number" ? o.price : Number(o.price);
-  return price === 0 && o.item === FREE_ITEM;
+  if (!o || o.item !== FREE_ITEM) return false;
+  const p = o.price;
+  const price = typeof p === "number" ? p : typeof p === "string" && p.trim() !== "" ? Number(p) : NaN;
+  return Number.isFinite(price) && price === 0;
 }
 
 // A list of order lines → true only when there is at least one line and EVERY line is free.

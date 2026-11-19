@@ -385,7 +385,7 @@ Keywords: send to tiktok, send message, message buyer, copy message, edit item, 
 
 - On **Orders**, type the buyer number, then tap **Send**.
 - You can edit each item before you send.
-- An item made with the **Free** button shows **Free** in the message. If you type a price on it, the price shows instead.
+- An item made with the **Free** button shows no price in the message (for example "1. FREE"). If you type a price on it, the price shows.
 - You can also write the **Message** yourself (it starts in English). Tap **↺ Reset message** to get the automatic text back.
 - When it's ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don't see **Send**, ask Admin.

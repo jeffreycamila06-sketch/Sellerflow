@@ -2,7 +2,7 @@
 -- sql/183 — help guide, THREE rows of support_guide for the "Free" button (2026-11-19):
 --   choose-price    new paragraph: Show Free button → a green Free button in the price window; prints FREE
 --   orders-search   one line: a Free order shows "Free" instead of an amount (also in the export)
---   tiktok-send     one line: a Free item shows "Free" in the message
+--   tiktok-send     one line: a Free item shows no price in the message ("1. FREE")
 -- Same text as docs/support/sfl-guide.md / sql/116b. Only these three rows; every other row stays as it is.
 -- Running it twice changes nothing the second time. No Render deploy (the help bot re-reads every 5 min).
 -- NOT APPLIED. Apply AFTER the web merge and sql/182. Needs sql/181 first (it adds the choose-price row;
@@ -40,7 +40,7 @@ insert into public.support_guide (id, title, checked, keywords, body) values
 - Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don''t see them, they aren''t turned on for your account yet — ask Admin.'),
   ('tiktok-send', 'Send to TikTok', '2026-11-19'::date, 'send to tiktok, send message, message buyer, copy message, edit item, edit message, reset message, ipadala sa tiktok, i-message ang buyer, i-edit ang item, i-edit ang message, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品, 編輯訊息', '- On **Orders**, type the buyer number, then tap **Send**.
 - You can edit each item before you send.
-- An item made with the **Free** button shows **Free** in the message. If you type a price on it, the price shows instead.
+- An item made with the **Free** button shows no price in the message (for example "1. FREE"). If you type a price on it, the price shows.
 - You can also write the **Message** yourself (it starts in English). Tap **↺ Reset message** to get the automatic text back.
 - When it''s ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don''t see **Send**, ask Admin.')

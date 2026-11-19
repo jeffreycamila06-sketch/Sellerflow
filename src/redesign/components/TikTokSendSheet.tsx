@@ -44,7 +44,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   const total = messageTotal(lines, totalOverride, shipping);
   const autoMessage = buildSendMessage({
     name: receipt.name, date, lines, total, cur, note, shippingFee: shipping,
-    labels: { hi: t.rd_tts_msg_hi, order: t.rd_tts_msg_order, total: t.rd_tts_msg_total, shipping: t.rd_tts_msg_shipping, free: t.rd_cpp_free },
+    labels: { hi: t.rd_tts_msg_hi, order: t.rd_tts_msg_order, total: t.rd_tts_msg_total, shipping: t.rd_tts_msg_shipping },
   });
   const message = draft ?? autoMessage; // what the box shows = exactly what Copy copies
 
