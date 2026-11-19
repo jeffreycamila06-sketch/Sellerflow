@@ -286,7 +286,7 @@ Only one of **Same price for all items** and **Choose price before print** can b
 
 ## choose-price — Choose price before print
 Last checked: 2026-11-19
-Keywords: choose price, pick price, price before print, different prices, premium item, price buttons, pumili ng presyo, ibang presyo, 选择价格, 選擇價格, 打印前选择价格
+Keywords: choose price, pick price, price before print, different prices, premium item, price buttons, free button, free item, freebie, giveaway, print free, libre, pumili ng presyo, ibang presyo, 选择价格, 選擇價格, 打印前选择价格, 免费, 免費, 贈品
 
 **Settings → General Settings → LIVE SETUP → Choose price before print** (under **Same price for all items**).
 
@@ -301,6 +301,8 @@ Keywords: choose price, pick price, price before print, different prices, premiu
 - If the comment is a sold-out Auto mode code, the window asks "{code} is sold out. Print anyway?" Tap **Print anyway** or **Skip**.
 - Comments still waiting are cleared when the live session changes or when you turn the switch off. The app tells you how many.
 - The **Type price** button on each comment still works as before.
+
+**Free button** — for an item you give away. Under your prices, turn on **Show Free button**. The window then shows a green **Free** button after your prices. Tap it and the sticker prints **FREE** where the price prints. The order is saved with no amount, and **Orders** shows **Free** for it. **Reprint** prints FREE again. The word on the sticker is always FREE, in every app language. A 1-Click with no price window still prints the comment as before.
 
 **Auto mode** orders still use each code's own price. Turning the switch off keeps your prices for next time.
 
@@ -362,7 +364,7 @@ A reprint prints a copy of the order's sticker. **No new order is created.**
 If you see the **Not printed** tag or "Some labels didn't print — tap Reprint on those rows", fix the printer first (see "Printer not printing"), then tap **Reprint** on those rows.
 
 ## orders-search — Orders screen and search
-Last checked: 2026-11-06
+Last checked: 2026-11-19
 Keywords: orders, order list, search, find order, buyer, history, last 7 days, hanapin order, listahan, 订单, 訂單, 搜索, 查詢
 
 Open **Orders** in the bottom bar.
@@ -372,16 +374,18 @@ Open **Orders** in the bottom bar.
 - **Search buyer #, name, item…** finds orders.
 - Type only a **buyer number** (for example 3) to see that buyer's card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
 - Each order has **↻ Reprint**. Tapping an order opens **Print** (**🖨 Print** / **🖨 Print all**).
+- An order made with the **Free** button shows **Free** instead of an amount, here and in the export. It counts as an order and adds nothing to the total. See "Choose price before print".
 - **⬇ Export** downloads Excel or PDF of what you see (also a past session). In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
 - The **Miners** tab shows your top buyers.
 - Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don't see them, they aren't turned on for your account yet — ask Admin.
 
 ## tiktok-send — Send to TikTok
-Last checked: 2026-10-28
+Last checked: 2026-11-19
 Keywords: send to tiktok, send message, message buyer, copy message, edit item, edit message, reset message, ipadala sa tiktok, i-message ang buyer, i-edit ang item, i-edit ang message, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品, 編輯訊息
 
 - On **Orders**, type the buyer number, then tap **Send**.
 - You can edit each item before you send.
+- An item made with the **Free** button shows **Free** in the message. If you type a price on it, the price shows instead.
 - You can also write the **Message** yourself (it starts in English). Tap **↺ Reset message** to get the automatic text back.
 - When it's ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don't see **Send**, ask Admin.

@@ -1,0 +1,90 @@
+// "Free" button — the REAL Settings → Live setup, the REAL price pop-up over the REAL Live screen
+// and the REAL Orders screen, for screenshots at phone and laptop widths (NOT part of the app build).
+//   ?view=settings | pop | orders   ?on=1 (settings: Choose price ON)   ?free=1 (Show Free button ON)   ?dark=1
+//   ?cur=₱ | NT$ | €            ?prices=39,59,79,99               ?wait=2 (pop: "2 more waiting")
+//   ?answer=ordered | blocked | soldout   (pop: what a price tap answers)
+import { createRoot } from "react-dom/client";
+import { useEffect, useState } from "react";
+import "../../../../src/styles/design-tokens.css";
+import "../../../../src/redesign/redesign.css";
+import { TProvider, buildT } from "../../../../src/redesign/i18n";
+import GeneralSettings from "../../../../src/redesign/screens/GeneralSettings";
+import Dashboard from "../../../../src/redesign/screens/Dashboard";
+import ChoosePriceSheet from "../../../../src/redesign/components/ChoosePriceSheet";
+import Orders from "../../../../src/redesign/screens/Orders";
+import type { Order } from "../../../../src/redesign/data";
+import type { Comment } from "../../../../src/redesign/data";
+import type { Comment as ProdComment } from "../../../../src/lib/orderTypes";
+
+const q = new URLSearchParams(location.search);
+const view = q.get("view") || "settings";
+const cur = q.get("cur") || "₱";
+const prices = (q.get("prices") || "39,59,79,99").split(",").map(Number);
+const noop = () => {};
+const free0 = q.get("free") === "1";
+
+export function Settings({ on }: { on: boolean }) {
+  const [sp, setSp] = useState(!on);
+  const [cp, setCp] = useState(on);
+  const [list, setList] = useState<number[]>(on ? prices : []);
+  const [free, setFree] = useState(free0);
+  return (
+    <GeneralSettings
+      theme="light" accent="indigo" onSetTheme={noop} onSetAccent={noop}
+      auto={{ detect: false, toggle: noop }} cur={cur} lang="en" onSetLang={noop} currency="PHP" onSetCurrency={noop}
+      profileOpen={false} onToggleProfile={noop} keepAwake onToggleKeepAwake={noop} pinPrint onTogglePinPrint={noop}
+      liveSessionOpen onToggleLiveSession={noop}
+      printerIdx={1} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={noop}
+      onSubscription={noop} onSupport={noop} onDelete={noop}
+      account={{ authUserId: "u1", email: "ana@shop.ph", profile: { fullName: "Ana Cruz", storeName: "Ana's Ukay", phone: "09171234567", tiktok: "anaukay", facebook: "", adminContactNote: "" }, plan: "pro", planStatus: "active", planExpiry: "2026-12-30T00:00:00Z", connectedAccounts: [], role: "seller" }}
+      onSaveProfile={async () => ({ ok: true })} onManageChannel={noop}
+      samePriceEnabled={sp} samePrice={39} onSetSamePriceEnabled={(o) => { setSp(o); return true; }}
+      choosePriceEnabled={cp} choosePrices={list}
+      onSetChoosePriceEnabled={(o, p) => { setCp(o); if (p) setList(p); return true; }} onSetChoosePrices={setList}
+      chooseShowFree={free} onSetChooseShowFree={setFree}
+      onToast={noop}
+    />
+  );
+}
+
+const C = (id: string, name: string, handle: string, text: string, time: string): Comment => ({ id, name, handle, text, mine: true, time, platform: "TikTok" });
+const feed = [
+  C("c1", "Maria Santos", "@mariasantos", "mine po #12", "8:41:02 PM"),
+  C("c2", "Jen Reyes", "@jenreyes", "mine yung blue", "8:41:09 PM"),
+  C("c3", "Liza Gomez", "@lizag", "mine 79", "8:41:15 PM"),
+  C("c4", "Rose Tan", "@rosetan", "mine po", "8:41:22 PM"),
+];
+export function Pop() {
+  // The app shows the pop-up only after a tap / pin (the page root exists by then) — same here.
+  const [shown, setShown] = useState(false);
+  useEffect(() => { const id = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(id); }, []);
+  const answer = q.get("answer") || "ordered";
+  return (
+    <>
+      <Dashboard comments={feed} cur={cur} historyReady ttOpen={false} fbOpen={false} ttIdx={0} fbIdx={0}
+        onToggleTT={noop} onToggleFB={noop} onPickTT={noop} onPickFB={noop}
+        ttConnected fbConnected={false} ttConnecting={false} fbConnecting={false} onConnectTT={noop} onConnectFB={noop}
+        printed={{}} entId={null} entPrice="" onOneClick={noop} onOpenEnt={noop} onEntPrice={noop} onEntKey={noop} />
+      {shown && <ChoosePriceSheet item={{ key: "click:c1", kind: "click", rowId: "c1", msgId: "m1", name: "Maria Santos", handle: "mariasantos", comment: "mine po #12", source: { comment: "mine po #12" } as ProdComment, soldOutOk: false }}
+        prices={prices} cur={cur} waiting={Number(q.get("wait") || 0)}
+        onPick={(_p, ok) => (answer === "blocked" ? "blocked" : answer === "soldout" && !ok ? { soldOut: "A1" } : "ordered")}
+        onSkip={noop} blockedText={buildT("en").rd_sess_order_blocked} showFree={free0} />}
+    </>
+  );
+}
+
+const ON = Date.UTC(2026, 10, 19, 12, 41);
+const O = (id: string, buyer: string, handle: string, items: string, total: number, n: number): Order =>
+  ({ id, buyer, handle, items, qty: 1, total, time: `8:4${n} PM`, platform: "TikTok", status: "New", date: "2026-11-19", orderNum: ON + n * 1000 } as unknown as Order);
+const ORDERS = [O("#4", "Rose Tan", "@rosetan", "150", 150, 4), O("#3", "Liza Gomez", "@lizag", "FREE", 0, 3), O("#2", "Jen Reyes", "@jenreyes", "mine yung blue", 0, 2), O("#1", "Maria Santos", "@mariasantos", "79", 79, 1)];
+export function OrdersView() {
+  return <Orders onGoPrint={noop} cur={cur} orders={ORDERS} state="live" buyers={[]} todayId="2026-11-19" sessionId="cur" sellerId="me" />;
+}
+
+createRoot(document.getElementById("root")!).render(
+  <TProvider lang={q.get("lang") || "en"}>
+    <div data-redesign="" data-theme={q.get("dark") === "1" ? "dark" : "light"} style={{ minHeight: "100vh", background: "var(--app-bg)", color: "var(--text)", fontFamily: "var(--font-ui)", position: "relative" }}>
+      {view === "settings" ? <Settings on={q.get("on") === "1"} /> : view === "orders" ? <OrdersView /> : <Pop />}
+    </div>
+  </TProvider>,
+);

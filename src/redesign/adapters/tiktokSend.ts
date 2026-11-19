@@ -7,6 +7,7 @@ import { fmt } from "../data";
 import { taipeiDateOf } from "./sessionEnd";
 import { addDays } from "./useSessionWindow";
 import { priceInput } from "../../lib/money";
+import { isFreeOrder } from "../../lib/freeOrder";
 
 const md = (day: string): string => (day && day.length >= 10 ? day.slice(5, 10).replace("-", "/") : day);
 
@@ -21,6 +22,7 @@ export interface SendLine {
   added: boolean;  // added in the sheet (+ Dagdag item) — message only
   qty: number;     // the order's quantity (read-only; added lines = 1). The price stays the LINE total.
   orig?: string;   // order lines: the buyer's comment — used when the edited text is cleared
+  free?: boolean;  // an order made with the Free button (lib/freeOrder) — the message says "Free" while its price stays 0
 }
 
 /** The text printed for a line: the edited text, or the original comment if it was cleared. */
@@ -28,7 +30,7 @@ export const lineText = (l: SendLine): string => l.text.trim() || (l.orig ?? "")
 
 /** The buyer card's lines, in the card's order (NT$0 lines included). */
 export function initialSendLines(lines: { item: string; total: number; qty?: number }[]): SendLine[] {
-  return lines.map((l, i) => ({ key: `c${i}`, text: l.item, price: String(Number(l.total) || 0), added: false, qty: qtyOf(l.qty), orig: l.item }));
+  return lines.map((l, i) => ({ key: `c${i}`, text: l.item, price: String(Number(l.total) || 0), added: false, qty: qtyOf(l.qty), orig: l.item, ...(isFreeOrder({ price: l.total, item: l.item }) ? { free: true } : {}) }));
 }
 
 /** A whole quantity ≥ 1 (missing / odd values → 1). */
@@ -58,7 +60,12 @@ export const sumLines = (lines: SendLine[]): number => printedLines(lines).reduc
 export const messageTotal = (lines: SendLine[], override: string | null, shippingFee = ""): number =>
   override !== null && override.trim() !== "" ? priceOf(override) : sumLines(lines) + priceOf(shippingFee);
 
-export interface MessageLabels { hi: string; order: string; total: string; shipping?: string }
+export interface MessageLabels { hi: string; order: string; total: string; shipping?: string; free?: string }
+
+/** What a line shows as its amount: the Free word for a Free-button order still at 0 (the seller
+ *  typing a price on it shows that price), else the amount as before. */
+export const lineAmount = (l: SendLine, cur: string, freeWord?: string): string =>
+  l.free && freeWord && priceOf(l.price) === 0 ? freeWord : `${cur}${fmt(priceOf(l.price))}`;
 
 /** The message text. Blank-text added lines are left out; numbering has no gaps. When the
  *  shipping fee is not empty (a typed 0 counts), one "Shipping fee: {fee}" line is added right
@@ -71,7 +78,7 @@ export function buildSendMessage(o: {
   const out = [
     fill(o.labels.hi, { name: o.name }),
     fill(o.labels.order, { date: o.date }),
-    ...rows.map((l, i) => `${i + 1}. ${lineText(l)}${qtySuffix(l.qty)} — ${o.cur}${fmt(priceOf(l.price))}`),
+    ...rows.map((l, i) => `${i + 1}. ${lineText(l)}${qtySuffix(l.qty)} — ${lineAmount(l, o.cur, o.labels.free)}`),
   ];
   const fee = (o.shippingFee ?? "").trim();
   if (fee !== "" && o.labels.shipping) out.push(fill(o.labels.shipping, { fee: `${o.cur}${fmt(priceOf(fee))}` }));

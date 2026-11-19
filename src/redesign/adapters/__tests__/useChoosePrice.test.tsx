@@ -4,7 +4,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
-const { maybeSingle, upsert, getSession, fromTable, eqUser } = vi.hoisted(() => ({
+const { maybeSingle, upsert, getSession, fromTable, eqUser, selectCols } = vi.hoisted(() => ({
+  selectCols: vi.fn((_cols: string) => {}),
   eqUser: vi.fn((_col: string, _v: string) => {}),
   maybeSingle: vi.fn(async (): Promise<{ data: unknown; error: unknown }> => ({ data: null, error: null })),
   upsert: vi.fn(async (_row: unknown): Promise<{ error: unknown }> => ({ error: null })),
@@ -16,7 +17,7 @@ vi.mock("../../../supabase", () => ({
   supabase: {
     auth: { getSession: (...a: unknown[]) => getSession(...(a as [])) },
     from: (tbl: string) => { fromTable(tbl); return {
-      select: () => ({ eq: (col: string, v: string) => { eqUser(col, v); return ({ maybeSingle: (...a: unknown[]) => maybeSingle(...(a as [])) }); } }),
+      select: (cols: string) => { selectCols(cols); return ({ eq: (col: string, v: string) => { eqUser(col, v); return ({ maybeSingle: (...a: unknown[]) => maybeSingle(...(a as [])) }); } }); },
       upsert: (row: unknown) => upsert(row),
     }; },
   },
@@ -141,7 +142,7 @@ describe("useChoosePrice", () => {
     expect(result.current.enabled).toBe(false);
     expect(result.current.prices).toEqual([]);
     expect(result.current.saveErrors).toBe(1);
-    expect(readChoiceCache("u1")).toEqual({ enabled: false, prices: [] }); // a failed save is never remembered (still the read's answer)
+    expect(readChoiceCache("u1")).toEqual({ enabled: false, prices: [], showFree: false }); // a failed save is never remembered (still the read's answer)
   });
 });
 
@@ -158,7 +159,7 @@ describe("ready at app start — the copy kept on the device, per user", () => {
     expect(result.current.loading).toBe(true);
     await act(async () => { answer({ data: { enabled: true, prices: [39, 59, 99] }, error: null }); await Promise.resolve(); });
     expect(result.current.prices).toEqual([39, 59, 99]); // the database answer wins and is remembered
-    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39, 59, 99] });
+    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39, 59, 99], showFree: false });
   });
   it("OFF seller: zero delay — OFF at the first render with the read still on its way, nothing to wait for", () => {
     pendingRead();
@@ -172,7 +173,7 @@ describe("ready at app start — the copy kept on the device, per user", () => {
     const { result } = renderHook(() => useChoosePrice("u1"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.active).toBe(false);
-    expect(readChoiceCache("u1")).toEqual({ enabled: false, prices: [39] });
+    expect(readChoiceCache("u1")).toEqual({ enabled: false, prices: [39], showFree: false });
   });
   it("a failed read keeps the saved copy", async () => {
     writeChoiceCache("u1", true, [39]);
@@ -180,15 +181,15 @@ describe("ready at app start — the copy kept on the device, per user", () => {
     const { result } = renderHook(() => useChoosePrice("u1"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.active).toBe(true);
-    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39] });
+    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39], showFree: false });
   });
   it("a successful save is remembered", async () => {
     const { result } = renderHook(() => useChoosePrice("u1"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     await act(async () => { await result.current.setEnabled(true, [39, 59]); });
-    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39, 59] });
+    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39, 59], showFree: false });
     await act(async () => { await result.current.setPrices([59, 39]); });
-    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [59, 39] });
+    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [59, 39], showFree: false });
   });
   it("another user signs in → THAT user's copy in the same render, and a new read for them", async () => {
     writeChoiceCache("u1", true, [39]);
@@ -212,12 +213,126 @@ describe("ready at app start — the copy kept on the device, per user", () => {
     localStorage.setItem(choiceCacheKey("u1"), "{not json");
     expect(readChoiceCache("u1")).toBeNull();
     localStorage.setItem(choiceCacheKey("u1"), JSON.stringify({ enabled: true, prices: [] }));
-    expect(readChoiceCache("u1")).toEqual({ enabled: false, prices: [] }); // never ON with no price
+    expect(readChoiceCache("u1")).toEqual({ enabled: false, prices: [], showFree: false }); // never ON with no price
     const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("full"); });
     expect(() => writeChoiceCache("u1", true, [39])).not.toThrow();
     spy.mockRestore();
     const g = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
     expect(readChoiceCache("u1")).toBeNull();
     g.mockRestore();
+  });
+});
+
+// ── "Show Free button" (sql/182 column show_free) ──────────────────────────────────────────────
+describe("Show Free button", () => {
+  const ready = async (uid: string | null = "u1") => {
+    const h = renderHook(() => useChoosePrice(uid));
+    await waitFor(() => expect(h.result.current.loading).toBe(false));
+    return h;
+  };
+  const sent = (i = 0) => upsert.mock.calls[i][0] as Record<string, unknown>;
+
+  it("default OFF; the read asks for the whole row, so a database WITHOUT the column simply reads OFF", async () => {
+    maybeSingle.mockResolvedValue({ data: { user_id: "u1", enabled: true, prices: [39], updated_at: "x" }, error: null }); // no show_free
+    const { result } = await ready();
+    expect(selectCols).toHaveBeenCalledWith("*");
+    expect(result.current.showFree).toBe(false);
+    expect(result.current.active).toBe(true);
+  });
+
+  it("reads show_free = true → ON (only a real true counts)", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39], show_free: true }, error: null });
+    expect((await ready()).result.current.showFree).toBe(true);
+    maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39], show_free: "true" }, error: null });
+    expect((await ready("u2")).result.current.showFree).toBe(false);
+  });
+
+  it("a seller who never touches the switch sends EXACTLY the request sent before it existed (no show_free key)", async () => {
+    const { result } = await ready();
+    await act(async () => { await result.current.setEnabled(true, [39, 59]); });
+    await act(async () => { await result.current.setPrices([59, 39]); });
+    await act(async () => { await result.current.setEnabled(false); });
+    expect(upsert).toHaveBeenCalledTimes(3);
+    for (let i = 0; i < 3; i++) expect(Object.keys(sent(i)).sort()).toEqual(["enabled", "prices", "updated_at", "user_id"]);
+    // …and the copy kept on the device has the same two keys as before
+    expect(JSON.parse(localStorage.getItem(choiceCacheKey("u1"))!)).toEqual({ enabled: false, prices: [59, 39] });
+  });
+
+  it("turning it ON saves show_free: true (prices and the main switch as they are) and remembers it", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39, 59] }, error: null });
+    const { result } = await ready();
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.setShowFree(true); });
+    expect(ok).toBe(true);
+    expect(result.current.showFree).toBe(true);
+    expect(sent()).toEqual(expect.objectContaining({ user_id: "u1", enabled: true, prices: [39, 59], show_free: true }));
+    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39, 59], showFree: true });
+  });
+
+  it("while ON, a price change keeps sending show_free: true; turning it OFF sends show_free: false once, then the key is gone again", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39], show_free: true }, error: null });
+    const { result } = await ready();
+    await act(async () => { await result.current.setPrices([39, 59]); });
+    expect(sent(0).show_free).toBe(true);
+    await act(async () => { await result.current.setShowFree(false); });
+    expect(sent(1).show_free).toBe(false);
+    expect(result.current.showFree).toBe(false);
+    await act(async () => { await result.current.setPrices([39]); });
+    expect("show_free" in sent(2)).toBe(false);
+    expect(JSON.parse(localStorage.getItem(choiceCacheKey("u1"))!)).toEqual({ enabled: true, prices: [39] });
+  });
+
+  it("the save fails (e.g. before sql/182) → back to OFF, the error is counted, nothing else changes, nothing is remembered", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39, 59] }, error: null });
+    const { result } = await ready();
+    upsert.mockResolvedValue({ error: { message: "column show_free does not exist" } });
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.setShowFree(true); });
+    expect(ok).toBe(false);
+    expect(result.current.showFree).toBe(false);
+    expect(result.current.enabled).toBe(true);
+    expect(result.current.prices).toEqual([39, 59]);
+    expect(result.current.saveErrors).toBe(1);
+    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39, 59], showFree: false });
+    // the next ordinary save is the plain request again
+    upsert.mockResolvedValue({ error: null });
+    await act(async () => { await result.current.setPrices([59, 39]); });
+    expect("show_free" in sent(1)).toBe(false);
+  });
+
+  it("a failed save of the PRICES while Free is ON keeps Free ON", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39], show_free: true }, error: null });
+    const { result } = await ready();
+    upsert.mockResolvedValue({ error: { message: "x" } });
+    await act(async () => { await result.current.setPrices([39, 59]); });
+    expect(result.current.showFree).toBe(true);
+    expect(result.current.prices).toEqual([39]);
+  });
+
+  it("no signed-in user → false, nothing changes, nothing is saved", async () => {
+    const { result } = renderHook(() => useChoosePrice(null));
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.setShowFree(true); });
+    expect(ok).toBe(false);
+    expect(result.current.showFree).toBe(false);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("the copy on the device: ON from the first render; an OLD copy (no key) reads OFF; per user", async () => {
+    writeChoiceCache("u1", true, [39], true);
+    localStorage.setItem(choiceCacheKey("u2"), JSON.stringify({ enabled: true, prices: [59] }));   // saved by the app before this switch
+    maybeSingle.mockReturnValue(new Promise(() => {}));                                              // the read never answers
+    expect(renderHook(() => useChoosePrice("u1")).result.current.showFree).toBe(true);
+    const old = renderHook(() => useChoosePrice("u2")).result.current;
+    expect(old.showFree).toBe(false);
+    expect(old.active).toBe(true);
+  });
+
+  it("the database says OFF → the copy on the device is corrected", async () => {
+    writeChoiceCache("u1", true, [39], true);
+    maybeSingle.mockResolvedValue({ data: { enabled: true, prices: [39], show_free: false }, error: null });
+    const { result } = await ready();
+    expect(result.current.showFree).toBe(false);
+    expect(readChoiceCache("u1")).toEqual({ enabled: true, prices: [39], showFree: false });
   });
 });
