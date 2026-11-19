@@ -252,3 +252,76 @@ describe("source pins", () => {
     }
   });
 });
+
+// ── The Free cell ("Show Free button") ─────────────────────────────────────────────────────────
+describe("ChoosePriceSheet — Free", () => {
+  it("default (switch off / not passed): no Free cell; a price tap makes the SAME call as before (two arguments)", () => {
+    const { onPick } = show();
+    pastGuard();
+    expect(screen.queryByTestId("cpp-free")).toBeNull();
+    fireEvent.click(screen.getByTestId("cpp-price-1"));
+    expect(onPick.mock.calls[0]).toEqual([59, false]);
+  });
+  it("3 prices + Free → Free is the 4th and LAST cell; 6 prices + Free → the 7th (third row); green, not the accent, never the default", () => {
+    const a = show({ showFree: true, prices: [39, 59, 79] });
+    let free = screen.getByTestId("cpp-free");
+    expect(Array.from(free.parentElement!.children).indexOf(free)).toBe(3);
+    expect(free.parentElement!.lastElementChild).toBe(free);
+    expect(free.style.color).toBe("var(--ok)");
+    expect(free.style.border).toContain("var(--ok)");
+    expect(free.style.background).not.toContain("--accent");
+    expect(free.getAttribute("data-default")).toBeNull();
+    expect(screen.getByTestId("cpp-price-0").getAttribute("data-default")).toBe("1");
+    expect(parseInt(free.style.minHeight)).toBeGreaterThanOrEqual(44);
+    expect(free.querySelector("svg")).toBeTruthy();
+    expect(free.textContent).toBe(t.rd_cpp_free);
+    a.unmount();
+    show({ showFree: true, prices: [39, 59, 79, 99, 129, 159] });
+    free = screen.getByTestId("cpp-free");
+    expect(free.parentElement!.children).toHaveLength(7);
+    expect(Array.from(free.parentElement!.children).indexOf(free)).toBe(6);
+    expect(free.parentElement!.style.gridTemplateColumns).toContain("repeat(3");
+  });
+  it("one tap → onPick(0, false, true); ignored for 400 ms after the sheet appears", () => {
+    const { onPick } = show({ showFree: true });
+    fireEvent.click(screen.getByTestId("cpp-free"));
+    expect(onPick).not.toHaveBeenCalled();                    // tap-through guard
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-free"));
+    expect(onPick.mock.calls).toEqual([[0, false, true]]);
+  });
+  it("blocked → the sheet stays with the message", () => {
+    const onPick = vi.fn((): PickResult => "blocked");
+    show({ showFree: true, onPick });
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-free"));
+    expect(screen.getByTestId("cpp-blocked").textContent).toBe(BLOCKED);
+    expect(screen.getByTestId("cpp-free")).toBeTruthy();
+  });
+  it("sold out → the question; \"Print anyway\" (after the guard) sends Free again with the answer — still price 0", () => {
+    const onPick = vi.fn((_p: number, ok?: boolean): PickResult => (ok ? "ordered" : { soldOut: "D" }));
+    show({ showFree: true, onPick });
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-free"));
+    expect(screen.getByTestId("cpp-soldout")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("cpp-soldout-yes"));   // the same fast tap → ignored
+    expect(onPick).toHaveBeenCalledTimes(1);
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-soldout-yes"));
+    expect(onPick.mock.calls[1]).toEqual([0, true, true]);
+  });
+  it("the Type price view has no Free cell (Free is not a typed price)", () => {
+    show({ showFree: true });
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-type"));
+    expect(screen.queryByTestId("cpp-free")).toBeNull();
+  });
+  it("the word follows the app language", () => {
+    for (const lang of ["fil", "zh-TW", "th"]) {
+      const r = show({ showFree: true }, lang);
+      expect(screen.getByTestId("cpp-free").textContent).toBe(buildT(lang).rd_cpp_free);
+      r.unmount();
+    }
+  });
+});
+

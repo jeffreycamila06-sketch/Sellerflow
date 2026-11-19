@@ -69,6 +69,7 @@ export default function GeneralSettings({
   liveSessionOpen, onToggleLiveSession,
   cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
   choosePriceEnabled = false, choosePrices = [], onSetChoosePriceEnabled, onSetChoosePrices, choosePriceError = 0,
+  chooseShowFree = false, onSetChooseShowFree,
   onToast,
   motionOn = true, onToggleMotion,
   onBack,
@@ -108,6 +109,9 @@ export default function GeneralSettings({
   choosePriceEnabled?: boolean; choosePrices?: number[];
   onSetChoosePriceEnabled?: (on: boolean, prices?: number[]) => void | boolean | Promise<boolean | void>;
   onSetChoosePrices?: (prices: number[]) => void; choosePriceError?: number;
+  // "Show Free button" — one more switch under the price list (default OFF). ON = the price pop-up
+  // shows a Free button after the prices. No handler → no row. A failed save bumps choosePriceError.
+  chooseShowFree?: boolean; onSetChooseShowFree?: (on: boolean) => void;
   // Live-session toggles turned OFF show a bottom toast (RedesignApp's global toast).
   onToast?: (msg: string) => void;
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
@@ -495,6 +499,19 @@ export default function GeneralSettings({
                 )}
                 {(cppErrText || choosePrices.length >= 6) && <div data-testid="cpp-add-err" style={{ marginTop: 6, fontSize: 12, color: cppErrText ? "var(--danger)" : "var(--text-muted)" }}>{cppErrText || t.rd_cpp_err_max}</div>}
                 {choosePrices.length === 1 && <div data-testid="cpp-keep-one" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_cpp_keep_one}</div>}
+                {onSetChooseShowFree && (
+                  // The whole row is the switch (≥ 48 px tall) — easy to hit on a phone.
+                  <button type="button" role="switch" aria-checked={chooseShowFree} onClick={() => onSetChooseShowFree(!chooseShowFree)} data-testid="cpp-free-toggle"
+                    style={{ marginTop: 12, width: "100%", minHeight: 52, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)", touchAction: "manipulation" }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--text)", lineHeight: 1.3 }}>{t.rd_cpp_free_row}</span>
+                      <span style={{ display: "block", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.35, marginTop: 1 }}>{t.rd_cpp_free_sub}</span>
+                    </span>
+                    <span className="sfl-ls-track" aria-hidden="true" style={{ width: 44, height: 26, borderRadius: 13, background: chooseShowFree ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", flexShrink: 0 }}>
+                      <span className="sfl-ls-knob" style={{ position: "absolute", top: 3, left: 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transform: chooseShowFree ? "translateX(18px)" : "none" }} />
+                    </span>
+                  </button>
+                )}
               </div>
             )}
             {choosePriceError > 0 && <div style={{ padding: "8px 14px 12px", fontSize: 11, color: "var(--danger)" }} data-testid="cpp-error">{t.rd_smp_error}</div>}

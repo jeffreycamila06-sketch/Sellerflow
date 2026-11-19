@@ -45,7 +45,10 @@ describe("useOrders order gate", () => {
   });
   it("every order entry point goes through orders.createOrder (1-Click, Enterprise, Pin, Auto, Waitlist Give)", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect((src.match(/orders\.createOrder\(/g) || []).length).toBe(5);
+    // 7 = the 5 entry points; 1-Click and Pin each have two calls on one line since the Free button
+    // (Choose price): `free ? orders.createOrder(c, 0, { itemOverride: FREE_ITEM }) : orders.createOrder(c, price)`.
+    expect((src.match(/orders\.createOrder\(/g) || []).length).toBe(7);
+    expect((src.match(/free \? orders\.createOrder\((?:prod|c), 0, \{ itemOverride: FREE_ITEM \}\) : orders\.createOrder\((?:prod|c), price\)/g) || []).length).toBe(2);
     expect(src).not.toMatch(/buildOrderFromComment\(/); // no second order builder bypassing the gate
   });
 });

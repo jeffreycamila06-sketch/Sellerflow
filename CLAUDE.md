@@ -5718,6 +5718,47 @@ create the order at once). ON = a price pop-up before each 1-Click and each auto
   `GeneralSettings.choosePrice.test.tsx`, `scripts/sql180-behaviour.mjs` (PGlite, 26 checks). Pictures: `docs/design/choose-price/`.
 - **Order:** apply sql/180 → merge (Vercel) → apply sql/181 (guide, 5 rows).
 
+## 2026-11-19 — "FREE" BUTTON for Choose price before print (branch `claude/choose-price-free`; renumbered 182/183→184/185 at merge because main took sql/182 for the FamilyMart fix; sql/184 + sql/185 NOT applied; no Render)
+Web only. Settings → Live setup → Choose price before print → **Show Free button** (default OFF). ON = the price
+pop-up shows a green **Free** cell, always last, never the default. One tap = an order at price 0 whose sticker
+prints **FREE** (English in every language) where a price prints.
+- **ONE rule — `src/lib/freeOrder.ts`:** `FREE_ITEM = "FREE"`, `isFreeOrder({ price, item })` = price 0 AND item exactly
+  "FREE". **No database marker, no change to `live_session_orders` / `db.ts`.** The Free tap calls
+  `orders.createOrder(c, 0, { itemOverride: FREE_ITEM })` (the override Auto mode uses) from `commitOneClick` /
+  `commitPin` (`free` argument, set ONLY by `pickChoicePrice(item, price, soldOutOk, free)`). The item text is what
+  prints, what is saved (`product`) and what a reload / Reprint reads back → FREE everywhere with no print-code change.
+  A normal 1-Click / pin at no price keeps the buyer's comment as its item (not free). Known edge: a comment that is
+  exactly "FREE" on a normal 1-Click also counts as free on screen (its sticker prints FREE today too).
+- **Same guards as a price tap:** the sheet's `send(price, soldOutOk, free)` — 400 ms tap guard, per-item double-tap
+  guard, blocked keeps the sheet, sold-out question (answered → `onPick(0, true, true)`), free-limit drop.
+  A price tap still calls `onPick(price, soldOutOk)` with two arguments.
+- **Switch storage:** `seller_price_choices.show_free` (**sql/184**, add-only, default false, rollback). `useChoosePrice`
+  → `showFree` / `setShowFree`. SAFE IN EITHER ORDER with sql/184: the read is `select("*")` (no column = OFF); a save
+  sends `show_free` ONLY when it is ON or is the thing being changed — a seller who never touches it sends the same
+  request as before; turning it on before sql/184 = the normal "Couldn't save" + back to OFF. The localStorage copy
+  gets `showFree: true` only when ON (an old copy reads OFF).
+- **"Free" word instead of a 0 amount** (`rd_cpp_free`, 8 languages, green `--ok`): Orders row (`ord-free`), the buyer
+  card line, the Orders export Amount cell. Totals unchanged: Today / Sales count it as +1 order, +0 revenue.
+- **Send to TikTok (fix round 1):** a Free line reads `1. FREE` — nothing after it (`messageLine` / `lineAmount` → null);
+  in the sheet its price box starts EMPTY (not "0"). A price typed on it shows `— NT$20` and goes into the total.
+- **`isFreeOrder` needs a real number** (fix round 1): null / undefined / "" / spaces / NaN / Infinity / non-numbers →
+  not free; a number or a numeric string ("0", "0.00") → checked as before.
+- ⚠️ **Known limit (proof `KNOWN_FREE_CUT`, printing map row 35):** today's sticker in the compact v2 layout (admins +
+  listed accounts), 70×50, Comment 3×, QR on → FREE prints "FRE" — the existing QR cut (a typed "1500" prints "150"
+  there on main). Everywhere else the proof checks FREE ≥ 1.2× the width of "150". stickerRaster.ts untouched.
+- **NOT changed (Jeff, separate small branch later): the Messenger receipt.** A FREE line is drawn with no price and ONE
+  such line makes the receipt total read "to be confirmed" (`receiptLayout.js`), phone sheet and automatic receipt.
+- **Print screen, a buyer with a FREE order + a priced order:** which orders show is today's rule (printing map row
+  26), unchanged — on a first-order-only size (50×30, 70×50, 80×50, generic 60×40, today's laptop page) FREE first =
+  the sticker says FREE only. The new sticker prints both ("FREE · 150").
+- `useOrders.sessionGate.test.tsx` counts the `orders.createOrder(` sites in RedesignApp: 7 now (1-Click and Pin have
+  the Free call and the price call on one line).
+- Proof: `freeSticker.proof.test.ts` (every picture path × size × QR, text-sticker commands, laptop),
+  `freeOrder.flow.test.tsx`, `choosePrice.app.test.tsx` "Free button", `Orders.free.test.tsx`,
+  `GeneralSettings.chooseFree.test.tsx`, `scripts/sql184-behaviour.mjs` (PGlite, 23 checks). Pictures:
+  `docs/design/choose-price-free/`. Printing map: row 35 + the P13 trigger row.
+- **Order:** merge (Vercel) and sql/184 in either order → sql/185 (guide: choose-price, orders-search, tiktok-send).
+
 ## 2026-11-19 — PICKUP STATUS: 全家 ROWS SAVED AS 全家店寄店取 ARE IN THEIR TAB (branch `claude/fm-pickup-accuracy`, NOT merged; sql/182 NOT applied; web only)
 Live table that day (counts only): 76 全家 rows, 70 with `ship_type = '全家店寄店取'` (the 好賣+ "Good-selling version"
 column 運送方式), 6 with `C2C`. Only `C2C` rows were in a status tab → the 70 were in no phone card, only under All on the

@@ -11,6 +11,11 @@
 //   prices  — kept while OFF. First = the default (highlighted in the pop-up).
 //   active  — enabled && prices.length > 0 → the pop-up asks before each 1-Click / pin print.
 //             RedesignApp also requires "Same price" to be OFF (only one can be on).
+//   showFree — "Show Free button" (sql/184 column show_free, default false). Kept while the
+//             switch is OFF; not one of the prices. SAFE BEFORE sql/184: the read asks for the
+//             whole row (a missing column simply reads as OFF) and a save sends `show_free` ONLY
+//             when it is ON or is the thing being changed — a seller who never touches it sends
+//             exactly the request sent before this switch existed.
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { log } from "../../lib/log";
@@ -64,20 +69,22 @@ export function canEnableChoosePrice(list: number[]): boolean {
 // ── The per-user saved copy (localStorage; every access try/catch) ────────────
 export const choiceCacheKey = (uid: string) => `sfl_rd_choose_price:${uid}`;
 
-export function readChoiceCache(uid: string | null | undefined): { enabled: boolean; prices: number[] } | null {
+export function readChoiceCache(uid: string | null | undefined): { enabled: boolean; prices: number[]; showFree: boolean } | null {
   if (!uid) return null;
   try {
     const raw = localStorage.getItem(choiceCacheKey(uid));
     if (!raw) return null;
-    const v = JSON.parse(raw) as { enabled?: unknown; prices?: unknown };
+    const v = JSON.parse(raw) as { enabled?: unknown; prices?: unknown; showFree?: unknown };
     const prices = normalizePriceList(v?.prices);
-    return { enabled: v?.enabled === true && canEnableChoosePrice(prices), prices };
+    // showFree: an older saved copy has no such key → OFF
+    return { enabled: v?.enabled === true && canEnableChoosePrice(prices), prices, showFree: v?.showFree === true };
   } catch { return null; }
 }
 
-export function writeChoiceCache(uid: string | null | undefined, enabled: boolean, prices: number[]): void {
+export function writeChoiceCache(uid: string | null | undefined, enabled: boolean, prices: number[], showFree = false): void {
   if (!uid) return;
-  try { localStorage.setItem(choiceCacheKey(uid), JSON.stringify({ enabled, prices })); } catch { /* private mode / full — the read on the next open still answers */ }
+  // the key is written only when ON → a seller who never used the switch keeps the same saved copy as before
+  try { localStorage.setItem(choiceCacheKey(uid), JSON.stringify(showFree ? { enabled, prices, showFree: true } : { enabled, prices })); } catch { /* private mode / full — the read on the next open still answers */ }
 }
 
 export interface UseChoosePrice {
@@ -90,13 +97,16 @@ export interface UseChoosePrice {
   setEnabled: (on: boolean, prices?: number[]) => Promise<boolean>;
   // Change the list. Refused (false) when it would leave the switch ON with no price.
   setPrices: (prices: number[]) => Promise<boolean>;
+  showFree: boolean;  // "Show Free button" — the pop-up shows it only while the switch itself is active
+  // Answers true when kept, false when the save failed (the value goes back) or nobody is signed in.
+  setShowFree: (on: boolean) => Promise<boolean>;
   saveErrors: number; // bumps when a save fails; the value reverts
 }
 
-type St = { uid: string | null; enabled: boolean; prices: number[]; loading: boolean };
+type St = { uid: string | null; enabled: boolean; prices: number[]; showFree: boolean; loading: boolean };
 const startState = (uid: string | null): St => {
   const c = readChoiceCache(uid);
-  return { uid, enabled: !!c?.enabled, prices: c?.prices ?? [], loading: !!uid && isSupabaseConfigured && !!supabase };
+  return { uid, enabled: !!c?.enabled, prices: c?.prices ?? [], showFree: !!c?.showFree, loading: !!uid && isSupabaseConfigured && !!supabase };
 };
 
 // userId = the signed-in user's id (null / undefined while signed out). A different user starts
@@ -116,51 +126,62 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
     void (async () => {
       const { data, error } = await supabase
         .from("seller_price_choices")
-        .select("enabled,prices")
+        .select("*")   // the whole row: before sql/184 there is no show_free column and it reads as OFF
         .eq("user_id", uid)
         .maybeSingle();
       if (!alive) return;
       if (error) { patch(uid, { loading: false }); return; }   // keep the saved copy
       const list = normalizePriceList(data?.prices);
       const on = !!data?.enabled && canEnableChoosePrice(list);  // never ON with no price; no row = OFF
-      writeChoiceCache(uid, on, list);
-      patch(uid, { enabled: on, prices: list, loading: false });
+      const free = (data as { show_free?: unknown } | null)?.show_free === true;
+      writeChoiceCache(uid, on, list, free);
+      patch(uid, { enabled: on, prices: list, showFree: free, loading: false });
     })();
     return () => { alive = false; };
   }, [uid, patch]); // ONE read per signed-in user — no interval/poll
 
-  const persist = useCallback(async (nextEnabled: boolean, nextPrices: number[], prevEnabled: boolean, prevPrices: number[]): Promise<boolean> => {
+  // free: { next, prev, send } — `send` true = put show_free in the request (it is ON, or it is the
+  // thing being changed). false = the request is exactly the one sent before the Free switch existed.
+  const persist = useCallback(async (nextEnabled: boolean, nextPrices: number[], prevEnabled: boolean, prevPrices: number[], free: { next: boolean; prev: boolean; send: boolean }): Promise<boolean> => {
     if (!uid) return false;                              // nobody signed in → nothing was saved
     if (!isSupabaseConfigured || !supabase) return true;
+    const row: Record<string, unknown> = { user_id: uid, enabled: nextEnabled, prices: nextPrices, updated_at: new Date().toISOString() };
+    if (free.send) row.show_free = free.next;
     const { error } = await supabase
       .from("seller_price_choices")
-      .upsert({ user_id: uid, enabled: nextEnabled, prices: nextPrices, updated_at: new Date().toISOString() });
+      .upsert(row);
     if (error) {
       log.error("Choose-price save error:", error.message);
-      patch(uid, { enabled: prevEnabled, prices: prevPrices }); // revert — the database is the source of truth
+      patch(uid, { enabled: prevEnabled, prices: prevPrices, showFree: free.prev }); // revert — the database is the source of truth
       setSaveErrors((c) => c + 1);
       return false;
     }
-    writeChoiceCache(uid, nextEnabled, nextPrices);
+    writeChoiceCache(uid, nextEnabled, nextPrices, free.next);
     return true;
   }, [uid, patch]);
 
-  const { enabled, prices } = st;
+  const { enabled, prices, showFree } = st;
   const setEnabled = useCallback(async (on: boolean, next?: number[]) => {
     if (!uid) return false; // no signed-in user → nothing changes, nothing is saved
     const list = next !== undefined ? normalizePriceList(next) : prices;
     if (on && !canEnableChoosePrice(list)) return false; // blocked — the Settings screen asks for a price first
     patch(uid, { enabled: on, prices: list });
-    return persist(on, list, enabled, prices);
-  }, [uid, enabled, prices, persist, patch]);
+    return persist(on, list, enabled, prices, { next: showFree, prev: showFree, send: showFree });
+  }, [uid, enabled, prices, showFree, persist, patch]);
 
   const setPrices = useCallback(async (next: number[]) => {
     if (!uid) return false; // no signed-in user → nothing changes, nothing is saved
     const list = normalizePriceList(next);
     if (enabled && !canEnableChoosePrice(list)) return false; // keep at least one price while ON
     patch(uid, { prices: list });
-    return persist(enabled, list, enabled, prices);
-  }, [uid, enabled, prices, persist, patch]);
+    return persist(enabled, list, enabled, prices, { next: showFree, prev: showFree, send: showFree });
+  }, [uid, enabled, prices, showFree, persist, patch]);
 
-  return { enabled, prices, active: enabled && canEnableChoosePrice(prices), loading: st.loading, setEnabled, setPrices, saveErrors };
+  const setShowFree = useCallback(async (on: boolean) => {
+    if (!uid) return false; // no signed-in user → nothing changes, nothing is saved
+    patch(uid, { showFree: on });
+    return persist(enabled, prices, enabled, prices, { next: on, prev: showFree, send: true });
+  }, [uid, enabled, prices, showFree, persist, patch]);
+
+  return { enabled, prices, active: enabled && canEnableChoosePrice(prices), loading: st.loading, setEnabled, setPrices, showFree, setShowFree, saveErrors };
 }
