@@ -86,6 +86,10 @@ export interface ParcelTrackingRow {
   terminal: boolean;
   lastPolledAt?: string | null; // last SHOPMORE check of this row (drives the Stale chip)
   carrier?: "711" | "fm";      // set only when the 全家 switch is on (sql/119)
+  // 全家 only, read only when the 全家 switch is on and the column exists (sql/185): what FamilyMart's
+  // site said at the last check about a parcel it has never really answered.
+  fmSiteState?: "not_found" | "not_dropped" | null;
+  createdAt?: string | null;   // when the row was saved — read together with fmSiteState
 }
 
 export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
@@ -113,6 +117,9 @@ export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
     terminal: row.terminal === true,
     lastPolledAt: s(row.last_polled_at),
     ...(row.carrier === "fm" || row.carrier === "711" ? { carrier: row.carrier } : {}),
+    ...("fm_site_state" in row
+      ? { fmSiteState: row.fm_site_state === "not_found" || row.fm_site_state === "not_dropped" ? row.fm_site_state : null, createdAt: s(row.created_at) }
+      : {}),
   };
 }
 
@@ -126,13 +133,47 @@ export function isChaseable(shipType: string | null | undefined, specialType: st
 
 // 全家 (carrier 'fm'): the reader saves every store-pickup row as "C2C" (fmPickup.ts fmShipType).
 // Rows saved before 2026-11-19 from the Good-selling file still carry the file's own words
-// (全家店寄店取) until sql/182 corrects them — the same store pickup, so it counts as one here.
+// (全家店寄店取) until sql/184 corrects them — the same store pickup, so it counts as one here.
 export const FM_STORE_PICKUP_SAVED = ["C2C", "全家店寄店取"] as const;
 // PURE — does this row belong in a status tab? A 7-11 row: isChaseable, unchanged. A 全家 row: the
 // same rule, with the older saved words accepted too.
 export function inStatusTabs(row: Pick<ParcelTrackingRow, "carrier" | "shipType" | "specialType">): boolean {
   if (isChaseable(row.shipType, row.specialType)) return true;
   return row.carrier === "fm" && String(row.shipType ?? "").trim() === FM_STORE_PICKUP_SAVED[1] && String(row.specialType || "").trim() === "";
+}
+
+// 全家 parcel FamilyMart's site has NOTHING for yet (sql/185): it does not know the number
+// ("not_found"), or it knows the order and the parcel was never handed in ("not_dropped"). Such a
+// row is listed in its own group under In transit and is not counted in the In transit number.
+// PURE. A row without the saved answer (7-11, 全家 off, column not there) is never one.
+export function isFmNothingYet(row: Pick<ParcelTrackingRow, "carrier" | "status" | "terminal" | "fmSiteState">): boolean {
+  return row.carrier === "fm" && row.status === "in_transit" && !row.terminal
+    && (row.fmSiteState === "not_found" || row.fmSiteState === "not_dropped");
+}
+
+// Days after which such a parcel leaves the list — MIRRORS server/fmTracking.js FM_LEAVE_AFTER_DAYS.
+export const FM_LEAVE_AFTER_DAYS = 10;
+
+// PURE — when a "nothing yet" parcel leaves the list (YYYY-MM-DD), the same two rules as the server
+// (server/fmTracking.js fmNothingYet):
+//   · the Taipei day it was saved + 10 days;
+//   · FamilyMart does not know the number ("not_found") and the file gives a drop-off date → the day
+//     after that date, when that is sooner.
+// next = that day is today or already past → it leaves at the next check.
+// null = not such a row, or no readable saved time. (The server decides; this is the label.)
+const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+export function fmLeaves(row: ParcelTrackingRow, today: string): { date: string; next: boolean } | null {
+  if (!isFmNothingYet(row) || !row.createdAt) return null;
+  const ms = Date.parse(row.createdAt);
+  if (!Number.isFinite(ms)) return null;
+  const savedDay = new Date(ms + 8 * 3600000).toISOString().slice(0, 10); // Asia/Taipei (UTC+8, no DST)
+  let date = addDays(savedDay, FM_LEAVE_AFTER_DAYS);
+  const dropBy = String(row.pickupDeadline ?? "").slice(0, 10);
+  if (row.fmSiteState === "not_found" && /^\d{4}-\d{2}-\d{2}$/.test(dropBy)) {
+    const afterDrop = addDays(dropBy, 1);
+    if (afterDrop < date) date = afterDrop;
+  }
+  return { date, next: date <= today };
 }
 
 // NOT CHECKED YET = a row the seller uploaded ("Sync from 賣貨便") that the check has
@@ -314,7 +355,8 @@ export function leftCell(row: ParcelTrackingRow, today: string): LeftCell {
 // deadline last, returning-soon first on a tie. Never mutates.
 const TAB_RANK: Record<string, number> = { waiting: 0, transit: 1, picked: 2, returned: 3 };
 export function sortByDaysLeft(rows: ParcelTrackingRow[], today: string): ParcelTrackingRow[] {
-  const rank = (r: ParcelTrackingRow) => TAB_RANK[rowTab(r) ?? ""] ?? 4;
+  // A 全家 parcel FamilyMart has nothing for yet comes after every parcel that is really moving.
+  const rank = (r: ParcelTrackingRow) => (isFmNothingYet(r) ? 1.5 : TAB_RANK[rowTab(r) ?? ""] ?? 4);
   const days = (r: ParcelTrackingRow) => daysUntilDate(r.pickupDeadline, today);
   return [...rows].sort((a, b) => {
     const ra = rank(a), rb = rank(b);
@@ -349,10 +391,17 @@ export function tabCounts(groups: ParcelGroups, totals?: ParcelTotals): Record<P
   return {
     all: totals?.all ?? derivedAll,
     waiting: totals?.waiting ?? groups.waitingPickup.length,
-    transit: totals?.transit ?? groups.inTransit.length,
+    // moving parcels only: a 全家 parcel FamilyMart has nothing for yet is listed under In transit
+    // in its own group and counted by fmNotDroppedCount
+    transit: totals?.transit ?? groups.inTransit.length - groups.inTransit.filter(isFmNothingYet).length,
     picked: totals?.picked ?? groups.pickedUp.length,
     returned: totals?.returned ?? groups.returned.length,
   };
+}
+
+// How many 全家 parcels are in the "not dropped off yet" group (exact DB count when present).
+export function fmNotDroppedCount(groups: ParcelGroups, totals?: ParcelTotals): number {
+  return totals?.notDropped ?? groups.inTransit.filter(isFmNothingYet).length;
 }
 
 // ── Chase-point deadline filter (Waiting-pickup chips) ────────────────────────
@@ -461,7 +510,7 @@ export function formatPrice(amount: number | null): string {
 // Exact per-tab totals that survive the page cap (see the starvation note below).
 // live = every non-terminal row (drives "Load more"); waiting / transit = exact counts
 // for those two tabs (S7), so a seller with >500 unfinished parcels sees true numbers.
-export interface ParcelTotals { all: number; picked: number; returned: number; live?: number; waiting?: number; transit?: number }
+export interface ParcelTotals { all: number; picked: number; returned: number; live?: number; waiting?: number; transit?: number; notDropped?: number }
 
 // 2026-09-27 STARVATION FIX — the old single query (deadline ASC nulls-last,
 // LIMIT 500) let hundreds of old picked_up rows (past deadlines sort FIRST)
@@ -479,7 +528,17 @@ export interface ParcelTotals { all: number; picked: number; returned: number; l
 // a stable order, so "Load more" (liveOffset) never repeats or skips a row.
 // fm = the 全家 switch is on → also read `carrier` (for the 7-11 / 全家 label). Off → the
 // exact pre-全家 select (the database hides 全家 rows from it anyway, sql/119).
-const ptSelect = (fm: boolean) => (fm ? PT_SELECT + ", carrier" : PT_SELECT);
+// 全家 on → also the saved FamilyMart answer and the saved time (sql/185). While that column is not
+// in the database (the first read says so) the select is exactly the one of before.
+let fmSiteColumn = true;
+export const resetFmSiteColumnForTests = () => { fmSiteColumn = true; };
+const fmSiteOn = (fm: boolean) => fm && fmSiteColumn;
+const ptSelect = (fm: boolean) => (fm ? PT_SELECT + ", carrier" + (fmSiteColumn ? ", fm_site_state, created_at" : "") : PT_SELECT);
+// Does a read error say the saved-answer column is not there?
+function fmSiteColumnMissing(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  return err.code === "42703" || err.code === "PGRST204" || /fm_site_state/.test(String(err.message ?? ""));
+}
 
 function livePage(me: string, from: number, fm = false) {
   return supabase!.from("parcel_tracking").select(ptSelect(fm), { count: "exact" }).eq("user_id", me).eq("terminal", false)
@@ -502,11 +561,20 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
+  const first = await loadTrackingOnce(me, fm);
+  if (!first.missing) return first.res;
+  fmSiteColumn = false; // sql/185 is not applied yet: read again, exactly as before it
+  return (await loadTrackingOnce(me, fm)).res;
+}
+
+async function loadTrackingOnce(me: string, fm: boolean): Promise<{ res: { ok: boolean; rows: ParcelTrackingRow[]; totals?: ParcelTotals; error?: string }; missing: boolean }> {
+  const site = fmSiteOn(fm);
   const base = () => supabase!.from("parcel_tracking").select(ptSelect(fm), { count: "exact" }).eq("user_id", me);
   const chaseable = (q: ReturnType<typeof headCount>) =>
     (fm ? q.in("ship_type", [...FM_STORE_PICKUP_SAVED]) : q.eq("ship_type", "C2C")).or("special_type.is.null,special_type.eq.");
   const created = () => headCount(me).eq("terminal", false).eq("status", "created");
-  const [live, returned, picked, atStore, unchecked, transit, uncheckedFm] = await Promise.all([
+  const moving = () => chaseable(headCount(me).eq("terminal", false).eq("status", "in_transit"));
+  const [live, returned, picked, atStore, unchecked, transit, uncheckedFm, held] = await Promise.all([
     livePage(me, 0, fm),
     base().eq("status", "returned")
       .order("returned_at", { ascending: false, nullsFirst: false })
@@ -516,11 +584,13 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
       .limit(PARCEL_TRACKING_PAGE),
     chaseable(headCount(me).eq("terminal", false).eq("status", "at_store")),
     fm ? created().eq("carrier", "711") : created(),
-    chaseable(headCount(me).eq("terminal", false).eq("status", "in_transit")),
+    // In transit = parcels really moving; the 全家 ones FamilyMart has nothing for are counted apart.
+    site ? moving().is("fm_site_state", null) : moving(),
     fm ? created().eq("carrier", "fm") : Promise.resolve({ count: 0, error: null }),
+    site ? moving().eq("carrier", "fm").not("fm_site_state", "is", null) : Promise.resolve({ count: 0, error: null }),
   ]);
-  const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error || uncheckedFm.error;
-  if (err) return { ok: false, rows: [], error: err.message }; // never partial (the S1 rule)
+  const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error || uncheckedFm.error || held.error;
+  if (err) return { res: { ok: false, rows: [], error: err.message }, missing: site && fmSiteColumnMissing(err) }; // never partial (the S1 rule)
   const rows = [...(live.data ?? []), ...(returned.data ?? []), ...(picked.data ?? [])]
     .map((r) => rowToTracking(r as unknown as Record<string, unknown>));
   const totals: ParcelTotals = {
@@ -530,8 +600,9 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
     live: live.count ?? 0,
     waiting: (atStore.count ?? 0) + (uncheckedFm.count ?? 0),
     transit: (transit.count ?? 0) + (unchecked.count ?? 0),
+    ...(site ? { notDropped: held.count ?? 0 } : {}),
   };
-  return { ok: true, rows, totals };
+  return { res: { ok: true, rows, totals }, missing: false };
 }
 
 // S7 — the next page of the unfinished list, starting at `offset` (= how many are loaded).
@@ -539,7 +610,11 @@ export async function loadMoreLive(offset: number, fm = false): Promise<{ ok: bo
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
-  const { data, error } = await livePage(me, Math.max(0, offset), fm);
+  let { data, error } = await livePage(me, Math.max(0, offset), fm);
+  if (error && fmSiteOn(fm) && fmSiteColumnMissing(error)) {
+    fmSiteColumn = false; // sql/185 is not applied yet: the select of before
+    ({ data, error } = await livePage(me, Math.max(0, offset), fm));
+  }
   if (error) return { ok: false, rows: [], error: error.message };
   return { ok: true, rows: (data ?? []).map((r) => rowToTracking(r as unknown as Record<string, unknown>)) };
 }

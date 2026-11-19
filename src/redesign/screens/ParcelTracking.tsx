@@ -15,7 +15,7 @@
 // action otherwise (no SHOPMORE tracking link exists, so there is no Track button).
 // "no username" parcels stay visible in their tab. "All" also keeps the non-chaseable
 // / not-yet-updated rows (the old "Other" bucket) so nothing disappears.
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import DragBar, { scrollerOf } from "../components/DragBar";
 import { useT, tpl } from "../i18n";
@@ -27,6 +27,7 @@ import { syncFromExport, type SyncResult } from "../adapters/parcelExportRead";
 import { uploadFmExport, type FmUploadResult } from "../adapters/fmPickup";
 import {
   loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, fmDropOff, isUnchecked, tabRows, tabCounts,
+  isFmNothingYet, fmLeaves, fmNotDroppedCount,
   PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
   loadTrackingStatus, requestAutoCheck, requestCheck, checkButtonState, isStale, urgentEligible, formatTaipei, CHECK_POLL_MS,
@@ -67,14 +68,44 @@ function shortDate(ymd: string, lang: string): string {
   try { return new Date(y, m - 1, d).toLocaleDateString(lang, { month: "short", day: "numeric" }); } catch { return ymd; }
 }
 
+// 全家 parcels FamilyMart has nothing for yet (sql/185): the head of their own group, shown in the
+// In transit list right above the first of them. n = how many there are in all.
+function FmGroupHead({ n, t }: { n: number; t: T }) {
+  return (
+    <div data-testid="pt-fm-group" style={{ padding: "9px 12px", background: "var(--warn-soft)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text)" }}>{t.rd_pt_fm_not_dropped} · <span data-testid="pt-fm-group-n">{n}</span></div>
+      <div style={{ fontSize: 11.5, fontWeight: 400, color: "var(--text-dim)", lineHeight: 1.35, marginTop: 2, whiteSpace: "normal" }}>{t.rd_pt_fm_group_hint}</div>
+    </div>
+  );
+}
+// Where the group head goes in a list: before the first such row. held undefined = no group here.
+const fmGroupAt = (rows: ParcelTrackingRow[], held: number | undefined) => (held === undefined ? -1 : rows.findIndex(isFmNothingYet));
+
 function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t: T }) {
   const lang = useLang();
+  // 全家 parcel FamilyMart has nothing for yet: when it leaves the list (sql/185).
+  const leaves = fmLeaves(row, today);
+  if (leaves?.next) {
+    return (
+      <span style={{ fontSize: 12.5, color: "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
+        data-testid="pt-left" data-leaves={leaves.date} data-urgent="0">{t.rd_pt_fm_leaves_next}</span>
+    );
+  }
   const drop = fmDropOff(row, today);
   if (drop) {
     return (
       <span style={{ fontSize: 12.5, fontWeight: drop.urgent ? 600 : 400, color: drop.urgent ? "var(--danger)" : "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
         data-testid="pt-left" data-dropoff={drop.deadline} data-urgent={drop.urgent ? "1" : "0"}>
         {tpl(t.rd_pt_fm_drop_by, { date: shortDate(drop.deadline, lang) })}
+      </span>
+    );
+  }
+  // …with no drop-off date from the file (that line wins above): the day it leaves.
+  if (leaves) {
+    return (
+      <span style={{ fontSize: 12.5, color: "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
+        data-testid="pt-left" data-leaves={leaves.date} data-urgent="0">
+        {tpl(t.rd_pt_fm_leaves_on, { date: shortDate(leaves.date, lang) })}
       </span>
     );
   }
@@ -210,7 +241,12 @@ function Buyer({ row, t, nowMs, buyerName, platform = null }: { row: ParcelTrack
   const carrier = row.carrier
     ? <span data-testid="pt-carrier" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: `1px solid var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-border)`, background: `var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-bg)`, fontSize: 10.5, fontWeight: 700, color: `var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-text)`, whiteSpace: "nowrap" }}>{row.carrier === "fm" ? "FamilyMart" : "7-Eleven"}</span>
     : null;
-  const notDropped = row.carrier === "fm" && row.status === "in_transit" && !!row.pickupDeadline
+  // What FamilyMart's site said at the last check (sql/185) decides the label; a row without that
+  // saved answer keeps the rule of before (the 好賣+ file gave a drop-off date).
+  const noRecord = isFmNothingYet(row) && row.fmSiteState === "not_found";
+  const notDropped = noRecord
+    ? <span data-testid="pt-no-record" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--warn)", fontSize: 10.5, fontWeight: 700, color: "var(--warn)", whiteSpace: "nowrap" }}>{t.rd_pt_fm_no_record}</span>
+    : isFmNothingYet(row) || (row.carrier === "fm" && row.status === "in_transit" && !!row.pickupDeadline)
     ? <span data-testid="pt-not-dropped" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--warn)", fontSize: 10.5, fontWeight: 700, color: "var(--warn)", whiteSpace: "nowrap" }}>{t.rd_pt_fm_not_dropped}</span>
     : null;
   const stale = isStale(row, nowMs);
@@ -286,7 +322,8 @@ function messageFor(r: ParcelTrackingRow, t: T, names: Map<string, string>): str
 }
 const platformFor = (r: ParcelTrackingRow, x: RowExtras): BuyerContactPlatform | null => contactFor(x.contacts, r.buyerUsername, r.storeId, r.carrier);
 
-function Table({ rows, today, t, onCopy, nowMs, names, extras }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string>; extras: RowExtras }) {
+function Table({ rows, today, t, onCopy, nowMs, names, extras, held }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string>; extras: RowExtras; held?: number }) {
+  const groupAt = fmGroupAt(rows, held);
   const th: CSSProperties = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", padding: "10px 10px 8px", textTransform: "uppercase", letterSpacing: ".04em", ...ellipsis };
   const td: CSSProperties = { padding: "10px", borderTop: "1px solid var(--border)", verticalAlign: "middle", overflow: "hidden" };
   return (
@@ -306,8 +343,10 @@ function Table({ rows, today, t, onCopy, nowMs, names, extras }: { rows: ParcelT
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} data-testid="pt-row">
+          {rows.map((r, i) => (
+            <Fragment key={r.id}>
+            {i === groupAt && <tr data-testid="pt-fm-group-row"><td colSpan={6} style={{ padding: 0 }}><FmGroupHead n={held ?? 0} t={t} /></td></tr>}
+            <tr data-testid="pt-row">
               <td style={td}><Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} platform={extras.contactOn ? platformFor(r, extras) : null} /></td>
               <td style={td}><span style={{ fontSize: 12.5, color: "var(--text)", ...ellipsis, display: "block" }} title={storeOf(r)}>{storeOf(r)}</span></td>
               <td style={td}><span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={r.trackingNo} data-testid="pt-code">{r.trackingNo}</span></td>
@@ -315,6 +354,7 @@ function Table({ rows, today, t, onCopy, nowMs, names, extras }: { rows: ParcelT
               <td style={td}><LeftText row={r} today={today} t={t} /></td>
               <td style={{ ...td, textAlign: "right" }}><ChaseAction row={r} t={t} onCopy={onCopy} platform={platformFor(r, extras)} contactOn={extras.contactOn} message={messageFor(r, t, names)} onCopyMsg={extras.onCopyMsg} /></td>
             </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -324,7 +364,7 @@ function Table({ rows, today, t, onCopy, nowMs, names, extras }: { rows: ParcelT
 
 // MOBILE — 2-col status count cards (big number; Waiting red, Picked up green; tap to
 // select; selected = 2px accent border).
-function Cards({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<PickupTab, number>; onPick: (x: PickupTab) => void; t: T }) {
+function Cards({ tab, counts, onPick, t, held = 0 }: { tab: PickupTab; counts: Record<PickupTab, number>; onPick: (x: PickupTab) => void; t: T; held?: number }) {
   const numColor = (x: PickupTab) => (x === "waiting" ? "var(--danger)" : x === "picked" ? "var(--ok)" : "var(--text)");
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }} data-testid="pt-cards">
@@ -336,6 +376,8 @@ function Cards({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Pick
             <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1, color: numColor(x) }}>{counts[x]}</div>
             {/* card space is tight → the short "Waiting pickup" label for the same status */}
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)", marginTop: 4, ...ellipsis }}>{x === "waiting" ? t.rd_pt_card_waiting : t[TAB_LABEL[x]]}</div>
+            {/* 全家 parcels FamilyMart has nothing for yet: listed under In transit, not in its number */}
+            {x === "transit" && held > 0 && <div data-testid="pt-card-held" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--warn)", marginTop: 2, ...ellipsis }}>+{held} {t.rd_pt_fm_not_dropped}</div>}
           </button>
         );
       })}
@@ -344,11 +386,14 @@ function Cards({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Pick
 }
 
 // MOBILE — compact rows: Buyer + Store (two lines) · Left · action. No parcel code.
-function CompactList({ rows, today, t, onCopy, nowMs, names, extras }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string>; extras: RowExtras }) {
+function CompactList({ rows, today, t, onCopy, nowMs, names, extras, held }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string>; extras: RowExtras; held?: number }) {
+  const groupAt = fmGroupAt(rows, held);
   return (
     <div style={{ ...card, padding: 0, overflow: "hidden" }} data-testid="pt-list">
       {rows.map((r, i) => (
-        <div key={r.id} data-testid="pt-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+        <Fragment key={r.id}>
+        {i === groupAt && <FmGroupHead n={held ?? 0} t={t} />}
+        <div data-testid="pt-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i && i !== groupAt ? "1px solid var(--border)" : "none" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} platform={extras.contactOn ? platformFor(r, extras) : null} />
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, display: "flex", alignItems: "baseline" }}>
@@ -359,6 +404,7 @@ function CompactList({ rows, today, t, onCopy, nowMs, names, extras }: { rows: P
           <div style={{ flexShrink: 0, maxWidth: "34%", textAlign: "right" }}><LeftText row={r} today={today} t={t} /></div>
           <div style={{ flexShrink: 0 }}><ChaseAction row={r} t={t} onCopy={onCopy} platform={platformFor(r, extras)} contactOn={extras.contactOn} message={messageFor(r, t, names)} onCopyMsg={extras.onCopyMsg} /></div>
         </div>
+        </Fragment>
       ))}
     </div>
   );
@@ -901,6 +947,10 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
                 const counts = filtering ? tabCounts(shown) : tabCounts(groups, totals);
                 const storeCounts: Record<StoreFilter, number> = { all: rows.length, "711": rows.filter((r) => carrierKey(r) === "711").length, fm: rows.filter((r) => carrierKey(r) === "fm").length };
                 const fullList = tabRows(shown, tab, today).filter((r) => matchesSearch(r, searchQ, names.get(normHandle(r.buyerUsername))));
+                // 全家 parcels FamilyMart has nothing for yet: their own group under In transit (exact count;
+                // while searching, the matches shown).
+                const heldAll = filtering ? fmNotDroppedCount(shown) : fmNotDroppedCount(groups, totals);
+                const heldHere = tab !== "transit" ? undefined : searchQ.trim() ? fullList.filter(isFmNothingYet).length : heldAll;
                 // Pages of 50 over what is shown now; a page that no longer exists → the last one.
                 const nShown = fullList.length;
                 const pages = Math.max(1, Math.ceil(nShown / PT_PAGE_SIZE));
@@ -939,11 +989,11 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
                   : <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-tab-empty">{t.rd_pt_tab_empty}</div>;
                 return narrow
                   ? <div data-testid="pt-mobile">
-                      <Cards tab={tab} counts={counts} onPick={setTab} t={t} />
+                      <Cards tab={tab} counts={counts} onPick={setTab} t={t} held={heldAll} />
                       {searchBox}
                       <div ref={listTopRef} />
                       {pageTop}
-                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} /> : emptyTab}
+                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} held={heldHere} /> : emptyTab}
                       {pageBar}
                       {more}
                     </div>
@@ -952,7 +1002,7 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
                       <div ref={listTopRef} />
                       {pageTop}
                       <Tabs tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} /> : emptyTab}
+                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} held={heldHere} /> : emptyTab}
                       {pageBar}
                       {more}
                     </div>;

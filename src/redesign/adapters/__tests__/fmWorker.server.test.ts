@@ -312,12 +312,24 @@ describe("which 全家 parcels a job picks (same rules as 7-11, its own cap)", (
     await runOne({ job: job(kind, extra), rows: [], settings }, { planFmImpl: async (a: Row) => { scopeOf = a.scopeOf as typeof scopeOf; return { run: false, reason: "nothing_due", rows: [], capped: false }; } });
     return scopeOf!;
   };
-  it("Check now: everything except in-transit parcels checked less than 24 hours ago; at most 60", async () => {
+  it("Check now: EVERY unfinished 全家 parcel — also an in-transit one checked 2 hours ago; at most 60", async () => {
     const scopeOf = await scopeFor("manual");
     const picked = scopeOf([rowFm(1), rowFm(2, { status: "in_transit", last_polled_at: iso(2 * H) }), rowFm(3, { status: "in_transit", last_polled_at: iso(30 * H) })]);
-    expect(picked.rows.map((r) => r.id)).toEqual(["fm1", "fm3"]);
+    expect(picked.rows.map((r) => r.id).sort()).toEqual(["fm1", "fm2", "fm3"]); // main skipped fm2 (the 24-hour rule)
     const many = scopeOf(Array.from({ length: 100 }, (_, i) => rowFm(i)));
     expect([many.rows.length, many.capped]).toEqual([FM_PARCELS_PER_JOB, true]);
+  });
+  it("Check now, the order: at a store first (nearest pickup deadline first), then the rest, least recently checked first", async () => {
+    const scopeOf = await scopeFor("manual");
+    const picked = scopeOf([
+      rowFm(1, { status: "in_transit", last_polled_at: iso(1 * H) }),
+      rowFm(2, { status: "at_store", pickup_deadline: "2026-11-20", last_polled_at: iso(1 * H) }),
+      rowFm(3, { status: "in_transit", last_polled_at: null }),                 // never checked → first of the rest
+      rowFm(4, { status: "at_store", pickup_deadline: "2026-11-14", last_polled_at: iso(5 * H) }),
+      rowFm(5, { status: "in_transit", last_polled_at: iso(40 * H) }),
+      rowFm(6, { status: "at_store", pickup_deadline: null, last_polled_at: iso(90 * H) }), // no deadline → last of the at-store ones
+    ]);
+    expect(picked.rows.map((r) => r.id)).toEqual(["fm4", "fm2", "fm6", "fm3", "fm5", "fm1"]);
   });
   it("after a Sync: only the new, never-checked parcels of that upload", async () => {
     const scopeOf = await scopeFor("new_parcels");

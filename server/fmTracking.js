@@ -15,6 +15,8 @@
 //
 // ⚠️ GUESSES (only step 6's path is confirmed). When the site answers something else the session
 // stops and logs one clear line; change the value here.
+import { taipeiDaysSince, taipeiDayOf } from "./pickupRules.js";
+
 export const FM_BASE = "https://ecfme.fme.com.tw/FMEDCFPWebV2_II/";
 export const FM_ORIGIN = "https://ecfme.fme.com.tw";
 export const FM_EMBED_REFERER = "https://fmec.famiport.com.tw/";
@@ -229,28 +231,69 @@ export function stepsFault(steps, ecOrderNo) {
 // the mark that tells the 好賣+ upload "the check has answered this row, do not lower it".
 export const FM_ANSWER_KINDS = Object.freeze(["returned", "picked_up", "at_store", "in_transit"]);
 
-// One classified parcel → what to do with its row. `row` = the stored row (arrived_at, rec_store).
-//   { action: "delete" } | { action: "update", patch }
-// not_found / not_shipped / unknown / void_unclear change nothing but the check time. arrived_at and
-// rec_store are written only when the row has none. The check never writes tracking_no.
+// ── "Nothing yet" (2026-11-19, sql/185) ────────────────────────────────────────
+// The site has nothing real for a parcel: it does not know the number (not_found), or it knows the
+// order and the parcel was never handed in (not_shipped — newest step 01 訂單成立未寄件). The fact
+// is saved on the row (parcel_tracking.fm_site_state) so the app can say so instead of showing the
+// parcel as on its way.
+export const FM_SITE_STATE = Object.freeze({ not_found: "not_found", not_shipped: "not_dropped" });
+export const FM_LEAVE_AFTER_DAYS = 10; // Taipei calendar days since the parcel was saved — the 7-11 number
+
+// PURE — what a not_found / not_shipped answer JUST RECEIVED means for the row.
+//   row: { status, fm_answered_at, created_at, pickup_deadline }
+// null = nothing but the check time, as before: another kind of answer, a row the site has already
+// really answered once, or a row that is not "in transit" (the 好賣+ file says more than the site).
+// Otherwise { state, leaves, why }:
+//   leaves  the parcel leaves Pickup Status at this check (finished; status and message untouched)
+//   why     "days"  it was saved FM_LEAVE_AFTER_DAYS or more Taipei days ago (both answers)
+//           "date"  the site does not know the number AND the file's drop-off date has passed
+// Only the answer just received decides — never a saved one (the 7-11 way).
+export function fmNothingYet(kind, row, nowDate) {
+  const state = Object.hasOwn(FM_SITE_STATE, String(kind)) ? FM_SITE_STATE[kind] : null;
+  if (!state || !row || row.status !== "in_transit" || row.fm_answered_at) return null;
+  const days = taipeiDaysSince(row.created_at, nowDate);
+  if (days !== null && days >= FM_LEAVE_AFTER_DAYS) return { state, leaves: true, why: "days" };
+  const dropBy = row.pickup_deadline ? String(row.pickup_deadline).slice(0, 10) : "";
+  const today = taipeiDayOf(nowDate);
+  if (kind === "not_found" && today && /^\d{4}-\d{2}-\d{2}$/.test(dropBy) && dropBy < today) return { state, leaves: true, why: "date" };
+  return { state, leaves: false, why: null };
+}
+
+// One classified parcel → what to do with its row. `row` = the stored row (arrived_at, rec_store,
+// status, fm_answered_at, created_at, pickup_deadline).
+//   { action: "delete" } | { action: "update", patch, plain, site? }
+//   patch  what is written
+//   plain  the write of before sql/185 (no fm_site_state, never finishes a row for "nothing yet") —
+//          used instead of `patch` while that column is not in the database
+//   site   set for a "nothing yet" answer that is saved: { state, leaves, why } (fmNothingYet)
+// A real answer, an unknown code and a void order with other steps all clear the saved fact (the
+// site did not say "nothing"). arrived_at and rec_store are written only when the row has none.
+// The check never writes tracking_no.
 export function fmRowChange(result, row, nowIso) {
   const base = { last_polled_at: nowIso };
   const answered = { ...base, fm_answered_at: nowIso };
   const once = {};
   if (result.arrived_at && !row?.arrived_at) once.arrived_at = result.arrived_at;
   if (result.rec_store && !row?.rec_store) once.rec_store = result.rec_store;
+  const said = (plain) => ({ action: "update", patch: { ...plain, fm_site_state: null }, plain });
   switch (result.kind) {
     case "expired": return { action: "delete" };
     case "returned":
-      return { action: "update", patch: { ...answered, ...once, status: "returned", status_message: result.status_message, terminal: true, returned_at: result.at || nowIso, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
+      return said({ ...answered, ...once, status: "returned", status_message: result.status_message, terminal: true, returned_at: result.at || nowIso, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) });
     case "picked_up":
-      return { action: "update", patch: { ...answered, ...once, status: "picked_up", status_message: result.status_message, terminal: true, picked_up_at: result.at || nowIso } };
+      return said({ ...answered, ...once, status: "picked_up", status_message: result.status_message, terminal: true, picked_up_at: result.at || nowIso });
     case "at_store":
-      return { action: "update", patch: { ...answered, ...once, status: "at_store", status_message: result.status_message, terminal: false, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
+      return said({ ...answered, ...once, status: "at_store", status_message: result.status_message, terminal: false, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) });
     case "in_transit": // on its way → the "drop off before …" date from the upload no longer applies
-      return { action: "update", patch: { ...answered, status: "in_transit", status_message: result.status_message, terminal: false, pickup_deadline: null } };
-    default: // not_found, not_shipped, unknown, void_unclear
-      return { action: "update", patch: base };
+      return said({ ...answered, status: "in_transit", status_message: result.status_message, terminal: false, pickup_deadline: null });
+    case "not_found":
+    case "not_shipped": {
+      const site = fmNothingYet(result.kind, row, new Date(nowIso));
+      if (!site) return { action: "update", patch: base, plain: base }; // check time only, as before
+      return { action: "update", patch: { ...base, fm_site_state: site.state, ...(site.leaves ? { terminal: true } : {}) }, plain: base, site };
+    }
+    default: // unknown, void_unclear — the row keeps its status
+      return said(base);
   }
 }
 

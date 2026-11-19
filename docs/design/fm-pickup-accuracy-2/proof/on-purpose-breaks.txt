@@ -1,0 +1,55 @@
+without any break: all pass
+caught: not_shipped saved as not_found — 5 test(s) failed
+caught: 10 days → 11 — 1 test(s) failed
+caught: leaves one day late (>) — 1 test(s) failed
+caught: not only in-transit rows — 1 test(s) failed
+caught: answered rows get the fact too — 4 test(s) failed
+caught: date rule also for not handed in — 1 test(s) failed
+caught: date rule on the date itself — 2 test(s) failed
+caught: date read on the UTC day — 1 test(s) failed
+caught: a real answer keeps the fact — 4 test(s) failed
+caught: a parcel never leaves — 4 test(s) failed
+caught: the old write carries the fact — 4 test(s) failed
+caught: unknown code keeps the fact — 1 test(s) failed
+caught: answered time not read — 1 test(s) failed
+caught: no retry without the column — 2 test(s) failed
+caught: keeps trying the column — 1 test(s) failed
+caught: left counts every nothing-yet — 3 test(s) failed
+caught: health row without counts — 1 test(s) failed
+caught: no health row without the columns — 1 test(s) failed
+caught: done line without left= — 1 test(s) failed
+caught: PGRST204 not seen as a missing column — 1 test(s) failed
+caught: press keeps the 24-hour skip — 2 test(s) failed
+caught: no 60-per-job limit — 1 test(s) failed
+caught: not the 7-11 order — 1 test(s) failed
+caught: worker still uses the old scope — 1 test(s) failed
+caught: 7-11 rows can be nothing-yet — 1 test(s) failed
+caught: finished rows in the group — 1 test(s) failed
+caught: leave day on the UTC day — 1 test(s) failed
+caught: 'next check' a day late — 11 test(s) failed
+caught: drop-off date never shortens it — 10 test(s) failed
+caught: drop-off date shortens not-handed-in too — 1 test(s) failed
+caught: group sorted with the moving parcels — 4 test(s) failed
+caught: In transit number counts the group — 4 test(s) failed
+caught: unknown word kept — 1 test(s) failed
+caught: exact In transit count includes the group — 1 test(s) failed
+caught: group count not limited to saved answers — 1 test(s) failed
+caught: no fallback when the column is missing — 1 test(s) failed
+caught: Load more has no fallback — 1 test(s) failed
+caught: no card line — 11 test(s) failed
+caught: card line without the number — 11 test(s) failed
+caught: search shows the full group number — 1 test(s) failed
+caught: group head never placed — 13 test(s) failed
+caught: group head on every tab — 1 test(s) failed
+caught: no 'No record yet' label — 9 test(s) failed
+caught: no 'next check' line — 9 test(s) failed
+caught: Traditional Chinese 'No record yet' empty — 2 test(s) failed
+caught: purge job at the 7-11 time — 2 test(s) failed
+caught: upload brings a left parcel back on 'in transit' — 1 test(s) failed
+caught: purge after 3 days — 1 test(s) failed
+caught: upload never clears the fact — 2 test(s) failed
+caught: guide row keeps the old date — 1 test(s) failed
+caught: guide rollback is the new text — 1 test(s) failed
+caught: rollback leaves parcels hidden — 1 test(s) failed
+52 of 52 breaks caught
+exit=0
