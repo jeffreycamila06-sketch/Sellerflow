@@ -136,6 +136,24 @@ export function fmBuyerUsername(content: string): string | null {
   return s && s !== FM_SCAN_DEFAULT_PRODUCT ? s : null;
 }
 
+// ── 配送方式 → ship_type ──────────────────────────────────────────────────────
+// Pickup Status keeps a store-pickup parcel under ship_type "C2C" (the same word the 7-11 rows
+// carry); only such a row is in a status tab and is counted. The two 好賣+ files name the SAME
+// store pickup differently — 常溫店到店 (Order export) and 全家店寄店取 (Good-selling version) — so
+// the text must never decide it: EVERY row of the file is a store pickup, whatever the text is
+// (empty too), unless the text itself says home delivery (宅配) or community pickup (社區). Those
+// two kinds exist in 好賣+ (the Good-selling file has the columns 宅配取件地址 / 社區取件名稱), but no
+// real row of either has been seen yet: such a row keeps its own text and stays out of the status
+// tabs, as before. Frozen (冷凍) is a temperature, not a delivery kind → still a store pickup.
+export const FM_STORE_PICKUP = "C2C";
+const STORE_WORDS = /店到店|店寄店取/;
+const NOT_STORE_WORDS = /宅配|社區/;
+export function fmShipType(method: string): string {
+  const t = String(method ?? "").trim();
+  if (!t || STORE_WORDS.test(t) || !NOT_STORE_WORDS.test(t)) return FM_STORE_PICKUP;
+  return t;
+}
+
 function storeIdOf(v: string): string | null {
   const t = String(v ?? "").trim();
   if (!t) return null;
@@ -216,7 +234,6 @@ export async function parseFmExport(bytes: Uint8Array): Promise<{ ok: true; rows
     const status = fmStatusOf({ status: statusText, shipped, picked: get(r, "picked"), returned: get(r, "returned"), cancelled: get(r, "cancelled"), deadline: get(r, "deadline"), trackingNo: get(r, "trackingNo") });
     if (status) noteUnknownStatus(statusText);
     if (!status) { notShipped += 1; continue; }
-    const shipType = get(r, "shipType").trim();
     const amount = Number(get(r, "total").replace(/[,\s]/g, ""));
     rows.push({
       order_no: get(r, "orderNo").trim(),
@@ -235,7 +252,7 @@ export async function parseFmExport(bytes: Uint8Array): Promise<{ ok: true; rows
       store_id: storeIdOf(get(r, "storeId")),
       rec_store: get(r, "storeName").trim() || null,
       order_amount: get(r, "total").trim() !== "" && Number.isFinite(amount) ? amount : null,
-      ship_type: shipType.includes("店到店") ? "C2C" : (shipType || null),
+      ship_type: fmShipType(get(r, "shipType")),
     });
   }
   return { ok: true, rows, notShipped };
