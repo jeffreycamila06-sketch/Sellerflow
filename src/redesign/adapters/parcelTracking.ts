@@ -124,6 +124,17 @@ export function isChaseable(shipType: string | null | undefined, specialType: st
   return String(shipType).trim().toUpperCase() === "C2C" && String(specialType || "").trim() === "";
 }
 
+// 全家 (carrier 'fm'): the reader saves every store-pickup row as "C2C" (fmPickup.ts fmShipType).
+// Rows saved before 2026-11-19 from the Good-selling file still carry the file's own words
+// (全家店寄店取) until sql/182 corrects them — the same store pickup, so it counts as one here.
+export const FM_STORE_PICKUP_SAVED = ["C2C", "全家店寄店取"] as const;
+// PURE — does this row belong in a status tab? A 7-11 row: isChaseable, unchanged. A 全家 row: the
+// same rule, with the older saved words accepted too.
+export function inStatusTabs(row: Pick<ParcelTrackingRow, "carrier" | "shipType" | "specialType">): boolean {
+  if (isChaseable(row.shipType, row.specialType)) return true;
+  return row.carrier === "fm" && String(row.shipType ?? "").trim() === FM_STORE_PICKUP_SAVED[1] && String(row.specialType || "").trim() === "";
+}
+
 // NOT CHECKED YET = a row the seller uploaded ("Sync from 賣貨便") that the check has
 // not reached: status is still the table default 'created'. It has no ship_type /
 // deadline yet, so it can't be classified. A 7-11 one is shown and counted under In
@@ -225,7 +236,7 @@ export function groupParcels(rows: ParcelTrackingRow[], today: string): ParcelGr
     // Not checked yet (uploaded, never checked — no ship_type yet): a 7-11 one under In transit
     // (2026-11-17), a 全家 one under Waiting as before — visible on the phone, which has no "All" tab.
     if (isUnchecked(r)) { (r.carrier === "fm" ? g.waitingPickup : g.inTransit).push(r); continue; }
-    if (!isChaseable(r.shipType, r.specialType)) { g.other.push(r); continue; }
+    if (!inStatusTabs(r)) { g.other.push(r); continue; }
     if (r.status === "at_store") g.waitingPickup.push(r);
     else if (r.status === "in_transit") g.inTransit.push(r);
     else if (r.status === "picked_up") g.pickedUp.push(r);
@@ -260,7 +271,7 @@ export const PICKUP_STATUS_TABS: Exclude<PickupTab, "all">[] = ["transit", "wait
 // groupParcels' bucketing exactly (parity-tested).
 export function rowTab(row: ParcelTrackingRow): Exclude<PickupTab, "all"> | null {
   if (isUnchecked(row)) return row.carrier === "fm" ? "waiting" : "transit"; // not checked yet — same as groupParcels
-  if (!isChaseable(row.shipType, row.specialType)) return null;
+  if (!inStatusTabs(row)) return null;
   if (row.status === "at_store") return "waiting";
   if (row.status === "in_transit") return "transit";
   if (row.status === "picked_up") return "picked";
@@ -481,6 +492,8 @@ function livePage(me: string, from: number, fm = false) {
 // groupParcels: waiting = chaseable at_store (+ a not-checked-yet 全家 row); transit =
 // chaseable in_transit + a not-checked-yet ('created') 7-11 row. Chaseable = ship_type C2C
 // with no special_type. 全家 off → the database hides 全家 rows, so every 'created' row is 7-11.
+// 全家 on → the older saved words of a 全家 store pickup count too (inStatusTabs); a 7-11 row
+// never carries them, so the 7-11 numbers are the same either way.
 function headCount(me: string) {
   return supabase!.from("parcel_tracking").select("id", { count: "exact", head: true }).eq("user_id", me);
 }
@@ -490,7 +503,8 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   const base = () => supabase!.from("parcel_tracking").select(ptSelect(fm), { count: "exact" }).eq("user_id", me);
-  const chaseable = (q: ReturnType<typeof headCount>) => q.eq("ship_type", "C2C").or("special_type.is.null,special_type.eq.");
+  const chaseable = (q: ReturnType<typeof headCount>) =>
+    (fm ? q.in("ship_type", [...FM_STORE_PICKUP_SAVED]) : q.eq("ship_type", "C2C")).or("special_type.is.null,special_type.eq.");
   const created = () => headCount(me).eq("terminal", false).eq("status", "created");
   const [live, returned, picked, atStore, unchecked, transit, uncheckedFm] = await Promise.all([
     livePage(me, 0, fm),

@@ -5758,3 +5758,25 @@ prints **FREE** (English in every language) where a price prints.
   `GeneralSettings.chooseFree.test.tsx`, `scripts/sql184-behaviour.mjs` (PGlite, 23 checks). Pictures:
   `docs/design/choose-price-free/`. Printing map: row 35 + the P13 trigger row.
 - **Order:** merge (Vercel) and sql/184 in either order → sql/185 (guide: choose-price, orders-search, tiktok-send).
+
+## 2026-11-19 — PICKUP STATUS: 全家 ROWS SAVED AS 全家店寄店取 ARE IN THEIR TAB (branch `claude/fm-pickup-accuracy`, NOT merged; sql/182 NOT applied; web only)
+Live table that day (counts only): 76 全家 rows, 70 with `ship_type = '全家店寄店取'` (the 好賣+ "Good-selling version"
+column 運送方式), 6 with `C2C`. Only `C2C` rows were in a status tab → the 70 were in no phone card, only under All on the
+laptop, 0 in the FamilyMart filter, and missing from the exact Waiting / In transit numbers.
+- **Reader (`adapters/fmPickup.ts` `fmShipType`):** every 全家 order is saved as `C2C` (`FM_STORE_PICKUP`) unless the
+  配送方式 / 運送方式 TEXT itself contains `宅配` or `社區` (those keep their own words). Store words (`店到店`, `店寄店取`) win;
+  an empty / unknown text = store pickup. A filled 宅配取件地址 / 社區 cell never decides. Frozen is a temperature, still a
+  store pickup. ⚠️ No 宅配 / 社區 row has ever been seen (0 in files, 0 live) — their real words are not known.
+- **Screen (`adapters/parcelTracking.ts`):** `inStatusTabs(row)` = `isChaseable` OR (carrier `fm` + saved words
+  `全家店寄店取` + no special flow) — used by `groupParcels` and `rowTab`. `isChaseable` itself is NOT edited (it mirrors
+  the server). `FM_STORE_PICKUP_SAVED = ["C2C", "全家店寄店取"]`.
+- **Exact card numbers (`loadParcelTracking`):** with 全家 on the two head counts use `.in("ship_type", [both words])`;
+  with 全家 off exactly the old `.eq("ship_type", "C2C")` (test-pinned: same 6 / 7 requests as before).
+- **sql/182 (+ rollback), NOT applied, optional:** sets the saved `全家店寄店取` rows to `C2C` and notes each changed row id
+  in `parcel_tracking_fm_ship_type_182` (no browser access) so the rollback restores exactly those rows. The screen is
+  right without it. `scripts/sql182-behaviour.mjs` (PGlite, 358 checks).
+- Rows saved with other words (a real 宅配 / 社區 row): unchanged — under All only, no Chase.
+- Not touched: server, 7-11 rules, printing, `chrome-extension/`, the help guide (it already says both stores are in one
+  list). Phone apps need no new build (they load the web).
+- Pictures + proof: `docs/design/fm-pickup-tabs/` (before / after on iPhone 390, Android 360, laptop 1280; the new tests
+  against main's code: 36 fail; 40 of 40 on-purpose breaks caught).
