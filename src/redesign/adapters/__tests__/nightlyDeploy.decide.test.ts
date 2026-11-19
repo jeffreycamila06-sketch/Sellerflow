@@ -2,21 +2,26 @@
 // Nightly Render deploy — the DECISION (scripts/nightly-deploy/decide.mjs, Jeff 2026-11-18).
 // The hook is called ONLY when: server code changed since the last deployed commit, the CI run of
 // that exact main commit finished and passed, and the hook secret is set. Everything else = one line.
+// The time rule (Jeff 2026-11-19, D8–D10): a run not started by hand may deploy ONLY 03:30–05:30 Asia/Taipei.
 import { describe, it, expect } from "vitest";
 import {
-  decide, checkSetup, checkChange, checkCi, deployLine, ciState, hookState, pauseState, taipeiDay, isServerPath, serverFilesIn,
+  decide, decideApartFromTime, checkWindow, windowLine, checkSetup, checkChange, checkCi, deployLine, ciState, hookState, pauseState, taipeiDay,
+  taipeiClock, taipeiMinuteOfDay, inDeployWindow, plannedClock, isServerPath, serverFilesIn,
   nameList, fullSha, sha7, SERVER_FILES, SERVER_DIRS, CI_WORDS, DEPLOY_BRANCH, DEPLOYED_TAG, CI_WORKFLOW, HOOK_SECRET, PAUSE_VARIABLE, HOOK_HOST,
+  WINDOW_FROM_MIN, WINDOW_TO_MIN, WINDOW_FROM, WINDOW_TO, BY_HAND_EVENT,
 } from "../../../../scripts/nightly-deploy/decide.mjs";
 
 const HEAD = "16b4bb93aaaabbbbccccddddeeeeffff00001111";
 const OLD = "0cc49da3aaaabbbbccccddddeeeeffff00002222";
 const HOOK = "https://api.render.com/deploy/srv-abc123DEF?key=MARKKEYzzzz9999";
 type Facts = Parameters<typeof decide>[0];
-// A night on which everything says "deploy": each test changes ONE thing.
+/** A moment on 20 November 2026 in Taipei, written as a Taipei wall-clock time ("04:05" or "05:30:59"). */
+const taipei = (clock: string, day = "2026-11-20") => Date.parse(`${day}T${clock.length === 5 ? `${clock}:00` : clock}+08:00`);
+// A night on which everything says "deploy" (a scheduled run that started at 04:05): each test changes ONE thing.
 const deployNight = (over: Record<string, unknown> = {}): Facts => ({
   onMain: true, event: "schedule", hook: "set", pause: "off", pauseUntil: "",
   headSha: HEAD, deployedSha: OLD, changed: ["server/pc711Duty.js", "src/redesign/screens/Admin.tsx"],
-  ci: { state: "passed", word: "" }, ...over,
+  ci: { state: "passed", word: "" }, nowMs: taipei("04:05"), planned: "", ...over,
 });
 
 describe("D1 the five cases Jeff listed", () => {
@@ -131,7 +136,8 @@ describe("D3 the setup step: branch, hook, pause", () => {
     expect(taipeiDay(Date.parse("2026-11-19T15:59:59Z"))).toBe("2026-11-19");
     expect(taipeiDay(Date.parse("2026-11-19T16:00:00Z"))).toBe("2026-11-20");
   });
-  it("the order: branch, then the secret, then the pause, then the change, then CI", () => {
+  it("the order: the time, then the branch, then the secret, then the pause, then the change, then CI", () => {
+    expect(decide(deployNight({ nowMs: taipei("09:50"), onMain: false, hook: "missing" })).code).toBe("outside_window");
     expect(decide(deployNight({ onMain: false, hook: "missing" })).code).toBe("not_main");
     expect(decide(deployNight({ hook: "missing", pause: "on", deployedSha: HEAD })).code).toBe("no_hook");
     expect(decide(deployNight({ pause: "on", deployedSha: HEAD })).code).toBe("paused");
@@ -261,5 +267,183 @@ describe("D7 the names everything hangs on", () => {
       const r = decide(deployNight({ hook, pauseUntil, pause: "on" }));
       for (const h of hooks) expect(r.line).not.toContain(h);
     }
+  });
+});
+
+// ── The time rule (Jeff, 2026-11-19) ─────────────────────────────────────────────────────────────
+// The finding: the scheduled run for 04:00 Taipei on 19 November started at 09:50 Taipei (01:50:14 UTC).
+// With the secret saved it would have restarted the server in the morning, with sellers live.
+const FOUND = Date.parse("2026-11-19T01:50:14Z");
+const RULE = "A scheduled run deploys only between 03:30 and 05:30 Taiwan time.";
+const outsideLine = (at: string, plan = "") =>
+  `Skipped: this run started at ${at} Taiwan time${plan ? ` (GitHub had it planned for ${plan})` : ""}. ${RULE} Nothing was deployed; the next scheduled run inside that window tries again.`;
+
+describe("D8 the time window: a scheduled run may deploy ONLY 03:30–05:30 Asia/Taipei", () => {
+  it("the five times Jeff listed: 03:29 skip · 03:30 deploy · 05:30 deploy · 05:31 skip · 09:50 skip", () => {
+    const at = (clock: string) => decide(deployNight({ nowMs: taipei(clock) }));
+    expect(at("03:29")).toEqual({ action: "skip", code: "outside_window", line: outsideLine("03:29") });
+    expect(at("03:30")).toMatchObject({ action: "deploy", code: "deploy" });
+    expect(at("05:30")).toMatchObject({ action: "deploy", code: "deploy" });
+    expect(at("05:31")).toEqual({ action: "skip", code: "outside_window", line: outsideLine("05:31") });
+    expect(at("09:50")).toEqual({ action: "skip", code: "outside_window", line: outsideLine("09:50") });
+  });
+  it("the run that was found: 01:50:14 UTC on 19 November = 09:50 Taipei → skip, and the line says the time and the window", () => {
+    const r = decide(deployNight({ nowMs: FOUND, planned: "0 20 * * *" }));
+    expect(r.action).toBe("skip");
+    expect(r.line).toBe("Skipped: this run started at 09:50 Taiwan time (GitHub had it planned for 04:00). A scheduled run deploys only between 03:30 and 05:30 Taiwan time. Nothing was deployed; the next scheduled run inside that window tries again.");
+  });
+  it("read to the minute, both ends included: 03:29:59 out · 03:30:00 in · 05:30:59 in · 05:31:00 out", () => {
+    for (const [clock, inside] of [["03:29:59", false], ["03:30:00", true], ["03:30:01", true], ["04:00:00", true], ["05:29:59", true], ["05:30:00", true], ["05:30:59", true], ["05:31:00", false]] as Array<[string, boolean]>) {
+      expect(inDeployWindow(taipei(clock)), clock).toBe(inside);
+      expect(decide(deployNight({ nowMs: taipei(clock) })).action, clock).toBe(inside ? "deploy" : "skip");
+    }
+    expect(inDeployWindow(taipei("03:30:00") - 1)).toBe(false);      // one millisecond before 03:30
+    expect(inDeployWindow(taipei("05:31:00") - 1)).toBe(true);       // the last millisecond of 05:30
+  });
+  it("EVERY minute of the day: deploy ⇔ 03:30 … 05:30 — 121 minutes, and no other", () => {
+    const allowed: number[] = [];
+    for (let m = 0; m < 24 * 60; m++) {
+      const ms = taipei("00:00") + m * 60000;
+      const r = decide(deployNight({ nowMs: ms }));
+      expect(taipeiMinuteOfDay(ms)).toBe(m);
+      expect(r.action === "deploy", `minute ${m}`).toBe(m >= 210 && m <= 330);
+      if (r.action === "deploy") allowed.push(m);
+      else expect(r).toMatchObject({ action: "skip", code: "outside_window" });
+    }
+    expect([allowed[0], allowed.at(-1), allowed.length]).toEqual([210, 330, 121]);
+    expect([WINDOW_FROM_MIN, WINDOW_TO_MIN, WINDOW_FROM, WINDOW_TO]).toEqual([210, 330, "03:30", "05:30"]);
+  });
+  it("the same window every day of the year (Taiwan has no summer time), also when the UTC day differs", () => {
+    for (const day of ["2026-01-01", "2026-03-29", "2026-06-30", "2026-10-25", "2026-12-31", "2028-02-29"]) {
+      expect(decide(deployNight({ nowMs: taipei("03:29", day) })).code, day).toBe("outside_window");
+      expect(decide(deployNight({ nowMs: taipei("03:30", day) })).action, day).toBe("deploy");
+      expect(decide(deployNight({ nowMs: taipei("05:30", day) })).action, day).toBe("deploy");
+      expect(decide(deployNight({ nowMs: taipei("05:31", day) })).code, day).toBe("outside_window");
+    }
+    // 04:00 in Taipei is 20:00 UTC of the day BEFORE; 09:50 in Taipei is 01:50 UTC of the same day
+    expect(taipeiClock(Date.parse("2026-11-18T20:00:00Z"))).toBe("04:00");
+    expect(taipeiClock(Date.parse("2026-11-19T01:50:00Z"))).toBe("09:50");
+    expect(taipeiClock(Date.parse("2026-11-18T16:00:00Z"))).toBe("00:00");
+    expect(taipeiClock(Date.parse("2026-11-18T15:59:59Z"))).toBe("23:59");
+  });
+  it("the window is the FIRST question: outside it, no other fact changes the answer or the line", () => {
+    const late = taipei("09:50");
+    for (const over of [{ onMain: false }, { hook: "missing" }, { hook: "bad" }, { pause: "on", pauseUntil: "2026-11-20" }, { pause: "bad", pauseUntil: "x" },
+      { deployedSha: HEAD }, { changed: ["README.md"] }, { ci: { state: "failed", word: "failure" } }, { ci: { state: "running" } }, { headSha: "" }]) {
+      expect(decide(deployNight({ ...over, nowMs: late })), JSON.stringify(over)).toEqual({ action: "skip", code: "outside_window", line: outsideLine("09:50") });
+    }
+  });
+  it("inside the window the three rules decide exactly as before (the same answer as without the time rule)", () => {
+    for (const over of [{}, { onMain: false }, { hook: "missing" }, { hook: "bad" }, { pause: "on", pauseUntil: "2026-11-20" }, { pause: "bad" },
+      { deployedSha: HEAD }, { changed: ["README.md"] }, { ci: { state: "failed", word: "failure" } }, { ci: { state: "running" } }, { ci: { state: "none" } }, { headSha: "" }, { deployedSha: "", changed: null }]) {
+      for (const clock of ["03:30", "04:05", "05:30"]) {
+        const f = deployNight({ ...over, nowMs: taipei(clock) });
+        expect(decide(f), `${clock} ${JSON.stringify(over)}`).toEqual(decideApartFromTime(f));
+      }
+    }
+  });
+  it("deploy ⇔ (inside the window OR started by hand) AND hook set AND the server may differ AND CI passed", () => {
+    let rows = 0;
+    let deploys = 0;
+    for (const clock of ["03:29", "03:30", "04:30", "05:30", "05:31", "09:50", "14:00", "23:59"]) for (const event of ["schedule", "workflow_dispatch"])
+      for (const hook of ["set", "missing"]) for (const changed of [["server.js"], ["README.md"]]) for (const ci of [{ state: "passed" }, { state: "running" }]) {
+        rows += 1;
+        const r = decide(deployNight({ nowMs: taipei(clock), event, hook, changed, ci }));
+        const timeOk = event === "workflow_dispatch" || ["03:30", "04:30", "05:30"].includes(clock);
+        const want = timeOk && hook === "set" && changed[0] === "server.js" && ci.state === "passed";
+        expect(r.action === "deploy", `${clock} ${event} ${hook} ${changed[0]} ${ci.state}`).toBe(want);
+        if (want) deploys += 1;
+      }
+    expect(rows).toBe(8 * 2 * 2 * 2 * 2);
+    expect(deploys).toBe(3 + 8);       // scheduled: the 3 times inside the window · by hand: all 8 times
+  });
+});
+
+describe("D9 a run started by hand is not bound by the window; every other run is", () => {
+  it("a run started by hand at 14:00 deploys", () => {
+    const r = decide(deployNight({ event: "workflow_dispatch", nowMs: taipei("14:00") }));
+    expect(r).toEqual({ action: "deploy", code: "deploy", line: "Deploying 16b4bb9: 1 file of the server changed since 0cc49da (server/pc711Duty.js), and CI passed." });
+  });
+  it("by hand: every minute of the day is allowed, and the other three rules still decide", () => {
+    for (let m = 0; m < 24 * 60; m += 7) expect(decide(deployNight({ event: "workflow_dispatch", nowMs: taipei("00:00") + m * 60000 })).action, `minute ${m}`).toBe("deploy");
+    const hand = { event: "workflow_dispatch", nowMs: taipei("14:00") };
+    expect(decide(deployNight({ ...hand, hook: "missing" })).code).toBe("no_hook");
+    expect(decide(deployNight({ ...hand, changed: ["README.md"] })).code).toBe("web_only");
+    expect(decide(deployNight({ ...hand, ci: { state: "failed", word: "failure" } })).code).toBe("ci_failed");
+    expect(decide(deployNight({ ...hand, onMain: false })).code).toBe("not_main");
+  });
+  it("by hand is ONE exact word: every other event — also one that is not known — is bound by the window", () => {
+    expect(BY_HAND_EVENT).toBe("workflow_dispatch");
+    for (const event of ["schedule", "", undefined, null, "push", "pull_request", "workflow_run", "repository_dispatch", "WORKFLOW_DISPATCH", "workflow_dispatch ", " workflow_dispatch", "workflow_dispatch\n", "dispatch", true, 1, ["workflow_dispatch"]]) {
+      expect(decide(deployNight({ event, nowMs: taipei("14:00") })), String(event)).toMatchObject({ action: "skip", code: "outside_window" });
+      expect(checkWindow({ event, nowMs: taipei("14:00") }), String(event)).not.toBeNull();
+    }
+    expect(checkWindow({ event: "workflow_dispatch", nowMs: taipei("14:00") })).toBeNull();
+  });
+  it("a clock that cannot be read never deploys a scheduled run: STOP (red); a run started by hand does not need it", () => {
+    for (const nowMs of [undefined, null, NaN, Infinity, -Infinity, "1795000000000", "04:05", {}, [], true, 9e15, -9e15]) {
+      const r = decide(deployNight({ nowMs }));
+      expect(r, String(nowMs)).toEqual({ action: "stop", code: "no_clock", line: "Stopped: the time could not be read, so the deploy window could not be checked. Nothing was deployed." });
+      expect(inDeployWindow(nowMs as never), String(nowMs)).toBe(false);
+      expect(taipeiClock(nowMs as never)).toBe("");
+      expect(taipeiMinuteOfDay(nowMs as never)).toBe(-1);
+      expect(decide(deployNight({ nowMs, event: "workflow_dispatch" })).action).toBe("deploy");
+    }
+    expect(decide({ ...deployNight(), nowMs: undefined } as Facts).code).toBe("no_clock");
+    expect(checkWindow(undefined as never)).toMatchObject({ action: "stop", code: "no_clock" });
+    expect(checkWindow({} as never)).toMatchObject({ action: "stop", code: "no_clock" });
+  });
+});
+
+describe("D10 the lines of the time rule", () => {
+  it("the planned time comes from GitHub's schedule line (UTC → Taipei); only that exact shape is read", () => {
+    expect(["37 19 * * *", "52 19 * * *", "7 20 * * *", "22 20 * * *", "41 20 * * *", "56 20 * * *"].map(plannedClock)).toEqual(["03:37", "03:52", "04:07", "04:22", "04:41", "04:56"]);
+    expect(plannedClock("0 20 * * *")).toBe("04:00");
+    expect(plannedClock("0 0 * * *")).toBe("08:00");
+    expect(plannedClock("59 15 * * *")).toBe("23:59");
+    expect(plannedClock("0 16 * * *")).toBe("00:00");
+    expect(plannedClock(" 07 20 * * * \n")).toBe("04:07");
+    for (const bad of ["", null, undefined, "7 20 * * 1", "7 20 1 * *", "*/5 20 * * *", "7 20-21 * * *", "7,22 20 * * *", "60 20 * * *", "7 24 * * *", "7 20 * *", "7  20 * * *",
+      "7 20 * * * extra", "<b>7 20 * * *</b>", "https://api.render.com/deploy/srv-abc?key=k", "@daily", 720, {}]) expect(plannedClock(bad as never), String(bad)).toBe("");
+  });
+  it("a late start names its own time and the planned one; a schedule line that is not plain is never printed", () => {
+    expect(checkWindow({ event: "schedule", nowMs: taipei("09:50"), planned: "7 20 * * *" })?.line).toBe(outsideLine("09:50", "04:07"));
+    expect(checkWindow({ event: "schedule", nowMs: taipei("05:31"), planned: "56 20 * * *" })?.line).toBe(outsideLine("05:31", "04:56"));
+    for (const planned of ["", undefined, null, "<img src=x>", "7 20 * * * && curl x", "https://api.render.com/deploy/srv-abc123DEF?key=MARKKEYzzzz9999"]) {
+      expect(checkWindow({ event: "schedule", nowMs: taipei("09:50"), planned } as never)?.line, String(planned)).toBe(outsideLine("09:50"));
+    }
+  });
+  it("right before the hook: its own line and its own code; the same window, the same clock rule", () => {
+    const r = checkWindow({ event: "schedule", nowMs: taipei("05:31"), planned: "56 20 * * *" }, "hook");
+    expect(r).toEqual({ action: "skip", code: "window_closed", line: "Skipped: the deploy window closed before Render was called: it is now 05:31 Taiwan time. A scheduled run deploys only between 03:30 and 05:30 Taiwan time. The Deploy Hook was not called; the next scheduled run inside that window tries again." });
+    expect(checkWindow({ event: "schedule", nowMs: taipei("05:30:59") }, "hook")).toBeNull();
+    expect(checkWindow({ event: "schedule", nowMs: taipei("05:31:00") }, "hook")?.code).toBe("window_closed");
+    expect(checkWindow({ event: "schedule", nowMs: taipei("03:29:59") }, "hook")?.code).toBe("window_closed");
+    expect(checkWindow({ event: "schedule", nowMs: NaN }, "hook")).toMatchObject({ action: "stop", code: "no_clock" });
+    expect(checkWindow({ event: "workflow_dispatch", nowMs: taipei("14:00") }, "hook")).toBeNull();
+    expect(checkWindow({ event: "workflow_dispatch", nowMs: NaN }, "hook")).toBeNull();
+  });
+  it("'only tell me': the line about the time says whether a scheduled run would be allowed now", () => {
+    expect(windowLine(taipei("04:10"))).toBe("Time now: 04:10 Taiwan time. A scheduled run starting now would be allowed to deploy (window: 03:30 to 05:30 Taiwan time).");
+    expect(windowLine(taipei("14:00"))).toBe("Time now: 14:00 Taiwan time. A scheduled run starting now would NOT be allowed to deploy (window: 03:30 to 05:30 Taiwan time). A run started by hand is not bound by the window.");
+    expect(windowLine(NaN)).toBe("Time now: could not be read. A scheduled run would not deploy (window: 03:30 to 05:30 Taiwan time).");
+    for (const [clock, ok] of [["03:29", false], ["03:30", true], ["05:30", true], ["05:31", false], ["09:50", false]] as Array<[string, boolean]>) {
+      expect(windowLine(taipei(clock)).includes("would be allowed to deploy"), clock).toBe(ok);
+      expect(windowLine(taipei(clock)).includes("would NOT be allowed to deploy"), clock).toBe(!ok);
+      expect(windowLine(taipei(clock)).startsWith(`Time now: ${clock} Taiwan time.`)).toBe(true);
+    }
+  });
+  it("decideApartFromTime never looks at the clock (it is what 'only tell me' prints next to the time line)", () => {
+    for (const nowMs of [taipei("04:05"), taipei("14:00"), NaN, undefined]) expect(decideApartFromTime(deployNight({ nowMs }))).toMatchObject({ action: "deploy", code: "deploy" });
+    expect(decideApartFromTime(deployNight({ nowMs: taipei("14:00"), pause: "on", pauseUntil: "2026-11-20" })).code).toBe("paused");
+  });
+  it("no line of the time rule ever holds the hook, whatever is passed in", () => {
+    const HOOK_URL = "https://api.render.com/deploy/srv-abc123DEF?key=MARKKEYzzzz9999";
+    for (const nowMs of [taipei("09:50"), NaN]) for (const when of ["start", "hook"]) {
+      const r = checkWindow({ event: HOOK_URL, nowMs, planned: HOOK_URL, hook: HOOK_URL } as never, when);
+      expect(r?.line).not.toContain("MARKKEY");
+      expect(r?.line).not.toContain("api.render.com");
+    }
+    expect(windowLine(HOOK_URL as never)).not.toContain("MARKKEY");
   });
 });

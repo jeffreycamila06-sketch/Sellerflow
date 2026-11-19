@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve, relative } from "node:path";
 import ts from "typescript";
-import { isServerPath, SERVER_FILES, CI_WORKFLOW, DEPLOYED_TAG, HOOK_SECRET, PAUSE_VARIABLE } from "../../../../scripts/nightly-deploy/decide.mjs";
+import { isServerPath, SERVER_FILES, CI_WORKFLOW, DEPLOYED_TAG, HOOK_SECRET, PAUSE_VARIABLE, plannedClock, inDeployWindow, WINDOW_FROM_MIN, WINDOW_TO_MIN } from "../../../../scripts/nightly-deploy/decide.mjs";
 
 const ROOT = process.cwd();
 
@@ -102,9 +102,52 @@ describe("W the workflow file", () => {
     return out;
   };
 
-  it("04:00 Asia/Taipei every night = 20:00 UTC, and nothing else on a clock", () => {
-    expect([...code.matchAll(/cron:\s*"([^"]+)"/g)].map((m) => m[1])).toEqual(["0 20 * * *"]);
-    expect(new Date(Date.UTC(2026, 10, 19, 20, 0)).toLocaleString("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false })).toBe("04:00");
+  const crons = [...code.matchAll(/cron:\s*"([^"]+)"/g)].map((m) => m[1]);
+  /** minutes after midnight in Taipei of a "minute hour * * *" line (UTC) */
+  const taipeiMin = (cron: string) => { const [m, h] = cron.split(" ").map(Number); return (h * 60 + m + 8 * 60) % 1440; };
+  it("six starts a night, every night, and nothing else on a clock", () => {
+    expect(crons).toEqual(["37 19 * * *", "52 19 * * *", "7 20 * * *", "22 20 * * *", "41 20 * * *", "56 20 * * *"]);
+    for (const c of crons) expect(c, c).toMatch(/^\d{1,2} \d{1,2} \* \* \*$/);          // a minute, an hour, every day
+    expect(crons.map(plannedClock)).toEqual(["03:37", "03:52", "04:07", "04:22", "04:41", "04:56"]);
+    // the same times by the machine's own time-zone table (not by this file's arithmetic)
+    for (const c of crons) {
+      const [m, h] = c.split(" ").map(Number);
+      expect(new Date(Date.UTC(2026, 10, 19, h, m)).toLocaleString("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false }), c).toBe(plannedClock(c));
+    }
+  });
+  it("every start is planned INSIDE the deploy window 03:30–05:30 Asia/Taipei, with room on both sides", () => {
+    for (const c of crons) {
+      const [m, h] = c.split(" ").map(Number);
+      expect(inDeployWindow(Date.UTC(2026, 10, 19, h, m)), c).toBe(true);
+      expect(inDeployWindow(Date.UTC(2026, 5, 30, h, m)), c).toBe(true);            // the same in summer: Taiwan has no summer time
+    }
+    const mins = crons.map(taipeiMin);
+    expect(mins[0] - WINDOW_FROM_MIN).toBeGreaterThanOrEqual(5);                    // never planned for the very first minute
+    expect(WINDOW_TO_MIN - mins.at(-1)!).toBeGreaterThanOrEqual(30);               // the last one may start 30 minutes late and still deploy
+  });
+  it("in order, at least 15 minutes apart (a run is cut after 10, so two planned starts never overlap), none at the start of an hour or on :30", () => {
+    const mins = crons.map(taipeiMin);
+    for (let i = 1; i < mins.length; i++) expect(mins[i] - mins[i - 1], `${crons[i - 1]} → ${crons[i]}`).toBeGreaterThanOrEqual(15);
+    for (const c of crons) expect([0, 30]).not.toContain(Number(c.split(" ")[0]));
+    expect(code).toMatch(/timeout-minutes: 10/);
+  });
+  it("the comment next to each line says its Taipei time, and it is the right one", () => {
+    const withNotes = [...yml.matchAll(/cron:\s*"([^"]+)"\s*#\s*(\d{2}:\d{2}) Asia\/Taipei/g)].map((m) => [m[1], m[2]]);
+    expect(withNotes.length).toBe(crons.length);
+    for (const [cron, note] of withNotes) expect(note, cron).toBe(plannedClock(cron));
+  });
+  it("the run is told which schedule line started it — from GitHub's own event, as the script's environment", () => {
+    expect(code).toContain("NIGHTLY_DEPLOY_PLANNED: ${{ github.event.schedule }}");
+    expect(code.split("github.event").length - 1).toBe(1);
+    const envAt = code.indexOf("        env:");
+    expect(code.indexOf("github.event.schedule")).toBeGreaterThan(envAt);
+    expect(code.indexOf("github.event.schedule")).toBeLessThan(code.indexOf("        run: node"));
+  });
+  it("nothing in the workflow file can move the clock or switch the window off", () => {
+    const names = [...code.matchAll(/^\s{10}([A-Z_]+):/gm)].map((m) => m[1]);
+    expect(names).toEqual(["GITHUB_TOKEN", "RENDER_DEPLOY_HOOK_URL", "NIGHTLY_DEPLOY_PAUSE_UNTIL", "NIGHTLY_DEPLOY_DRY_RUN", "NIGHTLY_DEPLOY_PLANNED"]);
+    expect(code).not.toMatch(/\bTZ:|faketime|\bif:\s/);                              // no step is switched on or off by a condition
+    expect(code.split("inputs.").length - 1).toBe(1);                                // the one tick box, and no other choice
   });
   it("it starts ONLY on the clock or by the Run workflow button — never on a push or a pull request", () => {
     const on = block("on");
