@@ -163,6 +163,7 @@ describe("the screens that use it", () => {
     "src/redesign/screens/FmCustomerDetails.tsx",
     "src/redesign/screens/ParcelScan.tsx",
     "src/redesign/screens/Products.tsx",
+    "src/redesign/screens/Orders.tsx",
   ];
   // comments are not code
   const codeOf = (f: string) => readFileSync(f, "utf8").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
@@ -174,8 +175,8 @@ describe("the screens that use it", () => {
       expect(bare, f).toEqual([]);
     }
   });
-  it("the number of timers moved to it, per file (14 in all)", () => {
+  it("the number of timers moved to it, per file (16 in all)", () => {
     const count = (f: string) => (codeOf(f).match(/\blater\(/g) || []).length;
-    expect(SCREENS.map(count)).toEqual([2, 4, 1, 1, 5, 1]);
+    expect(SCREENS.map(count)).toEqual([2, 4, 1, 1, 5, 1, 2]);
   });
 });
