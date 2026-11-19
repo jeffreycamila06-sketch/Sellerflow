@@ -1,8 +1,8 @@
 # Nightly Render deploy — sends the server code on main to Render while everyone sleeps.
 # How to use it (Jeff): docs/ops/nightly-render-deploy.md
 #
-# When: every night at 04:00 Asia/Taipei (20:00 UTC; Taiwan has no summer time), and by hand with
-#       Actions → Nightly Render deploy → Run workflow.
+# When: six starts every night, all planned inside the deploy window 03:30–05:30 Asia/Taipei,
+#       and by hand with Actions → Nightly Render deploy → Run workflow.
 # What: it calls the Render Deploy Hook ONLY when all three hold — otherwise it ends green with one
 #       line that says why:
 #         1. main differs from the last deployed commit in server code
@@ -10,12 +10,26 @@
 #         2. the CI run of that exact main commit finished and passed;
 #         3. the repository secret RENDER_DEPLOY_HOOK_URL is set.
 #       After the call it does not wait for Render.
-# The last deployed commit is the tag "render-deployed". Only this workflow moves it.
+# The window: GitHub starts scheduled runs late, sometimes by hours (the first one, planned for
+#       04:00, started at 09:50). So the script reads the real clock: a scheduled run deploys ONLY
+#       between 03:30 and 05:30 Asia/Taipei, and outside it ends green with one line. A run started
+#       by hand is not bound by the window.
+# The last deployed commit is the tag "render-deployed". Only this workflow moves it. That is why
+#       six starts never deploy twice: the first one that deploys moves the tag, the later ones
+#       find nothing new.
 name: Nightly Render deploy
 
 on:
   schedule:
-    - cron: "0 20 * * *"   # 20:00 UTC = 04:00 Asia/Taipei
+    # UTC. Asia/Taipei is UTC+8 all year (no summer time): 19:30–21:30 UTC = 03:30–05:30 Taipei.
+    # Minutes off the round marks on purpose: GitHub is busiest, and latest, at the start of an hour.
+    # At least 15 minutes apart (a run is cut after 10), the last one 34 minutes before the window ends.
+    - cron: "37 19 * * *"   # 03:37 Asia/Taipei
+    - cron: "52 19 * * *"   # 03:52 Asia/Taipei
+    - cron: "7 20 * * *"    # 04:07 Asia/Taipei
+    - cron: "22 20 * * *"   # 04:22 Asia/Taipei
+    - cron: "41 20 * * *"   # 04:41 Asia/Taipei
+    - cron: "56 20 * * *"   # 04:56 Asia/Taipei
   workflow_dispatch:
     inputs:
       dry_run:
@@ -29,7 +43,8 @@ permissions:
   contents: write
   actions: read
 
-# Never two at once (a run started by hand during the nightly run waits for it).
+# Never two at once (a run started by hand during the nightly run waits for it). This is also what
+# keeps six starts to ONE deploy: each start reads the tag only after the one before it has finished.
 concurrency:
   group: nightly-render-deploy
   cancel-in-progress: false
@@ -53,4 +68,7 @@ jobs:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           NIGHTLY_DEPLOY_PAUSE_UNTIL: ${{ vars.NIGHTLY_DEPLOY_PAUSE_UNTIL }}
           NIGHTLY_DEPLOY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          # which of the schedule lines above started this run (empty for a run started by hand);
+          # used only to say "planned for 04:07" in the line of a run that GitHub started late
+          NIGHTLY_DEPLOY_PLANNED: ${{ github.event.schedule }}
         run: node scripts/nightly-deploy/run.mjs

@@ -1,7 +1,7 @@
 # Nightly Render deploy
 
-Every night at **04:00 Taiwan time**, GitHub looks at `main`. If the server code changed and the
-checks passed, it tells Render to deploy. You do not have to be awake.
+Every night between **03:30 and 05:30 Taiwan time**, GitHub looks at `main`. If the server code changed
+and the checks passed, it tells Render to deploy. You do not have to be awake.
 
 It deploys **only when all three are true**:
 
@@ -10,6 +10,21 @@ It deploys **only when all three are true**:
 3. the Render Deploy Hook is saved in GitHub (the one-time setup below).
 
 Otherwise it does nothing and writes one line that says why.
+
+## If GitHub starts late
+
+GitHub does not start a nightly run exactly on time. Usually it is a few minutes late, sometimes hours:
+the very first one was planned for 04:00 and started at 09:50. So there are **six tries every night**,
+planned for 03:37, 03:52, 04:07, 04:22, 04:41 and 04:56, and a try may deploy **only between 03:30 and
+05:30 Taiwan time**. The first try that has something to deploy does it; the later ones say
+`nothing new`. A try that GitHub starts outside those hours deploys nothing, so the server is never
+restarted in the morning with sellers live. If all six start late, that night is skipped and the next
+night deploys instead (or run it by hand when you are ready).
+
+**To see why a night was skipped:** GitHub → **Actions** → **Nightly Render deploy**. Each night has up
+to six runs. Open one and read its line. `Skipped: this run started at 09:50 Taiwan time (GitHub had it
+planned for 04:07)…` means GitHub was late. Every other line is in the table below. A grey "cancelled"
+run next to the others is normal: only one runs at a time, and GitHub drops an extra one that was waiting.
 
 ---
 
@@ -39,7 +54,8 @@ Leave Render's own **Auto-Deploy** setting as it is (off).
 
 1. GitHub → **Actions** (top row) → **Nightly Render deploy** (left side).
 2. **Run workflow** → tick **Only tell me what would happen (deploys nothing)** → **Run workflow**.
-3. Open the new run. It shows three lines: the facts, and what it would do.
+3. Open the new run. It shows four lines: the facts, what the nightly run would do with them, and the
+   time now — with whether a nightly run would be allowed to deploy at this moment.
 
 ---
 
@@ -48,8 +64,12 @@ Leave Render's own **Auto-Deploy** setting as it is (off).
 GitHub → **Actions** → **Nightly Render deploy** → **Run workflow** → **Run workflow**
 (leave the box unticked, branch `main`).
 
-It follows the same three rules as the nightly run. If it deploys, the server restarts right then,
-so every seller who is live must tap Connect again. Check Business Pulse first.
+It follows the same three rules as the nightly run, but **not the hours**: you chose the moment, so it
+deploys at any time of day. If it deploys, the server restarts right then, so every seller who is live
+must tap Connect again. Check Business Pulse first.
+
+**Re-run** on an old nightly run is not "by hand": it still counts as a nightly run and deploys nothing
+outside 03:30–05:30. To deploy now, use **Run workflow**.
 
 ## Turn it off for one night
 
@@ -57,7 +77,7 @@ so every seller who is live must tap Connect again. Check Business Pulse first.
 2. **New repository variable**.
 3. **Name:** `NIGHTLY_DEPLOY_PAUSE_UNTIL`
 4. **Value:** the date of the morning to skip, written like `2026-11-20`.
-   (The run is at 04:00 in the morning. To skip the run early on 20 November, type `2026-11-20`.)
+   (The runs are between 03:30 and 05:30 in the morning. To skip the runs early on 20 November, type `2026-11-20`.)
 5. **Add variable**.
 
 The day after that date it works again by itself. To skip several nights, type the date of the last
@@ -76,10 +96,12 @@ Open a run (Actions → Nightly Render deploy → the run) to read its line.
 
 | The line starts with | Meaning | What to do |
 |---|---|---|
-| `Skipped: nothing new on main…` | No commit since the last deploy. | Nothing. |
+| `Skipped: this run started at … Taiwan time…` | GitHub started this try outside 03:30–05:30. Nothing was asked, nothing was deployed. | Nothing. Look at the other runs of that night: one of them may have deployed. If none did, the next night does. |
+| `Skipped: the deploy window closed before Render was called…` | The try started in time, but it was after 05:30 when it was ready to call Render. | Nothing. The next night tries again. |
+| `Skipped: nothing new on main…` | No commit since the last deploy — or an earlier try of the same night already deployed it. | Nothing. |
 | `Skipped: … none of them is server code.` | Only the app changed. The app is already live through Vercel. | Nothing. |
-| `Skipped: CI is still running…` | The checks were not finished at 04:00. | Nothing. The next night tries again. |
-| `Skipped: CI did not pass…` | The checks failed for the newest commit. | Fix the checks (or re-run them if it was a one-off). The next night tries again. |
+| `Skipped: CI is still running…` | The checks were not finished yet. | Nothing. The next try, about 15 minutes later, looks again. |
+| `Skipped: CI did not pass…` | The checks failed for the newest commit. | Fix the checks (or re-run them if it was a one-off). The next try looks again. |
 | `Skipped: the Render Deploy Hook is not saved yet…` | The setup above is not done. | Do the one-time setup. |
 | `Skipped: the nightly deploy is paused until…` | You paused it. | Nothing. |
 | `Deploying …` then `Render accepted the deploy…` | Render is building and restarting the server. | Wait for the Telegram message. |
@@ -93,7 +115,9 @@ Red runs:
   find the commit. Copy the hook again into the secret.
 - **`the variable NIGHTLY_DEPLOY_PAUSE_UNTIL is not a date`** — fix the date (`2026-11-20`) or delete
   the variable.
-- **`GitHub did not answer…`** — a GitHub hiccup. The next night tries again.
+- **`GitHub did not answer…`** — a GitHub hiccup. The next try (about 15 minutes later) or the next
+  night tries again.
+- **`the time could not be read`** — should never happen. Nothing was deployed; tell Claude.
 
 ## The Telegram message
 
@@ -113,16 +137,17 @@ If it says `Render accepted the deploy`, open Render → the service → **Event
 
 ## Good to know
 
-- **A merge to `main` with server code now goes live the next 04:00.** Before, nothing reached Render
-  until you pressed Deploy. If a piece of server work must wait (for example until its database change
+- **A merge to `main` with server code now goes live the next night, between 03:30 and 05:30.** Before,
+  nothing reached Render until you pressed Deploy. If a piece of server work must wait (for example until its database change
   is applied), apply that first, or pause the nightly run until it is done.
-- **It does not check who is live.** A seller who is live at 04:00 must tap Connect again after the
+- **It does not check who is live.** A seller who is live at that hour must tap Connect again after the
   restart, as after any Render deploy.
-- **GitHub can start it late.** Usually a few minutes after 04:00, sometimes more.
+- **"The next run tries again" now means the same night.** With six tries, a try that found the checks
+  still running, or got no answer from Render, is followed by another one about 15 minutes later.
 - **"Render accepted" is not "Render finished".** The run does not wait for Render. The Telegram
   message is the proof that the server is up on the new version.
 - **A deploy you start by hand in Render is not seen by GitHub.** The next night may deploy the same
-  version once more (one extra restart at 04:00). Nothing breaks.
+  version once more (one extra restart inside the night hours). Nothing breaks.
 - **The first run always deploys once** (if the checks passed): it has no note of an earlier deploy yet.
 - **Where the note is kept:** a tag on GitHub called `render-deployed` (Code → **Tags**). Only this
   workflow moves it. To make the next run deploy again — for example after a build failed in Render —

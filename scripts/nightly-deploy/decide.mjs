@@ -1,18 +1,22 @@
 // Nightly Render deploy — the DECISION. Pure: no network, no git, no clock, no environment.
 //
-// .github/workflows/nightly-render-deploy.yml runs scripts/nightly-deploy/run.mjs at 04:00 Asia/Taipei.
-// run.mjs collects the facts and asks the functions below what to do. How Jeff uses it:
-// docs/ops/nightly-render-deploy.md.
+// .github/workflows/nightly-render-deploy.yml runs scripts/nightly-deploy/run.mjs several times a
+// night, all planned between 03:30 and 05:30 Asia/Taipei. run.mjs collects the facts and asks the
+// functions below what to do. How Jeff uses it: docs/ops/nightly-render-deploy.md.
 //
 // The rule (Jeff, 2026-11-18) — the Render Deploy Hook is called ONLY when all three hold:
 //   1. main differs from the last deployed commit in a file the server is built from;
 //   2. the CI run of that exact main commit finished and passed;
 //   3. the repository secret RENDER_DEPLOY_HOOK_URL is set.
+// The time rule (Jeff, 2026-11-19) — asked BEFORE those three, and again right before the hook:
+//   0. a run that was not started by hand may deploy ONLY between 03:30 and 05:30 Asia/Taipei.
+//      GitHub starts scheduled runs late: the first one, planned for 04:00, started at 09:50.
 // Anything else ends green with ONE line that says why. A broken setting ends red (nothing deployed).
 //
 // Every sentence below is fixed. The only values put into one are: a 7-character commit, a count,
-// a date that passed the date check, a CI word from CI_WORDS, and repository file names that passed
-// SAFE_NAME. Never the hook, never anything read from a response.
+// a date that passed the date check, a time of day made here from a clock reading (HH:MM), a CI word
+// from CI_WORDS, and repository file names that passed SAFE_NAME. Never the hook, never anything
+// read from a response.
 
 /** The branch the Render server is deployed from. */
 export const DEPLOY_BRANCH = "main";
@@ -105,6 +109,51 @@ export function pauseState(raw, today) {
   return String(today) <= s ? "on" : "over";
 }
 
+// ── The time window ──────────────────────────────────────────────────────────────────────────────
+// 03:30 to 05:30 Asia/Taipei, read to the minute, both minutes included: 03:30:00 is inside,
+// 05:30:59 is still 05:30 and inside, 05:31:00 is outside. It is the same every day of the year.
+export const WINDOW_FROM_MIN = 3 * 60 + 30;
+export const WINDOW_TO_MIN = 5 * 60 + 30;
+/** The one event that is "started by hand" (the Run workflow button). Every other event is bound by the window. */
+export const BY_HAND_EVENT = "workflow_dispatch";
+
+const TAIPEI_AHEAD_MS = 8 * 60 * 60 * 1000;
+const MAX_CLOCK_MS = 8.6e15;                       // the last moment a Date can hold, minus the 8 hours
+/**
+ * PURE — the minutes after midnight in Taipei (0 … 1439) of a clock reading (ms since 1970),
+ * or -1 when the value is not a clock reading (not a number, not finite, out of range).
+ */
+export function taipeiMinuteOfDay(ms) {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || Math.abs(ms) > MAX_CLOCK_MS) return -1;
+  const d = new Date(ms + TAIPEI_AHEAD_MS);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+/** PURE — the Taipei time of day of a clock reading as "HH:MM", or "" when it is not a clock reading. */
+export function taipeiClock(ms) {
+  const m = taipeiMinuteOfDay(ms);
+  return m < 0 ? "" : hhmm(m);
+}
+/** PURE — is this moment inside the deploy window? A value that is not a clock reading is NOT. */
+export function inDeployWindow(ms) {
+  const m = taipeiMinuteOfDay(ms);
+  return m >= WINDOW_FROM_MIN && m <= WINDOW_TO_MIN;
+}
+/** The window as people read it: "03:30" and "05:30". */
+export const WINDOW_FROM = hhmm(WINDOW_FROM_MIN);
+export const WINDOW_TO = hhmm(WINDOW_TO_MIN);
+
+// GitHub tells a scheduled run which schedule line started it (github.event.schedule), e.g.
+// "7 20 * * *" (UTC). Only that exact shape — a minute, an hour, every day — is read; the text
+// itself is never printed, only the time of day worked out from its two numbers.
+const SCHEDULE_LINE = /^([0-5]?\d) ([01]?\d|2[0-3]) \* \* \*$/;
+/** PURE — the Taipei time of day ("HH:MM") a daily schedule line stands for, or "". */
+export function plannedClock(line) {
+  const m = SCHEDULE_LINE.exec(String(line ?? "").trim());
+  if (!m) return "";
+  return hhmm((Number(m[2]) * 60 + Number(m[1]) + 8 * 60) % (24 * 60));
+}
+
 // CI conclusions GitHub can give that are not "success" — the only words a "did not pass" line may hold.
 export const CI_WORDS = ["failure", "cancelled", "timed_out", "skipped", "neutral", "action_required", "stale", "startup_failure"];
 /**
@@ -124,8 +173,8 @@ export function ciState(runs, sha) {
   return { state: "failed", word: CI_WORDS.includes(run.conclusion) ? run.conclusion : "" };
 }
 
-// ── The decision, in three steps (run.mjs asks them in this order and stops at the first answer,
-//    so a run that is skipped early never needs the later facts) ─────────────────────────────────
+// ── The decision: the time rule, then three steps (run.mjs asks them in this order and stops at
+//    the first answer, so a run that is skipped early never needs the later facts) ───────────────
 const skip = (code, line) => ({ action: "skip", code, line });
 const stop = (code, line) => ({ action: "stop", code, line });
 const SAFE_NAME = /^[A-Za-z0-9._/-]{1,80}$/;
@@ -136,6 +185,38 @@ export function nameList(list) {
   const shown = plain.slice(0, 3);
   const more = (Array.isArray(list) ? list.length : 0) - shown.length;
   return shown.join(", ") + (more > 0 ? `${shown.length ? " " : ""}(+${more} more)` : "");
+}
+
+/**
+ * The time rule — asked FIRST (when the run begins), and AGAIN right before the hook is called.
+ * f: { event, nowMs (the real clock, ms since 1970), planned (the schedule line that started the run, or "") }
+ * when: "start" | "hook"
+ * → a result, or null (the time allows a deploy).
+ * A run started by hand is not bound: Jeff chose the moment. Every other run is — also one whose
+ * event is not known. A clock that cannot be read never deploys.
+ */
+export function checkWindow(f, when = "start") {
+  if (f?.event === BY_HAND_EVENT) return null;
+  const at = taipeiClock(f?.nowMs);
+  if (!at) return stop("no_clock", `Stopped: the time could not be read, so the deploy window could not be checked. Nothing was deployed.`);
+  if (inDeployWindow(f.nowMs)) return null;
+  const rule = `A scheduled run deploys only between ${WINDOW_FROM} and ${WINDOW_TO} Taiwan time.`;
+  const next = "the next scheduled run inside that window tries again.";
+  if (when === "hook") {
+    return skip("window_closed", `Skipped: the deploy window closed before Render was called: it is now ${at} Taiwan time. ${rule} The Deploy Hook was not called; ${next}`);
+  }
+  const plan = plannedClock(f.planned);
+  return skip("outside_window", `Skipped: this run started at ${at} Taiwan time${plan ? ` (GitHub had it planned for ${plan})` : ""}. ${rule} Nothing was deployed; ${next}`);
+}
+
+/** PURE — what "only tell me" says about the time: would a scheduled run be allowed to deploy now? */
+export function windowLine(nowMs) {
+  const at = taipeiClock(nowMs);
+  const span = `(window: ${WINDOW_FROM} to ${WINDOW_TO} Taiwan time)`;
+  if (!at) return `Time now: could not be read. A scheduled run would not deploy ${span}.`;
+  return inDeployWindow(nowMs)
+    ? `Time now: ${at} Taiwan time. A scheduled run starting now would be allowed to deploy ${span}.`
+    : `Time now: ${at} Taiwan time. A scheduled run starting now would NOT be allowed to deploy ${span}. A run started by hand is not bound by the window.`;
 }
 
 /**
@@ -200,10 +281,18 @@ export function deployLine(f) {
 }
 
 /**
- * PURE — the whole decision from all the facts at once (the three steps, in order).
+ * PURE — the three steps without the time rule. Used by "only tell me" (which says the time in a
+ * line of its own) and by decide() below. It is NOT the decision of a real run.
+ */
+export function decideApartFromTime(f) {
+  return checkSetup(f) || checkChange(f) || checkCi(f) || { action: "deploy", code: "deploy", line: deployLine(f) };
+}
+
+/**
+ * PURE — the whole decision from all the facts at once (the time rule, then the three steps).
  * → { action: "deploy" | "skip" | "stop", code, line }
  *    deploy = call the hook · skip = end green with this one line · stop = end red, nothing deployed
  */
 export function decide(f) {
-  return checkSetup(f) || checkChange(f) || checkCi(f) || { action: "deploy", code: "deploy", line: deployLine(f) };
+  return checkWindow(f) || decideApartFromTime(f);
 }

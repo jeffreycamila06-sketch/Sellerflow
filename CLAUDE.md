@@ -5527,6 +5527,8 @@ Admin only. Says who does the 7-11 checks now: the checker laptop (extension) or
 
 ## 2026-11-18 — NIGHTLY RENDER DEPLOY + "NEW VERSION" TELEGRAM ALERT (branch `claude/nightly-render-deploy`, NOT merged; no SQL; OFF until the secret `RENDER_DEPLOY_HOOK_URL` is saved)
 Jeff's how-to: `docs/ops/nightly-render-deploy.md`.
+- ⚠️ **Changed on `claude/nightly-deploy-window` (2026-11-19, block further down):** six starts a night + a hard
+  time window 03:30–05:30 Asia/Taipei for scheduled runs. Read "04:00" below as "the night window".
 - **Workflow `.github/workflows/nightly-render-deploy.yml`:** every night 04:00 Asia/Taipei (`0 20 * * *` UTC) + the
   Run workflow button (one box: "Only tell me what would happen"). It runs `node scripts/nightly-deploy/run.mjs`
   (no packages installed). Permissions: `contents: write` (move a tag) + `actions: read` (read the CI result).
@@ -5636,6 +5638,53 @@ Server only: `server/telegramAlert.js` (+ its test, one line in `docs/ops/nightl
 - Tests: `telegramAlert.server.test.ts` T12 — a scripted fake Telegram on `vi.useFakeTimers()` moved by hand
   (`scripted` / `begin` / `move`). ⚠️ In that suite an answer needs the clock moved (`await move(1)`), even an instant one.
 
+## 2026-11-19 — NIGHTLY RENDER DEPLOY: HARD TIME WINDOW 03:30–05:30 + SIX STARTS A NIGHT (branch `claude/nightly-deploy-window`, NOT merged; no SQL; no Render deploy needed)
+Finding (GitHub, read 2026-11-19): the nightly workflow reached main at 18:09 UTC on Nov 18; its first scheduled run,
+planned for 20:00 UTC (04:00 Taipei), started at **01:50:14 UTC = 09:50 Taipei** (run 2, event `schedule`), 5 h 50 min
+late. It skipped only because the secret is not saved. With the secret it would have restarted the server at 09:50.
+- **The time rule (`scripts/nightly-deploy/decide.mjs`, pure):** a run that was NOT started by hand may deploy ONLY
+  between 03:30 and 05:30 Asia/Taipei — read to the minute, both ends included (03:30:00 in, 05:30:59 in, 05:31:00
+  out). `checkWindow(f, when)` · `inDeployWindow(ms)` · `taipeiClock(ms)` · `WINDOW_FROM_MIN` / `WINDOW_TO_MIN`.
+  It is the FIRST question (`decide = checkWindow || checkSetup || checkChange || checkCi`): outside the window a
+  scheduled run asks nothing of git, GitHub or Render and ends green with ONE line (code `outside_window`), e.g.
+  `Skipped: this run started at 09:50 Taiwan time (GitHub had it planned for 04:07). A scheduled run deploys only
+  between 03:30 and 05:30 Taiwan time. Nothing was deployed; the next scheduled run inside that window tries again.`
+  So a missing / bad secret or a bad pause value is only reported by a run INSIDE the window.
+- **Again right before the hook (`run.mjs`):** the real clock is read a second time after the CI answer, with nothing
+  awaited between that look and the call. Outside → no call, tag not moved, green, one line (code `window_closed`).
+  Exactly two clock readings in a deploy run, no third (a deploy that was asked for inside the window is always noted).
+- **"By hand" = the event `workflow_dispatch`, that exact word.** Not bound by the window (Jeff chose the moment).
+  Every other event is bound — also an empty / unknown one, and **Re-run on an old scheduled run** (its event stays
+  `schedule`). A clock that cannot be read → red stop `no_clock` for a bound run.
+- **The clock is the runner's own (`Date.now`).** No env var, input or flag moves it or switches the window off
+  (test-pinned: the list of env names `run.mjs` reads, and the list the workflow passes).
+- **"Only tell me what would happen" = four lines now:** the third is the three rules WITHOUT the time
+  (`decideApartFromTime`, used by the dry run only), the fourth says whether a scheduled run would be allowed now
+  (`windowLine`): `Time now: 14:00 Taiwan time. A scheduled run starting now would NOT be allowed to deploy (window:
+  03:30 to 05:30 Taiwan time). A run started by hand is not bound by the window.`
+- **Six schedule lines (UTC → Taipei):** `37 19` 03:37 · `52 19` 03:52 · `7 20` 04:07 · `22 20` 04:22 · `41 20` 04:41 ·
+  `56 20` 04:56. All inside the window, ≥ 15 min apart (a run is cut after 10), none on :00 / :30 (GitHub is latest at
+  the start of an hour), the last one 34 min before the window ends. `concurrency` (one at a time, a waiting run is
+  not cancelled by a running one) + the tag `render-deployed` keep them to ONE deploy: the first start that deploys
+  moves the tag, the later ones end `nothing new`. ⚠️ Changing a line: the workflow tests pin the list and its rules
+  (`nightlyDeploy.paths.test.ts`), and `R13` in the run test reads the list from the file.
+- **Planned time in the line:** the workflow passes `NIGHTLY_DEPLOY_PLANNED: ${{ github.event.schedule }}` (the cron
+  line that started the run). Only a line shaped `minute hour * * *` is read (`plannedClock`), and only the time made
+  from its two numbers is printed. Empty / odd → the line simply has no "(GitHub had it planned for …)".
+- **With six starts, "the next run tries again" means ~15 minutes later, the same night:** CI still running at 03:37 →
+  the 03:52 start deploys; Render refuses the hook → the next start tries again; hook accepted but tag not moved →
+  the next start deploys that commit once more (two restarts, both inside the window — the one known way).
+- **Doc:** `docs/ops/nightly-render-deploy.md` — new section "If GitHub starts late" (six tries, the hours, how to
+  see in Actions why a night was skipped), the two new lines in the table, by-hand runs and Re-run.
+- **Tests:** `nightlyDeploy.decide.test.ts` D8–D10 (every minute of the day; Jeff's five times) ·
+  `nightlyDeploy.run.test.ts` R12 (the run at the five times, by hand at 14:00, the clock moving past 05:30 between the
+  decision and the hook), R13 (a night of six starts sharing one tag), R11 (the REAL script as a process with the
+  machine's clock set by the test to 09:50 / 03:29 / 03:30 / 05:30 / 05:31 / 14:00) · `nightlyDeploy.paths.test.ts` W.
+  🔑 R11's trick: the test starts `node --require <a file that sets Date.now> run.mjs` — the script itself has no
+  clock setting.
+- **Not proven on GitHub:** a scheduled run can only start from main, so `github.event.schedule` and the six starts
+  are first seen after the merge. Several starts cannot guarantee a night: if GitHub is hours late for all six, the
+  night is skipped (each line says so) and the next night deploys.
 
 ## 2026-11-19 — CHOOSE PRICE BEFORE PRINT (branch `claude/choose-price-popup`, NOT merged; sql/180 + sql/181 NOT applied; no Render)
 Web only. New Live setup switch under Same price, default OFF for everyone. OFF = main, byte for byte (1-Click / pin

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { runNightlyDeploy, callRenderHook, createGithub, createGit, createSay, Stop, HOOK_TIMEOUT_MS, GITHUB_TIMEOUT_MS } from "../../../../scripts/nightly-deploy/run.mjs";
-import { decide, ciState, hookState, pauseState, taipeiDay } from "../../../../scripts/nightly-deploy/decide.mjs";
+import { decide, ciState, hookState, pauseState, taipeiDay, inDeployWindow, taipeiClock, plannedClock } from "../../../../scripts/nightly-deploy/decide.mjs";
 
 const HEAD = "16b4bb93aaaabbbbccccddddeeeeffff00001111";
 const OLD = "0cc49da3aaaabbbbccccddddeeeeffff00002222";
@@ -17,8 +17,13 @@ const HOOK = `https://api.render.com/deploy/srv-abc123DEF?key=${KEY}`;
 const NOW = Date.parse("2026-11-19T20:05:00Z");                // 04:05 on 20 November in Taipei
 const ciRun = (over: Record<string, unknown> = {}) => ({ head_sha: HEAD, head_branch: "main", status: "completed", conclusion: "success", run_number: 1845, run_attempt: 1, ...over });
 
+/** A moment on 20 November 2026 in Taipei, written as a Taipei wall-clock time ("04:05" or "05:30:59"). */
+const taipei = (clock: string, day = "2026-11-20") => Date.parse(`${day}T${clock.length === 5 ? `${clock}:00` : clock}+08:00`);
+
 type World = {
   env?: Record<string, string | undefined>;
+  /** the clock: ONE time for the whole run, or a list — the first reading, the second reading, … (the last one stays) */
+  clock?: number | number[];
   head?: string | (() => never);
   tag?: { exists: boolean; sha: string } | (() => never);
   inClone?: boolean;
@@ -45,8 +50,12 @@ function world(w: World = {}) {
   };
   const hook = vi.fn(async (url: unknown, sha: unknown) => { order.push("hook"); hookCalls.push({ url, sha }); return pick(w.hookAnswer, { status: 200, word: "" }); });
   const env = { GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK, ...(w.env ?? {}) };
-  const run = () => runNightlyDeploy({ env, git, github, hook, say: (l: string) => lines.push(l), now: () => NOW } as never);
-  return { run, lines, order, hookCalls, tagMoves, git, github, hook };
+  // how many questions had been asked (git / GitHub / the hook) when the clock was read: one entry per reading
+  const clockAt: number[] = [];
+  const times = w.clock === undefined ? [NOW] : Array.isArray(w.clock) ? w.clock : [w.clock];
+  const now = vi.fn(() => { clockAt.push(order.length); return times[Math.min(clockAt.length - 1, times.length - 1)]; });
+  const run = () => runNightlyDeploy({ env, git, github, hook, say: (l: string) => lines.push(l), now } as never);
+  return { run, lines, order, hookCalls, tagMoves, git, github, hook, now, clockAt };
 }
 const noSecret = (lines: string[]) => { for (const l of lines) { expect(l).not.toContain(KEY); expect(l).not.toContain("srv-abc123DEF"); expect(l).not.toContain("api.render.com"); } };
 
@@ -148,31 +157,37 @@ describe("R2 every skip: ONE line, green, the hook is not called, the tag is not
 });
 
 describe("R3 the run gives the same answer as decide() on the same facts", () => {
-  it("across hook × pause × branch × change × CI", async () => {
+  it("across the time × hook × pause × branch × event × change × CI", async () => {
+    const clocks = ["04:05", "03:29", "05:31", "09:50"].map((c) => taipei(c));
     const hooks = [HOOK, "", "https://example.com/x"];
     const pauses = ["", "2026-11-20", "2026-11-01", "soon"];
     const refs = ["refs/heads/main", "refs/heads/other"];
-    const events = ["schedule", "workflow_dispatch"];
+    const events = ["schedule", "workflow_dispatch", "push", ""];
     const changes: Array<Pick<World, "tag" | "changed" | "inClone">> = [
       { tag: { exists: true, sha: HEAD } }, { changed: ["README.md"] }, { changed: ["server.js"] }, { tag: { exists: false, sha: "" } }, { inClone: false },
     ];
     const runsList = [[ciRun()], [ciRun({ conclusion: "failure" })], [ciRun({ status: "queued", conclusion: null })], []];
     let n = 0;
-    for (const hookUrl of hooks) for (const pause of pauses) for (const ref of refs) for (const event of events) for (const c of changes) for (const runs of runsList) {
+    let deploys = 0;
+    for (const clock of clocks) for (const hookUrl of hooks) for (const pause of pauses) for (const ref of refs) for (const event of events) for (const c of changes) for (const runs of runsList) {
       n += 1;
-      const h = world({ ...c, runs, env: { RENDER_DEPLOY_HOOK_URL: hookUrl, NIGHTLY_DEPLOY_PAUSE_UNTIL: pause, GITHUB_REF: ref, GITHUB_EVENT_NAME: event } });
+      const h = world({ ...c, runs, clock, env: { RENDER_DEPLOY_HOOK_URL: hookUrl, NIGHTLY_DEPLOY_PAUSE_UNTIL: pause, GITHUB_REF: ref, GITHUB_EVENT_NAME: event } });
       const got = await h.run();
       const tagSha = c.tag ? (c.tag as { sha: string }).sha : OLD;
       const want = decide({
-        onMain: ref === "refs/heads/main", event, hook: hookState(hookUrl), pause: pauseState(pause, taipeiDay(NOW)), pauseUntil: pause,
+        onMain: ref === "refs/heads/main", event, hook: hookState(hookUrl), pause: pauseState(pause, taipeiDay(clock)), pauseUntil: pause,
         headSha: HEAD, deployedSha: tagSha,
         changed: tagSha && c.inClone !== false ? (c.changed ?? ["server/pc711Duty.js", "src/redesign/screens/Admin.tsx"]) : null,
-        ci: ciState(runs, HEAD),
+        ci: ciState(runs, HEAD), nowMs: clock, planned: "",
       });
       expect(got.code, `${n}`).toBe(want.code);
       expect(h.hook.mock.calls.length, `${n}`).toBe(want.action === "deploy" ? 1 : 0);
+      // the hook is NEVER called by a run that was not started by hand outside the window
+      if (event !== "workflow_dispatch" && !inDeployWindow(clock)) expect(h.hook.mock.calls.length, `${n}`).toBe(0);
+      deploys += h.hook.mock.calls.length;
     }
-    expect(n).toBe(3 * 4 * 2 * 2 * 5 * 4);
+    expect(n).toBe(4 * 3 * 4 * 2 * 4 * 5 * 4);
+    expect(deploys).toBeGreaterThan(20);
   });
 });
 
@@ -246,6 +261,229 @@ describe("R4 a broken setting or a failed step ends RED, and never deploys by mi
   });
 });
 
+describe("R12 the time window in the run: a scheduled run reaches Render ONLY 03:30–05:30 Asia/Taipei", () => {
+  const RULE = "A scheduled run deploys only between 03:30 and 05:30 Taiwan time.";
+  const outside = (at: string, plan = "") => `Skipped: this run started at ${at} Taiwan time${plan ? ` (GitHub had it planned for ${plan})` : ""}. ${RULE} Nothing was deployed; the next scheduled run inside that window tries again.`;
+  const closedLine = (at: string) => `Skipped: the deploy window closed before Render was called: it is now ${at} Taiwan time. ${RULE} The Deploy Hook was not called; the next scheduled run inside that window tries again.`;
+
+  it("03:29 skip · 03:30 deploy · 05:30 deploy · 05:31 skip · 09:50 skip (server change, CI green, secret set — only the time differs)", async () => {
+    for (const [clock, deploys] of [["03:29", false], ["03:30", true], ["05:30", true], ["05:31", false], ["09:50", false]] as Array<[string, boolean]>) {
+      const h = world({ clock: taipei(clock) });
+      const r = await h.run();
+      if (deploys) {
+        expect(r, clock).toEqual({ exitCode: 0, action: "deploy", code: "deploy" });
+        expect(h.hookCalls, clock).toEqual([{ url: HOOK, sha: HEAD }]);
+        expect(h.tagMoves, clock).toEqual([{ sha: HEAD, existed: true }]);
+      } else {
+        expect(r, clock).toEqual({ exitCode: 0, action: "skip", code: "outside_window" });
+        expect(h.lines, clock).toEqual([outside(clock)]);
+        expect(h.hook, clock).not.toHaveBeenCalled();
+        expect(h.github.moveTag, clock).not.toHaveBeenCalled();
+      }
+      noSecret(h.lines);
+    }
+  });
+  it("the run that was found (planned 04:00, started 01:50:14 UTC = 09:50 Taipei): green, ONE line, and NOTHING is asked of git, GitHub or Render", async () => {
+    const h = world({ clock: Date.parse("2026-11-19T01:50:14Z"), env: { NIGHTLY_DEPLOY_PLANNED: "0 20 * * *" } });
+    expect(await h.run()).toEqual({ exitCode: 0, action: "skip", code: "outside_window" });
+    expect(h.lines).toEqual([outside("09:50", "04:00")]);
+    expect(h.order).toEqual([]);
+    expect(h.now).toHaveBeenCalledTimes(1);
+  });
+  it("outside the window nothing else matters: no secret, a bad secret, a pause, a bad pause, another branch — the same one line", async () => {
+    for (const env of [{ RENDER_DEPLOY_HOOK_URL: "" }, { RENDER_DEPLOY_HOOK_URL: "https://example.com/x" }, { NIGHTLY_DEPLOY_PAUSE_UNTIL: "2026-11-20" },
+      { NIGHTLY_DEPLOY_PAUSE_UNTIL: "soon" }, { GITHUB_REF: "refs/heads/other" }] as Array<Record<string, string>>) {
+      const h = world({ clock: taipei("09:50"), env });
+      expect(await h.run(), JSON.stringify(env)).toEqual({ exitCode: 0, action: "skip", code: "outside_window" });
+      expect(h.lines).toEqual([outside("09:50")]);
+      expect(h.order).toEqual([]);
+    }
+  });
+  it("to the minute, on both readings: 03:29:59 out · 05:30:59 in · 05:31:00 out", async () => {
+    expect((await world({ clock: taipei("03:29:59") }).run()).code).toBe("outside_window");
+    expect((await world({ clock: taipei("03:30:00") }).run()).code).toBe("deploy");
+    expect((await world({ clock: taipei("05:30:59") }).run()).code).toBe("deploy");
+    expect((await world({ clock: taipei("05:31:00") }).run()).code).toBe("outside_window");
+    const lastSecond = world({ clock: [taipei("05:29"), taipei("05:30:59")] });
+    expect((await lastSecond.run()).code).toBe("deploy");
+    expect(lastSecond.hook).toHaveBeenCalledTimes(1);
+    const firstSecondAfter = world({ clock: [taipei("05:29"), taipei("05:31:00")] });
+    expect((await firstSecondAfter.run()).code).toBe("window_closed");
+    expect(firstSecondAfter.hook).not.toHaveBeenCalled();
+  });
+
+  it("a run started by hand at 14:00 deploys: Jeff chose the moment", async () => {
+    const h = world({ clock: taipei("14:00"), env: { GITHUB_EVENT_NAME: "workflow_dispatch" } });
+    expect(await h.run()).toEqual({ exitCode: 0, action: "deploy", code: "deploy" });
+    expect(h.hookCalls).toEqual([{ url: HOOK, sha: HEAD }]);
+    expect(h.tagMoves).toEqual([{ sha: HEAD, existed: true }]);
+    expect(h.lines).toEqual([
+      "Deploying 16b4bb9: 1 file of the server changed since 0cc49da (server/pc711Duty.js), and CI passed.",
+      "Render accepted the deploy of 16b4bb9 (answer 200). Render now builds it and restarts the server by itself; this run does not wait for it.",
+      "Noted 16b4bb9 as the last deployed commit (tag render-deployed).",
+    ]);
+  });
+  it("by hand: no hour stops it, a clock that moves does not stop it, and the other three rules still do", async () => {
+    for (const clock of ["00:00", "03:29", "05:31", "09:50", "14:00", "23:59"]) {
+      const h = world({ clock: taipei(clock), env: { GITHUB_EVENT_NAME: "workflow_dispatch" } });
+      expect((await h.run()).action, clock).toBe("deploy");
+      expect(h.hook).toHaveBeenCalledTimes(1);
+    }
+    const moving = world({ clock: [taipei("05:29"), taipei("05:31")], env: { GITHUB_EVENT_NAME: "workflow_dispatch" } });
+    expect((await moving.run()).action).toBe("deploy");
+    const red = world({ clock: taipei("14:00"), env: { GITHUB_EVENT_NAME: "workflow_dispatch" }, runs: [ciRun({ conclusion: "failure" })] });
+    expect((await red.run()).code).toBe("ci_failed");
+    expect(red.hook).not.toHaveBeenCalled();
+  });
+  it("only the exact event of the Run workflow button is 'by hand': a re-run of a scheduled run, an unknown or empty event are bound by the window", async () => {
+    for (const event of ["schedule", "", "push", "workflow_run", "WORKFLOW_DISPATCH", "workflow_dispatch "]) {
+      const h = world({ clock: taipei("14:00"), env: { GITHUB_EVENT_NAME: event } });
+      expect(await h.run(), event).toEqual({ exitCode: 0, action: "skip", code: "outside_window" });
+      expect(h.hook).not.toHaveBeenCalled();
+    }
+    const none = world({ clock: taipei("14:00"), env: { GITHUB_EVENT_NAME: undefined } });
+    expect((await none.run()).code).toBe("outside_window");
+  });
+
+  it("the clock moves past 05:30 between the decision and the hook → NO call, the tag is not moved, green, ONE line", async () => {
+    const h = world({ clock: [taipei("05:29"), taipei("05:31")] });
+    expect(await h.run()).toEqual({ exitCode: 0, action: "skip", code: "window_closed" });
+    expect(h.hook).not.toHaveBeenCalled();
+    expect(h.github.moveTag).not.toHaveBeenCalled();
+    expect(h.lines).toEqual([closedLine("05:31")]);                                  // and no "Deploying …" line before it
+    expect(h.order).toEqual(["git:head", "gh:tag", "git:has", "git:diff", "gh:ci"]);  // everything had said "deploy"
+    noSecret(h.lines);
+  });
+  it("the same when GitHub was slow by hours, and when the first night's deploy would have been the one", async () => {
+    const hours = world({ clock: [taipei("04:07"), taipei("09:50")] });
+    expect((await hours.run()).code).toBe("window_closed");
+    expect(hours.lines).toEqual([closedLine("09:50")]);
+    const first = world({ clock: [taipei("05:30"), taipei("05:31")], tag: { exists: false, sha: "" } });
+    expect((await first.run()).code).toBe("window_closed");
+    expect(first.hook).not.toHaveBeenCalled();
+    expect(first.github.moveTag).not.toHaveBeenCalled();
+  });
+  it("the two readings: the first before ANY question, the second after the last one and right before the hook — and no third", async () => {
+    const h = world({ clock: [taipei("04:07"), taipei("04:08")] });
+    await h.run();
+    expect(h.order).toEqual(["git:head", "gh:tag", "git:has", "git:diff", "gh:ci", "hook", "gh:move"]);
+    expect(h.clockAt).toEqual([0, 5]);                 // 0 questions asked · 5 asked, the hook is question number 6
+    expect(h.now).toHaveBeenCalledTimes(2);
+    const skipped = world({ changed: ["README.md"] });
+    await skipped.run();
+    expect(skipped.now).toHaveBeenCalledTimes(1);      // a run that never gets as far as the hook reads the clock once
+  });
+  it("the clock passing 05:30 AFTER the call changes nothing: Render was asked inside the window, so the commit is noted", async () => {
+    const h = world({ clock: [taipei("05:29"), taipei("05:30:59"), taipei("05:45"), taipei("05:45")] });
+    expect(await h.run()).toEqual({ exitCode: 0, action: "deploy", code: "deploy" });
+    expect(h.tagMoves).toEqual([{ sha: HEAD, existed: true }]);
+  });
+  it("a clock that cannot be read: a scheduled run stops RED before asking anything; at the second reading it stops RED without calling Render", async () => {
+    for (const bad of [NaN, Infinity, undefined as unknown as number, "04:05" as unknown as number]) {
+      const h = world({ clock: [bad] });
+      expect(await h.run(), String(bad)).toEqual({ exitCode: 1, action: "stop", code: "no_clock" });
+      expect(h.lines).toEqual(["Stopped: the time could not be read, so the deploy window could not be checked. Nothing was deployed."]);
+      expect(h.order).toEqual([]);
+    }
+    const second = world({ clock: [taipei("04:07"), NaN] });
+    expect(await second.run()).toEqual({ exitCode: 1, action: "stop", code: "no_clock" });
+    expect(second.hook).not.toHaveBeenCalled();
+    expect(second.github.moveTag).not.toHaveBeenCalled();
+  });
+  it("the pause still goes by the Taipei day of the start, and is only looked at inside the window", async () => {
+    const paused = world({ clock: taipei("04:07"), env: { NIGHTLY_DEPLOY_PAUSE_UNTIL: "2026-11-20" } });
+    expect((await paused.run()).code).toBe("paused");
+    const dayAfter = world({ clock: taipei("04:07", "2026-11-21"), env: { NIGHTLY_DEPLOY_PAUSE_UNTIL: "2026-11-20" } });
+    expect((await dayAfter.run()).code).toBe("deploy");
+  });
+});
+
+describe("R13 six starts a night: the first one that lands in the window deploys, the others end 'nothing new'", () => {
+  const PLANNED = ["37 19 * * *", "52 19 * * *", "7 20 * * *", "22 20 * * *", "41 20 * * *", "56 20 * * *"];
+  type Start = { at: string; hookAnswer?: { status: number; word?: string }; runs?: unknown[]; tagMoves?: boolean };
+  /** One night: the runs happen one after the other (the workflow never runs two at once) and share ONE tag. */
+  async function night(starts: Array<Start | string>, opts: { head?: string } = {}) {
+    let tag = { exists: true, sha: OLD };
+    let hookCalls = 0;
+    const out: Array<{ at: string; code: string; line: string; lines: string[] }> = [];
+    for (let i = 0; i < starts.length; i++) {
+      const st = typeof starts[i] === "string" ? { at: starts[i] as string } : (starts[i] as Start);
+      const lines: string[] = [];
+      const git = { headOfMain: async () => opts.head ?? HEAD, hasCommit: async () => true, changedFiles: async (from: string, to: string) => (from === to ? [] : ["server/pc711Duty.js"]) };
+      const github = {
+        readTag: async () => ({ ...tag }),
+        ciRuns: async () => st.runs ?? [ciRun({ head_sha: opts.head ?? HEAD })],
+        moveTag: async (sha: string) => { if (st.tagMoves === false) return false; tag = { exists: true, sha }; return true; },
+      };
+      const hook = async () => { hookCalls += 1; return st.hookAnswer ?? { status: 200, word: "" }; };
+      const env = { GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK, NIGHTLY_DEPLOY_PLANNED: PLANNED[i] ?? "" };
+      const r = await runNightlyDeploy({ env, git, github, hook, say: (l: string) => lines.push(l), now: () => taipei(st.at) } as never);
+      out.push({ at: st.at, code: r.code, line: lines.at(-1) ?? "", lines });
+    }
+    return { out, hookCalls: () => hookCalls, tag: () => tag };
+  }
+  it("the planned times are the six in the workflow file, all inside the window", () => {
+    const yml = readFileSync(".github/workflows/nightly-render-deploy.yml", "utf8");
+    expect([...yml.matchAll(/cron:\s*"([^"]+)"/g)].map((m) => m[1])).toEqual(PLANNED);
+    expect(PLANNED.map(plannedClock)).toEqual(["03:37", "03:52", "04:07", "04:22", "04:41", "04:56"]);
+  });
+  it("GitHub on time: ONE call to Render (the 03:37 start); the five later starts end 'nothing new'", async () => {
+    const n = await night(["03:38", "03:53", "04:08", "04:23", "04:42", "04:57"]);
+    expect(n.out.map((o) => o.code)).toEqual(["deploy", "nothing_new", "nothing_new", "nothing_new", "nothing_new", "nothing_new"]);
+    expect(n.hookCalls()).toBe(1);
+    expect(n.tag().sha).toBe(HEAD);
+    for (const o of n.out.slice(1)) expect(o.lines).toEqual(["Skipped: nothing new on main since the last deploy (16b4bb9)."]);
+  });
+  it("the first two start late the next morning, the third is on time: the third deploys, the late ones deploy nothing", async () => {
+    // the order they really run in: 04:08 (on time), then the rest of the night, then the two late ones at 09:50
+    const n = await night([{ at: "09:50" }, { at: "09:51" }, { at: "04:08" }, { at: "04:23" }, { at: "04:42" }, { at: "04:57" }]);
+    expect(n.out.map((o) => o.code)).toEqual(["outside_window", "outside_window", "deploy", "nothing_new", "nothing_new", "nothing_new"]);
+    expect(n.hookCalls()).toBe(1);
+    expect(n.out[0].line).toBe("Skipped: this run started at 09:50 Taiwan time (GitHub had it planned for 03:37). A scheduled run deploys only between 03:30 and 05:30 Taiwan time. Nothing was deployed; the next scheduled run inside that window tries again.");
+  });
+  it("GitHub late for ALL six (they start between 05:31 and 09:55): ZERO calls to Render; each line says its own time and its planned time", async () => {
+    const n = await night(["05:31", "06:10", "07:45", "09:50", "09:52", "09:55"]);
+    expect(n.out.map((o) => o.code)).toEqual(Array(6).fill("outside_window"));
+    expect(n.hookCalls()).toBe(0);
+    expect(n.tag().sha).toBe(OLD);                                   // nothing noted: the next night still has the work
+    expect(n.out.map((o) => o.line.slice(0, 80))).toEqual([
+      "Skipped: this run started at 05:31 Taiwan time (GitHub had it planned for 03:37)",
+      "Skipped: this run started at 06:10 Taiwan time (GitHub had it planned for 03:52)",
+      "Skipped: this run started at 07:45 Taiwan time (GitHub had it planned for 04:07)",
+      "Skipped: this run started at 09:50 Taiwan time (GitHub had it planned for 04:22)",
+      "Skipped: this run started at 09:52 Taiwan time (GitHub had it planned for 04:41)",
+      "Skipped: this run started at 09:55 Taiwan time (GitHub had it planned for 04:56)",
+    ]);
+  });
+  it("a late start that still lands inside the window deploys (planned 03:37, started 05:20), and the ones after 05:30 do nothing", async () => {
+    const n = await night(["05:20", "05:29", "05:31", "05:40", "06:00", "06:30"]);
+    expect(n.out.map((o) => o.code)).toEqual(["deploy", "nothing_new", "outside_window", "outside_window", "outside_window", "outside_window"]);
+    expect(n.hookCalls()).toBe(1);
+  });
+  it("Render does not answer the first start: the NEXT start, 15 minutes later, tries again the same night — still one deploy", async () => {
+    const n = await night([{ at: "03:38", hookAnswer: { status: 503 } }, "03:53", "04:08", "04:23", "04:42", "04:57"]);
+    expect(n.out.map((o) => o.code)).toEqual(["hook_503", "deploy", "nothing_new", "nothing_new", "nothing_new", "nothing_new"]);
+    expect(n.hookCalls()).toBe(2);                                   // one refused, one accepted
+  });
+  it("CI still running at 03:38 and finished by 03:53: the second start deploys", async () => {
+    const n = await night([{ at: "03:38", runs: [ciRun({ status: "in_progress", conclusion: null })] }, "03:53", "04:08", "04:23", "04:42", "04:57"]);
+    expect(n.out.map((o) => o.code)).toEqual(["ci_running", "deploy", "nothing_new", "nothing_new", "nothing_new", "nothing_new"]);
+    expect(n.hookCalls()).toBe(1);
+  });
+  it("CI red all night: six skips, ZERO calls", async () => {
+    const red = [ciRun({ conclusion: "failure" })];
+    const n = await night(["03:38", "03:53", "04:08", "04:23", "04:42", "04:57"].map((at) => ({ at, runs: red })));
+    expect(n.out.map((o) => o.code)).toEqual(Array(6).fill("ci_failed"));
+    expect(n.hookCalls()).toBe(0);
+  });
+  it("the one way to two restarts in a night is the known one: Render accepted but the tag could not be moved — and both are inside the window", async () => {
+    const n = await night([{ at: "03:38", tagMoves: false }, "03:53", "04:08", "04:23", "04:42", "04:57"]);
+    expect(n.out.map((o) => o.code)).toEqual(["tag_write", "deploy", "nothing_new", "nothing_new", "nothing_new", "nothing_new"]);
+    expect(n.hookCalls()).toBe(2);
+    expect(n.out[0].line).toBe("Stopped: Render accepted the deploy, but the tag render-deployed could not be moved. The next run will deploy this commit once more.");
+  });
+});
+
 describe("R5 'only tell me what would happen'", () => {
   it("everything says deploy → it SAYS so, and calls nothing, notes nothing", async () => {
     const h = world({ env: { NIGHTLY_DEPLOY_DRY_RUN: "1" } });
@@ -256,8 +494,29 @@ describe("R5 'only tell me what would happen'", () => {
       "Only telling what would happen: the Deploy Hook is not called and nothing is noted.",
       "Facts: main is at 16b4bb9 · last deployed: 0cc49da · files: 2 changed, 1 of the server · CI: passed · hook: set · pause: off.",
       "It would deploy. Deploying 16b4bb9: 1 file of the server changed since 0cc49da (server/pc711Duty.js), and CI passed.",
+      "Time now: 04:05 Taiwan time. A scheduled run starting now would be allowed to deploy (window: 03:30 to 05:30 Taiwan time).",
     ]);
     noSecret(h.lines);
+  });
+  it("asked at 14:00: the facts are judged as at any hour, and the LAST line says a scheduled run would not be allowed now", async () => {
+    const h = world({ clock: taipei("14:00"), env: { NIGHTLY_DEPLOY_DRY_RUN: "1", GITHUB_EVENT_NAME: "workflow_dispatch" } });
+    expect(await h.run()).toEqual({ exitCode: 0, action: "tell", code: "deploy" });
+    expect(h.lines.length).toBe(4);
+    expect(h.lines[2]).toBe("It would deploy. Deploying 16b4bb9: 1 file of the server changed since 0cc49da (server/pc711Duty.js), and CI passed.");
+    expect(h.lines[3]).toBe("Time now: 14:00 Taiwan time. A scheduled run starting now would NOT be allowed to deploy (window: 03:30 to 05:30 Taiwan time). A run started by hand is not bound by the window.");
+    expect(h.hook).not.toHaveBeenCalled();
+    expect(h.github.moveTag).not.toHaveBeenCalled();
+  });
+  it("the time line at Jeff's five times, and it never changes what the other lines say", async () => {
+    const ref = world({ env: { NIGHTLY_DEPLOY_DRY_RUN: "1", GITHUB_EVENT_NAME: "workflow_dispatch" } });
+    await ref.run();
+    for (const [clock, allowed] of [["03:29", false], ["03:30", true], ["05:30", true], ["05:31", false], ["09:50", false]] as Array<[string, boolean]>) {
+      const h = world({ clock: taipei(clock), env: { NIGHTLY_DEPLOY_DRY_RUN: "1", GITHUB_EVENT_NAME: "workflow_dispatch" } });
+      expect((await h.run()).code, clock).toBe("deploy");
+      expect(h.lines[3].startsWith(`Time now: ${clock} Taiwan time. A scheduled run starting now would ${allowed ? "be allowed" : "NOT be allowed"} to deploy`), clock).toBe(true);
+      expect(h.lines.slice(0, 3), clock).toEqual(ref.lines.slice(0, 3));
+      expect(h.hook).not.toHaveBeenCalled();
+    }
   });
   it("it answers for main from any branch, and for the NIGHTLY run (the pause counts)", async () => {
     const branch = world({ env: { NIGHTLY_DEPLOY_DRY_RUN: "true", GITHUB_REF: "refs/heads/claude/nightly-render-deploy", GITHUB_EVENT_NAME: "push" } });
@@ -265,6 +524,7 @@ describe("R5 'only tell me what would happen'", () => {
     const paused = world({ env: { NIGHTLY_DEPLOY_DRY_RUN: "1", GITHUB_EVENT_NAME: "workflow_dispatch", NIGHTLY_DEPLOY_PAUSE_UNTIL: "2026-11-20" } });
     expect((await paused.run()).code).toBe("paused");
     expect(paused.lines[2].startsWith("It would not deploy. Skipped: the nightly deploy is paused until 2026-11-20")).toBe(true);
+    expect(paused.lines[3].startsWith("Time now: 04:05 Taiwan time.")).toBe(true);
   });
   it("GitHub not answering is said in the facts and never deploys; still green (it is only telling)", async () => {
     const h = world({ env: { NIGHTLY_DEPLOY_DRY_RUN: "1" }, tag: () => { throw new Stop("tag_read", "x"); }, runs: () => { throw new Stop("ci_read", "x"); } });
@@ -536,15 +796,26 @@ describe("R9 createSay: one line to the log and to the run's summary", () => {
   });
 });
 
-describe("R11 the script as the workflow starts it (a real process; none of these cases reaches the network)", () => {
-  const start = (env: Record<string, string>) => {
+describe("R11 the script as the workflow starts it (a real process on the REAL clock; none of these cases reaches the network)", () => {
+  /**
+   * Starts the real script. `at` = the hour the machine's clock shows to that process: the TEST puts a
+   * clock in front of the process (a file loaded before the script). The script itself has no way to
+   * be told the time — the last test of this block proves that.
+   */
+  const start = (env: Record<string, string>, at?: number) => {
     const dirTmp = mkdtempSync(join(tmpdir(), "nightly-run-"));
     const summary = join(dirTmp, "summary.md");
     writeFileSync(summary, "");
+    const args = ["scripts/nightly-deploy/run.mjs"];
+    if (at !== undefined) {
+      const clockFile = join(dirTmp, "machine-clock.cjs");
+      writeFileSync(clockFile, `Date.now = () => ${JSON.stringify(at)};\n`);
+      args.unshift("--require", clockFile);
+    }
     let code = 0;
     let out: string;
     try {
-      out = execFileSync(process.execPath, ["scripts/nightly-deploy/run.mjs"], {
+      out = execFileSync(process.execPath, args, {
         encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
         env: { PATH: process.env.PATH ?? "", GITHUB_STEP_SUMMARY: summary, GITHUB_REPOSITORY: "jeff/sellerflow", ...env },
       });
@@ -557,29 +828,87 @@ describe("R11 the script as the workflow starts it (a real process; none of thes
     rmSync(dirTmp, { recursive: true, force: true });
     return { code, out: out.trim(), sum: sum.trim() };
   };
+  // These four are started "by hand" (the Run workflow button), so the hour the tests run at does not matter.
+  const HAND = { GITHUB_EVENT_NAME: "workflow_dispatch" };
   it("not on main → one line, exit 0, the same line in the run's summary", () => {
-    const r = start({ GITHUB_REF: "refs/heads/claude/x", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK });
+    const r = start({ GITHUB_REF: "refs/heads/claude/x", ...HAND, RENDER_DEPLOY_HOOK_URL: HOOK });
     expect(r).toEqual({ code: 0, out: "Skipped: this run is not on main. The nightly deploy only works from main.", sum: "Skipped: this run is not on main. The nightly deploy only works from main." });
   });
   it("secret missing → one line, exit 0", () => {
-    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule" });
+    const r = start({ GITHUB_REF: "refs/heads/main", ...HAND });
     expect([r.code, r.out]).toEqual([0, "Skipped: the Render Deploy Hook is not saved yet (repository secret RENDER_DEPLOY_HOOK_URL)."]);
   });
   it("a secret that is not a Render Deploy Hook → exit 1, and no part of it in the output", () => {
-    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: `https://example.com/deploy?key=${KEY}` });
+    const r = start({ GITHUB_REF: "refs/heads/main", ...HAND, RENDER_DEPLOY_HOOK_URL: `https://example.com/deploy?key=${KEY}` });
     expect(r.code).toBe(1);
     expect(r.out).toBe("Stopped: the saved secret RENDER_DEPLOY_HOOK_URL is not a Render Deploy Hook address. Copy it again from Render. Nothing was deployed.");
     expect(`${r.out}${r.sum}`).not.toContain(KEY);
   });
   it("no GitHub token → exit 1 before anything is asked of Render, and the hook is not in the output", () => {
-    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK });
+    const r = start({ GITHUB_REF: "refs/heads/main", ...HAND, RENDER_DEPLOY_HOOK_URL: HOOK });
     expect(r.code).toBe(1);
     expect(r.out).toBe("Stopped: GitHub did not answer the question about the tag render-deployed (answer 0). Nothing was deployed.");
     expect(`${r.out}${r.sum}`).not.toContain(KEY);
   });
-  it("paused → one line, exit 0 (the pause date is far ahead)", () => {
-    const r = start({ GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK, NIGHTLY_DEPLOY_PAUSE_UNTIL: "2999-01-01" });
-    expect([r.code, r.out]).toEqual([0, "Skipped: the nightly deploy is paused until 2999-01-01 (variable NIGHTLY_DEPLOY_PAUSE_UNTIL)."]);
+
+  // A SCHEDULED run reads the machine's clock.
+  const NO_TAG = "Stopped: GitHub did not answer the question about the tag render-deployed (answer 0). Nothing was deployed.";
+  const SCHED = { GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", RENDER_DEPLOY_HOOK_URL: HOOK };
+  const timeLine = (at: string, plan = "") => `Skipped: this run started at ${at} Taiwan time${plan ? ` (GitHub had it planned for ${plan})` : ""}. A scheduled run deploys only between 03:30 and 05:30 Taiwan time. Nothing was deployed; the next scheduled run inside that window tries again.`;
+  it("scheduled, the machine's clock at 09:50 Taipei (the run that was found): one line, exit 0, nobody is asked — it needs no GitHub token", () => {
+    const r = start({ ...SCHED, NIGHTLY_DEPLOY_PLANNED: "0 20 * * *" }, Date.parse("2026-11-19T01:50:14Z"));
+    expect(r).toEqual({ code: 0, out: timeLine("09:50", "04:00"), sum: timeLine("09:50", "04:00") });
+    expect(`${r.out}${r.sum}`).not.toContain(KEY);
+  });
+  it("scheduled at 03:29 / 05:31 → the time line; at 03:30 / 05:30 → it goes on to the next question (GitHub, which this test does not have)", () => {
+    expect(start(SCHED, taipei("03:29")).out).toBe(timeLine("03:29"));
+    expect(start(SCHED, taipei("05:31")).out).toBe(timeLine("05:31"));
+    for (const clock of ["03:30", "05:30"]) {
+      const r = start(SCHED, taipei(clock));
+      expect([r.code, r.out], clock).toEqual([1, NO_TAG]);
+    }
+  });
+  it("scheduled and paused: the pause line inside the window (04:07), the time line outside it (09:50) — exit 0 both ways", () => {
+    const env = { ...SCHED, NIGHTLY_DEPLOY_PAUSE_UNTIL: "2999-01-01" };
+    expect(start(env, taipei("04:07"))).toMatchObject({ code: 0, out: "Skipped: the nightly deploy is paused until 2999-01-01 (variable NIGHTLY_DEPLOY_PAUSE_UNTIL)." });
+    expect(start(env, taipei("09:50"))).toMatchObject({ code: 0, out: timeLine("09:50") });
+  });
+  it("started by hand at 14:00: the window does not stop it (it goes on to GitHub)", () => {
+    const r = start({ ...SCHED, ...HAND }, taipei("14:00"));
+    expect([r.code, r.out]).toEqual([1, NO_TAG]);
+  });
+  it("'only tell me' at 14:00, from the real script: four lines, the last one about the time", () => {
+    const r = start({ ...SCHED, ...HAND, NIGHTLY_DEPLOY_DRY_RUN: "1" }, taipei("14:00"));
+    const lines = r.out.split("\n");
+    expect(r.code).toBe(0);
+    expect(lines.length).toBe(4);
+    expect(lines[3]).toBe("Time now: 14:00 Taiwan time. A scheduled run starting now would NOT be allowed to deploy (window: 03:30 to 05:30 Taiwan time). A run started by hand is not bound by the window.");
+    expect(r.out).not.toContain(KEY);
+  });
+  it("the machine's own clock, untouched: the line is the one the pure rule gives for this very moment", () => {
+    const before = Date.now();
+    const r = start({ ...SCHED, NIGHTLY_DEPLOY_PLANNED: "7 20 * * *" });
+    const after = Date.now();
+    const ok = new Set<string>();
+    for (const ms of [before, after]) ok.add(inDeployWindow(ms) ? NO_TAG : timeLine(taipeiClock(ms), "04:07"));
+    for (let ms = before; ms <= after; ms += 1000) ok.add(inDeployWindow(ms) ? NO_TAG : timeLine(taipeiClock(ms), "04:07"));
+    expect([...ok]).toContain(r.out);
+    expect(r.code).toBe(r.out === NO_TAG ? 1 : 0);
+    expect(r.sum).toBe(r.out);
+    expect(plannedClock("7 20 * * *")).toBe("04:07");
+  });
+  it("no setting can move the clock or switch the window off for a scheduled run", () => {
+    // every name a "test clock" or an "off switch" could plausibly have — none of them is read
+    const tries = { NIGHTLY_DEPLOY_NOW: "2026-11-19T20:05:00Z", NIGHTLY_DEPLOY_TIME: "04:05", NIGHTLY_DEPLOY_WINDOW: "off", NIGHTLY_DEPLOY_IGNORE_WINDOW: "1",
+      NIGHTLY_DEPLOY_FORCE: "1", NIGHTLY_DEPLOY_BY_HAND: "1", NIGHTLY_DEPLOY_DRY_RUN: "0", TZ: "Pacific/Honolulu", NOW: "1795000000000", FAKE_NOW: "1795000000000", INPUT_DRY_RUN: "false" };
+    expect(start({ ...SCHED, ...tries }, taipei("09:50"))).toMatchObject({ code: 0, out: timeLine("09:50") });
+    expect(start({ ...SCHED, ...tries, TZ: "Asia/Tokyo" }, taipei("05:31")).out).toBe(timeLine("05:31"));
+    // the planned time is only ever printed; it cannot move the window either
+    expect(start({ ...SCHED, NIGHTLY_DEPLOY_PLANNED: "50 1 * * *" }, taipei("09:50")).out).toBe(timeLine("09:50", "09:50"));
+    const srcRun = readFileSync("scripts/nightly-deploy/run.mjs", "utf8");
+    const envNames = [...srcRun.matchAll(/\benv\.([A-Z_]+)|\benv\[([A-Z_]+)\]/g)].map((m) => m[1] || m[2]).filter((v, k, a) => a.indexOf(v) === k).sort();
+    expect(envNames).toEqual(["GITHUB_API_URL", "GITHUB_EVENT_NAME", "GITHUB_REF", "GITHUB_REPOSITORY", "GITHUB_STEP_SUMMARY", "GITHUB_TOKEN", "HOOK_SECRET", "NIGHTLY_DEPLOY_DRY_RUN", "NIGHTLY_DEPLOY_PLANNED", "PAUSE_VARIABLE"]);
+    expect(srcRun).not.toMatch(/process\.argv\.slice|process\.argv\[2\]/);     // and no command-line switch
   });
 });
 
@@ -602,6 +931,44 @@ describe("R10 the script's own text: the hook is never near a print", () => {
     for (const l of printed) expect(l, l).not.toMatch(/rawHook|rawUrl|\burl\b|\.json\b|\.text\(|\be\b\.message|\.stack|String\(e\)|\$\{e\}|answer\.body|token/i);
     expect(code).not.toMatch(/catch\s*\(\s*\w+\s*\)\s*\{[^}]*say\([^)]*\b(e|err|error)\b[^)]*\)/);
     expect(code).not.toContain("console.error");
+  });
+  it("the clock: the real one by default, read as the run begins and AGAIN right before the hook — with nothing awaited in between", () => {
+    expect(code.split("now = Date.now").length - 1).toBe(1);                       // the default of runNightlyDeploy
+    expect(code.split("Date.now").length - 1).toBe(1);
+    expect(code).not.toMatch(/\bnow:\s|now,\s*\n\s*\}\);/);                        // the workflow's start passes no clock of its own
+    const mainAt = code.indexOf("async function main()");
+    expect(code.slice(mainAt)).not.toMatch(/\bnow\b/);
+    expect(code.split("now()").length - 1).toBe(2);                                 // the two readings, and no third
+    const first = code.indexOf("const outside = checkWindow(setup);");
+    const setupAt = code.indexOf("const early = checkSetup(setup);");
+    const second = code.indexOf('const closed = checkWindow({ ...setup, nowMs: now() }, "hook");');
+    const call = code.indexOf("const answer = await hook(rawHook, headSha);");
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThan(setupAt);                                            // the time is the FIRST question
+    const dryLine = "if (dryRun) return await tellOnly({ setup, git, github, say });";
+    expect(code.indexOf(dryLine)).toBeGreaterThan(0);
+    expect(code.slice(code.indexOf(dryLine) + dryLine.length, first)).not.toMatch(/\bawait\b|git\.|github\./);   // nothing is asked before the time
+    expect(second).toBeGreaterThan(code.indexOf("const wait = checkCi(facts);"));  // after everything else said "deploy"
+    expect(call).toBeGreaterThan(second);
+    const between = code.slice(second, call);
+    expect(between).not.toMatch(/\bawait\b/);
+    expect(between.split("\n").map((l) => l.trim()).filter(Boolean)).toEqual([
+      'const closed = checkWindow({ ...setup, nowMs: now() }, "hook");',
+      "if (closed) return end(closed);",
+      "say(deployLine(facts));",
+    ]);
+    expect(code.split("await hook(").length - 1).toBe(1);                           // ONE place calls Render
+    expect(code.split("checkWindow(").length - 1).toBe(2);
+  });
+  it("the real decision never uses the rules-without-the-time; only 'only tell me' does", () => {
+    const tellAt = code.indexOf("async function tellOnly(");
+    const tellEnd = code.indexOf("\n}\n", tellAt);
+    expect(code.split("decideApartFromTime(").length - 1).toBe(1);
+    const useAt = code.indexOf("decideApartFromTime(");
+    expect(useAt).toBeGreaterThan(tellAt);
+    expect(useAt).toBeLessThan(tellEnd);
+    expect(code.slice(tellAt, tellEnd)).not.toMatch(/\bhook\(|moveTag/);
+    expect(code.slice(tellAt, tellEnd)).toContain("say(windowLine(setup.nowMs));");
   });
   it("no packages: only Node's own modules and decide.mjs", () => {
     // every kind of import (with or without "from", and import("…")), read by TypeScript's own reader

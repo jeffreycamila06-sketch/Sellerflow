@@ -2,13 +2,18 @@
 //   node scripts/nightly-deploy/run.mjs      (started by .github/workflows/nightly-render-deploy.yml)
 //
 // What it does, in order, stopping at the first answer:
+//   0. time     a run not started by hand: is the real clock inside 03:30–05:30 Asia/Taipei?
+//               (nothing is read from GitHub; outside the window nothing at all is asked)
 //   1. setup    on main? the hook secret set? paused?                (nothing is read from GitHub)
 //   2. change   the tag "render-deployed" (GitHub) + the files that differ from it (git)
 //   3. CI       the CI run of that exact commit (GitHub)
-//   4. deploy   ONE call to the Render Deploy Hook for that exact commit, then the tag is moved.
+//   4. time     the real clock AGAIN, right before the call (the steps above can take minutes)
+//   5. deploy   ONE call to the Render Deploy Hook for that exact commit, then the tag is moved.
 //               It does not wait for Render.
 //
 // HARD RULES
+//   • The time is the runner's real clock (Date.now). No setting, variable or input can move it,
+//     and nothing can switch the window off for a scheduled run.
 //   • The hook address is never printed, never put in an error, and nothing Render answers is read
 //     or printed — only the HTTP status number.
 //   • Every printed line is a fixed sentence from decide.mjs or from this file. An error object is
@@ -20,7 +25,8 @@ import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import {
   DEPLOY_BRANCH, DEPLOYED_TAG, CI_WORKFLOW, HOOK_SECRET, PAUSE_VARIABLE,
-  checkSetup, checkChange, checkCi, decide, deployLine, ciState, hookState, pauseState, taipeiDay, fullSha, sha7, serverFilesIn,
+  checkWindow, checkSetup, checkChange, checkCi, decideApartFromTime, windowLine, deployLine,
+  ciState, hookState, pauseState, taipeiDay, taipeiClock, fullSha, sha7, serverFilesIn,
 } from "./decide.mjs";
 
 export const HOOK_TIMEOUT_MS = 30 * 1000;
@@ -151,7 +157,8 @@ export async function callRenderHook(rawUrl, sha, { fetchImpl = fetch, timeoutMs
 const yes = (v) => ["1", "true", "yes"].includes(String(v ?? "").trim().toLowerCase());
 
 /**
- * deps: env, git (createGit), github (createGithub), hook(rawUrl, sha) → { status, word }, say(line), now()
+ * deps: env, git (createGit), github (createGithub), hook(rawUrl, sha) → { status, word }, say(line),
+ *       now() — the clock; the workflow never passes one, so it is the runner's real clock
  * → { exitCode: 0 | 1, action, code }
  */
 export async function runNightlyDeploy({ env = process.env, git, github, hook = callRenderHook, say = console.log, now = Date.now } = {}) {
@@ -159,14 +166,18 @@ export async function runNightlyDeploy({ env = process.env, git, github, hook = 
   const event = String(env.GITHUB_EVENT_NAME || "");
   const rawHook = env[HOOK_SECRET];
   const pauseRaw = String(env[PAUSE_VARIABLE] ?? "").trim();
+  const startMs = now();                              // the real clock as the run begins
   const setup = {
     // "What would happen" may be asked from any branch; a real run only from the deploy branch.
     onMain: dryRun || env.GITHUB_REF === `refs/heads/${DEPLOY_BRANCH}`,
     // "What would happen" answers for the nightly run, so the pause is looked at too.
     event: dryRun ? "schedule" : event,
     hook: hookState(rawHook),
-    pause: pauseState(pauseRaw, taipeiDay(now())),
+    pause: pauseState(pauseRaw, taipeiClock(startMs) ? taipeiDay(startMs) : ""),
     pauseUntil: pauseRaw,
+    nowMs: startMs,
+    // which schedule line started the run (GitHub's own words; only two numbers of it are ever used)
+    planned: String(env.NIGHTLY_DEPLOY_PLANNED ?? ""),
   };
   const end = (r) => {
     say(r.line);
@@ -175,6 +186,10 @@ export async function runNightlyDeploy({ env = process.env, git, github, hook = 
   let hookCalled = false;
   try {
     if (dryRun) return await tellOnly({ setup, git, github, say });
+
+    // The time rule first: a scheduled run that GitHub started late asks nothing of anyone.
+    const outside = checkWindow(setup);
+    if (outside) return end(outside);
 
     const early = checkSetup(setup);
     if (early) return end(early);
@@ -190,6 +205,10 @@ export async function runNightlyDeploy({ env = process.env, git, github, hook = 
     const wait = checkCi(facts);
     if (wait) return end(wait);
 
+    // The time rule AGAIN, on the real clock: the questions above can take minutes, and a scheduled
+    // run must never reach Render after the window. Nothing is awaited between here and the call.
+    const closed = checkWindow({ ...setup, nowMs: now() }, "hook");
+    if (closed) return end(closed);
     say(deployLine(facts));
     const answer = await hook(rawHook, headSha);
     const status = Number(answer && answer.status) || 0;
@@ -232,8 +251,11 @@ async function tellOnly({ setup, git, github, say }) {
   } catch { read.ci = "GitHub did not answer"; }
   const changed = Array.isArray(facts.changed) ? `${facts.changed.length} changed, ${serverFilesIn(facts.changed).length} of the server` : "not known";
   say(`Facts: ${DEPLOY_BRANCH} is at ${sha7(facts.headSha) || "?"} · last deployed: ${read.tag} · files: ${changed} · CI: ${read.ci} · hook: ${setup.hook} · pause: ${setup.pause}.`);
-  const r = decide(facts);
+  // The three rules without the time (so the facts above are judged at any hour of the day) …
+  const r = decideApartFromTime(facts);
   say(r.action === "deploy" ? `It would deploy. ${r.line}` : `It would not deploy. ${r.line}`);
+  // … and the time in a line of its own: would a scheduled run be allowed to deploy right now?
+  say(windowLine(setup.nowMs));
   return { exitCode: 0, action: "tell", code: r.code };
 }
 
