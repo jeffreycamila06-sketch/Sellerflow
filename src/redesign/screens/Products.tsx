@@ -20,6 +20,7 @@ import ProductWebsiteSheet from "../components/ProductWebsiteSheet";
 import { listProducts, childrenOf, parentCodeHint, type VariantPlan } from "../adapters/productVariants";
 import { loadPhotoQuota, uploadFailText, type PhotoQuota } from "../adapters/photoQuota";
 import { removeWebsitePhotos } from "../adapters/websitePhotos";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 
 const nowMs = () => Date.now(); // module-level (keeps the impure call out of the component's render-purity analysis)
 const STOCK_ADJUST_DEBOUNCE_MS = 600; // coalesce rapid ±taps into ONE atomic write
@@ -105,6 +106,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const [quota, setQuota] = useState<PhotoQuota | null>(null);
   const [quotaTick, setQuotaTick] = useState(0);
   const bumpQuota = () => setQuotaTick((n) => n + 1);
+  const later = useScreenTimers(); // the delayed re-read after a delete; stopped when the screen closes
   const picInput = useRef<HTMLInputElement | null>(null);
   // Full-screen viewer (tap a picture): what to show + the element to give focus back to.
   const [viewer, setViewer] = useState<{ src: string; caption: string; opener: HTMLElement | null } | null>(null);
@@ -252,7 +254,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
       if (productImages) { forgetProductImage(id); dropPath(id); } // its picture goes too (never blocks the delete)
       // …and its website photos (+ their small copies). Existing photos are never deleted otherwise.
       const extra = before.filter((p) => p.id === id || kids.includes(p.id)).flatMap((p) => p.photoPaths || []);
-      if (extra.length) void removeWebsitePhotos(extra).then(bumpQuota); else if (productImages) setTimeout(bumpQuota, 1500);
+      if (extra.length) void removeWebsitePhotos(extra).then(bumpQuota); else if (productImages) later(bumpQuota, 1500);
     });
   };
   const submit = (e: React.FormEvent) => {

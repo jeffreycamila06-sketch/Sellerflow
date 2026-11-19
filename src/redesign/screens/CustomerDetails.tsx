@@ -23,6 +23,7 @@ import { SHIP_DEFAULT_FEE, validStore } from "../adapters/shipping";
 import { priceInput, hasCents } from "../../lib/money";
 import BuyerContactField from "../components/BuyerContactField";
 import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -70,6 +71,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
   const [importErr, setImportErr] = useState("");
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState("");
+  const later = useScreenTimers(); // a toast hides itself after its time; stopped when the screen closes
 
   // Edit + delete modals.
   const [editing, setEditing] = useState<ParcelCustomer | null>(null);
@@ -192,7 +194,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
         : await saveParcelScan(importFields, null, st.allowed ? stLayer : undefined);
       if (!r.ok) { setImportErr(t.rd_cd_import_err); return; }
       setToast(t.rd_cd_imported_toast);
-      setTimeout(() => setToast(""), 2500);
+      later(() => setToast(""), 2500);
       setPrice("");
       setHandle("");
       setNoHandle(false);

@@ -7,6 +7,7 @@
 import { useState, type CSSProperties } from "react";
 import { useT } from "../i18n";
 import { INVITE_URL, copyText } from "./inviteShare";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 
 const megaphone = (
   <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
@@ -19,6 +20,7 @@ export default function InviteFriendsCard({ onOpen }: { onOpen?: () => void } = 
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false); // U5 — honest feedback when copy can't happen
+  const later = useScreenTimers(); // the two notes below hide themselves; stopped when the card is gone
   const message = t.rd_inv_share;
   const full = `${message} ${INVITE_URL}`;
 
@@ -37,13 +39,13 @@ export default function InviteFriendsCard({ onOpen }: { onOpen?: () => void } = 
     if (ok) {
       setCopyFailed(false);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      later(() => setCopied(false), 2000);
     } else {
       // Neither native share nor clipboard worked — tell the seller instead of
       // leaving the tap with zero feedback.
       setCopied(false);
       setCopyFailed(true);
-      window.setTimeout(() => setCopyFailed(false), 3000);
+      later(() => setCopyFailed(false), 3000);
     }
   };
 

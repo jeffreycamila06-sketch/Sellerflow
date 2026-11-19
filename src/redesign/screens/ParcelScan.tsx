@@ -37,6 +37,7 @@ import { normalizeContact, contactError, platformOf, type BuyerContactPlatform }
 import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
 import { useScanQrLookup } from "../adapters/useScanQrLookup";
 import { focusUnlessTyping } from "../adapters/scanQrLookup";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -177,6 +178,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [saveErr, setSaveErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const later = useScreenTimers(); // a toast hides itself after its time; stopped when the screen closes
   // Customer Details overlay — the embedded phonebook (reuses <CustomerDetails/>).
   const [custOpen, setCustOpen] = useState(false);
 
@@ -684,7 +686,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       createdAt: new Date().toISOString(),
     }, ...prev]);
     setToast(t.rd_ps2_saved_toast);
-    setTimeout(() => setToast(""), 2500);
+    later(() => setToast(""), 2500);
     // Only when we got a real DB id back can the async verdict be persisted +
     // matched to the row; skip the check on the local-id fallback.
     if (r.id) runStoreCheck(r.id, storeId);
@@ -1111,7 +1113,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       } : x)));
     }
     setEditing(null); clearForm();
-    setToast(t.rd_ps2_saved_toast); setTimeout(() => setToast(""), 2500);
+    setToast(t.rd_ps2_saved_toast); later(() => setToast(""), 2500);
     // Re-run the E-Map check ONLY when the store code changed (reuse runStoreCheck).
     if (storeChanged && /^\d{6}$/.test(newStore) && !id.startsWith("local-")) runStoreCheck(id, newStore);
   };
@@ -1161,12 +1163,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         F({ notes: handle.slice(0, 50) }); // handle only (never a raw URL / random QR)
         setNoHandle(false);                // text present → "no handle" can't be true (rule 4)
         if (contactOn) setPlatform("tiktok"); // a sticker QR is always the buyer's TikTok
-        setToast(t.rd_ps2_qr_filled); setTimeout(() => setToast(""), 2500);
+        setToast(t.rd_ps2_qr_filled); later(() => setToast(""), 2500);
         if (lookupOn && !editing) lookup.scanned(handle.slice(0, 50)); // then look this username up in Customers
       } else {
-        setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); // field left as-is
+        setToast(t.rd_ps2_qr_none); later(() => setToast(""), 2500); // field left as-is
       }
-    } catch { setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); }
+    } catch { setToast(t.rd_ps2_qr_none); later(() => setToast(""), 2500); }
     finally { setQrBusy(false); }
   };
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
