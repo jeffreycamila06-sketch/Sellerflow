@@ -100,12 +100,13 @@ export default function GeneralSettings({
   // across OFF). onSetSamePriceEnabled(on, draft): ON comes only from the modal's
   // "Turn on" (commits the typed price; blocked when no price > 0).
   samePriceEnabled?: boolean; samePrice?: number | null;
-  onSetSamePriceEnabled?: (on: boolean, draft?: unknown) => void; samePriceError?: number;
+  // (the handler may answer false = "not saved": then the other switch is left alone)
+  onSetSamePriceEnabled?: (on: boolean, draft?: unknown) => void | boolean | Promise<boolean | void>; samePriceError?: number;
   // "Choose price before print" — ON/OFF + up to 6 saved prices (first = default). RedesignApp
   // owns useChoosePrice. No handler → no row. Only one of this and Same price is ON: turning one
   // on here turns the other off (both keep their saved values) and shows a one-line note.
   choosePriceEnabled?: boolean; choosePrices?: number[];
-  onSetChoosePriceEnabled?: (on: boolean, prices?: number[]) => void;
+  onSetChoosePriceEnabled?: (on: boolean, prices?: number[]) => void | boolean | Promise<boolean | void>;
   onSetChoosePrices?: (prices: number[]) => void; choosePriceError?: number;
   // Live-session toggles turned OFF show a bottom toast (RedesignApp's global toast).
   onToast?: (msg: string) => void;
@@ -138,6 +139,9 @@ export default function GeneralSettings({
   const [cppDraft, setCppDraft] = useState("");
   const cppDraftValid = normalizeChoicePrice(cppDraft) != null;
   const cppNeedsPrice = choosePrices.length === 0;
+  // If both ever read ON (two devices), Same price wins — here as on the Live screen: this
+  // switch shows OFF (turning it on then turns Same price off, as usual).
+  const cppOn = choosePriceEnabled && !samePriceEnabled;
   const [cppAdd, setCppAdd] = useState("");
   const [cppAddErr, setCppAddErr] = useState<Exclude<AddPriceResult, { ok: true }>["reason"] | null>(null);
   const [exclNote, setExclNote] = useState<string | null>(null); // "… was turned off" (one line)
@@ -164,18 +168,28 @@ export default function GeneralSettings({
   // modalOpen so a second tap during the fade-out can't flip it back off.
   const turnOn = () => {
     if (!modalOpen || !modalKey) return;
+    // Only one of Same price / Choose price is ON. The OTHER one is turned off — and the note is
+    // shown — only AFTER this one was really saved (a failed save changes nothing else).
     if (modalKey === "sp") {
       if (!spValid) return;
-      onSetSamePriceEnabled?.(true, spDraft);
-      // Only one can be ON: Same price on → Choose price off (its prices stay saved).
-      if (choosePriceEnabled && onSetChoosePriceEnabled) { onSetChoosePriceEnabled(false); setExclNote(t.rd_cpp_note_cpp_off); } else setExclNote(null);
+      const otherOn = choosePriceEnabled;
+      setExclNote(null);
+      void Promise.resolve(onSetSamePriceEnabled?.(true, spDraft)).then((ok) => {
+        if (ok === false || !otherOn || !onSetChoosePriceEnabled) return;
+        void onSetChoosePriceEnabled(false);          // its prices stay saved
+        setExclNote(t.rd_cpp_note_cpp_off);
+      });
     }
     else if (modalKey === "cpp") {
       const first = normalizeChoicePrice(cppDraft);
       if (cppNeedsPrice && first == null) return; // an empty list needs a price first
-      onSetChoosePriceEnabled?.(true, cppNeedsPrice && first != null ? [first] : choosePrices);
-      // Choose price on → Same price off (its price stays remembered).
-      if (samePriceEnabled && onSetSamePriceEnabled) { onSetSamePriceEnabled(false); setExclNote(t.rd_cpp_note_sp_off); } else setExclNote(null);
+      const otherOn = samePriceEnabled;
+      setExclNote(null);
+      void Promise.resolve(onSetChoosePriceEnabled?.(true, cppNeedsPrice && first != null ? [first] : choosePrices)).then((ok) => {
+        if (ok === false || !otherOn || !onSetSamePriceEnabled) return;
+        void onSetSamePriceEnabled(false);            // its price stays remembered
+        setExclNote(t.rd_cpp_note_sp_off);
+      });
     }
     else if (modalKey === "awake") onToggleKeepAwake?.();
     else if (modalKey === "pin") onTogglePinPrint?.();
@@ -393,7 +407,7 @@ export default function GeneralSettings({
         <div>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_live_session}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-            <button type="button" onClick={toggleLiveOpen} data-testid="ls-header" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+            <button type="button" onClick={() => { setExclNote(null); toggleLiveOpen(); }} data-testid="ls-header" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg></div>
               <div style={{ flex: 1, minWidth: 0 }}><div style={rowTitle}>{t.rd_set_ls_title}</div><div style={{ ...rowSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lsSummary}</div></div>
               <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: liveOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0, display: "inline-block" }}>▾</span>
@@ -440,25 +454,27 @@ export default function GeneralSettings({
             {onSetChoosePriceEnabled && (
               <div style={lsRow} data-testid="cpp-row">
                 <span style={lsLabel}>{t.rd_cpp_row_title}</span>
-                <LsToggle on={choosePriceEnabled} title={t.rd_cpp_row_title} testId="cpp-toggle" onClick={() => lsToggle("cpp", choosePriceEnabled)} />
+                <LsToggle on={cppOn} title={t.rd_cpp_row_title} testId="cpp-toggle" onClick={() => lsToggle("cpp", cppOn)} />
               </div>
             )}
-            {onSetChoosePriceEnabled && choosePriceEnabled && (
+            {onSetChoosePriceEnabled && cppOn && (
               <div data-testid="cpp-area" style={{ padding: "12px 14px 14px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 10 }}>{t.rd_cpp_list_hint}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                {/* ☆ and × are 44×44 tap targets with a gap between them (one chip per row on phones). */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8, marginBottom: 10 }}>
                   {choosePrices.map((p, i) => {
                     const label = `${cur}${fmtMoney(p)}`;
+                    const iconBtn: CSSProperties = { width: 44, height: 44, flexShrink: 0, border: 0, borderRadius: 10, background: "transparent", color: "var(--text-muted)", fontSize: 20, cursor: "pointer", touchAction: "manipulation" };
                     return (
-                      <div key={p} data-testid={`cpp-chip-${i}`} style={{ display: "flex", alignItems: "center", gap: 2, minHeight: 44, borderRadius: 12, padding: "0 4px 0 12px", border: i === 0 ? "2px solid var(--accent)" : "1.5px solid var(--border-strong)", background: "var(--surface)" }}>
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{label}</span>
+                      <div key={p} data-testid={`cpp-chip-${i}`} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 48, minWidth: 0, boxSizing: "border-box", borderRadius: 12, padding: "0 2px 0 12px", border: i === 0 ? "2px solid var(--accent)" : "1.5px solid var(--border-strong)", background: "var(--surface)" }}>
+                        <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--font-mono)", fontSize: [...label].length > 9 ? 13 : 15, fontWeight: 800, color: "var(--text)", whiteSpace: "nowrap" }}>{label}</span>
                         {i === 0
-                          ? <span data-testid="cpp-default-badge" style={{ marginLeft: 6, marginRight: 6, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", borderRadius: 999, padding: "2px 7px" }}>{t.rd_cpp_default}</span>
+                          ? <span data-testid="cpp-default-badge" style={{ flexShrink: 0, marginRight: choosePrices.length > 1 ? 0 : 10, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", borderRadius: 999, padding: "2px 7px" }}>{t.rd_cpp_default}</span>
                           : <button type="button" onClick={() => onSetChoosePrices?.(makeDefaultPrice(choosePrices, p))} aria-label={tpl(t.rd_cpp_make_default, { price: label })} title={tpl(t.rd_cpp_make_default, { price: label })} data-testid={`cpp-make-default-${i}`}
-                              style={{ width: 36, height: 40, border: 0, background: "transparent", color: "var(--text-muted)", fontSize: 17, cursor: "pointer" }}>☆</button>}
+                              style={iconBtn}>☆</button>}
                         {choosePrices.length > 1 && (
                           <button type="button" onClick={() => onSetChoosePrices?.(removeChoicePrice(choosePrices, p))} aria-label={tpl(t.rd_cpp_remove, { price: label })} title={tpl(t.rd_cpp_remove, { price: label })} data-testid={`cpp-remove-${i}`}
-                            style={{ width: 36, height: 40, border: 0, background: "transparent", color: "var(--text-muted)", fontSize: 18, cursor: "pointer" }}>×</button>
+                            style={iconBtn}>×</button>
                         )}
                       </div>
                     );

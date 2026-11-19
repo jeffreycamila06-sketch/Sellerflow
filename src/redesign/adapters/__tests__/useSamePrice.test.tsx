@@ -105,4 +105,20 @@ describe("useSamePrice — toggle + remembered price", () => {
     expect(result.current.price).toBe(88);      // reverted
     expect(result.current.saveErrors).toBe(1);
   });
+
+  // Choose price before print (sql/180): Settings turns the OTHER switch off only after a kept change.
+  it("setEnabled answers true when the change was kept, false when refused or when the save failed", async () => {
+    const { result } = renderHook(() => useSamePrice());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.setEnabled(true); });          // no price → refused
+    expect(ok).toBe(false);
+    await act(async () => { ok = await result.current.setEnabled(true, "39"); });
+    expect(ok).toBe(true);
+    upsert.mockResolvedValue({ error: { message: "offline" } });
+    await act(async () => { ok = await result.current.setEnabled(false); });
+    expect(ok).toBe(false);
+    expect(result.current.enabled).toBe(true);                                       // went back
+    expect(result.current.price).toBe(39);
+  });
 });

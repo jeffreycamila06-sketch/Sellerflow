@@ -17,7 +17,9 @@ const account: AccountUser = {
 const noop = () => {};
 const spy = { sp: vi.fn(), cpOn: vi.fn(), cpPrices: vi.fn(), toast: vi.fn() };
 
-function App(init: { sp?: boolean; spPrice?: number | null; cp?: boolean; prices?: number[]; withCpp?: boolean } = {}) {
+// cpFails / spFails: the save of that switch fails (the handler answers false and nothing changes).
+function App(init: { sp?: boolean; spPrice?: number | null; cp?: boolean; prices?: number[]; withCpp?: boolean; cpFails?: boolean; spFails?: boolean } = {}) {
+  const [open, setOpen] = useState(true);
   const [sp, setSp] = useState(!!init.sp);
   const [spPrice, setSpPrice] = useState<number | null>(init.spPrice ?? null);
   const [cp, setCp] = useState(!!init.cp);
@@ -29,15 +31,15 @@ function App(init: { sp?: boolean; spPrice?: number | null; cp?: boolean; prices
         theme="light" accent="indigo" onSetTheme={noop} onSetAccent={noop}
         auto={auto} cur="₱" lang="en" onSetLang={noop} currency="PHP" onSetCurrency={noop}
         profileOpen={false} onToggleProfile={noop} keepAwake onToggleKeepAwake={noop} pinPrint={false} onTogglePinPrint={noop}
-        liveSessionOpen onToggleLiveSession={noop}
+        liveSessionOpen={open} onToggleLiveSession={() => setOpen((o) => !o)}
         printerIdx={0} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={noop}
         onSubscription={noop} onSupport={noop} onDelete={noop}
         account={account} onSaveProfile={vi.fn().mockResolvedValue({ ok: true })} onManageChannel={noop}
         samePriceEnabled={sp} samePrice={spPrice}
-        onSetSamePriceEnabled={(on, draft) => { spy.sp(on, draft); setSp(on); if (draft !== undefined) setSpPrice(Number(draft)); }}
+        onSetSamePriceEnabled={async (on, draft) => { spy.sp(on, draft); if (init.spFails && on) return false; setSp(on); if (draft !== undefined) setSpPrice(Number(draft)); return true; }}
         {...(init.withCpp === false ? {} : {
           choosePriceEnabled: cp, choosePrices: prices,
-          onSetChoosePriceEnabled: (on: boolean, p?: number[]) => { spy.cpOn(on, p); setCp(on); if (p) setPrices(p); },
+          onSetChoosePriceEnabled: async (on: boolean, p?: number[]) => { spy.cpOn(on, p); if (init.cpFails && on) return false; setCp(on); if (p) setPrices(p); return true; },
           onSetChoosePrices: (p: number[]) => { spy.cpPrices(p); setPrices(p); },
         })}
         onToast={spy.toast}
@@ -45,7 +47,7 @@ function App(init: { sp?: boolean; spPrice?: number | null; cp?: boolean; prices
     </TProvider>
   );
 }
-const turnOn = () => act(async () => { fireEvent.click(screen.getByTestId("lsm-turn-on")); await Promise.resolve(); });
+const turnOn = () => act(async () => { fireEvent.click(screen.getByTestId("lsm-turn-on")); for (let i = 0; i < 6; i++) await Promise.resolve(); });
 
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
 
@@ -131,6 +133,62 @@ describe("Choose price before print — Settings row", () => {
     expect(spy.cpPrices).not.toHaveBeenCalled();
     expect(screen.getByTestId("ls-excl-note").textContent).toBe(t.rd_cpp_note_cpp_off);
     expect(screen.queryByTestId("cpp-area")).toBeNull();
+  });
+
+  it("Choose price save FAILS → Same price stays ON with its price; no note", async () => {
+    render(<App sp spPrice={39} prices={[59]} cpFails />);
+    fireEvent.click(screen.getByTestId("cpp-toggle"));
+    await turnOn();
+    expect(spy.cpOn).toHaveBeenLastCalledWith(true, [59]);
+    expect(spy.sp).not.toHaveBeenCalled();                             // never turned off
+    expect(screen.getByTestId("samePrice-toggle").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("samePrice-val").textContent).toBe("₱39");
+    expect(screen.queryByTestId("ls-excl-note")).toBeNull();
+    expect(screen.getByTestId("cpp-toggle").getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("Same price save FAILS → Choose price stays ON with its prices; no note", async () => {
+    render(<App cp prices={[59, 79]} spPrice={39} spFails />);
+    fireEvent.click(screen.getByTestId("samePrice-toggle"));
+    await turnOn();
+    expect(spy.sp).toHaveBeenLastCalledWith(true, "39");
+    expect(spy.cpOn).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cpp-toggle").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("cpp-area")).toBeTruthy();
+    expect(screen.queryByTestId("ls-excl-note")).toBeNull();
+  });
+
+  it("the note is cleared when the seller leaves the section (closes Live setup)", async () => {
+    render(<App sp spPrice={39} prices={[59]} />);
+    fireEvent.click(screen.getByTestId("cpp-toggle"));
+    await turnOn();
+    expect(screen.getByTestId("ls-excl-note")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("ls-header"));                   // close
+    fireEvent.click(screen.getByTestId("ls-header"));                   // open again
+    expect(screen.getByTestId("cpp-row")).toBeTruthy();
+    expect(screen.queryByTestId("ls-excl-note")).toBeNull();
+  });
+
+  it("both read ON (two devices) → Same price wins here too: Choose price shows OFF, no list", async () => {
+    render(<App sp spPrice={39} cp prices={[59, 79]} />);
+    expect(screen.getByTestId("samePrice-toggle").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("cpp-toggle").getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByTestId("cpp-area")).toBeNull();
+    fireEvent.click(screen.getByTestId("cpp-toggle"));                 // shown OFF → turning it on works as usual
+    await turnOn();
+    expect(spy.cpOn).toHaveBeenLastCalledWith(true, [59, 79]);
+    expect(spy.sp).toHaveBeenLastCalledWith(false, undefined);
+    expect(screen.getByTestId("cpp-toggle").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("☆ and × are at least 44×44 with a gap between them", () => {
+    render(<App cp prices={[39, 59]} />);
+    for (const id of ["cpp-make-default-1", "cpp-remove-1", "cpp-remove-0"]) {
+      const b = screen.getByTestId(id) as HTMLElement;
+      expect(parseInt(b.style.width)).toBeGreaterThanOrEqual(44);
+      expect(parseInt(b.style.height)).toBeGreaterThanOrEqual(44);
+    }
+    expect(parseInt((screen.getByTestId("cpp-chip-1") as HTMLElement).style.gap)).toBeGreaterThanOrEqual(4);
   });
 
   it("no note when the other one was already OFF", async () => {

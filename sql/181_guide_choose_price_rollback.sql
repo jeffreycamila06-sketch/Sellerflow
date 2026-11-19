@@ -1,5 +1,5 @@
--- Rollback of sql/181: the three changed rows back to their text on main before this branch
--- (docs/support/sfl-guide.md at origin/main c4210b42 — NOT read from the live table), and the new row removed.
+-- Rollback of sql/181: the four changed rows back to their text on main (docs/support/sfl-guide.md at
+-- origin/main 5743f062 — taken from the file, NOT read from the live table), and the new row removed.
 begin;
 insert into public.support_guide (id, title, checked, keywords, body) values
   ('general-settings', 'General Settings', '2026-11-11'::date, 'general settings, profile, shop name, phone, live setup, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料', '**Settings → General Settings** has these parts:
@@ -24,7 +24,10 @@ Tags like **NEW** or **CHECK** warn you about risky buyers.'),
 
 1. Turn it on, type the price, and tap **Turn on**.
 2. While it is on, every **1-Click** and **Auto** order prints this price, whatever the buyer types. In **Type price**, the price is filled in for you but you can still change it.
-3. Turn it off with the switch in Settings, or tap **×** on the "All items …" chip on the Live screen. The app remembers the price for next time.')
+3. Turn it off with the switch in Settings, or tap **×** on the "All items …" chip on the Live screen. The app remembers the price for next time.'),
+  ('auto-print-pinned', 'Auto-print pinned comments', '2026-11-11'::date, 'pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtomatikong print, 置顶, 置頂留言, 自动打印', '**Settings → General Settings → LIVE SETUP → Auto-print pinned comments** (TikTok).
+
+Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.')
 on conflict (id) do update set
   title = excluded.title, checked = excluded.checked, keywords = excluded.keywords,
   body = excluded.body, updated_at = now()

@@ -5636,3 +5636,32 @@ Server only: `server/telegramAlert.js` (+ its test, one line in `docs/ops/nightl
 - Tests: `telegramAlert.server.test.ts` T12 — a scripted fake Telegram on `vi.useFakeTimers()` moved by hand
   (`scripted` / `begin` / `move`). ⚠️ In that suite an answer needs the clock moved (`await move(1)`), even an instant one.
 
+
+## 2026-11-19 — CHOOSE PRICE BEFORE PRINT (branch `claude/choose-price-popup`, NOT merged; sql/180 + sql/181 NOT applied; no Render)
+Web only. New Live setup switch under Same price, default OFF for everyone. OFF = main, byte for byte (1-Click / pin
+create the order at once). ON = a price pop-up before each 1-Click and each auto-printed pinned comment.
+- **Saved like Same price:** table `seller_price_choices` (sql/180: enabled + up to 6 prices, first = default; database
+  checks, own row only, signed-in sellers only). `adapters/useChoosePrice.ts(userId)` — one read per signed-in user, one
+  upsert per change, and the last known setting per user in localStorage (`sfl_rd_choose_price:<uid>`) as the FIRST
+  state, so an ON seller has the pop-up from the first tap. Nothing ever waits for the read (no copy = OFF at once).
+  Before sql/180 is applied: the switch reads OFF and a save says "Couldn't save".
+- **Only one of Same price / Choose price is ON.** Settings turns the OTHER one off — and shows the one-line note — only
+  after the save of the first really succeeded (`setEnabled` of both hooks answers true / false). Both read ON (two
+  devices) → Same price wins on the Live screen AND in Settings (Choose price shows OFF).
+- **Queue (`adapters/priceChoiceQueue.ts`, state in RedesignApp):** one pop-up at a time, arrival order, same comment
+  never twice (key or msgId). Each item carries the FULL comment (`source`) — the order is made from it, the feed is
+  never re-read. Cleared with ONE toast ("N waiting comments were cleared") when the session / day key changes, the
+  switch goes off or Same price comes on.
+- **Never lose a buyer:** `commitOneClick` / `commitPin` answer `"ordered" | "duplicate" | "blocked"`. An item leaves
+  the queue only on ordered / duplicate. Orders paused (board loading, `canOrder` false) or createOrder null for another
+  reason → "blocked": the sheet stays open with the existing "Session still loading…" text and the double-tap guard is
+  released. Over the free order limit → no pop-up at all (today's limit pop-up).
+- **Pop-up (`components/ChoosePriceSheet.tsx`):** ignores every tap for 400 ms after it appears (`TAP_GUARD_MS` — it is
+  mounted fresh per comment, a second fast tap must not hit the next one). "Type price" = a field + Print + Back INSIDE
+  the sheet (same number rules as the per-comment Type price, which is unchanged). A code that went sold out while
+  waiting is asked inside the sheet (no window.confirm). Focus on the sheet, Tab trapped, page behind not scrollable,
+  lifted above the iPhone keyboard (visualViewport — ⚠️ not checked on a real phone).
+- Auto mode, the per-comment Type price, Orders, Sales, the printing engine and the sticker pattern: not touched.
+- Proof: `choosePrice.app.test.tsx` (real RedesignApp), `ChoosePriceSheet.test.tsx`, `useChoosePrice.test.tsx`,
+  `GeneralSettings.choosePrice.test.tsx`, `scripts/sql180-behaviour.mjs` (PGlite, 26 checks). Pictures: `docs/design/choose-price/`.
+- **Order:** apply sql/180 → merge (Vercel) → apply sql/181 (guide, 5 rows).

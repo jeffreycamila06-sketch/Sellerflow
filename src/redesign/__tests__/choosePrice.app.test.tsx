@@ -1,10 +1,11 @@
 // "Choose price before print" — the real RedesignApp with the real 1-Click button, the real pin
 // handler and the real Auto mode handler. Boundaries mocked: auth, the live feed (comments +
 // the captured onComment / onPinned), createOrder (spy), the live session, the two price settings.
-import { describe, it, expect, vi, beforeEach, beforeAll, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from "vitest";
 import { render, act, screen, fireEvent, within } from "@testing-library/react";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
 import { buildT } from "../i18n";
+import { TAP_GUARD_MS } from "../adapters/priceChoiceQueue";
 
 beforeAll(() => { (HTMLElement.prototype as unknown as { scrollTo: () => void }).scrollTo = () => {}; });
 
@@ -17,6 +18,10 @@ const H = vi.hoisted(() => ({
   cp: { enabled: false, prices: [] as number[] },
   sp: { enabled: false, price: null as number | null },
   dayId: { v: "2026-11-19" },
+  canOrder: { v: true },                    // orders paused (board loading / reloading) when false
+  state: { v: "empty" as "empty" | "loading" | "live" },
+  capped: { v: false },                     // over the free order limit
+  stock: { v: 5 },
 }));
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 
@@ -54,8 +59,8 @@ vi.mock("../adapters/useOrders", async (orig) => ({
 vi.mock("../adapters/useLiveSession", async (orig) => ({
   ...(await orig() as object),
   useLiveSession: () => ({
-    session: { buyers: [], orders: [] }, state: "empty", loadError: false, dayId: H.dayId.v,
-    getBuyers: () => [], applyOrder: () => {}, reset: () => {}, orderedMsgIds: new Map(), orderedLoaded: true, addOrderedMsgId: () => {}, canOrder: () => true,
+    session: { buyers: [], orders: [] }, state: H.state.v, loadError: false, dayId: H.dayId.v,
+    getBuyers: () => [], applyOrder: () => {}, reset: () => {}, orderedMsgIds: new Map(), orderedLoaded: true, addOrderedMsgId: () => {}, canOrder: () => H.canOrder.v,
   }),
 }));
 vi.mock("../adapters/useChoosePrice", async (orig) => ({
@@ -68,8 +73,12 @@ vi.mock("../adapters/useSamePrice", async (orig) => ({
 }));
 vi.mock("../adapters/productsDb", async (orig) => ({
   ...(await orig() as object),
-  resolveInitialProducts: vi.fn(async () => ({ products: [{ id: 14, name: "Brief", sku: "BR", price: 52, stock: 5, platform: "TikTok", status: "Active", liveCode: "D" }], source: "local" })),
+  resolveInitialProducts: vi.fn(async () => ({ products: [{ id: 14, name: "Brief", sku: "BR", price: 52, stock: H.stock.v, platform: "TikTok", status: "Active", liveCode: "D" }], source: "local" })),
 }));
+vi.mock("../adapters/useFreeCap", async (orig) => {
+  const a = await orig() as { useFreeCap: (...x: unknown[]) => object };
+  return { ...a, useFreeCap: (...x: unknown[]) => ({ ...a.useFreeCap(...x), freeCapped: H.capped.v }) };
+});
 
 import RedesignApp from "../RedesignApp";
 
@@ -97,8 +106,15 @@ const tapOneClick = (name: string) => {
   fireEvent.click(within(el!).getAllByText(t.rd_dash_1click)[0].closest("button")!);
 };
 const sendPin = (p: unknown) => act(() => { H.onPinned.fn?.(p); });
+// The pop-up ignores taps right after it appears (tap-through guard) — move the clock past that.
+const settle = () => act(() => { vi.setSystemTime(Date.now() + TAP_GUARD_MS + 50); });
+const tap = async (testId: string) => { fireEvent.click(screen.getByTestId(testId)); await flush(); };
 
+afterEach(() => { vi.useRealTimers(); });
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-19T13:41:30Z"));
+  H.canOrder.v = true; H.state.v = "empty"; H.capped.v = false; H.stock.v = 5;
   localStorage.clear();
   H.feed.length = 0;
   H.cp.enabled = false; H.cp.prices = [];
@@ -148,12 +164,13 @@ describe("switch ON with prices", () => {
     expect(within(sheet).getByTestId("cpp-price-0").getAttribute("data-default")).toBe("1");
     expect(within(sheet).getByTestId("cpp-price-1").getAttribute("data-default")).toBeNull();
     expect(screen.queryByTestId("cpp-waiting")).toBeNull();
-    fireEvent.click(within(sheet).getByTestId("cpp-price-1"));
-    await flush();
+    settle();
+    await tap("cpp-price-1");
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
     const [c, price] = H.createOrder.fn!.mock.calls[0];
     expect(price).toBe(59);                                   // the chosen price is on the order (and so on the sticker)
     expect((c as ProdComment).comment).toBe("pink dress");    // the same comment object 1-Click uses
+    expect(c).toBe(H.feed[0]);
     expect(screen.queryByTestId("cpp-sheet")).toBeNull();
   });
 
@@ -162,9 +179,8 @@ describe("switch ON with prices", () => {
     await sendPin(pin(1));
     expect(H.createOrder.fn).not.toHaveBeenCalled();
     expect(screen.getByTestId("cpp-comment").textContent).toBe("pinned one");
-    expect(screen.queryByTestId("cpp-type")).toBeNull();      // not in the feed → nothing to type into
-    fireEvent.click(screen.getByTestId("cpp-price-0"));
-    await flush();
+    settle();
+    await tap("cpp-price-0");
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
     const [c, price] = H.createOrder.fn!.mock.calls[0];
     expect(price).toBe(39);
@@ -175,28 +191,50 @@ describe("switch ON with prices", () => {
     H.feed.push(comment(1));
     await mount();
     tapOneClick("Buyer 1");
-    fireEvent.click(screen.getByTestId("cpp-skip"));
-    await flush();
+    settle();
+    await tap("cpp-skip");
     expect(H.createOrder.fn).not.toHaveBeenCalled();
     expect(screen.queryByTestId("cpp-sheet")).toBeNull();
   });
 
-  it("Type price → the existing Type price field of that row opens; no order yet", async () => {
+  it("Type price INSIDE the pop-up: field + Print → the order is made at the typed price (1-Click)", async () => {
     H.feed.push(comment(1));
     await mount();
     tapOneClick("Buyer 1");
-    fireEvent.click(screen.getByTestId("cpp-type"));
-    await flush();
+    settle();
+    await tap("cpp-type");
+    expect(screen.getByTestId("cpp-sheet")).toBeTruthy();    // still the pop-up — no jump to the row
+    expect(screen.queryByText(t.rd_dash_type_price)).toBeNull(); // the row's own Type price field did NOT open
+    fireEvent.change(screen.getByTestId("cpp-type-input"), { target: { value: "129" } });
+    await tap("cpp-type-print");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect(H.createOrder.fn!.mock.calls[0][1]).toBe(129);
+    expect(H.createOrder.fn!.mock.calls[0][0]).toBe(H.feed[0]);
     expect(screen.queryByTestId("cpp-sheet")).toBeNull();
-    expect(screen.getByText(t.rd_dash_type_price)).toBeTruthy();
-    expect(H.createOrder.fn).not.toHaveBeenCalled();
   });
 
-  it("a pin whose comment is in the feed offers Type price", async () => {
-    H.feed.push({ ...comment(7, "pinned one"), ...({ msgId: "p1" } as object) });
+  it("Type price is always there for a pin too (even when the pinned comment is not in the feed)", async () => {
     await mount();
     await sendPin(pin(1));
-    expect(screen.getByTestId("cpp-type")).toBeTruthy();
+    settle();
+    await tap("cpp-type");
+    fireEvent.change(screen.getByTestId("cpp-type-input"), { target: { value: "75" } });
+    await tap("cpp-type-print");
+    const [c, price] = H.createOrder.fn!.mock.calls[0];
+    expect(price).toBe(75);
+    expect((c as ProdComment & { msgId: string }).msgId).toBe("p1");
+  });
+
+  it("the per-comment Type price button on the Live screen still opens its own field", async () => {
+    H.feed.push(comment(1));
+    await mount();
+    const nameEl = screen.getAllByText("Buyer 1")[0];
+    let el: HTMLElement | null = nameEl;
+    while (el && !within(el).queryAllByText(t.rd_dash_enterprise).length) el = el.parentElement;
+    fireEvent.click(within(el!).getAllByText(t.rd_dash_enterprise)[0].closest("button")!);
+    await flush();
+    expect(screen.getByText(t.rd_dash_type_price)).toBeTruthy();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
   });
 
   it("queue: one pop-up at a time, arrival order, \"N more waiting after this\"", async () => {
@@ -208,18 +246,36 @@ describe("switch ON with prices", () => {
     expect(screen.getAllByTestId("cpp-sheet")).toHaveLength(1);
     expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 1");
     expect(screen.getByTestId("cpp-waiting").textContent).toBe("2 more waiting after this");
-    fireEvent.click(screen.getByTestId("cpp-price-0"));
-    await flush();
+    settle();
+    await tap("cpp-price-0");
     expect(screen.getByTestId("cpp-name").textContent).toContain("Pin Buyer 3");
     expect(screen.getByTestId("cpp-waiting").textContent).toBe("1 more waiting after this");
-    fireEvent.click(screen.getByTestId("cpp-skip"));
-    await flush();
+    settle();
+    await tap("cpp-skip");
     expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2");
     expect(screen.queryByTestId("cpp-waiting")).toBeNull();
-    fireEvent.click(screen.getByTestId("cpp-price-2"));
-    await flush();
+    settle();
+    await tap("cpp-price-2");
     expect(screen.queryByTestId("cpp-sheet")).toBeNull();
     expect(H.createOrder.fn!.mock.calls.map((x) => [(x[0] as ProdComment).name, x[1]])).toEqual([["Buyer 1", 39], ["Buyer 2", 99]]);
+  });
+
+  it("TAP-THROUGH: two waiting comments + two fast taps on the same spot → ONE order (the 2nd tap does not hit the next comment)", async () => {
+    H.feed.push(comment(1), comment(2));
+    await mount();
+    tapOneClick("Buyer 1");
+    tapOneClick("Buyer 2");
+    settle();
+    await tap("cpp-price-0");                                // order for Buyer 1 → the next comment's sheet appears
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2");
+    await tap("cpp-price-0");                                // the same spot, at once
+    await tap("cpp-skip");                                   // Skip is guarded the same way
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect((H.createOrder.fn!.mock.calls[0][0] as ProdComment).name).toBe("Buyer 1");
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2"); // still waiting for the seller
+    settle();
+    await tap("cpp-price-0");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
   });
 
   it("the queue survives re-renders", async () => {
@@ -247,23 +303,11 @@ describe("switch ON with prices", () => {
     H.feed.push(comment(1));
     await mount();
     tapOneClick("Buyer 1");
+    settle();
     const btn = screen.getByTestId("cpp-price-0");
     act(() => { fireEvent.click(btn); fireEvent.click(btn); });
     await flush();
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
-  });
-
-  it("a new live session clears the queue", async () => {
-    H.feed.push(comment(1));
-    const app = await mount();
-    tapOneClick("Buyer 1");
-    expect(screen.getByTestId("cpp-sheet")).toBeTruthy();
-    H.dayId.v = "2026-11-20";                               // the session changed
-    await app.rerender();
-    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
-    H.dayId.v = "2026-11-19";                               // and the old items never come back
-    await app.rerender();
-    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
   });
 
   it("Auto mode orders keep their own code price, no pop-up", async () => {
@@ -283,5 +327,177 @@ describe("switch ON with prices", () => {
     tapOneClick("Buyer 1");
     expect(screen.queryByTestId("cpp-sheet")).toBeNull();
     expect(H.createOrder.fn!.mock.calls[0][1]).toBe(120);
+  });
+
+  it("over the free order limit → today's path (no price question)", async () => {
+    H.capped.v = true;
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    await sendPin(pin(2));
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);       // the order hub itself shows the limit pop-up
+    expect(H.createOrder.fn!.mock.calls.map((x) => x[1])).toEqual([0, 0]);
+  });
+});
+
+describe("never lose a buyer on a price tap", () => {
+  beforeEach(() => { H.cp.enabled = true; H.cp.prices = [39, 59, 99]; });
+
+  it("the order could not be made (createOrder → null) → the sheet stays with the message, the comment still waits; the next tap makes the order", async () => {
+    H.feed.push(comment(1), comment(2));
+    await mount();
+    tapOneClick("Buyer 1");
+    tapOneClick("Buyer 2");
+    settle();
+    const real = H.createOrder.fn!;
+    H.createOrder.fn = vi.fn(() => null);
+    await tap("cpp-price-1");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 1");           // same comment, still open
+    expect(screen.getByTestId("cpp-blocked").textContent).toBe(t.rd_sess_order_blocked);
+    expect(screen.getByTestId("cpp-waiting").textContent).toBe("1 more waiting after this"); // nobody left the queue
+    H.createOrder.fn = real;                                                              // orders work again
+    await tap("cpp-price-1");                                                             // the guard was released → tap again
+    expect(real).toHaveBeenCalledTimes(1);
+    expect((real.mock.calls[0][0] as ProdComment).name).toBe("Buyer 1");
+    expect(real.mock.calls[0][1]).toBe(59);
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2");
+  });
+
+  it("orders paused (board reloading) → nothing is even tried, the sheet stays; after it resumes the tap makes the order", async () => {
+    const app = await mount();
+    await sendPin(pin(1));
+    settle();
+    H.canOrder.v = false;
+    await app.rerender();
+    await tap("cpp-price-0");
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cpp-blocked")).toBeTruthy();
+    expect(screen.getByTestId("cpp-comment").textContent).toBe("pinned one");
+    H.canOrder.v = true;
+    await app.rerender();
+    await tap("cpp-price-0");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+  });
+
+  it("the typed price is kept the same way: blocked → field stays; Print again after it resumes", async () => {
+    H.feed.push(comment(1));
+    const app = await mount();
+    tapOneClick("Buyer 1");
+    settle();
+    await tap("cpp-type");
+    fireEvent.change(screen.getByTestId("cpp-type-input"), { target: { value: "88" } });
+    H.state.v = "loading";
+    await app.rerender();
+    await tap("cpp-type-print");
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+    expect((screen.getByTestId("cpp-type-input") as HTMLInputElement).value).toBe("88");
+    expect(screen.getByTestId("cpp-blocked")).toBeTruthy();
+    H.state.v = "empty";
+    await app.rerender();
+    await tap("cpp-type-print");
+    expect(H.createOrder.fn!.mock.calls[0][1]).toBe(88);
+  });
+
+  it("the feed is cleared while the pop-up is open → the price tap STILL makes the order (from the kept comment)", async () => {
+    H.feed.push(comment(1, "blue bag"));
+    const kept = H.feed[0];
+    const app = await mount();
+    tapOneClick("Buyer 1");
+    H.feed.length = 0;                                       // reconnect / account switch emptied the feed
+    await app.rerender();
+    expect(screen.queryAllByText(t.rd_dash_1click)).toHaveLength(0);
+    settle();
+    await tap("cpp-price-2");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect(H.createOrder.fn!.mock.calls[0][0]).toBe(kept);
+    expect(H.createOrder.fn!.mock.calls[0][1]).toBe(99);
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+  });
+
+  it("the code went sold out while the comment waited → asked INSIDE the sheet (no browser dialog)", async () => {
+    H.stock.v = 1;
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    H.feed.push(comment(1, "D"));
+    await mount({ auto: true });
+    await flush();
+    tapOneClick("Buyer 1");                                  // not sold out yet → no question
+    expect(confirmSpy).not.toHaveBeenCalled();
+    act(() => { H.onComment.fn?.(comment(5, "D")); });       // another buyer takes the last piece (Auto mode)
+    await flush();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    settle();
+    await tap("cpp-price-0");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);       // nothing yet
+    expect(screen.getByTestId("cpp-soldout").textContent).toBe("D is sold out. Print anyway?");
+    expect(confirmSpy).not.toHaveBeenCalled();
+    await tap("cpp-soldout-yes");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
+    expect(H.createOrder.fn!.mock.calls[1][1]).toBe(39);
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    confirmSpy.mockRestore();
+  });
+});
+
+describe("the queue is cleared, with one toast", () => {
+  beforeEach(() => { H.cp.enabled = true; H.cp.prices = [39, 59, 99]; });
+  const queueTwo = async () => {
+    H.feed.push(comment(1));
+    const app = await mount();
+    tapOneClick("Buyer 1");
+    await sendPin(pin(2));
+    expect(screen.getByTestId("cpp-waiting")).toBeTruthy();
+    return app;
+  };
+
+  it("a new live session / day → cleared for good + \"2 waiting comments were cleared\"", async () => {
+    const app = await queueTwo();
+    H.dayId.v = "2026-11-20";
+    await app.rerender();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    expect(screen.getByTestId("app-toast").textContent).toBe("2 waiting comments were cleared");
+    H.dayId.v = "2026-11-19";                               // the old items never come back
+    await app.rerender();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+  });
+  it("the switch is turned off → cleared + toast", async () => {
+    const app = await queueTwo();
+    H.cp.enabled = false;
+    await app.rerender();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    expect(screen.getByTestId("app-toast").textContent).toBe("2 waiting comments were cleared");
+    H.cp.enabled = true;
+    await app.rerender();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+  });
+  it("Same price is turned on → cleared + toast (one comment: singular)", async () => {
+    H.feed.push(comment(1));
+    const app = await mount();
+    tapOneClick("Buyer 1");
+    H.sp.enabled = true; H.sp.price = 39;
+    await app.rerender();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    expect(screen.getByTestId("app-toast").textContent).toBe("1 waiting comment was cleared");
+  });
+  it("an empty queue says nothing", async () => {
+    const app = await mount();
+    H.dayId.v = "2026-11-20";
+    await app.rerender();
+    expect(screen.queryByTestId("app-toast")).toBeNull();
+  });
+});
+
+describe("source pins", () => {
+  it("the jump-to-row code is gone; a picked item leaves the queue only after its order", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    expect(src).not.toMatch(/typeChoicePrice|choiceRowFor|priceCurHasRow/);
+    const i = src.indexOf("const pickChoicePrice = ");
+    const body = src.slice(i, src.indexOf("\n  };", i));
+    expect(body).not.toContain("liveFeed.getComment");                       // never re-reads the feed
+    expect(body.indexOf('if (r === "blocked") { pricePickedRef.current.delete(item); return r; }')).toBeGreaterThan(-1);
+    expect(body.indexOf("dropPriceItem(item.key);")).toBeGreaterThan(body.indexOf('if (r === "blocked")'));
   });
 });

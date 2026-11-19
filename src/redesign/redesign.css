@@ -629,6 +629,9 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
    720px and wider (tablet / laptop): a centered dialog. No transition (it must appear at once). */
 .sfl-cpp-backdrop { position: fixed; inset: 0; z-index: 1350; display: flex; align-items: flex-end; justify-content: center; background: rgba(20, 22, 40, .45); box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
 .sfl-cpp-sheet { width: 100%; max-height: calc(100% - 24px); overflow-y: auto; box-sizing: border-box; background: var(--surface); border-radius: 22px 22px 0 0; padding: 10px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -12px 40px rgba(0, 0, 0, .25); }
+.sfl-cpp-sheet { overscroll-behavior: contain; }
+.sfl-cpp-sheet:focus { outline: none; }
+.sfl-cpp-backdrop { overscroll-behavior: contain; }
 .sfl-cpp-grip { width: 40px; height: 5px; border-radius: 999px; background: var(--border-strong); margin: 0 auto 12px; }
 @media (min-width: 720px) {
   .sfl-cpp-backdrop { align-items: center; padding: 16px; }
