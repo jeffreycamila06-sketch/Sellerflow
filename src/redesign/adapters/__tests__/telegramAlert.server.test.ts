@@ -1,9 +1,9 @@
 // @vitest-environment node
 // Telegram alerts to the Admin (server/telegramAlert.js, Jeff 2026-11-18). A FAKE Telegram only — no real
 // request is ever made by these tests.
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
-import { createTelegramAlert, createAlertTestHandler, ALERT_TEXTS, TELEGRAM_SEND_MS, TELEGRAM_HOST, ALERT_TRIES, ALERT_RETRY_MS, ALERT_QUEUE_MAX } from "../../../../server/telegramAlert.js";
+import { createTelegramAlert, createAlertTestHandler, alertText, ALERT_TEXTS, TELEGRAM_SEND_MS, TELEGRAM_HOST, ALERT_TRIES, ALERT_RETRY_MS, ALERT_KEEP_MS, ALERT_AGAIN, ALERT_QUEUE_MAX } from "../../../../server/telegramAlert.js";
 
 const TOKEN = "123456789:MARKTOKENaaaaBBBBccccDDDDeeee_-1234";
 const CHAT = "-1001234567890";
@@ -103,7 +103,7 @@ describe("T4 a failed send: one word in the log, never a throw", () => {
   }
 });
 
-describe("T5 20 s limit, the same for every send", () => {
+describe("T5 the 20 s limit of ONE send (the test button)", () => {
   it("a Telegram that never answers is cut at 20 s → word timeout", async () => {
     expect(TELEGRAM_SEND_MS).toBe(20000);
     vi.useFakeTimers();
@@ -117,11 +117,15 @@ describe("T5 20 s limit, the same for every send", () => {
       expect(h.logs).toEqual(["[TG_ALERT] send failed timeout"]);
     } finally { vi.useRealTimers(); }
   });
-  it("ONE limit in the module: one request line, one timer, and it is TELEGRAM_SEND_MS", () => {
+  it("ONE request line in the module; the button's limit is TELEGRAM_SEND_MS, an alert's try is kept ALERT_KEEP_MS", () => {
     const code = readFileSync("server/telegramAlert.js", "utf8").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
     expect(code.split("fetchImpl(").length - 1).toBe(1);
-    expect(code.match(/setTimeout\(\(\) => ctl\.abort\(\), ([A-Z_0-9]+)\)/)?.[1]).toBe("TELEGRAM_SEND_MS");
     expect(code.split("ctl.abort()").length - 1).toBe(1);
+    expect(code).toContain("const timer = setTimeout(req.stop, TELEGRAM_SEND_MS);");
+    expect(code).toContain("setTimeout(() => { gaveUp = true; req.stop(); }, ALERT_KEEP_MS)");
+    expect(code.split("req.stop").length - 1).toBe(2);       // the button's limit, and an alert's "next try is due"
+    expect(code).toContain("export const ALERT_KEEP_MS = TELEGRAM_SEND_MS + ALERT_RETRY_MS;");
+    expect([TELEGRAM_SEND_MS, ALERT_RETRY_MS, ALERT_KEEP_MS]).toEqual([20000, 60000, 80000]);
     expect(code).not.toMatch(/\b8000\b/);
   });
   it("a send that got its answer (sent or failed) leaves no 20 s timer behind", async () => {
@@ -133,23 +137,6 @@ describe("T5 20 s limit, the same for every send", () => {
         expect(vi.getTimerCount(), JSON.stringify(rep)).toBe(0);
         expect(h.sent[0].signal?.aborted).toBe(false);
       }
-    } finally { vi.useRealTimers(); }
-  });
-  it("every try of a real alert has the same 20 s: 3 tries, each cut 20 s after it started", async () => {
-    vi.useFakeTimers();
-    try {
-      const cuts: number[] = [];
-      const starts: number[] = [];
-      const f = vi.fn((_url: string, init: { signal?: AbortSignal }) => new Promise((_res, rej) => {
-        starts.push(Date.now());
-        init.signal?.addEventListener("abort", () => { cuts.push(Date.now()); rej(Object.assign(new Error("aborted"), { name: "AbortError" })); });
-      }));
-      const alert = createTelegramAlert({ env: ENV, fetchImpl: f as never, log: () => {} });
-      const p = alert.deliver("logged_out");
-      await vi.advanceTimersByTimeAsync(3 * TELEGRAM_SEND_MS + 2 * ALERT_RETRY_MS);
-      expect(await p).toEqual({ ok: false, word: "timeout" });
-      expect(cuts.map((c, i) => c - starts[i])).toEqual([TELEGRAM_SEND_MS, TELEGRAM_SEND_MS, TELEGRAM_SEND_MS]);
-      expect(starts.map((s0) => s0 - starts[0])).toEqual([0, TELEGRAM_SEND_MS + ALERT_RETRY_MS, 2 * (TELEGRAM_SEND_MS + ALERT_RETRY_MS)]);
     } finally { vi.useRealTimers(); }
   });
 });
@@ -213,36 +200,11 @@ describe("T11 a slow Telegram (Nov 19 2026: delivered, but the answer came after
       } finally { vi.useRealTimers(); }
     }
   });
-  // The honest answer to "can a slow-but-delivered alert arrive twice?": YES, still — only rarer.
-  // These two pin what the module does TODAY; they change the day the retry stops sending blind.
-  it("KNOWN, not fixed here: delivered, but the answer takes longer than 20 s → the same alert is sent again (3 copies)", async () => {
-    vi.useFakeTimers();
-    try {
-      const t = slowTelegram(25000);
-      const logs: string[] = [];
-      const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: (l: string) => logs.push(l) });
-      const p = alert.deliver("logged_out");
-      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
-      expect(await p).toEqual({ ok: false, word: "timeout" });
-      expect([t.state.requests, t.state.delivered]).toEqual([ALERT_TRIES, ALERT_TRIES]);
-      expect(logs).toEqual(Array(ALERT_TRIES).fill("[TG_ALERT] send failed timeout"));
-    } finally { vi.useRealTimers(); }
-  });
-  it("KNOWN, not fixed here: only the FIRST send is that slow (a cold start) → 2 copies, and the alert reports sent", async () => {
-    vi.useFakeTimers();
-    try {
-      const t = slowTelegram((n) => (n === 1 ? 25000 : 300));
-      const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: () => {} });
-      const p = alert.deliver("new_version", "16b4bb9");
-      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
-      expect(await p).toEqual({ ok: true });
-      expect([t.state.requests, t.state.delivered]).toEqual([2, 2]);
-    } finally { vi.useRealTimers(); }
-  });
   it("a truly failed send is still tried again (nothing was delivered → no copy is lost, none doubled)", async () => {
     const h = make(ENV, (() => { let i = 0; return () => (i++ === 0 ? "network" : { json: { ok: true } }) as Reply; })());
     expect(await h.alert.deliver("logged_out")).toEqual({ ok: true });
     expect([h.sent.length, h.sleeps]).toEqual([2, [ALERT_RETRY_MS]]);
+    expect(h.sent.map((x) => JSON.parse(x.body).text)).toEqual([ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_out + ALERT_AGAIN]);
   });
 });
 
@@ -319,7 +281,7 @@ describe("T10 an alert is tried up to 3 times, 1 minute apart; the test button i
     expect(h.sent.length).toBe(3);
     expect(h.sleeps).toEqual([ALERT_RETRY_MS, ALERT_RETRY_MS]);
     expect(h.logs).toEqual(["[TG_ALERT] send failed network", "[TG_ALERT] send failed http_502"]);
-    for (const s of h.sent) expect(JSON.parse(s.body).text).toBe(ALERT_TEXTS.logged_out);
+    expect(h.sent.map((x) => JSON.parse(x.body).text)).toEqual([ALERT_TEXTS.logged_out, `${ALERT_TEXTS.logged_out} (sent again)`, `${ALERT_TEXTS.logged_out} (sent again)`]);
   });
   it("sent at the first try: 1 request, no wait", async () => {
     const h = make(ENV);
@@ -359,7 +321,8 @@ describe("T10 an alert is tried up to 3 times, 1 minute apart; the test button i
     const a = h.alert.deliver("logged_out");
     const b = h.alert.deliver("logged_in");
     await Promise.all([a, b]);
-    expect(h.sent.map((s) => JSON.parse(s.body).text)).toEqual([ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_in]);
+    // the 2nd alert's own first try carries no "(sent again)"
+    expect(h.sent.map((s) => JSON.parse(s.body).text)).toEqual([ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_out + ALERT_AGAIN, ALERT_TEXTS.logged_out + ALERT_AGAIN, ALERT_TEXTS.logged_in]);
   });
   it("the test button stays ONE try that answers at once (no retry, no wait), also when it fails", async () => {
     const h = make(ENV, "network");
@@ -384,3 +347,350 @@ describe("T10 an alert is tried up to 3 times, 1 minute apart; the test button i
     expect(h.logs.join("\n")).not.toMatch(/MARKTOKEN|-100123/);
   });
 });
+
+// ── T12 — an alert Telegram DELIVERED is not sent again; one that failed still gets its 3 tries ──
+// A scripted Telegram on a clock that only the test moves. Request n gets plan n (the last plan repeats):
+//   after  — when Telegram's answer arrives, ms after the request (default 0);
+//   reply  — "ok" | "never" (no answer at all) | "network" (the connection broke) | "bad_json" |
+//            { status } (an error answer) | "not_ok" (200 with ok:false);
+//   delivered — Telegram put the message in the chat (default: only when it answers "ok").
+type Plan = { after?: number; reply: "ok" | "never" | "network" | "bad_json" | "not_ok" | { status: number }; delivered?: boolean };
+function scripted(script: Plan[]) {
+  const sent: Array<{ at: number; text: string; signal?: AbortSignal; cutAt: number | null }> = [];
+  const chat: string[] = [];   // the copies in the Admin's chat, in order
+  const t0 = Date.now();
+  const f = vi.fn((_url: string, init: { body?: string; signal?: AbortSignal }) => new Promise((res, rej) => {
+    const plan = script[Math.min(sent.length, script.length - 1)];
+    const me = { at: Date.now() - t0, text: String(JSON.parse(String(init.body)).text), signal: init.signal, cutAt: null as number | null };
+    sent.push(me);
+    if (plan.delivered ?? plan.reply === "ok") chat.push(me.text);
+    init.signal?.addEventListener("abort", () => { me.cutAt = Date.now() - t0; rej(Object.assign(new Error("aborted"), { name: "AbortError" })); });
+    if (plan.reply === "never") return;
+    setTimeout(() => {
+      if (init.signal?.aborted) return;
+      const r = plan.reply;
+      if (r === "network") return rej(new TypeError(`fetch failed for https://${TELEGRAM_HOST}/bot${TOKEN}/sendMessage`));
+      if (r === "ok") return res({ status: 200, json: async () => ({ ok: true }) });
+      if (r === "bad_json") return res({ status: 200, json: async () => { throw new Error(`not json ${TOKEN}`); } });
+      if (r === "not_ok") return res({ status: 200, json: async () => ({ ok: false, description: TOKEN }) });
+      if (typeof r !== "object") return;
+      return res({ status: r.status, json: async () => ({ ok: false, description: `${TOKEN} ${CHAT}` }) });
+    }, plan.after ?? 0);
+  }));
+  return { f, sent, chat };
+}
+function begin(script: Plan[]) {
+  const t = scripted(script);
+  const logs: string[] = [];
+  const alert = createTelegramAlert({ env: ENV, fetchImpl: t.f as never, log: (l: string) => logs.push(l) });   // the real 1-minute wait (on the test clock)
+  return { ...t, logs, alert, texts: () => t.sent.map((x) => x.text), times: () => t.sent.map((x) => x.at) };
+}
+const move = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+const HOUR = 60 * 60 * 1000;
+const BASE = ALERT_TEXTS.logged_out;
+const AGAIN = `${BASE} (sent again)`;
+const LOG_LINE = /^\[TG_ALERT\] (send failed (timeout|network|not_ok|http_\d{3}|queue_full)|no answer yet try=[123], still waiting|late ok try=[123] after=\d{1,2}s)$/;
+
+describe("T12 no second copy of a delivered alert (the request is kept until the next try is due)", () => {
+  beforeEach(() => { vi.useFakeTimers(); });   // the clock moves only when a test moves it
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("the two numbers: a try is kept 80 s (20 s + the minute); the 2nd and 3rd try end with \" (sent again)\"", () => {
+    expect(ALERT_KEEP_MS).toBe(80_000);
+    expect(ALERT_AGAIN).toBe(" (sent again)");
+  });
+
+  describe("slow but delivered → ONE copy", () => {
+    for (const ms of [20_001, 25_000, 45_000, 79_999]) {
+      it(`Telegram answers "ok" after ${ms} ms: one request, one copy, the alert reports sent`, async () => {
+        const h = begin([{ after: ms, reply: "ok" }]);
+        const p = h.alert.deliver("logged_out");
+        await move(TELEGRAM_SEND_MS);
+        expect(h.sent.length).toBe(1);                         // 20 s passed: NOT sent again
+        expect(h.sent[0].signal?.aborted).toBe(false);         // … and the request is still open
+        expect(h.logs).toEqual(["[TG_ALERT] no answer yet try=1, still waiting"]);
+        await move(ms - TELEGRAM_SEND_MS);
+        expect(await p).toEqual({ ok: true });
+        await move(HOUR);
+        expect(h.chat).toEqual([BASE]);                        // ONE copy in the chat, without "(sent again)"
+        expect(h.sent.length).toBe(1);
+        expect(h.sent[0].cutAt).toBeNull();                    // never cut
+        expect(h.logs).toEqual(["[TG_ALERT] no answer yet try=1, still waiting", `[TG_ALERT] late ok try=1 after=${Math.round(ms / 1000)}s`]);
+        expect(vi.getTimerCount()).toBe(0);
+      });
+    }
+    it("an answer inside 20 s: one request, one copy, and no log line at all", async () => {
+      const h = begin([{ after: 9000, reply: "ok" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(9000);
+      expect(await p).toEqual({ ok: true });
+      await move(HOUR);
+      expect([h.sent.length, h.chat, h.logs, vi.getTimerCount()]).toEqual([1, [BASE], [], 0]);
+    });
+    it("the first send after a restart is slow (25 s), the version alert: ONE copy (was 2 with a cut at 20 s)", async () => {
+      const h = begin([{ after: 25_000, reply: "ok" }, { after: 300, reply: "ok" }]);
+      const p = h.alert.deliver("new_version", "16b4bb9");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect(h.chat).toEqual(["Server restarted on a new version. 16b4bb9"]);
+    });
+    it("a slow 2nd try is kept too: nothing back, then \"ok\" after 30 s → 2 sends, no 3rd", async () => {
+      const h = begin([{ reply: "never" }, { after: 30_000, reply: "ok" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect([h.times(), h.texts(), h.chat]).toEqual([[0, ALERT_KEEP_MS], [BASE, AGAIN], [AGAIN]]);
+    });
+    it("a late \"ok\" on the 3rd try still counts as sent", async () => {
+      const h = begin([{ reply: "never" }, { reply: "never" }, { after: 70_000, reply: "ok" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect([h.sent.length, h.chat]).toEqual([3, [AGAIN]]);
+    });
+  });
+
+  describe("nothing comes back at all → sent again when the next try is due, marked", () => {
+    it("3 sends at 0 s, 80 s and 160 s; each request is ended exactly when the next try is due; then it stops", async () => {
+      const h = begin([{ reply: "never" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(ALERT_KEEP_MS - 1);
+      expect(h.sent.length).toBe(1);                           // 79.999 s: still the one request
+      await move(1);
+      expect(h.sent.length).toBe(2);                           // 80 s: the 2nd try, at once
+      await move(HOUR);
+      expect(await p).toEqual({ ok: false, word: "timeout" });
+      expect(h.times()).toEqual([0, ALERT_KEEP_MS, 2 * ALERT_KEEP_MS]);
+      expect(h.sent.map((x) => x.cutAt)).toEqual([ALERT_KEEP_MS, 2 * ALERT_KEEP_MS, 3 * ALERT_KEEP_MS]);
+      expect(h.texts()).toEqual([BASE, AGAIN, AGAIN]);         // the 1st try as it always was; 2nd and 3rd marked
+      expect(h.logs).toEqual([1, 2, 3].flatMap((n) => [`[TG_ALERT] no answer yet try=${n}, still waiting`, "[TG_ALERT] send failed timeout"]));
+      expect(vi.getTimerCount()).toBe(0);
+    });
+    it("the case that cannot be excluded: delivered, and its answer never arrives → a 2nd copy, and it SAYS so", async () => {
+      const h = begin([{ reply: "never", delivered: true }, { after: 300, reply: "ok" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect(h.chat).toEqual([BASE, AGAIN]);
+    });
+    it("an answer that comes just after the next try was due is too late (the request was ended at 80 s)", async () => {
+      const h = begin([{ after: ALERT_KEEP_MS + 1, reply: "ok", delivered: true }, { after: 300, reply: "ok" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect([h.times(), h.sent[0].cutAt, h.chat]).toEqual([[0, ALERT_KEEP_MS], ALERT_KEEP_MS, [BASE, AGAIN]]);
+    });
+  });
+
+  describe("an error answer or a broken connection → tried again a minute later", () => {
+    const failures: Array<[string, Plan["reply"], string]> = [
+      ["Telegram answers 502", { status: 502 }, "http_502"],
+      ["Telegram answers 429", { status: 429 }, "http_429"],
+      ["Telegram answers 200 with ok:false", "not_ok", "not_ok"],
+      ["an answer that is not JSON", "bad_json", "not_ok"],
+      ["the connection broke", "network", "network"],
+    ];
+    for (const [name, reply, word] of failures) {
+      it(`${name}: the 2nd try goes out 1 minute after it, with "(sent again)"`, async () => {
+        const h = begin([{ after: 500, reply }, { after: 500, reply: "ok" }]);
+        const p = h.alert.deliver("logged_out");
+        await move(500 + ALERT_RETRY_MS - 1);
+        expect(h.sent.length).toBe(1);
+        await move(1);
+        expect(h.sent.length).toBe(2);
+        await move(HOUR);
+        expect(await p).toEqual({ ok: true });
+        expect([h.times(), h.texts(), h.chat]).toEqual([[0, 500 + ALERT_RETRY_MS], [BASE, AGAIN], [AGAIN]]);
+        expect(h.logs).toEqual([`[TG_ALERT] send failed ${word}`]);
+        expect(vi.getTimerCount()).toBe(0);
+      });
+    }
+    it("an error answer that arrives late (after 30 s) ends that try at once: the next try 1 minute after the answer", async () => {
+      const h = begin([{ after: 30_000, reply: { status: 502 } }, { reply: "ok" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect(h.times()).toEqual([0, 30_000 + ALERT_RETRY_MS]);
+      expect(h.sent[0].cutAt).toBeNull();
+      expect(h.logs).toEqual(["[TG_ALERT] no answer yet try=1, still waiting", "[TG_ALERT] send failed http_502"]);
+    });
+    it("a truly failed alert gets all 3 tries: error, nothing back, then \"ok\" on the 3rd → delivered once", async () => {
+      const h = begin([{ reply: { status: 500 } }, { reply: "never" }, { after: 200, reply: "ok" }]);
+      const p = h.alert.deliver("logged_out");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect(h.times()).toEqual([0, ALERT_RETRY_MS, ALERT_RETRY_MS + ALERT_KEEP_MS]);
+      expect([h.texts(), h.chat]).toEqual([[BASE, AGAIN, AGAIN], [AGAIN]]);
+    });
+  });
+
+  describe("never more than 3 sends", () => {
+    const always: Array<[string, Plan[], string]> = [
+      ["nothing ever comes back", [{ reply: "never" }], "timeout"],
+      ["every answer is an error", [{ after: 100, reply: { status: 502 } }], "http_502"],
+      ["the connection breaks every time", [{ reply: "network" }], "network"],
+      ["late errors (50 s) every time", [{ after: 50_000, reply: { status: 500 } }], "http_500"],
+      ["error, nothing back, connection broke", [{ reply: { status: 401 } }, { reply: "never" }, { reply: "network" }], "network"],
+    ];
+    for (const [name, script, word] of always) {
+      it(`${name}: exactly 3 sends, then the alert is given up — also an hour later`, async () => {
+        const h = begin(script);
+        const p = h.alert.deliver("logged_out");
+        await move(HOUR);
+        expect(await p).toEqual({ ok: false, word });
+        expect(h.sent.length).toBe(ALERT_TRIES);
+        expect(h.texts()).toEqual([BASE, AGAIN, AGAIN]);
+        await move(HOUR);
+        expect(h.sent.length).toBe(ALERT_TRIES);
+        expect(vi.getTimerCount()).toBe(0);
+      });
+    }
+    it("one request at a time: a try is never sent while the one before it is still open", async () => {
+      const h = begin([{ reply: "never" }]);
+      const open = () => h.sent.filter((x) => x.cutAt === null).length;
+      void h.alert.deliver("logged_out");
+      for (let t = 0; t < 4 * ALERT_KEEP_MS; t += 5000) { await move(5000); expect(open()).toBeLessThanOrEqual(1); }
+      expect(h.sent.length).toBe(3);
+    });
+  });
+
+  describe("the first try and the test button stay as they are", () => {
+    it("every fixed text, first try: exactly the text, no \"(sent again)\"", async () => {
+      for (const kind of Object.keys(ALERT_TEXTS)) {
+        const value = kind === "new_version" ? "16b4bb9" : undefined;
+        const h = begin([{ reply: "ok" }]);
+        const p = h.alert.deliver(kind, value);
+        await move(1);
+        expect(await p).toEqual({ ok: true });
+        expect(h.texts()).toEqual([alertText(kind, value)]);
+        expect(h.texts()[0]).not.toContain("sent again");
+      }
+    });
+    it("the version alert's 2nd try: the fixed text, the 7 characters, then \"(sent again)\"", async () => {
+      const h = begin([{ reply: "network" }, { reply: "ok" }]);
+      const p = h.alert.deliver("new_version", "16b4bb9");
+      await move(HOUR);
+      expect(await p).toEqual({ ok: true });
+      expect(h.texts()).toEqual(["Server restarted on a new version. 16b4bb9", "Server restarted on a new version. 16b4bb9 (sent again)"]);
+    });
+    it("a value of the wrong shape still sends NOTHING (the mark cannot carry free text)", async () => {
+      const h = begin([{ reply: "ok" }]);
+      for (const v of ["16b4bb9 (sent again)", "hello", undefined]) expect(await h.alert.deliver("new_version", v as never)).toEqual({ ok: false, word: "unknown_text" });
+      expect(await h.alert.deliver("logged_out (sent again)")).toEqual({ ok: false, word: "unknown_text" });
+      expect(h.sent.length).toBe(0);
+    });
+    it("the test button: the test text only, pressed 4 times in a row → never \"(sent again)\"", async () => {
+      const h = begin([{ reply: { status: 502 } }]);
+      for (let i = 0; i < 4; i++) { const p = h.alert.send("test"); await move(1); expect(await p).toEqual({ ok: false, word: "http_502" }); }
+      expect(h.texts()).toEqual(Array(4).fill(ALERT_TEXTS.test));
+    });
+    it("the test button is still ONE try cut at 20 s: an answer after 25 s → \"not sent\", one request, no 2nd try", async () => {
+      const h = begin([{ after: 25_000, reply: "ok" }]);
+      const res = { code: 200, body: null as unknown, status(c: number) { this.code = c; return this; }, json(b: unknown) { this.body = b; return this; } };
+      const p = createAlertTestHandler({ alert: h.alert, allowed: () => true })({ authUserId: "u" }, res);
+      await move(TELEGRAM_SEND_MS - 1);
+      expect(res.body).toBeNull();
+      await move(1);
+      await p;
+      expect(res.body).toEqual({ sent: false, reason: "timeout" });
+      await move(HOUR);
+      expect([h.sent.length, h.sent[0].cutAt, h.texts()]).toEqual([1, TELEGRAM_SEND_MS, [ALERT_TEXTS.test]]);
+      expect(h.logs).toEqual(["[TG_ALERT] send failed timeout"]);
+    });
+  });
+
+  describe("the checker is never awaited", () => {
+    it("fire() returns at once (nothing to await) while Telegram stays silent through all 3 tries", async () => {
+      const h = begin([{ reply: "never" }]);
+      const t0 = Date.now();
+      const out = h.alert.fire("took_over");
+      expect(out).toBeUndefined();
+      expect(Date.now()).toBe(t0);                             // the clock did not have to move
+      expect(h.sent.length).toBe(0);                           // not even the request was waited for
+      // a checker pass that fires an alert finishes without the clock moving, the alert still open:
+      const pass = async () => { h.alert.fire("handed_back"); return "pass done"; };
+      expect(await pass()).toBe("pass done");
+      expect(Date.now()).toBe(t0);
+      await move(HOUR);
+      expect(h.sent.length).toBe(2 * ALERT_TRIES);             // both alerts ran their tries by themselves
+    });
+    it("deliver() hands back a promise at once; the alert is still trying when the caller has moved on", async () => {
+      const h = begin([{ after: 45_000, reply: "ok" }]);
+      let done = false;
+      const p = h.alert.deliver("took_over").then((r) => { done = true; return r; });
+      await move(44_999);
+      expect(done).toBe(false);
+      await move(1);
+      expect(await p).toEqual({ ok: true });
+    });
+    it("fire() never throws: a fetch that throws at once, a log that throws", async () => {
+      const boom = createTelegramAlert({ env: ENV, fetchImpl: (() => { throw new Error(`sync ${TOKEN}`); }) as never, log: () => { throw new Error("log broke"); } });
+      expect(() => boom.fire("logged_out")).not.toThrow();
+      await move(HOUR);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+    it("the three callers do not await it (source)", () => {
+      const strip = (f: string) => readFileSync(f, "utf8").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+      expect(strip("server.js")).toContain("onState: (change) => adminAlert.fire(change) });");
+      expect(strip("server/versionAlert.js")).toContain("try { alert.fire(VERSION_ALERT, commit); } catch");
+      const backup = strip("server/pc711Backup.js");
+      expect(backup).toContain("alert.deliver(kind) : Promise.resolve(null);");
+      expect(backup).toContain("void Promise.resolve(send).catch(() => null).then(() => db.alertDone(kind))");
+      expect(backup).not.toMatch(/await\s+alert\.|await\s+flushAlerts|await\s+send\b/);
+      expect(strip("server/versionAlert.js")).not.toMatch(/await\s+alert\./);
+    });
+  });
+
+  describe("alerts stay in order", () => {
+    it("the next alert waits for the kept request of the one before it — and starts with its own first try", async () => {
+      const h = begin([{ after: 30_000, reply: "ok" }, { after: 100, reply: "ok" }]);
+      const a = h.alert.deliver("logged_out");
+      const b = h.alert.deliver("logged_in");
+      await move(29_999);
+      expect(h.sent.length).toBe(1);
+      await move(1);
+      expect(h.sent.length).toBe(2);
+      await move(HOUR);
+      expect([await a, await b]).toEqual([{ ok: true }, { ok: true }]);
+      expect([h.times(), h.chat]).toEqual([[0, 30_000], [ALERT_TEXTS.logged_out, ALERT_TEXTS.logged_in]]);
+    });
+  });
+
+  describe("the token is never logged", () => {
+    it("every line this module can write: fixed words and small numbers only — no token, no chat id, no text of an answer", async () => {
+      const scripts: Plan[][] = [
+        [{ after: 25_000, reply: "ok" }],                                                   // slow, then late ok
+        [{ reply: "never" }],                                                               // nothing back ×3
+        [{ after: 100, reply: { status: 401 } }, { reply: "network" }, { reply: "bad_json" }],  // answers / errors that CONTAIN the token
+        [{ after: 30_000, reply: "not_ok" }, { reply: "never" }, { after: 60_000, reply: "ok" }],
+      ];
+      const lines: string[] = [];
+      const results: unknown[] = [];
+      for (const script of scripts) {
+        const h = begin(script);
+        const p = h.alert.deliver("logged_out");
+        await move(HOUR);
+        results.push(await p);
+        lines.push(...h.logs);
+      }
+      expect(lines.length).toBeGreaterThanOrEqual(14);
+      for (const l of lines) expect(l).toMatch(LOG_LINE);
+      const all = `${lines.join("\n")}\n${JSON.stringify(results)}`;
+      expect(all).not.toContain(TOKEN); expect(all).not.toContain("MARKTOKEN"); expect(all).not.toContain(CHAT);
+      expect(all).not.toMatch(/api\.telegram|sendMessage|bot\d/);
+    });
+    it("the token is only ever in the request's address — never in a body, and the body holds the chat id and the fixed text", async () => {
+      const bodies: string[] = [];
+      const urls: string[] = [];
+      const f = vi.fn(async (url: string, init: { body?: string }) => { urls.push(url); bodies.push(String(init.body)); return { status: 502, json: async () => ({}) }; });
+      const alert = createTelegramAlert({ env: ENV, fetchImpl: f as never, log: () => {} });
+      const p = alert.deliver("logged_out");
+      await move(HOUR);
+      await p;
+      expect(urls).toEqual(Array(3).fill(`https://api.telegram.org/bot${TOKEN}/sendMessage`));
+      for (const b of bodies) expect(b).not.toContain(TOKEN);
+      expect(bodies.map((b) => JSON.parse(b))).toEqual([BASE, AGAIN, AGAIN].map((text) => ({ chat_id: CHAT, text, disable_web_page_preview: true })));
+    });
+  });
+});
+

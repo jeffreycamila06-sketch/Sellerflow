@@ -104,6 +104,10 @@ When the server has really restarted on new code, you get **one** message:
 The 7 characters are the commit. You get it once per new version, not at every restart.
 It also comes after a deploy you start by hand in Render.
 
+A message that ends with **(sent again)** is a second or third try: the first try failed, or
+Telegram gave no answer for 80 seconds. If you see the same alert twice and one of them ends with
+(sent again), it is ONE event, not two. This is the same for every alert the server sends.
+
 No message in the morning, although server work was merged? Open last night's run and read its line.
 If it says `Render accepted the deploy`, open Render → the service → **Events** to see if the build failed.
 
