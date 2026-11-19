@@ -1,7 +1,7 @@
-// 2026-11-19 (sql/185) — Pickup Status: 全家 parcels FamilyMart's site has NOTHING for yet.
+// 2026-11-19 (sql/186) — Pickup Status: 全家 parcels FamilyMart's site has NOTHING for yet.
 // The check saves what the site said (fm_site_state). The app lists those parcels in their own group
 // under In transit, does not count them in the In transit number, and says when they leave the list.
-// While sql/185 is not applied, the read is exactly the one of before (same select, same 7 questions).
+// While sql/186 is not applied, the read is exactly the one of before (same select, same 7 questions).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type Row = Record<string, unknown>;
@@ -141,7 +141,7 @@ describe("the list and the numbers", () => {
     expect(tabCounts(g, { all: 9, picked: 0, returned: 0, transit: 7 }).transit).toBe(7);
     expect(fmNotDroppedCount(g, { all: 9, picked: 0, returned: 0, notDropped: 4 })).toBe(4);
   });
-  it("without the saved answer (7-11, 全家 off, sql/185 not applied) nothing changes", () => {
+  it("without the saved answer (7-11, 全家 off, sql/186 not applied) nothing changes", () => {
     const plain = rows().map(({ fmSiteState: _f, createdAt: _c, ...r }) => r as ParcelTrackingRow);
     const g = groupParcels(plain, TODAY);
     expect(tabCounts(g).transit).toBe(4);
@@ -163,7 +163,7 @@ const seed = () => {
 };
 const sel = (q: unknown[][]) => String(q.find((c) => c[0] === "select")?.[1]);
 
-describe("loadParcelTracking — 全家 on, sql/185 applied", () => {
+describe("loadParcelTracking — 全家 on, sql/186 applied", () => {
   it("8 questions; the In transit count leaves the group out; the group has its own exact count", async () => {
     seed();
     const res = await loadParcelTracking(true);
@@ -180,7 +180,7 @@ describe("loadParcelTracking — 全家 on, sql/185 applied", () => {
   });
 });
 
-describe("loadParcelTracking — sql/185 NOT applied yet", () => {
+describe("loadParcelTracking — sql/186 NOT applied yet", () => {
   const OLD_SELECT = `${PT_SELECT}, carrier`;
   it("the first read says 'no such column' → read again exactly as before (same select, 7 questions); later reads go straight to it", async () => {
     seed(); DB.noColumn = true;

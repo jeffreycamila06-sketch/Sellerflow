@@ -68,7 +68,7 @@ function shortDate(ymd: string, lang: string): string {
   try { return new Date(y, m - 1, d).toLocaleDateString(lang, { month: "short", day: "numeric" }); } catch { return ymd; }
 }
 
-// 全家 parcels FamilyMart has nothing for yet (sql/185): the head of their own group, shown in the
+// 全家 parcels FamilyMart has nothing for yet (sql/186): the head of their own group, shown in the
 // In transit list right above the first of them. n = how many there are in all.
 function FmGroupHead({ n, t }: { n: number; t: T }) {
   return (
@@ -83,7 +83,7 @@ const fmGroupAt = (rows: ParcelTrackingRow[], held: number | undefined) => (held
 
 function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t: T }) {
   const lang = useLang();
-  // 全家 parcel FamilyMart has nothing for yet: when it leaves the list (sql/185).
+  // 全家 parcel FamilyMart has nothing for yet: when it leaves the list (sql/186).
   const leaves = fmLeaves(row, today);
   if (leaves?.next) {
     return (
@@ -241,7 +241,7 @@ function Buyer({ row, t, nowMs, buyerName, platform = null }: { row: ParcelTrack
   const carrier = row.carrier
     ? <span data-testid="pt-carrier" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: `1px solid var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-border)`, background: `var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-bg)`, fontSize: 10.5, fontWeight: 700, color: `var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-text)`, whiteSpace: "nowrap" }}>{row.carrier === "fm" ? "FamilyMart" : "7-Eleven"}</span>
     : null;
-  // What FamilyMart's site said at the last check (sql/185) decides the label; a row without that
+  // What FamilyMart's site said at the last check (sql/186) decides the label; a row without that
   // saved answer keeps the rule of before (the 好賣+ file gave a drop-off date).
   const noRecord = isFmNothingYet(row) && row.fmSiteState === "not_found";
   const notDropped = noRecord

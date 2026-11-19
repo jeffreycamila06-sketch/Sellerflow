@@ -1,13 +1,13 @@
-// Runs sql/184 (+ its rollback) on a real Postgres (PGlite, WASM) with rows shaped like the live
+// Runs sql/182 (+ its rollback) on a real Postgres (PGlite, WASM) with rows shaped like the live
 // table read on 2026-11-19 (全家: 70 × 全家店寄店取, 6 × C2C; plus 7-11 rows) and proves:
 //   1. only 全家 rows whose ship_type is exactly 全家店寄店取 change, to 'C2C'
 //   2. no 7-11 row changes (also one that carries the same text), no status / date / number changes
 //   3. the helper table holds exactly the changed rows, and no browser role can read it
 //   4. the rollback puts back exactly those rows (the 6 rows that were 'C2C' before stay 'C2C')
-//   5. 184 applies again after the rollback; applying it with nothing to change is harmless
+//   5. 182 applies again after the rollback; applying it with nothing to change is harmless
 // Not part of CI (PGlite is not a dependency of the repo):
-//   mkdir /tmp/pg184 && (cd /tmp/pg184 && npm i @electric-sql/pglite@0.2.17)
-//   PGLITE_DIR=/tmp/pg184 node scripts/sql184-behaviour.mjs            (from the repo root)
+//   mkdir /tmp/pg182 && (cd /tmp/pg182 && npm i @electric-sql/pglite@0.2.17)
+//   PGLITE_DIR=/tmp/pg182 node scripts/sql182-behaviour.mjs            (from the repo root)
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,7 +17,7 @@ async function loadPGlite() {
   const base = process.env.PGLITE_DIR ? resolve(process.env.PGLITE_DIR) : "";
   const entry = join(base, "node_modules", "@electric-sql", "pglite", "dist", "index.js");
   if (!base || !existsSync(entry)) {
-    console.log("PGlite not found. Run: mkdir /tmp/pg184 && (cd /tmp/pg184 && npm i @electric-sql/pglite@0.2.17) — then PGLITE_DIR=/tmp/pg184 node scripts/sql184-behaviour.mjs");
+    console.log("PGlite not found. Run: mkdir /tmp/pg182 && (cd /tmp/pg182 && npm i @electric-sql/pglite@0.2.17) — then PGLITE_DIR=/tmp/pg182 node scripts/sql182-behaviour.mjs");
     process.exit(2);
   }
   return (await import(pathToFileURL(entry).href)).PGlite;
@@ -64,7 +64,7 @@ const before = await snap();
 const beforeById = new Map(before.map((r) => [r.id, r]));
 
 // ── 1–3: apply
-await db.exec(src("184_fm_ship_type_fix.sql"));
+await db.exec(src("182_fm_ship_type_fix.sql"));
 const after = await snap();
 ok(after.length === before.length, "no row is added or removed");
 ok(await count(`carrier = 'fm' and ship_type = '全家店寄店取'`) === 0, "no 全家 row keeps the text 全家店寄店取");
@@ -82,14 +82,14 @@ ok(await count(`carrier = '711' and ship_type = '全家店寄店取'`) === 1, "a
 ok(await count(`carrier = 'fm' and ship_type = '宅配'`) === 2, "a 全家 home-delivery row keeps its words");
 ok(await count(`carrier = 'fm' and ship_type is null`) === 1, "a 全家 row with no saved type is left alone");
 ok(await count(`carrier = 'fm' and ship_type = ' 全家店寄店取 '`) === 1, "only the exact text is changed");
-const helper = (await db.query(`select id, old_ship_type from public.parcel_tracking_fm_ship_type_184`)).rows;
+const helper = (await db.query(`select id, old_ship_type from public.parcel_tracking_fm_ship_type_182`)).rows;
 ok(helper.length === 70 && helper.every((h) => h.old_ship_type === "全家店寄店取"), "the helper table holds the 70 changed rows with their old words");
 ok(helper.every((h) => beforeById.get(h.id)?.ship_type === "全家店寄店取"), "every helper id is a row that carried the text");
-const rls = (await db.query(`select relrowsecurity as on from pg_class where relname = 'parcel_tracking_fm_ship_type_184'`)).rows[0].on;
-const pol = Number((await db.query(`select count(*)::int as n from pg_policies where tablename = 'parcel_tracking_fm_ship_type_184'`)).rows[0].n);
+const rls = (await db.query(`select relrowsecurity as on from pg_class where relname = 'parcel_tracking_fm_ship_type_182'`)).rows[0].on;
+const pol = Number((await db.query(`select count(*)::int as n from pg_policies where tablename = 'parcel_tracking_fm_ship_type_182'`)).rows[0].n);
 ok(rls === true && pol === 0, "row security is on with no policy: no browser access to the helper table");
 for (const role of ["anon", "authenticated"]) {
-  const g = Number((await db.query(`select count(*)::int as n from information_schema.role_table_grants where table_name = 'parcel_tracking_fm_ship_type_184' and grantee = '${role}'`)).rows[0].n);
+  const g = Number((await db.query(`select count(*)::int as n from information_schema.role_table_grants where table_name = 'parcel_tracking_fm_ship_type_182' and grantee = '${role}'`)).rows[0].n);
   ok(g === 0, `${role} has no right on the helper table`);
 }
 // the picked-up rows keep their pickup time (the clean-up of picked-up rows goes by it)
@@ -97,32 +97,32 @@ ok(await count(`carrier = 'fm' and status = 'picked_up' and picked_up_at is null
 
 // applying twice is refused as a whole (the helper table exists) and changes nothing
 let second = "";
-try { await db.exec(src("184_fm_ship_type_fix.sql")); } catch (e) { second = String(e.message || e); }
+try { await db.exec(src("182_fm_ship_type_fix.sql")); } catch (e) { second = String(e.message || e); }
 ok(/already exists/.test(second), "a second apply stops at the helper table (nothing is changed twice)");
 try { await db.exec("rollback"); } catch { /* no open transaction */ }
 ok(JSON.stringify(await snap()) === JSON.stringify(after), "after the refused second apply every row is as after the first");
 
-// ── 4: a row uploaded again after 184, a row deleted since, then the rollback
+// ── 4: a row uploaded again after 182, a row deleted since, then the rollback
 const again = helper[0].id, gone = helper[1].id;
 await db.exec(`update public.parcel_tracking set status = 'picked_up' where id = '${again}'; delete from public.parcel_tracking where id = '${gone}';`);
-await db.exec(src("184_fm_ship_type_fix_rollback.sql"));
+await db.exec(src("182_fm_ship_type_fix_rollback.sql"));
 const back = await snap();
 ok(back.length === before.length - 1, "the rollback adds no row back (the deleted one stays deleted)");
 ok(await count(`carrier = 'fm' and ship_type = '全家店寄店取'`) === 69, "69 of the 70 rows carry their old words again (1 was deleted)");
-ok(await count(`carrier = 'fm' and ship_type = 'C2C'`) === 6, "the 6 全家 rows that were C2C before 184 are still C2C");
+ok(await count(`carrier = 'fm' and ship_type = 'C2C'`) === 6, "the 6 全家 rows that were C2C before 182 are still C2C");
 for (const r of back) {
   const b = beforeById.get(r.id);
-  ok(r.ship_type === b.ship_type, `after the rollback a row has its ship_type of before 184 (${b.carrier} ${b.ship_type})`);
+  ok(r.ship_type === b.ship_type, `after the rollback a row has its ship_type of before 182 (${b.carrier} ${b.ship_type})`);
 }
-ok(Number((await db.query(`select count(*)::int as n from pg_class where relname = 'parcel_tracking_fm_ship_type_184'`)).rows[0].n) === 0, "the helper table is gone");
+ok(Number((await db.query(`select count(*)::int as n from pg_class where relname = 'parcel_tracking_fm_ship_type_182'`)).rows[0].n) === 0, "the helper table is gone");
 
-// ── 5: 184 applies again; with nothing to change it changes nothing
-await db.exec(src("184_fm_ship_type_fix.sql"));
-ok(await count(`carrier = 'fm' and ship_type = '全家店寄店取'`) === 0 && Number((await db.query(`select count(*)::int as n from public.parcel_tracking_fm_ship_type_184`)).rows[0].n) === 69, "184 applies again after the rollback (69 rows)");
-await db.exec(src("184_fm_ship_type_fix_rollback.sql"));
+// ── 5: 182 applies again; with nothing to change it changes nothing
+await db.exec(src("182_fm_ship_type_fix.sql"));
+ok(await count(`carrier = 'fm' and ship_type = '全家店寄店取'`) === 0 && Number((await db.query(`select count(*)::int as n from public.parcel_tracking_fm_ship_type_182`)).rows[0].n) === 69, "182 applies again after the rollback (69 rows)");
+await db.exec(src("182_fm_ship_type_fix_rollback.sql"));
 await db.exec(`update public.parcel_tracking set ship_type = 'C2C' where carrier = 'fm' and ship_type = '全家店寄店取'`);
-await db.exec(src("184_fm_ship_type_fix.sql"));
-ok(Number((await db.query(`select count(*)::int as n from public.parcel_tracking_fm_ship_type_184`)).rows[0].n) === 0, "nothing to change → the helper table is empty and no row moves");
+await db.exec(src("182_fm_ship_type_fix.sql"));
+ok(Number((await db.query(`select count(*)::int as n from public.parcel_tracking_fm_ship_type_182`)).rows[0].n) === 0, "nothing to change → the helper table is empty and no row moves");
 
 console.log(`${pass} PASS, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

@@ -1,12 +1,12 @@
 // 2026-11-19 — FamilyMart (全家) parcels the FamilyMart site has NOTHING for yet (branch
-// claude/fm-pickup-accuracy-2, sql/185).
+// claude/fm-pickup-accuracy-2, sql/186).
 //   A. A seller's press (job kind "manual") asks EVERY unfinished 全家 parcel: no 24-hour skip.
 //      Order: at a store first (nearest deadline first), then the rest, least recently checked first.
 //   B. The check saves what the site said (parcel_tracking.fm_site_state): "not_found" (the site does
 //      not know the number) or "not_dropped" (it knows the order, never handed in). The parcel leaves
 //      Pickup Status on the answer JUST RECEIVED when it was saved 10+ Taipei days ago, or when the site
 //      does not know the number and the file's drop-off date has passed. Any real answer clears it.
-//      While sql/185 is not applied the check writes exactly what it wrote before.
+//      While sql/186 is not applied the check writes exactly what it wrote before.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -188,7 +188,7 @@ const check = (db: ReturnType<typeof fakeDb>, logger = quiet()) => checkFmRows({
 }).then((stats: Record<string, unknown>) => ({ stats, logger }));
 const by = (db: ReturnType<typeof fakeDb>) => Object.fromEntries(db.rows.map((r) => [r.id, r]));
 
-describe("the check writes the fact (sql/185 applied)", () => {
+describe("the check writes the fact (sql/186 applied)", () => {
   it("each parcel: the fact saved, cleared, left — and the counts", async () => {
     const db = fakeDb({ rows: ROWS() });
     const { stats } = await check(db);
@@ -232,7 +232,7 @@ describe("the server's own read gives the check what it needs", () => {
   });
 });
 
-describe("sql/185 not applied yet — the check writes exactly what it wrote before", () => {
+describe("sql/186 not applied yet — the check writes exactly what it wrote before", () => {
   it("first 'column not found' → warned once, written again without the fact; every later write is the old one", async () => {
     const db = fakeDb({ rows: ROWS(), noColumn: true });
     const { stats, logger } = await check(db);
@@ -279,7 +279,7 @@ describe("the run's counts are saved with the 全家 health row", () => {
     expect(db.health[0]).toMatchObject({ kind: "fm", job_id: "J1", updated: 6, fm_not_found: 4, fm_not_shipped: 1, fm_left: 2 });
     expect(lines(logger)).toMatch(/\[FM-CHECK\] done job=J1 .* not_found=4 not_shipped=1 left=2 /);
   });
-  it("sql/185 not applied → the health row of before (no count columns), written once", async () => {
+  it("sql/186 not applied → the health row of before (no count columns), written once", async () => {
     const db = fakeDb({ rows: ROWS(), noColumn: true });
     await runIt(db);
     expect(db.health).toHaveLength(1);

@@ -1,7 +1,7 @@
--- 185 — Pickup Status, 全家 (FamilyMart): what FamilyMart's site said at the last check, parcels that
+-- 186 — Pickup Status, 全家 (FamilyMart): what FamilyMart's site said at the last check, parcels that
 --       leave the list, and the "nothing yet" counts of each check run.
--- NOT APPLIED — chat-Claude applies. Rollback: sql/185_fm_site_answer_rollback.sql.
--- Proof: scripts/sql185-behaviour.mjs (PGlite).
+-- NOT APPLIED — chat-Claude applies. Rollback: sql/186_fm_site_answer_rollback.sql.
+-- Proof: scripts/sql186-behaviour.mjs (PGlite).
 --
 -- Why: a 全家 parcel FamilyMart's site has never really answered (it does not know the number, or it
 -- knows the order and the parcel was never handed in) kept the status of the 好賣+ file (出貨中) and

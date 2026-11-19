@@ -231,7 +231,7 @@ export function stepsFault(steps, ecOrderNo) {
 // the mark that tells the 好賣+ upload "the check has answered this row, do not lower it".
 export const FM_ANSWER_KINDS = Object.freeze(["returned", "picked_up", "at_store", "in_transit"]);
 
-// ── "Nothing yet" (2026-11-19, sql/185) ────────────────────────────────────────
+// ── "Nothing yet" (2026-11-19, sql/186) ────────────────────────────────────────
 // The site has nothing real for a parcel: it does not know the number (not_found), or it knows the
 // order and the parcel was never handed in (not_shipped — newest step 01 訂單成立未寄件). The fact
 // is saved on the row (parcel_tracking.fm_site_state) so the app can say so instead of showing the
@@ -263,7 +263,7 @@ export function fmNothingYet(kind, row, nowDate) {
 // status, fm_answered_at, created_at, pickup_deadline).
 //   { action: "delete" } | { action: "update", patch, plain, site? }
 //   patch  what is written
-//   plain  the write of before sql/185 (no fm_site_state, never finishes a row for "nothing yet") —
+//   plain  the write of before sql/186 (no fm_site_state, never finishes a row for "nothing yet") —
 //          used instead of `patch` while that column is not in the database
 //   site   set for a "nothing yet" answer that is saved: { state, leaves, why } (fmNothingYet)
 // A real answer, an unknown code and a void order with other steps all clear the saved fact (the

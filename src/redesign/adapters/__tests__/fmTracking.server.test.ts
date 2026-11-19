@@ -164,7 +164,7 @@ describe("fmRowChange — what is written", () => {
   const row = { id: "r1", arrived_at: null, rec_store: null };
   type Change = { action: string; patch: Record<string, unknown>; plain: Record<string, unknown>; site?: { state: string; leaves: boolean; why: string | null } };
   const change = (result: unknown, r: unknown = row) => fmRowChange(result as never, r as never, now) as unknown as Change;
-  // `plain` = what was written before sql/185 (still written while its column is missing);
+  // `plain` = what was written before sql/186 (still written while its column is missing);
   // `patch` = the same plus the saved answer.
   it("at_store: status, message, deadline, arrival and store (only when the row has none)", () => {
     const c = change(classifyFm(AT_STORE, "16354220151"));
@@ -212,7 +212,7 @@ describe("fmRowChange — what is written", () => {
       }
     }
   });
-  it("the write of before sql/185 (`plain`) never carries the saved answer and never finishes a row for 'nothing yet'", () => {
+  it("the write of before sql/186 (`plain`) never carries the saved answer and never finishes a row for 'nothing yet'", () => {
     const old = { ...row, status: "in_transit", created_at: "2026-10-01T00:00:00.000Z", fm_answered_at: null, pickup_deadline: null };
     for (const kind of ["not_found", "not_shipped", "unknown", "void_unclear", ...FM_ANSWER_KINDS]) {
       const c = change({ kind, status_message: "x", at: now, pickup_deadline: null }, old);

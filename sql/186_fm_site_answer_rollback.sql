@@ -1,6 +1,6 @@
--- Rollback of 185 — the saved FamilyMart answer, the parcels that left, the run counts.
+-- Rollback of 186 — the saved FamilyMart answer, the parcels that left, the run counts.
 -- Parcels that left the list are put BACK in the list first (they are shown as in transit again,
--- as before 185); nothing is deleted. Then the upload is the sql/151 definition again, word for word.
+-- as before 186); nothing is deleted. Then the upload is the sql/151 definition again, word for word.
 -- The server and the web keep working: without the column they write / read what they did before.
 begin;
 set local lock_timeout = '5s';

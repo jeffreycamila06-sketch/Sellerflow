@@ -30,7 +30,7 @@ describe("Pickup Status reads + 全家", () => {
     expect(selects.some((s) => s.includes("carrier"))).toBe(false);
     expect(r.rows[0].carrier).toBe("fm"); // the mock returns it anyway; the select never asks for it
   });
-  it("switch on: the row selects add carrier, the saved FamilyMart answer and the saved time (sql/185)", async () => {
+  it("switch on: the row selects add carrier, the saved FamilyMart answer and the saved time (sql/186)", async () => {
     await loadParcelTracking(true);
     await loadMoreLive(0, true);
     expect(selects.filter((s) => s !== "id").every((s) => s === PT_SELECT + ", carrier, fm_site_state, created_at")).toBe(true);

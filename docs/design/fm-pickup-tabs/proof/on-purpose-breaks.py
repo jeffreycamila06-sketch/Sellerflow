@@ -6,7 +6,7 @@ ROOT = "<a scratch copy of the branch>"
 T = "src/redesign/adapters/__tests__/"
 TESTS = [T + "fmPickup.test.ts", T + "parcelTrackingFmStorePickup.test.ts", T + "fmShipTypeSql.test.ts", T + "parcelTrackingTabs.test.ts", T + "parcelTrackingFm.test.ts",
          "src/redesign/screens/__tests__/ParcelTracking.fmStorePickup.test.tsx", "src/redesign/screens/__tests__/ParcelTracking.fm.test.tsx"]
-FP, PT, SQ, SR = "src/redesign/adapters/fmPickup.ts", "src/redesign/adapters/parcelTracking.ts", "sql/184_fm_ship_type_fix.sql", "sql/184_fm_ship_type_fix_rollback.sql"
+FP, PT, SQ, SR = "src/redesign/adapters/fmPickup.ts", "src/redesign/adapters/parcelTracking.ts", "sql/182_fm_ship_type_fix.sql", "sql/182_fm_ship_type_fix_rollback.sql"
 B = []
 def b(group, label, file, old, new): B.append((group, label, file, old, new))
 
@@ -53,12 +53,12 @@ b(G, "it changes rows of every carrier", SQ, "   where carrier = 'fm'\n     and 
 b(G, "it changes every 全家 row, whatever its words", SQ, "   where carrier = 'fm'\n     and ship_type = '全家店寄店取'", "   where carrier = 'fm'")
 b(G, "it writes another word than C2C", SQ, "     set ship_type = 'C2C'", "     set ship_type = 'STORE'")
 b(G, "it also changes the status", SQ, "     set ship_type = 'C2C'", "     set ship_type = 'C2C', status = 'in_transit'")
-b(G, "the helper table is readable from a browser (no row security)", SQ, "alter table public.parcel_tracking_fm_ship_type_184 enable row level security; -- no policy: no browser access\n", "")
-b(G, "the helper table is not kept away from browser roles", SQ, "revoke all on table public.parcel_tracking_fm_ship_type_184 from public, anon, authenticated;\n", "")
-b(G, "the changed rows are not noted (no exact rollback)", SQ, "insert into public.parcel_tracking_fm_ship_type_184 (id, old_ship_type)\nselect id, '全家店寄店取' from changed;", "select count(*) from changed;")
+b(G, "the helper table is readable from a browser (no row security)", SQ, "alter table public.parcel_tracking_fm_ship_type_182 enable row level security; -- no policy: no browser access\n", "")
+b(G, "the helper table is not kept away from browser roles", SQ, "revoke all on table public.parcel_tracking_fm_ship_type_182 from public, anon, authenticated;\n", "")
+b(G, "the changed rows are not noted (no exact rollback)", SQ, "insert into public.parcel_tracking_fm_ship_type_182 (id, old_ship_type)\nselect id, '全家店寄店取' from changed;", "select count(*) from changed;")
 b(G, "no transaction", SQ, "begin;\nset local lock_timeout = '5s';", "set lock_timeout = '5s';")
 b(G, "the rollback sets back every 全家 C2C row (the 6 that were C2C too)", SR, " where p.id = b.id\n   and p.carrier = 'fm'\n   and p.ship_type = 'C2C';", " where p.carrier = 'fm'\n   and p.ship_type = 'C2C';")
-b(G, "the rollback leaves the helper table", SR, "drop table public.parcel_tracking_fm_ship_type_184;\n", "")
+b(G, "the rollback leaves the helper table", SR, "drop table public.parcel_tracking_fm_ship_type_182;\n", "")
 b(G, "the rollback also touches a row whose words changed since", SR, "   and p.ship_type = 'C2C';", "   ;")
 
 only = [a.lower() for a in sys.argv[1:] if not a.startswith("--")]

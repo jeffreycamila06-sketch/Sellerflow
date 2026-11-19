@@ -1,4 +1,4 @@
-// Runs sql/119 + sql/151 and then sql/185 (+ its rollback) on a real Postgres (PGlite, WASM) against
+// Runs sql/119 + sql/151 and then sql/186 (+ its rollback) on a real Postgres (PGlite, WASM) against
 // the stub of the live parcel_tracking schema kept in scripts/sql119-behaviour.mjs, and proves:
 //   1. the saved answer column: its two values, readable by the seller, never writable by a browser
 //   2. the upload and a parcel STILL in the list: the saved answer stays while the file says in
@@ -10,10 +10,10 @@
 //   5. the 30-day clean-up: only parcels that left, only 全家, never an unfinished row; the daily job
 //   6. the run counts on the health row
 //   7. the rollback: parcels that left are back in the list, the upload function is the LIVE one
-//      again (md5 of the live definition read on 2026-11-19), everything added is gone; 185 applies again
+//      again (md5 of the live definition read on 2026-11-19), everything added is gone; 186 applies again
 // Not part of CI (PGlite is not a dependency of the repo):
-//   mkdir /tmp/pg185 && (cd /tmp/pg185 && npm i @electric-sql/pglite@0.2.17)
-//   PGLITE_DIR=/tmp/pg185 node scripts/sql185-behaviour.mjs            (from the repo root)
+//   mkdir /tmp/pg186 && (cd /tmp/pg186 && npm i @electric-sql/pglite@0.2.17)
+//   PGLITE_DIR=/tmp/pg186 node scripts/sql186-behaviour.mjs            (from the repo root)
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -23,7 +23,7 @@ async function loadPGlite() {
   const base = process.env.PGLITE_DIR ? resolve(process.env.PGLITE_DIR) : "";
   const entry = join(base, "node_modules", "@electric-sql", "pglite", "dist", "index.js");
   if (!base || !existsSync(entry)) {
-    console.log("PGlite not found. Run: mkdir /tmp/pg185 && (cd /tmp/pg185 && npm i @electric-sql/pglite@0.2.17) — then PGLITE_DIR=/tmp/pg185 node scripts/sql185-behaviour.mjs");
+    console.log("PGlite not found. Run: mkdir /tmp/pg186 && (cd /tmp/pg186 && npm i @electric-sql/pglite@0.2.17) — then PGLITE_DIR=/tmp/pg186 node scripts/sql186-behaviour.mjs");
     process.exit(2);
   }
   return (await import(pathToFileURL(entry).href)).PGlite;
@@ -85,9 +85,9 @@ const COLS = "cm_order_no, tracking_no, status, status_message, pickup_deadline:
 const rowOf = async (d, order, cols = COLS) => (await d.q(`select ${cols} from parcel_tracking where carrier = 'fm' and cm_order_no = $1`, [order])).rows[0] ?? null;
 
 const d = await makeDb();
-ok(await uploadMd5(d) === LIVE_UPLOAD_MD5, "before 185: the upload function of sql/151 is the live one (same md5)");
-await d.db.exec(read("sql/185_fm_site_answer.sql"));
-ok(await uploadMd5(d) !== LIVE_UPLOAD_MD5, "185 changes the upload function");
+ok(await uploadMd5(d) === LIVE_UPLOAD_MD5, "before 186: the upload function of sql/151 is the live one (same md5)");
+await d.db.exec(read("sql/186_fm_site_answer.sql"));
+ok(await uploadMd5(d) !== LIVE_UPLOAD_MD5, "186 changes the upload function");
 
 // ── 1. the column ──
 const col = (await d.q("select data_type, is_nullable, column_default from information_schema.columns where table_name='parcel_tracking' and column_name='fm_site_state'")).rows[0];
@@ -162,7 +162,7 @@ for (const [t, st, s, n, want] of [[true, "in_transit", "not_found", "in_transit
 
 // ── 4. rows without a saved answer: exactly sql/151's upload ──
 const d151 = await makeDb();            // only sql/151
-const d185 = await makeDb(); await d185.db.exec(read("sql/185_fm_site_answer.sql"));
+const d186 = await makeDb(); await d186.db.exec(read("sql/186_fm_site_answer.sql"));
 const answered = (dd, order, status, extra = "") => dd.q(`update parcel_tracking set status = $2, fm_answered_at = now(), last_polled_at = now() ${extra} where cm_order_no = $1`, [order, status]);
 const steps = [
   (dd) => dd.upload(A, ["in_transit", "at_store", "picked_up", "returned", "in_transit", "at_store", "in_transit", "in_transit"].map((s, i) => file(`L26C00${i + 1}`, s))),
@@ -177,14 +177,14 @@ const steps = [
 ];
 let same = true, answers = true;
 for (const [i, step] of steps.entries()) {
-  const a = await step(d151), b = await step(d185);
+  const a = await step(d151), b = await step(d186);
   if (i !== 1 && i !== 2 && i !== 3 && i !== 4 && JSON.stringify(a) !== JSON.stringify(b)) answers = false;
   const rows = async (dd) => JSON.stringify((await dd.q(`select user_id, ${COLS} from parcel_tracking where carrier='fm' order by user_id, cm_order_no`)).rows.map((x) => ({ ...x, picked_up_at: x.picked_up_at && "t", returned_at: x.returned_at && "t" })));
-  if (await rows(d151) !== await rows(d185)) { same = false; console.log("  rows differ after step", i); }
+  if (await rows(d151) !== await rows(d186)) { same = false; console.log("  rows differ after step", i); }
 }
 ok(same, "rows with no saved answer: after each of 9 steps (uploads, answers of the check, re-uploads, cancel, another seller) the rows are the same as with sql/151 alone");
 ok(answers, "… and each upload answers the same counts");
-ok((await d185.q("select count(*)::int n from parcel_tracking where fm_site_state is not null")).rows[0].n === 0, "… and no upload ever sets a saved answer by itself");
+ok((await d186.q("select count(*)::int n from parcel_tracking where fm_site_state is not null")).rows[0].n === 0, "… and no upload ever sets a saved answer by itself");
 
 // ── 5. the 30-day clean-up ──
 await d.upload(A, ["a", "b", "c", "d", "e", "f"].map((x) => file(`L26D00${x}`, "in_transit")));
@@ -219,7 +219,7 @@ ok(h[1].a === null && h[1].b === null && h[1].c === null, "every other health ro
 const leftBefore = (await d.q("select count(*)::int n from parcel_tracking where carrier='fm' and terminal and status='in_transit' and fm_site_state is not null")).rows[0].n;
 const allBefore = (await d.q("select count(*)::int n from parcel_tracking")).rows[0].n;
 ok(leftBefore >= 3, `there are parcels that left before the rollback (${leftBefore})`);
-await d.db.exec(read("sql/185_fm_site_answer_rollback.sql"));
+await d.db.exec(read("sql/186_fm_site_answer_rollback.sql"));
 ok((await d.q("select count(*)::int n from parcel_tracking")).rows[0].n === allBefore, "the rollback deletes no row");
 ok((await d.q("select count(*)::int n from parcel_tracking where carrier='fm' and status='in_transit' and terminal and cm_order_no in ('L26B1902','L26D00b','L26D00f')")).rows[0].n === 0, "the parcels that left are back in the list (not finished)");
 ok((await d.q("select count(*)::int n from parcel_tracking where cm_order_no = 'L26D00e' and terminal")).rows[0].n === 1, "a finished row that had no saved answer is not touched by the rollback");
@@ -230,8 +230,8 @@ ok((await d.q("select count(*)::int n from cron.job where jobname = 'purge-left-
 ok(await uploadMd5(d) === LIVE_UPLOAD_MD5, "the upload function is the live one again (same md5)");
 const r2 = await d.upload(A, [file("L26B1902", "in_transit"), file("L26E001", "at_store")]);
 ok(r2.ok === true && r2.inserted === 1 && r2.updated === 1, "the upload works after the rollback");
-let again = ""; try { await d.db.exec(read("sql/185_fm_site_answer.sql")); } catch (x) { again = String(x.message); }
-ok(again === "" && (await d.q("select count(*)::int n from parcel_tracking where fm_site_state is not null")).rows[0].n === 0, "185 applies again after its rollback, and starts with no saved answer");
+let again = ""; try { await d.db.exec(read("sql/186_fm_site_answer.sql")); } catch (x) { again = String(x.message); }
+ok(again === "" && (await d.q("select count(*)::int n from parcel_tracking where fm_site_state is not null")).rows[0].n === 0, "186 applies again after its rollback, and starts with no saved answer");
 
 console.log(`${pass} PASS, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

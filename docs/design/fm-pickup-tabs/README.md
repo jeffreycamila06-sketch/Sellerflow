@@ -26,7 +26,7 @@ Live table on 2026-11-19 (counts only): 76 全家 rows, 70 saved as `全家店�
    alone.
 3. **The exact card numbers** (`loadParcelTracking`): with 全家 on, the count asks for both saved
    words. With 全家 off the question is exactly the old one.
-4. `sql/184_fm_ship_type_fix.sql` (+ rollback), **not applied**: rewrites the 70 saved rows to `C2C`.
+4. `sql/182_fm_ship_type_fix.sql` (+ rollback), **not applied**: rewrites the 70 saved rows to `C2C`.
    Optional — the screen is right without it.
 
 7-11 rows: the rule that decides them (`isChaseable`) is not edited.
@@ -79,6 +79,6 @@ To make them again: `harness/` (the real screen on a made-up data source) — st
 - `proof/without-the-code.txt` — the new tests run against main's two source files: 36 fail.
 - `proof/on-purpose-breaks.txt` — 40 one-line breaks of the fix, each makes at least one test fail
   (40 of 40). The list is `proof/on-purpose-breaks.py`.
-- `proof/sql184-behaviour.txt` — sql/184 and its rollback on a throw-away database shaped like the
+- `proof/sql182-behaviour.txt` — sql/182 and its rollback on a throw-away database shaped like the
   live table: 358 checks pass. Run it with
-  `PGLITE_DIR=<folder with @electric-sql/pglite> node scripts/sql184-behaviour.mjs`.
+  `PGLITE_DIR=<folder with @electric-sql/pglite> node scripts/sql182-behaviour.mjs`.

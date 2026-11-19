@@ -1,12 +1,12 @@
 -- ============================================================================
--- sql/186 — help guide, ONE row of support_guide: Pickup Status (2026-11-19).
+-- sql/187 — help guide, ONE row of support_guide: Pickup Status (2026-11-19).
 --   全家 parcels FamilyMart has not received yet ("Not dropped off yet" / "No record yet"):
 --   listed last under In transit under their own heading, not in the In transit number,
 --   and when they leave the list.
 -- Same text as docs/support/sfl-guide.md / sql/116b. Only this row; every other row stays as it is.
 -- Running it twice changes nothing the second time. No Render deploy (the help bot re-reads every 5 min).
--- NOT APPLIED. Apply LAST, after sql/185, the Render deploy and the web deploy.
--- Rollback: sql/186_guide_fm_not_dropped_rollback.sql
+-- NOT APPLIED. Apply LAST, after sql/186, the Render deploy and the web deploy.
+-- Rollback: sql/187_guide_fm_not_dropped_rollback.sql
 -- ============================================================================
 begin;
 insert into public.support_guide (id, title, checked, keywords, body) values

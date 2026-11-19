@@ -5718,7 +5718,7 @@ create the order at once). ON = a price pop-up before each 1-Click and each auto
   `GeneralSettings.choosePrice.test.tsx`, `scripts/sql180-behaviour.mjs` (PGlite, 26 checks). Pictures: `docs/design/choose-price/`.
 - **Order:** apply sql/180 → merge (Vercel) → apply sql/181 (guide, 5 rows).
 
-## 2026-11-19 — PICKUP STATUS: 全家 ROWS SAVED AS 全家店寄店取 ARE IN THEIR TAB (branch `claude/fm-pickup-accuracy`, ✅ merged `e0abb50f`; sql/184 — renumbered from 182 on 2026-11-19 — NOT applied; web only)
+## 2026-11-19 — PICKUP STATUS: 全家 ROWS SAVED AS 全家店寄店取 ARE IN THEIR TAB (branch `claude/fm-pickup-accuracy`, NOT merged; sql/182 NOT applied; web only)
 Live table that day (counts only): 76 全家 rows, 70 with `ship_type = '全家店寄店取'` (the 好賣+ "Good-selling version"
 column 運送方式), 6 with `C2C`. Only `C2C` rows were in a status tab → the 70 were in no phone card, only under All on the
 laptop, 0 in the FamilyMart filter, and missing from the exact Waiting / In transit numbers.
@@ -5731,16 +5731,16 @@ laptop, 0 in the FamilyMart filter, and missing from the exact Waiting / In tran
   the server). `FM_STORE_PICKUP_SAVED = ["C2C", "全家店寄店取"]`.
 - **Exact card numbers (`loadParcelTracking`):** with 全家 on the two head counts use `.in("ship_type", [both words])`;
   with 全家 off exactly the old `.eq("ship_type", "C2C")` (test-pinned: same 6 / 7 requests as before).
-- **sql/184 (+ rollback; was 182 — 182/183 belong to `claude/choose-price-free`), NOT applied, optional:** sets the saved `全家店寄店取` rows to `C2C` and notes each changed row id
+- **sql/182 (+ rollback), NOT applied, optional:** sets the saved `全家店寄店取` rows to `C2C` and notes each changed row id
   in `parcel_tracking_fm_ship_type_182` (no browser access) so the rollback restores exactly those rows. The screen is
-  right without it. `scripts/sql184-behaviour.mjs` (PGlite, 358 checks).
+  right without it. `scripts/sql182-behaviour.mjs` (PGlite, 358 checks).
 - Rows saved with other words (a real 宅配 / 社區 row): unchanged — under All only, no Chase.
 - Not touched: server, 7-11 rules, printing, `chrome-extension/`, the help guide (it already says both stores are in one
   list). Phone apps need no new build (they load the web).
 - Pictures + proof: `docs/design/fm-pickup-tabs/` (before / after on iPhone 390, Android 360, laptop 1280; the new tests
   against main's code: 36 fail; 40 of 40 on-purpose breaks caught).
 
-## 2026-11-19 — 全家 PICKUP: CHECK NOW ASKS EVERY PARCEL + "NOT DROPPED OFF YET" GROUP (branch `claude/fm-pickup-accuracy-2`, NOT merged; sql/185 + sql/186 NOT applied; needs Render + Vercel)
+## 2026-11-19 — 全家 PICKUP: CHECK NOW ASKS EVERY PARCEL + "NOT DROPPED OFF YET" GROUP (branch `claude/fm-pickup-accuracy-2`, NOT merged; sql/186 + sql/187 NOT applied; needs Render + Vercel)
 Two owner decisions (STEP 0 report, Nov 19). `chrome-extension/` 0 lines; printing not touched; 7-11 server files
 not touched (`git diff origin/main -- server/` = fmTracking.js, fmTrackingRunner.js, parcelTrackingWorker.js only).
 - **A — a seller's press asks every unfinished 全家 parcel** (`parcelTrackingWorker.js` `fmScopeForJob`): kind
@@ -5748,21 +5748,21 @@ not touched (`git diff origin/main -- server/` = fmTracking.js, fmTrackingRunner
   `FM_PARCELS_PER_JOB` (60), NO 24-hour skip. urgent / new_parcels / health → `scopeForJob` unchanged; automatic →
   `autoScope` unchanged; the 7-11 part → `sevenScopeForJob` unchanged. `IN_TRANSIT_FRESH_MS` is now used by no job.
   Proof: `docs/design/fm-pickup-accuracy-2/proof/seven-scopes-vs-main.mjs` (4,000 generated jobs, 7-11 = main in all).
-- **B — the saved FamilyMart answer** (`parcel_tracking.fm_site_state`, sql/185): NULL | `not_found` (site does not
+- **B — the saved FamilyMart answer** (`parcel_tracking.fm_site_state`, sql/186): NULL | `not_found` (site does not
   know the number) | `not_dropped` (knows the order, never handed in — newest step 01). Written ONLY by the server
   check (`fmTracking.js` `fmNothingYet` + `fmRowChange`), only on an `in_transit` row with no `fm_answered_at`;
   every real answer / unknown code / void-unclear writes NULL. **Leaves the list on the answer just received**
   (`terminal = true`, status + message untouched): saved ≥ 10 Taipei days ago (`FM_LEAVE_AFTER_DAYS`, = 7-11's
   `RETIRE_NOT_DROPPED_DAYS`), OR `not_found` AND the file's drop-off date (`pickup_deadline`) < today (Taipei).
   "Left the list" = terminal ∧ in_transit ∧ carrier fm ∧ state not null; time left = `last_polled_at`.
-- **sql/185 (+ rollback, NOT applied):** the column + check constraint; `fm_upload_stays_out()` added to the 6
+- **sql/186 (+ rollback, NOT applied):** the column + check constraint; `fm_upload_stays_out()` added to the 6
   keep-conditions of `fm_pickup_upload` (a parcel that left stays out while the file still says in transit; a file
   saying at store / picked up / returned brings it back) + `fm_site_state` cleared when the file shows progress —
   otherwise sql/151's text word for word (test-pinned); `purge_left_fm_parcels()` + cron `purge-left-fm-parcels`
   `27 17 * * *` (left parcels deleted 30 days later, never an open or 7-11 row); `parcel_tracking_health`
   `fm_not_found` / `fm_not_shipped` / `fm_left` (counts of each 全家 run; the table keeps only its newest 200
   rows ≈ 5 days). Rollback: job off, left parcels back in the list (nothing deleted), sql/151 upload, drops.
-  `scripts/sql185-behaviour.mjs` (PGlite, 59 checks).
+  `scripts/sql186-behaviour.mjs` (PGlite, 59 checks).
 - **Works in any deploy order:** server without the column → the first refused write (PGRST204 / 42703) switches
   the job to exactly main's write (`change.plain`), one warn line; health row falls back to `writePollHealth`.
   Web without the column → module flag `fmSiteColumn` → the read is retried with exactly main's select and 7
@@ -5773,9 +5773,9 @@ not touched (`git diff origin/main -- server/` = fmTracking.js, fmTrackingRunner
   off yet", chips `pt-no-record` / `pt-not-dropped`, right column "Leaves this list {date}" / "…at the next check".
   i18n: `rd_pt_fm_no_record`, `rd_pt_fm_leaves_on`, `rd_pt_fm_leaves_next`, `rd_pt_fm_group_hint` (8 languages);
   the title reuses `rd_pt_fm_not_dropped`.
-- **Guide:** pickup-status section + 116b; `sql/186_guide_fm_not_dropped.sql` (+ rollback = the live row, md5
+- **Guide:** pickup-status section + 116b; `sql/187_guide_fm_not_dropped.sql` (+ rollback = the live row, md5
   checked 2026-11-19) — only that row. NOT applied; apply last.
-- **Order:** sql/185 → Render → Vercel → sql/186. sql/184 (optional) any time.
+- **Order:** sql/186 → Render → Vercel → sql/187. sql/182 (optional) any time.
 - Tests: `fmSiteAnswer.server.test.ts`, `parcelTrackingFmSite.test.ts`, `ParcelTracking.fmSite.test.tsx`,
   `fmSiteAnswerSql.test.ts`. Pictures + proofs: `docs/design/fm-pickup-accuracy-2/`.
 - **Known limits:** the 10 days count from when the row was first saved (a re-issued delivery number on an old

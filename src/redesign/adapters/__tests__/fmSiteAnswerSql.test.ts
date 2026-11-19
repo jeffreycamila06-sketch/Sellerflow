@@ -1,13 +1,13 @@
-// sql/185 (+ rollback) — text pins. The behaviour itself is proven on a throw-away database by
-// scripts/sql185-behaviour.mjs (PGlite); these pins catch an edit of the file that the script would
+// sql/186 (+ rollback) — text pins. The behaviour itself is proven on a throw-away database by
+// scripts/sql186-behaviour.mjs (PGlite); these pins catch an edit of the file that the script would
 // only see when someone runs it.
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 
 const sqlDir = "sql/";
 const read = (f: string) => readFileSync(sqlDir + f, "utf8");
-const FILE = read("185_fm_site_answer.sql");
-const BACK = read("185_fm_site_answer_rollback.sql");
+const FILE = read("186_fm_site_answer.sql");
+const BACK = read("186_fm_site_answer_rollback.sql");
 const S151 = read("151_fm_pickup_check.sql");
 const code = (s: string) => s.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
 // the text of one function definition: from its "create or replace" to the closing $function$;
@@ -20,9 +20,9 @@ const fn = (s: string, name: string) => {
 const KEEPS = "public.fm_upload_keeps(t.status, t.fm_answered_at, excluded.status)";
 const STAYS = "public.fm_upload_stays_out(t.terminal, t.status, t.fm_site_state, excluded.status)";
 
-describe("sql/185 — the file", () => {
-  it("is number 185, with its rollback; no other file uses that number; NOT applied", () => {
-    expect(readdirSync(sqlDir).filter((f) => f.startsWith("185_")).sort()).toEqual(["185_fm_site_answer.sql", "185_fm_site_answer_rollback.sql"]);
+describe("sql/186 — the file", () => {
+  it("is number 186, with its rollback; no other file uses that number; NOT applied", () => {
+    expect(readdirSync(sqlDir).filter((f) => f.startsWith("186_")).sort()).toEqual(["186_fm_site_answer.sql", "186_fm_site_answer_rollback.sql"]);
     expect(FILE).toMatch(/NOT APPLIED/);
   });
   it("one transaction with a lock limit", () => {
@@ -41,7 +41,7 @@ describe("sql/185 — the file", () => {
   });
 });
 
-describe("sql/185 — the upload = sql/151 with the two additions, nothing else", () => {
+describe("sql/186 — the upload = sql/151 with the two additions, nothing else", () => {
   const before = fn(S151, "fm_pickup_upload")!;
   const after = fn(FILE, "fm_pickup_upload")!;
   it("both found", () => { expect(before).toBeTruthy(); expect(after).toBeTruthy(); });
@@ -64,7 +64,7 @@ describe("sql/185 — the upload = sql/151 with the two additions, nothing else"
   });
 });
 
-describe("sql/185 — parcels that left are deleted 30 days later, never anything else", () => {
+describe("sql/186 — parcels that left are deleted 30 days later, never anything else", () => {
   it("only finished 全家 in-transit rows with a saved answer, checked 30+ days ago; no browser may call it", () => {
     const purge = code(FILE).slice(code(FILE).indexOf("create function public.purge_left_fm_parcels"));
     expect(purge).toContain("where t.terminal\n                     and t.carrier = 'fm'\n                     and t.status = 'in_transit'\n                     and t.fm_site_state is not null\n                     and t.last_polled_at < now() - interval '30 days'");
@@ -76,7 +76,7 @@ describe("sql/185 — parcels that left are deleted 30 days later, never anythin
   });
 });
 
-describe("sql/185 — run counts and the rollback", () => {
+describe("sql/186 — run counts and the rollback", () => {
   it("three nullable count columns on the health table", () => {
     expect(code(FILE)).toContain("alter table public.parcel_tracking_health\n  add column fm_not_found integer,\n  add column fm_not_shipped integer,\n  add column fm_left integer;");
   });
@@ -98,13 +98,14 @@ describe("sql/185 — run counts and the rollback", () => {
   });
 });
 
-describe("sql/186 — the help guide row (Pickup Status), NOT applied", () => {
-  const G = read("186_guide_fm_not_dropped.sql");
-  const GB = read("186_guide_fm_not_dropped_rollback.sql");
+describe("sql/187 — the help guide row (Pickup Status), NOT applied", () => {
+  const G = read("187_guide_fm_not_dropped.sql");
+  const GB = read("187_guide_fm_not_dropped_rollback.sql");
   const guide = readFileSync("docs/support/sfl-guide.md", "utf8");
   const section = guide.slice(guide.indexOf("## pickup-status — Pickup Status"), guide.indexOf("## buyer-alert"));
   const lit = (s: string) => `'${s.replace(/'/g, "''")}'`;
   it("one row only, the guide file's text, with today's date", () => {
+    expect(readdirSync(sqlDir).filter((f) => f.startsWith("187_")).sort()).toEqual(["187_guide_fm_not_dropped.sql", "187_guide_fm_not_dropped_rollback.sql"]);
     expect(G).toMatch(/NOT APPLIED/);
     expect(code(G).match(/^ {2}\('/gm)).toHaveLength(1);
     expect(G).toContain("('pickup-status', 'Pickup Status', '2026-11-19'::date,");

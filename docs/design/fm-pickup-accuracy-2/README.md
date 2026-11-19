@@ -1,6 +1,6 @@
 # Pickup Status — FamilyMart (全家) parcels FamilyMart has not received
 
-Branch `claude/fm-pickup-accuracy-2`, 2026-11-19. Server (Render) + database (sql/185) + web (Vercel).
+Branch `claude/fm-pickup-accuracy-2`, 2026-11-19. Server (Render) + database (sql/186) + web (Vercel).
 Nothing merged, applied or deployed.
 
 ## What changes for a seller
@@ -65,11 +65,11 @@ node docs/design/fm-pickup-accuracy-2/harness/shoot.cjs
 
 - `proof/without-the-code.txt` — the new tests run against main's source files: 52 fail, 9 pass
   (each of the 9 checks that something stays as before), and the SQL pin file cannot load
-  (sql/185 is not on main).
+  (sql/186 is not on main).
 - `proof/on-purpose-breaks.txt` — 52 one-line breaks of this branch: 52 of 52 make a test fail.
   The list: `proof/on-purpose-breaks.py`.
 - `proof/seven-scopes-vs-main.txt` — main's worker and this branch's worker side by side over
   4,000 generated jobs: the 7-11 part, the shared scope and the automatic check are the same in
   every case. Script: `proof/seven-scopes-vs-main.mjs`.
-- `proof/sql185-behaviour.txt` — sql/185 and its rollback on a throw-away database
-  (`scripts/sql185-behaviour.mjs`, PGlite).
+- `proof/sql186-behaviour.txt` — sql/186 and its rollback on a throw-away database
+  (`scripts/sql186-behaviour.mjs`, PGlite).

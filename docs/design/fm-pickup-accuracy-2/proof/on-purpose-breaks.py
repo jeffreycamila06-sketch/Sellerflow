@@ -14,7 +14,7 @@ TESTS = [
 I18N = ["src/redesign/i18n"]
 SRV = "server/fmTracking.js"; RUN = "server/fmTrackingRunner.js"; WRK = "server/parcelTrackingWorker.js"
 APP = "src/redesign/adapters/parcelTracking.ts"; SCR = "src/redesign/screens/ParcelTracking.tsx"
-SQL = "sql/185_fm_site_answer.sql"; BACK = "sql/185_fm_site_answer_rollback.sql"; LANG = "src/redesign/i18n/index.tsx"
+SQL = "sql/186_fm_site_answer.sql"; BACK = "sql/186_fm_site_answer_rollback.sql"; LANG = "src/redesign/i18n/index.tsx"
 STAYS = " or public.fm_upload_stays_out(t.terminal, t.status, t.fm_site_state, excluded.status)"
 
 BREAKS = [
@@ -57,7 +57,7 @@ BREAKS = [
     ("unknown word kept", APP, 'row.fm_site_state === "not_found" || row.fm_site_state === "not_dropped" ? row.fm_site_state : null', "row.fm_site_state as never"),
     ("exact In transit count includes the group", APP, 'site ? moving().is("fm_site_state", null) : moving()', "moving()"),
     ("group count not limited to saved answers", APP, '.eq("carrier", "fm").not("fm_site_state", "is", null)', '.eq("carrier", "fm")'),
-    ("no fallback when the column is missing", APP, "  fmSiteColumn = false; // sql/185 is not applied yet: read again", "  // sql/185 is not applied yet: read again"),
+    ("no fallback when the column is missing", APP, "  fmSiteColumn = false; // sql/186 is not applied yet: read again", "  // sql/186 is not applied yet: read again"),
     ("Load more has no fallback", APP, "  if (error && fmSiteOn(fm) && fmSiteColumnMissing(error)) {", "  if (false) {"),
     # ── app: screen ──
     ("no card line", SCR, '{x === "transit" && held > 0 && <div', '{false && <div'),
@@ -74,8 +74,8 @@ BREAKS = [
     ("upload brings a left parcel back on 'in transit'", SQL, "case when public.fm_upload_keeps(t.status, t.fm_answered_at, excluded.status)" + STAYS + " then t.status          else", "case when public.fm_upload_keeps(t.status, t.fm_answered_at, excluded.status) then t.status          else"),
     ("purge after 3 days", SQL, "t.last_polled_at < now() - interval '30 days'", "t.last_polled_at < now() - interval '3 days'"),
     ("upload never clears the fact", SQL, "fm_site_state   = case when excluded.status = 'in_transit' then t.fm_site_state else null end", "fm_site_state   = t.fm_site_state"),
-    ("guide row keeps the old date", "sql/186_guide_fm_not_dropped.sql", "'Pickup Status', '2026-11-19'::date", "'Pickup Status', '2026-11-17'::date"),
-    ("guide rollback is the new text", "sql/186_guide_fm_not_dropped_rollback.sql", "'Pickup Status', '2026-11-17'::date", "'Pickup Status', '2026-11-19'::date"),
+    ("guide row keeps the old date", "sql/187_guide_fm_not_dropped.sql", "'Pickup Status', '2026-11-19'::date", "'Pickup Status', '2026-11-17'::date"),
+    ("guide rollback is the new text", "sql/187_guide_fm_not_dropped_rollback.sql", "'Pickup Status', '2026-11-17'::date", "'Pickup Status', '2026-11-19'::date"),
     ("rollback leaves parcels hidden", BACK, "update public.parcel_tracking\n   set terminal = false\n where carrier = 'fm' and terminal and status = 'in_transit' and fm_site_state is not null;\n", ""),
 ]
 

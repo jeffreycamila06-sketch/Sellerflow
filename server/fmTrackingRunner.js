@@ -295,13 +295,13 @@ export function underFmCap(requestsSoFar, cap = FM_DAILY_REQUEST_CAP, perSession
   return requestsSoFar + fmMaxRequestsPerSession(perSession) <= cap;
 }
 
-// PURE — does this database error say the saved-answer column (sql/185) is not there?
+// PURE — does this database error say the saved-answer column (sql/186) is not there?
 export function fmStateColumnMissing(error) {
   if (!error) return false;
   return error.code === "PGRST204" || error.code === "42703" || /fm_site_state|fm_not_found|fm_not_shipped|fm_left/.test(String(error.message || ""));
 }
 
-// The 全家 health row of one run, with the run's "nothing yet" counts (sql/185 columns). While
+// The 全家 health row of one run, with the run's "nothing yet" counts (sql/186 columns). While
 // those columns are not in the database the row is written as before, without them.
 async function writeFmHealth(serviceSb, row, counts, logger) {
   try {
@@ -393,7 +393,7 @@ export async function checkFmRows({
     sessions: 0, checked: 0, removed: 0, notFound: 0, notShipped: 0, left: 0, unknowns: 0, failures: 0, parcelFaults: 0,
     captchaTries: 0, captchaHits: 0, tripped: false, stopReason: null, sent: 0,
   };
-  // The saved-answer column (parcel_tracking.fm_site_state, sql/185) is not in the database yet →
+  // The saved-answer column (parcel_tracking.fm_site_state, sql/186) is not in the database yet →
   // from the first write that says so, this job writes exactly what it wrote before that file.
   let noStateColumn = false;
   const cancelled = () => !!(control && control.cancelled);
@@ -504,7 +504,7 @@ export async function checkFmRows({
             : put(saved ? change.patch : change.plain));
           if (error && saved && fmStateColumnMissing(error)) {
             noStateColumn = true; saved = false;
-            logger.warn(`${FM_TAG} the saved-answer column is not in the database yet (sql/185) — writing as before`);
+            logger.warn(`${FM_TAG} the saved-answer column is not in the database yet (sql/186) — writing as before`);
             ({ data, error } = await put(change.plain));
           }
           if (error) { logger.error(`${FM_TAG} row write failed:`, error.code || "error"); continue; }

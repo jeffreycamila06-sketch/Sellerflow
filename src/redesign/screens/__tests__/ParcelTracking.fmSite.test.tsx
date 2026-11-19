@@ -1,9 +1,9 @@
-// 2026-11-19 (sql/185) — Pickup Status with 全家 parcels FamilyMart's site has NOTHING for yet:
+// 2026-11-19 (sql/186) — Pickup Status with 全家 parcels FamilyMart's site has NOTHING for yet:
 // their own group at the end of the In transit list, with its own number ("+N Not dropped off yet"
 // on the phone card), the label "No record yet" (FamilyMart does not know the number) or
 // "Not dropped off yet" (it knows the order), and the day the parcel leaves the list.
 // The In transit number counts the parcels that are really moving. Rows without the saved answer
-// (7-11, 全家 off, sql/185 not applied) show exactly as before.
+// (7-11, 全家 off, sql/186 not applied) show exactly as before.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor, within } from "@testing-library/react";
 import { TProvider, buildT } from "../../i18n";
@@ -132,7 +132,7 @@ describe("PHONE", () => {
     fireEvent.change(r.getByTestId("pt-search"), { target: { value: "seven_moving" } });
     await waitFor(() => expect(listOrder(r)).toEqual(["seven_moving"]));
   });
-  it("no saved answer on any row (7-11 only, 全家 off, sql/185 not applied) → exactly as before: no group, no card line", async () => {
+  it("no saved answer on any row (7-11 only, 全家 off, sql/186 not applied) → exactly as before: no group, no card line", async () => {
     loadParcelTracking.mockResolvedValue({ ok: true, rows: ROWS().map(({ fmSiteState: _f, createdAt: _c, ...x }) => x) });
     const r = view();
     await waitFor(() => expect(num(r.getByTestId("pt-card-transit"))).toBe(6));

@@ -1,4 +1,4 @@
--- Rollback of sql/186: the Pickup Status row back to its LIVE text before it
+-- Rollback of sql/187: the Pickup Status row back to its LIVE text before it
 -- (read 2026-11-19: checked 2026-11-17, body md5 292c0bcddaac384d997eed433695b35f = main's docs/support/sfl-guide.md).
 begin;
 insert into public.support_guide (id, title, checked, keywords, body) values

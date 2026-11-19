@@ -86,7 +86,7 @@ export interface ParcelTrackingRow {
   terminal: boolean;
   lastPolledAt?: string | null; // last SHOPMORE check of this row (drives the Stale chip)
   carrier?: "711" | "fm";      // set only when the 全家 switch is on (sql/119)
-  // 全家 only, read only when the 全家 switch is on and the column exists (sql/185): what FamilyMart's
+  // 全家 only, read only when the 全家 switch is on and the column exists (sql/186): what FamilyMart's
   // site said at the last check about a parcel it has never really answered.
   fmSiteState?: "not_found" | "not_dropped" | null;
   createdAt?: string | null;   // when the row was saved — read together with fmSiteState
@@ -133,7 +133,7 @@ export function isChaseable(shipType: string | null | undefined, specialType: st
 
 // 全家 (carrier 'fm'): the reader saves every store-pickup row as "C2C" (fmPickup.ts fmShipType).
 // Rows saved before 2026-11-19 from the Good-selling file still carry the file's own words
-// (全家店寄店取) until sql/184 corrects them — the same store pickup, so it counts as one here.
+// (全家店寄店取) until sql/182 corrects them — the same store pickup, so it counts as one here.
 export const FM_STORE_PICKUP_SAVED = ["C2C", "全家店寄店取"] as const;
 // PURE — does this row belong in a status tab? A 7-11 row: isChaseable, unchanged. A 全家 row: the
 // same rule, with the older saved words accepted too.
@@ -142,7 +142,7 @@ export function inStatusTabs(row: Pick<ParcelTrackingRow, "carrier" | "shipType"
   return row.carrier === "fm" && String(row.shipType ?? "").trim() === FM_STORE_PICKUP_SAVED[1] && String(row.specialType || "").trim() === "";
 }
 
-// 全家 parcel FamilyMart's site has NOTHING for yet (sql/185): it does not know the number
+// 全家 parcel FamilyMart's site has NOTHING for yet (sql/186): it does not know the number
 // ("not_found"), or it knows the order and the parcel was never handed in ("not_dropped"). Such a
 // row is listed in its own group under In transit and is not counted in the In transit number.
 // PURE. A row without the saved answer (7-11, 全家 off, column not there) is never one.
@@ -528,7 +528,7 @@ export interface ParcelTotals { all: number; picked: number; returned: number; l
 // a stable order, so "Load more" (liveOffset) never repeats or skips a row.
 // fm = the 全家 switch is on → also read `carrier` (for the 7-11 / 全家 label). Off → the
 // exact pre-全家 select (the database hides 全家 rows from it anyway, sql/119).
-// 全家 on → also the saved FamilyMart answer and the saved time (sql/185). While that column is not
+// 全家 on → also the saved FamilyMart answer and the saved time (sql/186). While that column is not
 // in the database (the first read says so) the select is exactly the one of before.
 let fmSiteColumn = true;
 export const resetFmSiteColumnForTests = () => { fmSiteColumn = true; };
@@ -563,7 +563,7 @@ export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; row
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   const first = await loadTrackingOnce(me, fm);
   if (!first.missing) return first.res;
-  fmSiteColumn = false; // sql/185 is not applied yet: read again, exactly as before it
+  fmSiteColumn = false; // sql/186 is not applied yet: read again, exactly as before it
   return (await loadTrackingOnce(me, fm)).res;
 }
 
@@ -612,7 +612,7 @@ export async function loadMoreLive(offset: number, fm = false): Promise<{ ok: bo
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   let { data, error } = await livePage(me, Math.max(0, offset), fm);
   if (error && fmSiteOn(fm) && fmSiteColumnMissing(error)) {
-    fmSiteColumn = false; // sql/185 is not applied yet: the select of before
+    fmSiteColumn = false; // sql/186 is not applied yet: the select of before
     ({ data, error } = await livePage(me, Math.max(0, offset), fm));
   }
   if (error) return { ok: false, rows: [], error: error.message };

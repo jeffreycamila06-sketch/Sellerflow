@@ -1,6 +1,6 @@
 // Fake Supabase client for the picture harness: an in-memory parcel_tracking table + the few RPCs
 // Pickup Status calls. Every name, number and store below is made up.
-// Four 全家 rows FamilyMart's site has nothing for yet (fm_site_state, sql/185):
+// Four 全家 rows FamilyMart's site has nothing for yet (fm_site_state, sql/186):
 //   ella.tw    knows the order, not handed in, the 好賣+ file gives a drop-off date (in 6 days)
 //   faye_ukay  knows the order, not handed in, no date → leaves 10 days after it was saved
 //   ivy_live   does not know the number → leaves 10 days after it was saved
