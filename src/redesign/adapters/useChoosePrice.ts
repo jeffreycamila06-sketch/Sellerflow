@@ -130,7 +130,8 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
   }, [uid, patch]); // ONE read per signed-in user — no interval/poll
 
   const persist = useCallback(async (nextEnabled: boolean, nextPrices: number[], prevEnabled: boolean, prevPrices: number[]): Promise<boolean> => {
-    if (!uid || !isSupabaseConfigured || !supabase) return true;
+    if (!uid) return false;                              // nobody signed in → nothing was saved
+    if (!isSupabaseConfigured || !supabase) return true;
     const { error } = await supabase
       .from("seller_price_choices")
       .upsert({ user_id: uid, enabled: nextEnabled, prices: nextPrices, updated_at: new Date().toISOString() });
@@ -146,6 +147,7 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
 
   const { enabled, prices } = st;
   const setEnabled = useCallback(async (on: boolean, next?: number[]) => {
+    if (!uid) return false; // no signed-in user → nothing changes, nothing is saved
     const list = next !== undefined ? normalizePriceList(next) : prices;
     if (on && !canEnableChoosePrice(list)) return false; // blocked — the Settings screen asks for a price first
     patch(uid, { enabled: on, prices: list });
@@ -153,6 +155,7 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
   }, [uid, enabled, prices, persist, patch]);
 
   const setPrices = useCallback(async (next: number[]) => {
+    if (!uid) return false; // no signed-in user → nothing changes, nothing is saved
     const list = normalizePriceList(next);
     if (enabled && !canEnableChoosePrice(list)) return false; // keep at least one price while ON
     patch(uid, { prices: list });

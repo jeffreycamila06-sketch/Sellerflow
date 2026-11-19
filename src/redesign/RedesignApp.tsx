@@ -2482,9 +2482,20 @@ export default function RedesignApp() {
     // Orders paused (the board is loading / reloading) → nothing is created, the comment keeps waiting.
     if (liveSession.state === "loading" || !liveSession.canOrder() || (item.kind === "pin" && !liveSession.orderedLoaded)) return "blocked";
     pricePickedRef.current.add(item);
-    const r: PriceCommit = item.kind === "click" && item.rowId
-      ? (printed[item.rowId] ? "duplicate" : commitOneClick(item.rowId, item.source, price)) // "duplicate": ordered meanwhile (the row's own Type price)
-      : commitPin(item.source as ProdComment & { msgId: string }, price);
+    let r: PriceCommit;
+    try {
+      r = item.kind === "click" && item.rowId
+        ? (printed[item.rowId] ? "duplicate" : commitOneClick(item.rowId, item.source, price)) // "duplicate": ordered meanwhile (the row's own Type price)
+        : commitPin(item.source as ProdComment & { msgId: string }, price);
+    } catch (e) {
+      // The order step threw → nothing is lost: the comment keeps waiting and can be tapped again.
+      log.warn("choose price: the order step failed", e);
+      pricePickedRef.current.delete(item);
+      return "blocked";
+    }
+    // The free order limit was reached while this comment waited → not "session still loading":
+    // the item goes quietly (the limit pop-up explains); the 1-Click row can be tapped again as today.
+    if (r === "blocked" && orderCappedFor(item.source.platform)) { dropPriceItem(item.key); return "capped"; }
     if (r === "blocked") { pricePickedRef.current.delete(item); return r; }
     dropPriceItem(item.key);
     return r;

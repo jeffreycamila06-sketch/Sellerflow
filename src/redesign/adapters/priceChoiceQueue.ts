@@ -23,7 +23,9 @@ export interface PriceChoiceItem {
 
 // What a price tap did. "blocked" = nothing was created and the comment keeps waiting.
 export type PriceCommit = "ordered" | "duplicate" | "blocked";
-export type PickResult = PriceCommit | "busy" | { soldOut: string };
+// "capped" = the free order limit was reached while the comment waited: the item is dropped
+// quietly (the limit pop-up explains).
+export type PickResult = PriceCommit | "busy" | "capped" | { soldOut: string };
 
 export interface PriceChoiceQueue { sessionKey: string; items: PriceChoiceItem[] }
 

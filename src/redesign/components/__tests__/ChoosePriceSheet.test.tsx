@@ -136,12 +136,49 @@ describe("ChoosePriceSheet — orders paused / sold out", () => {
     fireEvent.click(screen.getByTestId("cpp-price-1"));
     expect(screen.getByTestId("cpp-soldout").textContent).toBe("A1 is sold out. Print anyway?");
     expect(screen.queryByTestId("cpp-price-0")).toBeNull();
+    pastGuard();                                         // the question is guarded like a fresh sheet
     fireEvent.click(screen.getByTestId("cpp-soldout-yes"));
     expect(onPick).toHaveBeenLastCalledWith(59, true);   // the price that was tapped, now confirmed
     expect(confirmSpy).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("cpp-skip"));
     expect(onSkip).toHaveBeenCalledTimes(1);
     confirmSpy.mockRestore();
+  });
+});
+
+describe("ChoosePriceSheet — the sold-out question is guarded like a fresh sheet", () => {
+  it("\"Print anyway\" / \"Skip\" are ignored for ~400 ms after the question opens, then work", () => {
+    const onPick = vi.fn<(p: number, ok?: boolean) => PickResult>((_p, ok) => (ok ? "ordered" : { soldOut: "A1" }));
+    const { onSkip } = show({ onPick });
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-price-0"));          // → the question takes the buttons' place
+    expect(screen.getByTestId("cpp-soldout")).toBeTruthy();
+    expect(onPick).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("cpp-soldout-yes"));      // the same fast tap, no time passed
+    fireEvent.click(screen.getByTestId("cpp-skip"));
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(onSkip).not.toHaveBeenCalled();
+    act(() => { vi.setSystemTime(Date.now() + TAP_GUARD_MS - 20); });
+    fireEvent.click(screen.getByTestId("cpp-soldout-yes"));
+    expect(onPick).toHaveBeenCalledTimes(1);                     // still inside the guard
+    act(() => { vi.setSystemTime(Date.now() + 40); });
+    fireEvent.click(screen.getByTestId("cpp-soldout-yes"));
+    expect(onPick).toHaveBeenLastCalledWith(39, true);
+    fireEvent.click(screen.getByTestId("cpp-skip"));
+    expect(onSkip).toHaveBeenCalledTimes(1);
+  });
+  it("a typed price that meets the question is guarded the same way", () => {
+    const onPick = vi.fn<(p: number, ok?: boolean) => PickResult>((_p, ok) => (ok ? "ordered" : { soldOut: "B2" }));
+    show({ onPick });
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-type"));
+    fireEvent.change(screen.getByTestId("cpp-type-input"), { target: { value: "88" } });
+    fireEvent.click(screen.getByTestId("cpp-type-print"));
+    fireEvent.click(screen.getByTestId("cpp-soldout-yes"));
+    expect(onPick).toHaveBeenCalledTimes(1);
+    pastGuard();
+    fireEvent.click(screen.getByTestId("cpp-soldout-yes"));
+    expect(onPick).toHaveBeenLastCalledWith(88, true);
   });
 });
 

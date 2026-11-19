@@ -433,11 +433,89 @@ describe("never lose a buyer on a price tap", () => {
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);       // nothing yet
     expect(screen.getByTestId("cpp-soldout").textContent).toBe("D is sold out. Print anyway?");
     expect(confirmSpy).not.toHaveBeenCalled();
+    await tap("cpp-soldout-yes");                            // the same fast tap → ignored (guard re-armed)
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    settle();
     await tap("cpp-soldout-yes");
     expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
     expect(H.createOrder.fn!.mock.calls[1][1]).toBe(39);
     expect(screen.queryByTestId("cpp-sheet")).toBeNull();
     confirmSpy.mockRestore();
+  });
+});
+
+describe("fix round 2 — a throw, and the free order limit reached while waiting", () => {
+  beforeEach(() => { H.cp.enabled = true; H.cp.prices = [39, 59, 99]; });
+
+  it("the order step THROWS once → the sheet stays (comment still waiting); the second tap makes the order", async () => {
+    H.feed.push(comment(1), comment(2));
+    await mount();
+    tapOneClick("Buyer 1");
+    tapOneClick("Buyer 2");
+    settle();
+    const real = H.createOrder.fn!;
+    H.createOrder.fn = vi.fn(() => { throw new Error("boom"); });
+    await tap("cpp-price-1");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 1");
+    expect(screen.getByTestId("cpp-blocked")).toBeTruthy();
+    expect(screen.getByTestId("cpp-waiting").textContent).toBe("1 more waiting after this");
+    H.createOrder.fn = real;
+    await tap("cpp-price-1");                                // the guard was released by the catch
+    expect(real).toHaveBeenCalledTimes(1);
+    expect((real.mock.calls[0][0] as ProdComment).name).toBe("Buyer 1");
+    expect(real.mock.calls[0][1]).toBe(59);
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2");
+  });
+
+  it("a pin's order step throws → same: stays, then orders", async () => {
+    await mount();
+    await sendPin(pin(1));
+    settle();
+    const real = H.createOrder.fn!;
+    H.createOrder.fn = vi.fn(() => { throw new Error("boom"); });
+    await tap("cpp-price-0");
+    expect(screen.getByTestId("cpp-comment").textContent).toBe("pinned one");
+    H.createOrder.fn = real;
+    await tap("cpp-price-0");
+    expect(real).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+  });
+
+  it("the free order limit is reached while a comment waits → the item goes quietly (no \"Session still loading\"); the row can be tapped again as today", async () => {
+    H.feed.push(comment(1), comment(2));
+    const app = await mount();
+    tapOneClick("Buyer 1");
+    tapOneClick("Buyer 2");
+    settle();
+    H.capped.v = true;                                       // the limit was reached meanwhile
+    H.createOrder.fn = vi.fn(() => null);                    // the order hub refuses (and shows its limit pop-up)
+    await app.rerender();
+    await tap("cpp-price-0");
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);       // it went through the normal order step
+    expect(screen.queryByTestId("cpp-blocked")).toBeNull();  // never the "session still loading" text
+    expect(screen.queryByText(t.rd_sess_order_blocked)).toBeNull();
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 2"); // only THAT item left the queue
+    expect(screen.queryByTestId("cpp-waiting")).toBeNull();
+    settle();
+    await tap("cpp-skip");
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    tapOneClick("Buyer 1");                                  // the row was not marked ordered → today's path
+    await flush();
+    expect(screen.queryByTestId("cpp-sheet")).toBeNull();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
+    expect(H.createOrder.fn.mock.calls[1][1]).toBe(0);
+  });
+
+  it("not over the limit: a refused order still keeps the comment waiting (round 1 rule unchanged)", async () => {
+    H.feed.push(comment(1));
+    await mount();
+    tapOneClick("Buyer 1");
+    settle();
+    H.createOrder.fn = vi.fn(() => null);
+    await tap("cpp-price-0");
+    expect(screen.getByTestId("cpp-blocked").textContent).toBe(t.rd_sess_order_blocked);
+    expect(screen.getByTestId("cpp-name").textContent).toContain("Buyer 1");
   });
 });
 
@@ -498,6 +576,9 @@ describe("source pins", () => {
     const body = src.slice(i, src.indexOf("\n  };", i));
     expect(body).not.toContain("liveFeed.getComment");                       // never re-reads the feed
     expect(body.indexOf('if (r === "blocked") { pricePickedRef.current.delete(item); return r; }')).toBeGreaterThan(-1);
-    expect(body.indexOf("dropPriceItem(item.key);")).toBeGreaterThan(body.indexOf('if (r === "blocked")'));
+    expect(body.lastIndexOf("dropPriceItem(item.key);")).toBeGreaterThan(body.indexOf('if (r === "blocked") {'));
+    // a throw releases the guard and keeps the item; the limit drops it without the "blocked" answer
+    expect(body).toMatch(/catch \(e\) \{[\s\S]*?pricePickedRef\.current\.delete\(item\);\s*return "blocked";/);
+    expect(body).toContain('if (r === "blocked" && orderCappedFor(item.source.platform)) { dropPriceItem(item.key); return "capped"; }');
   });
 });

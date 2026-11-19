@@ -72,6 +72,20 @@ describe("useChoosePrice", () => {
     await act(async () => { await Promise.resolve(); });
     expect(maybeSingle).not.toHaveBeenCalled();
   });
+  it("no signed-in user: setEnabled / setPrices answer false, nothing changes, nothing is saved", async () => {
+    const { result } = renderHook(() => useChoosePrice(null));
+    let on: boolean | undefined, list: boolean | undefined, off: boolean | undefined;
+    await act(async () => { on = await result.current.setEnabled(true, [59]); });
+    expect(on).toBe(false);
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.prices).toEqual([]);
+    await act(async () => { list = await result.current.setPrices([39, 59]); off = await result.current.setEnabled(false); });
+    expect(list).toBe(false);
+    expect(off).toBe(false);
+    expect(result.current.prices).toEqual([]);
+    expect(upsert).not.toHaveBeenCalled();
+    expect(result.current.saveErrors).toBe(0);
+  });
   it("reads enabled + prices (cleaned) → active", async () => {
     maybeSingle.mockResolvedValue({ data: { enabled: true, prices: ["39", 59, 59, 0] }, error: null });
     const { result } = renderHook(() => useChoosePrice("u1"));

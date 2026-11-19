@@ -7,6 +7,7 @@ import GeneralSettings from "../GeneralSettings";
 import { TProvider, buildT } from "../../i18n";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
+import { useChoosePrice } from "../../adapters/useChoosePrice";
 
 const t = buildT("en");
 const account: AccountUser = {
@@ -196,6 +197,45 @@ describe("Choose price before print — Settings row", () => {
     fireEvent.click(screen.getByTestId("cpp-toggle"));
     await turnOn();
     expect(spy.sp).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("ls-excl-note")).toBeNull();
+  });
+});
+
+describe("the REAL useChoosePrice with nobody signed in", () => {
+  // The hook answers false (nothing saved) → the screen must leave Same price alone.
+  function RealHook() {
+    const cp = useChoosePrice(null);
+    const [sp, setSp] = useState(true);
+    const auto: AutoControls = { detect: false, toggle: noop };
+    return (
+      <TProvider lang="en">
+        <GeneralSettings
+          theme="light" accent="indigo" onSetTheme={noop} onSetAccent={noop}
+          auto={auto} cur="₱" lang="en" onSetLang={noop} currency="PHP" onSetCurrency={noop}
+          profileOpen={false} onToggleProfile={noop} keepAwake onToggleKeepAwake={noop} pinPrint={false} onTogglePinPrint={noop}
+          liveSessionOpen onToggleLiveSession={noop}
+          printerIdx={0} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={noop}
+          onSubscription={noop} onSupport={noop} onDelete={noop}
+          account={account} onSaveProfile={vi.fn().mockResolvedValue({ ok: true })} onManageChannel={noop}
+          samePriceEnabled={sp} samePrice={39} onSetSamePriceEnabled={(on, draft) => { spy.sp(on, draft); setSp(on); return true; }}
+          choosePriceEnabled={cp.enabled} choosePrices={cp.prices}
+          onSetChoosePriceEnabled={(on, p) => { spy.cpOn(on, p); return cp.setEnabled(on, p); }} onSetChoosePrices={(p) => cp.setPrices(p)}
+          onToast={spy.toast}
+        />
+      </TProvider>
+    );
+  }
+  it("turning Choose price ON saves nothing → Same price stays ON with its price, no note", async () => {
+    render(<RealHook />);
+    fireEvent.click(screen.getByTestId("cpp-toggle"));
+    fireEvent.change(screen.getByTestId("cpp-first-input"), { target: { value: "59" } });
+    await turnOn();
+    expect(spy.cpOn).toHaveBeenLastCalledWith(true, [59]);             // the screen really asked
+    expect(spy.sp).not.toHaveBeenCalled();                             // Same price never turned off
+    expect(screen.getByTestId("samePrice-toggle").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("samePrice-val").textContent).toBe("₱39");
+    expect(screen.getByTestId("cpp-toggle").getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByTestId("cpp-area")).toBeNull();
     expect(screen.queryByTestId("ls-excl-note")).toBeNull();
   });
 });

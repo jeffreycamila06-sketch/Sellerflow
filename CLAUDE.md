@@ -5656,6 +5656,9 @@ create the order at once). ON = a price pop-up before each 1-Click and each auto
   the queue only on ordered / duplicate. Orders paused (board loading, `canOrder` false) or createOrder null for another
   reason → "blocked": the sheet stays open with the existing "Session still loading…" text and the double-tap guard is
   released. Over the free order limit → no pop-up at all (today's limit pop-up).
+  Fix round 2: a THROW in the order step = "blocked" too (guard released, logged); the limit reached WHILE a comment
+  waits → that item is dropped quietly (`"capped"`, no "session still loading" — the limit pop-up explains);
+  `useChoosePrice` with no signed-in user answers false and changes nothing; the sold-out question re-arms the tap guard.
 - **Pop-up (`components/ChoosePriceSheet.tsx`):** ignores every tap for 400 ms after it appears (`TAP_GUARD_MS` — it is
   mounted fresh per comment, a second fast tap must not hit the next one). "Type price" = a field + Print + Back INSIDE
   the sheet (same number rules as the per-comment Type price, which is unchanged). A code that went sold out while

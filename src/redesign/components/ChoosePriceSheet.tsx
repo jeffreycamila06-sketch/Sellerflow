@@ -93,7 +93,12 @@ export default function ChoosePriceSheet({ item, prices, cur, waiting, onPick, o
   const send = (price: number, soldOutOk = false) => {
     const r = onPick(price, soldOutOk);
     if (r === "blocked") { setBlocked(true); return; }
-    if (typeof r === "object") { setAsk({ price, code: r.soldOut }); setBlocked(false); }
+    if (typeof r === "object") {
+      // The question puts "Print anyway" / "Skip" where the price buttons were → same tap-through
+      // guard as a freshly opened sheet (a second fast tap must not answer it).
+      armAt.current = nowMs() + TAP_GUARD_MS;
+      setAsk({ price, code: r.soldOut }); setBlocked(false);
+    }
   };
   const typedPrice = Number(typed || "0") || 0;      // same rule as the per-comment Type price: must be > 0
   const printTyped = () => { if (armed() && typedPrice > 0) send(typedPrice); };
