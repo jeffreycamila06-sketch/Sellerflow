@@ -1,6 +1,12 @@
-today | laptop page (browser)    | 50x30  | FREE 14.7x6.1 mm, letters 5.5 mm, cut: false | "150" 9.2x6.1 mm, letters 5.5 mm | right edge free 34.1 mm, bottom free 1.0 mm | one page: true
-today | laptop page (browser)    | 60x40  | FREE 18.1x7.4 mm, letters 6.8 mm, cut: false | "150" 11.3x7.4 mm, letters 6.8 mm | right edge free 40.5 mm, bottom free 1.0 mm | one page: true
-today | laptop page (browser)    | 70x50  | FREE 22.7x9.5 mm, letters 8.5 mm, cut: false | "150" 14.2x9.5 mm, letters 8.5 mm | right edge free 45.7 mm, bottom free 1.2 mm | one page: true
-today | laptop page (browser)    | 80x50  | FREE 22.7x9.5 mm, letters 8.5 mm, cut: false | "150" 14.2x9.5 mm, letters 8.5 mm | right edge free 55.2 mm, bottom free 1.2 mm | one page: true
-today | laptop page (browser)    | 80x60  | FREE 27.2x11.4 mm, letters 10.2 mm, cut: false | "150" 17.0x11.4 mm, letters 10.2 mm | right edge free 50.7 mm, bottom free 1.5 mm | one page: true
-today | laptop page (browser)    | 100x60 | FREE 27.2x11.4 mm, letters 10.2 mm, cut: false | "150" 17.0x11.4 mm, letters 10.2 mm | right edge free 70.3 mm, bottom free 1.5 mm | one page: true
+today | laptop page (browser)    | 50x30  | QR off | FREE 14.7x6.1 mm, letters 5.5 mm, cut: false | "150" 9.2x6.1 mm, letters 5.5 mm | right edge free 34.1 mm, bottom free 1.0 mm | one page: true
+today | laptop page (browser)    | 60x40  | QR off | FREE 18.1x7.4 mm, letters 6.8 mm, cut: false | "150" 11.3x7.4 mm, letters 6.8 mm | right edge free 40.5 mm, bottom free 1.0 mm | one page: true
+today | laptop page (browser)    | 70x50  | QR off | FREE 22.7x9.5 mm, letters 8.5 mm, cut: false | "150" 14.2x9.5 mm, letters 8.5 mm | right edge free 45.7 mm, bottom free 1.2 mm | one page: true
+today | laptop page (browser)    | 80x50  | QR off | FREE 22.7x9.5 mm, letters 8.5 mm, cut: false | "150" 14.2x9.5 mm, letters 8.5 mm | right edge free 55.2 mm, bottom free 1.2 mm | one page: true
+today | laptop page (browser)    | 80x60  | QR off | FREE 27.2x11.4 mm, letters 10.2 mm, cut: false | "150" 17.0x11.4 mm, letters 10.2 mm | right edge free 50.7 mm, bottom free 1.5 mm | one page: true
+today | laptop page (browser)    | 100x60 | QR off | FREE 27.2x11.4 mm, letters 10.2 mm, cut: false | "150" 17.0x11.4 mm, letters 10.2 mm | right edge free 70.3 mm, bottom free 1.5 mm | one page: true
+today | laptop page (browser)    | 50x30  | QR on  | FREE 14.7x6.1 mm, letters 5.5 mm, cut: false | "150" 9.2x6.1 mm, letters 5.5 mm | right edge free 34.1 mm, bottom free 1.0 mm | one page: true
+today | laptop page (browser)    | 60x40  | QR on  | FREE 18.1x7.4 mm, letters 6.8 mm, cut: false | "150" 11.3x7.4 mm, letters 6.8 mm | right edge free 40.5 mm, bottom free 1.0 mm | one page: true
+today | laptop page (browser)    | 70x50  | QR on  | FREE 22.7x9.5 mm, letters 8.5 mm, cut: false | "150" 14.2x9.5 mm, letters 8.5 mm | right edge free 45.7 mm, bottom free 1.2 mm | one page: true
+today | laptop page (browser)    | 80x50  | QR on  | FREE 22.7x9.5 mm, letters 8.5 mm, cut: false | "150" 14.2x9.5 mm, letters 8.5 mm | right edge free 55.2 mm, bottom free 1.2 mm | one page: true
+today | laptop page (browser)    | 80x60  | QR on  | FREE 27.2x11.4 mm, letters 10.2 mm, cut: false | "150" 17.0x11.4 mm, letters 10.2 mm | right edge free 50.7 mm, bottom free 1.5 mm | one page: true
+today | laptop page (browser)    | 100x60 | QR on  | FREE 27.2x11.4 mm, letters 10.2 mm, cut: false | "150" 17.0x11.4 mm, letters 10.2 mm | right edge free 70.3 mm, bottom free 1.5 mm | one page: true

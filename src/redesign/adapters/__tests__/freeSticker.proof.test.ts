@@ -1,10 +1,15 @@
 // "FREE" on the sticker (Choose price → Free button). A Free order is an ordinary order whose ITEM
 // TEXT is "FREE" — no print path was changed. This file proves, on what each printer RECEIVES, that
 // FREE prints where a price prints and fits, on every path and size:
-//   · picture paths (AIMO D520, generic TSPL / ESC-POS / CPCL, Niimbot) — today's sticker AND the new
-//     sticker, 50×30 … 100×60, QR off and on: the "FREE" picture differs from the "150" picture ONLY
-//     in the price's own place; the FREE letters are measured by themselves (also on the 50×30 /
-//     60×40 "font C" layouts), are not smaller than the price, and stay clear of the label edges.
+//   · picture paths (AIMO D520, generic TSPL / ESC-POS / CPCL, Niimbot 50×30) — today's sticker AND
+//     the new sticker, 50×30 … 100×60, QR off and on: the "FREE" picture differs from the "150"
+//     picture ONLY in the price's own place; the FREE letters are measured by themselves (also on the
+//     50×30 / 60×40 small-label layouts), are not smaller than the price, and stay clear of the edges.
+//     Today's sticker is drawn the way the app prints it (word spacing ON for everyone), in the usual
+//     layout AND the newer small-label layout (admins / listed accounts), at Comment size 1×, 2×, 3×.
+//   · a buyer with TWO orders (Print screen): FREE takes exactly the room a price takes — which
+//     orders show on a size is today's rule (printing map row 26), FREE never changes it.
+//   · Facebook buyer (2-line name), Chinese name, a past-session Reprint.
 //   · text sticker (old Bluetooth / iPhone WiFi sticker): the printer commands are the same except
 //     the word itself.
 //   · laptop: today's page is the same except the word; the new sticker's page picture as above.
@@ -14,7 +19,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
-import { printOneStickerTest, printSlip, setStickerQrEntitled, setStickerQrOn, DEF_SETTINGS, __resetNativePrintQueue, __resetWebPrintQueue, type Settings } from "../printing";
+import { printOneStickerTest, printSlip, setStickerQrEntitled, setStickerQrOn, setStickerSpacingAllowed, setStickerCompactV2, DEF_SETTINGS, __resetNativePrintQueue, __resetWebPrintQueue, type Settings } from "../printing";
 import { recommendedSettings } from "../oneSticker";
 import { renderOneStickerFor, laptopPage, oneStickerInputFrom } from "../oneStickerPrint";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
@@ -36,9 +41,14 @@ type Path = "d520" | "tspl" | "escpos" | "cpcl" | "niimbot";
 const PATHS: Path[] = ["d520", "tspl", "escpos", "cpcl", "niimbot"];
 const NAME: Record<Path, string> = { d520: "AIMO D520", tspl: "Xprinter / Flash (TSPL)", escpos: "generic ESC-POS", cpcl: "generic CPCL", niimbot: "Niimbot" };
 const PRICE = "150";
-const cfgFor = (w: number, h: number): Settings => ({ ...DEF_SETTINGS, stickerSize: `${w}x${h}`, printerType: "bluetooth" });
-const buyer = (item: string, price: number): Buyer => ({ handle: "maria_live", name: "Maria Santos", platform: "TikTok", num: 128, totalOrders: 1, totalSpent: price,
-  orders: [{ orderNum: AT, item, qty: 1, price, total: price, time: "14:05", handle: "maria_live", name: "Maria Santos", bNum: 128, platform: "TikTok", status: "New", date: "2026-11-19" }] });
+const cfgFor = (w: number, h: number, comment = 1): Settings => ({ ...DEF_SETTINGS, stickerSize: `${w}x${h}`, printerType: "bluetooth", printCommentScale: comment });
+type Who = { name: string; handle: string; platform: string };
+const MARIA: Who = { name: "Maria Santos", handle: "maria_live", platform: "TikTok" };
+const order = (who: Who, item: string, price: number, n = 0) => ({ orderNum: AT + n * 60000, item, qty: 1, price, total: price, time: n ? "14:06" : "14:05", handle: who.handle, name: who.name, bNum: 128, platform: who.platform, status: "New", date: "2026-11-19" });
+/** One buyer with the given [item, price] orders (one = a Live sticker; two = the Print screen). */
+const buyerOf = (who: Who, ...items: [string, number][]): Buyer => ({ handle: who.handle, name: who.name, platform: who.platform, num: 128, totalOrders: items.length, totalSpent: items.reduce((a, x) => a + x[1], 0),
+  orders: items.map(([item, price], n) => order(who, item, price, n)) });
+const buyer = (item: string, price: number): Buyer => buyerOf(MARIA, [item, price]);
 const priced = () => buyer(PRICE, 150);
 const free = () => buyer(FREE_ITEM, 0);
 
@@ -111,39 +121,121 @@ function pairPng(a: FullRaster, b: FullRaster): Buffer {
 const rows: string[] = [];
 const save = (file: string, a: FullRaster, b: FullRaster) => { if (OUT) { mkdirSync(OUT, { recursive: true }); writeFileSync(`${OUT}/${file}.png`, pairPng(a, b)); } };
 
-beforeAll(() => { installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); });
+/** The shared check: `b` (with FREE) against `a` (with a price in the same place). Returns the two words' boxes. */
+function sameButTheWord(a: FullRaster, b: FullRaster): { f: Box; p: Box } {
+  expect([b.w, b.h]).toEqual([a.w, a.h]);                         // same picture size
+  const d = diffBox(a, b);
+  expect(d.x1, "the two pictures differ").toBeGreaterThan(-1);
+  const f = inkIn(b, d), p = inkIn(a, d);
+  // ONE line changed: the place where they differ is no taller than the word itself (+2 dots)
+  expect(hOf(d)).toBeLessThanOrEqual(Math.max(hOf(f), hOf(p)) + 2);
+  // FREE is not printed smaller than the price, and starts where the price starts
+  expect(hOf(f)).toBeGreaterThanOrEqual(hOf(p) - 2);
+  expect(Math.abs(f.x0 - p.x0)).toBeLessThanOrEqual(4);
+  // …and it is whole: ≥ 1 mm from the right edge and ≥ 1 mm from the bottom of the picture
+  expect(b.w - 1 - f.x1).toBeGreaterThanOrEqual(8);
+  expect(b.h - 1 - f.y1).toBeGreaterThanOrEqual(8);
+  return { f, p };
+}
+const line = (kind: string, where: string, size: string, how: string, b: FullRaster, f: Box, p: Box) =>
+  `${kind.padEnd(5)} | ${where.padEnd(24)} | ${size.padEnd(6)} | ${how.padEnd(34)} | picture ${b.w}x${b.h} dots | FREE ${wOf(f)}x${hOf(f)} dots = ${mm(wOf(f))}x${mm(hOf(f))} mm at x ${f.x0}-${f.x1}, y ${f.y0}-${f.y1} | "150" ${wOf(p)}x${hOf(p)} dots at x ${p.x0}-${p.x1} | right edge free ${mm(b.w - 1 - f.x1)} mm, bottom free ${mm(b.h - 1 - f.y1)} mm`;
+
+// Today's sticker the way the app prints it: word spacing is ON for every seller (STICKER_SPACING_PUBLIC).
+beforeAll(() => { installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); setStickerSpacingAllowed(true); });
+afterEach(() => { setStickerCompactV2(false); });
 afterAll(() => {
-  setStickerQrEntitled(false); setStickerQrOn(false);
+  setStickerQrEntitled(false); setStickerQrOn(false); setStickerSpacingAllowed(false); setStickerCompactV2(false);
   if (OUT) { mkdirSync(OUT, { recursive: true }); writeFileSync(`${OUT}/measurements.txt`, rows.join("\n") + "\n"); }
 });
+const today = (path: Path, w: number, h: number, b: Buyer, o: { newer?: boolean; comment?: number; qr?: boolean; at?: number } = {}) => {
+  setStickerQrOn(!!o.qr); setStickerCompactV2(!!o.newer);
+  return sent(path, () => printSlip(b, "NT$", "My Shop", cfgFor(w, h, o.comment ?? 1), { noOneSticker: true, ...(o.at != null ? { at: o.at } : {}) }), w, h);
+};
+const fresh = (path: Path, w: number, h: number, b: Buyer, o: { comment?: number; qr?: boolean } = {}) => {
+  const d = recommendedSettings({ w, h });
+  const s = { ...d, qr: !!o.qr && d.qr, parts: { ...d.parts, comment: { ...d.parts.comment, scale: o.comment ?? 1 } } };
+  setStickerQrOn(!!o.qr);
+  return sent(path, () => printOneStickerTest(s, b, "NT$", "My Shop", cfgFor(w, h)), w, h);
+};
+const eachPathSize = (fn: (path: Path, w: number, h: number) => void) => { for (const path of PATHS) for (const [w, h] of SIZES) { if (path === "niimbot" && !(w === 50 && h === 30)) continue; fn(path, w, h); } }; // Niimbot B1 / B21 take 50×30
 
-describe("picture paths — FREE prints in the price's place and fits (measured on the FREE letters themselves)", () => {
-  for (const kind of ["today", "new"] as const) for (const path of PATHS) for (const [w, h] of SIZES) {
-    if (path === "niimbot" && !(w === 50 && h === 30)) continue;      // B1 / B21 take 50×30
-    for (const qr of [false, true]) {
-      it(`${kind === "today" ? "today's sticker" : "new sticker"} · ${NAME[path]} · ${w}×${h} · QR ${qr ? "on" : "off"}`, async () => {
-        setStickerQrOn(qr);
-        const go = (b: Buyer) => sent(path, () => kind === "today"
-          ? printSlip(b, "NT$", "My Shop", cfgFor(w, h), { noOneSticker: true })
-          : printOneStickerTest({ ...recommendedSettings({ w, h }), qr }, b, "NT$", "My Shop", cfgFor(w, h)), w, h);
-        const a = await go(priced()), b = await go(free());
-        expect([b.w, b.h]).toEqual([a.w, a.h]);                         // same picture size
-        const d = diffBox(a, b);
-        expect(d.x1, "the two pictures differ").toBeGreaterThan(-1);
-        const f = inkIn(b, d), p = inkIn(a, d);
-        // ONE line changed: the place where they differ is no taller than the word itself (+2 dots)
-        expect(hOf(d)).toBeLessThanOrEqual(Math.max(hOf(f), hOf(p)) + 2);
-        // FREE is not printed smaller than the price, and starts where the price starts
-        expect(hOf(f)).toBeGreaterThanOrEqual(hOf(p) - 2);
-        expect(Math.abs(f.x0 - p.x0)).toBeLessThanOrEqual(4);
-        // …and it is whole: ≥ 1 mm from the right edge and ≥ 1 mm from the bottom of the picture
+describe("today's sticker — FREE prints in the price's place and fits (measured on the FREE letters themselves)", () => {
+  for (const newer of [false, true]) for (const comment of [1, 2, 3]) for (const qr of [false, true]) eachPathSize((path, w, h) => {
+    const how = `${newer ? "newer layout" : "usual layout"}, comment ${comment}×, QR ${qr ? "on" : "off"}`;
+    it(`${NAME[path]} · ${w}×${h} · ${how}`, async () => {
+      const a = await today(path, w, h, priced(), { newer, comment, qr }), b = await today(path, w, h, free(), { newer, comment, qr });
+      const { f, p } = sameButTheWord(a, b);
+      rows.push(line("today", NAME[path], `${w}x${h}`, how, b, f, p));
+      if (!qr && comment === 1) save(`${newer ? "today-newer" : "today"}_${path}_${w}x${h}`, a, b);
+      if (!qr && !newer && comment === 3 && path === "d520") save(`today_d520_${w}x${h}_comment-x3`, a, b);
+    }, 60000);
+  });
+});
+
+describe("new sticker — FREE prints in the price's place and fits", () => {
+  for (const comment of [1, 2]) for (const qr of [false, true]) eachPathSize((path, w, h) => {
+    const how = `comment ${comment}×, QR ${qr ? "on" : "off"}`;
+    it(`${NAME[path]} · ${w}×${h} · ${how}`, async () => {
+      const a = await fresh(path, w, h, priced(), { comment, qr }), b = await fresh(path, w, h, free(), { comment, qr });
+      const { f, p } = sameButTheWord(a, b);
+      rows.push(line("new", NAME[path], `${w}x${h}`, how, b, f, p));
+      if (!qr && comment === 1) save(`new_${path}_${w}x${h}`, a, b);
+    }, 60000);
+  });
+});
+
+// The Print screen prints ONE sticker for a buyer with several orders. Which orders show on a size is
+// today's rule (printing map row 26: e.g. the first order only on 50×30 and on the laptop page, two
+// rows on the bigger AIMO labels, every item on the new sticker). FREE never changes that rule: put a
+// price in FREE's place and the sticker is the same except that one word.
+describe("a buyer with a FREE order and a priced order (Print screen)", () => {
+  const two = (first: [string, number], second: [string, number]) => buyerOf(MARIA, first, second);
+  const CASES: [string, Buyer, Buyer][] = [
+    ["FREE-then-150", two(["200", 200], [PRICE, 150]), two([FREE_ITEM, 0], [PRICE, 150])],
+    ["150-then-FREE", two([PRICE, 150], ["200", 200]), two([PRICE, 150], [FREE_ITEM, 0])],
+  ];
+  const same = (x: FullRaster, y: FullRaster) => x.w === y.w && x.h === y.h && diffBox(x, y).x1 < 0;
+  for (const [label, withPrice, withFree] of CASES) for (const kind of ["today", "new"] as const) for (const path of ["d520", "tspl"] as Path[]) for (const [w, h] of SIZES) {
+    it(`${kind} · ${NAME[path]} · ${w}×${h} · ${label}`, async () => {
+      const go = (b: Buyer) => (kind === "today" ? today(path, w, h, b) : fresh(path, w, h, b));
+      const a = await go(withPrice), b = await go(withFree);
+      // Is FREE's order on this sticker at all? Only if a price in its place would change the picture.
+      const freeShown = !same(a, b);
+      if (label === "FREE-then-150") expect(freeShown).toBe(true);         // the first order is always printed
+      if (freeShown) {
+        const d = diffBox(a, b), f = inkIn(b, d), p = inkIn(a, d);
+        expect(hOf(d)).toBeLessThanOrEqual(Math.max(hOf(f), hOf(p)) + 2);     // one word changed, nothing else moved
         expect(b.w - 1 - f.x1).toBeGreaterThanOrEqual(8);
         expect(b.h - 1 - f.y1).toBeGreaterThanOrEqual(8);
-        rows.push(`${kind === "today" ? "today" : "new  "} | ${NAME[path].padEnd(24)} | ${`${w}x${h}`.padEnd(6)} | QR ${qr ? "on " : "off"} | picture ${b.w}x${b.h} dots | FREE ${wOf(f)}x${hOf(f)} dots = ${mm(wOf(f))}x${mm(hOf(f))} mm at x ${f.x0}-${f.x1}, y ${f.y0}-${f.y1} | "150" ${wOf(p)}x${hOf(p)} dots at x ${p.x0}-${p.x1} | right edge free ${mm(b.w - 1 - f.x1)} mm, bottom free ${mm(b.h - 1 - f.y1)} mm`);
-        if (!qr) save(`${kind}_${path}_${w}x${h}`, a, b);
-      }, 60000);
-    }
+      }
+      // …and the OTHER order: on the sticker only if changing ITS text changes the picture
+      const otherShown = label === "FREE-then-150" ? !same(b, await go(two([FREE_ITEM, 0], ["999", 999]))) : !same(b, await go(two(["999", 999], [FREE_ITEM, 0])));
+      const shows = freeShown && otherShown ? "both orders" : freeShown ? "FREE only — the 150 order is not on this sticker (first order only)" : "150 only — the FREE order is not on this sticker (first order only)";
+      rows.push(`${kind.padEnd(5)} | ${NAME[path].padEnd(24)} | ${`${w}x${h}`.padEnd(6)} | two orders, ${label}: this size shows ${shows}`);
+      if (path === "d520") save(`two-orders_${kind}_${label}_${w}x${h}`, a, b);
+    }, 60000);
   }
+});
+
+describe("other buyers — Facebook (2-line name), Chinese name, a past-session Reprint", () => {
+  const FB: Who = { name: "Maria Consolacion Dela Cruz Santos-Villanueva", handle: "Maria Consolacion Dela Cruz Santos-Villanueva", platform: "Facebook" };
+  const ZH: Who = { name: "陳小美", handle: "chen_xiaomei", platform: "TikTok" };
+  for (const [tag, who] of [["facebook", FB], ["chinese-name", ZH]] as [string, Who][]) for (const kind of ["today", "new"] as const) for (const path of ["d520", "tspl"] as Path[]) for (const [w, h] of [[50, 30], [60, 40], [100, 60]] as [number, number][]) {
+    it(`${tag} · ${kind} · ${NAME[path]} · ${w}×${h}`, async () => {
+      const go = (b: Buyer) => (kind === "today" ? today(path, w, h, b) : fresh(path, w, h, b));
+      const a = await go(buyerOf(who, [PRICE, 150])), b = await go(buyerOf(who, [FREE_ITEM, 0]));
+      const { f, p } = sameButTheWord(a, b);
+      rows.push(line(kind, NAME[path], `${w}x${h}`, tag, b, f, p));
+      save(`${tag}_${kind}_${path}_${w}x${h}`, a, b);
+    }, 60000);
+  }
+  it("a past-session Reprint (the sticker carries the order's own date): the same, only the word", async () => {
+    const at = AT - 3 * 86400000;
+    const a = await today("d520", 60, 40, priced(), { at }), b = await today("d520", 60, 40, free(), { at });
+    const { f, p } = sameButTheWord(a, b);
+    rows.push(line("today", NAME.d520, "60x40", "past-session reprint", b, f, p));
+    save("reprint-past-session_today_d520_60x40", a, b);
+  }, 60000);
 });
 
 describe("text sticker (old Bluetooth sticker, iPhone WiFi sticker) — the same commands, only the word differs", () => {
@@ -155,20 +247,18 @@ describe("text sticker (old Bluetooth sticker, iPhone WiFi sticker) — the same
     const a = text(buildTsplStickerReference(payload(priced()), w, h, gbk)), b = text(buildTsplStickerReference(payload(free()), w, h, gbk));
     expect(a).toContain(`"${PRICE}"`);
     expect(b).toBe(a.replace(`"${PRICE}"`, `"${FREE_ITEM}"`));          // same position, same letter size
-    const line = b.split("\r\n").find((l) => l.endsWith(`"${FREE_ITEM}"`))!;
-    const m = /^TEXT (\d+),(\d+),"4",0,(\d+),(\d+),/.exec(line)!;
+    const cmd = b.split("\r\n").find((l) => l.endsWith(`"${FREE_ITEM}"`))!;
+    const m = /^TEXT (\d+),(\d+),"4",0,(\d+),(\d+),/.exec(cmd)!;
     const right = Number(m[1]) + FREE_ITEM.length * 24 * Number(m[3]);  // font "4": 24 dots per letter × the width step
     expect(right).toBeLessThanOrEqual(w * 8 - 16);
-    rows.push(`text  | text sticker (commands)  | ${`${w}x${h}`.padEnd(6)} | ${line} | ends at dot ${right} of ${w * 8} (right edge free ${mm(w * 8 - right)} mm)`);
+    rows.push(`text  | text sticker (commands)  | ${`${w}x${h}`.padEnd(6)} | ${cmd} | ends at dot ${right} of ${w * 8} (right edge free ${mm(w * 8 - right)} mm)`);
     // a picture of that layout, drawn with the app's own letters (the printer's built-in letters differ a little)
     const draw = (bb: Buyer) => renderStickerBitmap(payload(bb) as unknown as RasterPayload, w, h, { latin: LATIN_ATLAS, cjk: null as never }, "legacy");
-    const ra = draw(priced()), rb = draw(free());
-    const ink = (r: FullRaster): FullRaster => ({ ...r, buf: r.buf });
-    save(`text_${w}x${h}`, ink(ra), ink(rb));
+    save(`text_${w}x${h}`, draw(priced()), draw(free()));
   });
 });
 
-describe("laptop", () => {
+describe("laptop — today's page", () => {
   let captured: HTMLIFrameElement | null;
   beforeEach(() => {
     captured = null; __resetWebPrintQueue(); __resetSavedPrinter(); vi.useFakeTimers();
@@ -178,26 +268,35 @@ describe("laptop", () => {
   afterEach(() => { __resetWebPrintQueue(); vi.restoreAllMocks(); vi.useRealTimers(); document.querySelectorAll("iframe").forEach((x) => x.remove()); });
   const page = (b: Buyer) => { captured = null; __resetWebPrintQueue(); printSlip(b, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "100x60" }, { noOneSticker: true }); return captured!.contentDocument!.documentElement.outerHTML; };
 
-  it("today's page: the same page, only the word differs (it is the big line at the bottom)", () => {
+  for (const qr of [false, true]) it(`QR ${qr ? "on" : "off"}: the same page, only the word differs (it is the big line at the bottom)`, () => {
+    setStickerQrOn(qr);
     const a = page(priced()), b = page(free());
+    expect(a.includes("<svg")).toBe(qr);                                // the QR state really is what the name says
     expect(a).toContain(`<div class="code">${PRICE}</div>`);
     expect(b).toBe(a.replace(`<div class="code">${PRICE}</div>`, `<div class="code">${FREE_ITEM}</div>`));
-    if (OUT) { mkdirSync(OUT, { recursive: true }); writeFileSync(`${OUT}/laptop-today-150.html`, "<!DOCTYPE html>" + a); writeFileSync(`${OUT}/laptop-today-FREE.html`, "<!DOCTYPE html>" + b); }
+    const tag = qr ? "qr-on" : "qr-off";
+    if (OUT) { mkdirSync(OUT, { recursive: true }); writeFileSync(`${OUT}/laptop-today-150_${tag}.html`, "<!DOCTYPE html>" + a); writeFileSync(`${OUT}/laptop-today-FREE_${tag}.html`, "<!DOCTYPE html>" + b); }
+  });
+  it("two orders on the laptop page: the first order only (today's rule) — FREE first prints FREE, FREE second is not on the page", () => {
+    setStickerQrOn(false);
+    const m = MARIA;
+    expect(page(buyerOf(m, [FREE_ITEM, 0], [PRICE, 150]))).toContain(`<div class="code">${FREE_ITEM}</div>`);
+    const second = page(buyerOf(m, [PRICE, 150], [FREE_ITEM, 0]));
+    expect(second).toContain(`<div class="code">${PRICE}</div>`);
+    expect(second).not.toContain(FREE_ITEM);
+    rows.push(`today | laptop page (browser)    | any    | two orders: the page shows the first order only (FREE first → FREE; FREE second → not on the page)`);
   });
 });
 
 describe("laptop — the new sticker's page picture", () => {
-  for (const [w, h] of SIZES) it(`${w}×${h}`, async () => {
-    const d = recommendedSettings({ w, h });
+  for (const qr of [false, true]) for (const [w, h] of SIZES) it(`${w}×${h} · QR ${qr ? "on" : "off"}`, async () => {
+    const base = recommendedSettings({ w, h });
+    const d = { ...base, qr: qr && base.qr };
     const pic = async (b: Buyer) => decodeLaptopPage(laptopPage(await renderOneStickerFor("laptop", d, oneStickerInputFrom(b, "My Shop", AT, false)), d, "t"));
     const a = await pic(priced()), b = await pic(free());
     expect(b.pageMm).toEqual([w, h]);
-    const dd = diffBox(a.raster, b.raster), f = inkIn(b.raster, dd), p = inkIn(a.raster, dd);
-    expect(hOf(dd)).toBeLessThanOrEqual(Math.max(hOf(f), hOf(p)) + 2);
-    expect(hOf(f)).toBeGreaterThanOrEqual(hOf(p) - 2);
-    expect(b.raster.w - 1 - f.x1).toBeGreaterThanOrEqual(8);
-    expect(b.raster.h - 1 - f.y1).toBeGreaterThanOrEqual(8);
-    rows.push(`new   | laptop page              | ${`${w}x${h}`.padEnd(6)} | QR off | picture ${b.raster.w}x${b.raster.h} dots | FREE ${wOf(f)}x${hOf(f)} dots = ${mm(wOf(f))}x${mm(hOf(f))} mm at x ${f.x0}-${f.x1}, y ${f.y0}-${f.y1} | "150" ${wOf(p)}x${hOf(p)} dots at x ${p.x0}-${p.x1} | right edge free ${mm(b.raster.w - 1 - f.x1)} mm, bottom free ${mm(b.raster.h - 1 - f.y1)} mm`);
-    save(`new_laptop_${w}x${h}`, a.raster, b.raster);
+    const { f, p } = sameButTheWord(a.raster, b.raster);
+    rows.push(line("new", "laptop page", `${w}x${h}`, `QR ${d.qr ? "on" : "off"}`, b.raster, f, p));
+    save(`new_laptop_${w}x${h}_${d.qr ? "qr-on" : "qr-off"}`, a.raster, b.raster);
   }, 60000);
 });

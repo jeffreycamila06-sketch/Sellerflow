@@ -14,12 +14,12 @@ const PX = 96 / 25.4;                                   // CSS px per mm
   const b = await chromium.launch();
   let bad = 0;
   const lines = [];
-  for (const [w, h] of SIZES) {
+  for (const qr of ["qr-off", "qr-on"]) for (const [w, h] of SIZES) {
     const p = await b.newPage({ viewport: { width: Math.ceil((2 * w + 16) * PX), height: Math.ceil((h + 8) * PX) }, deviceScaleFactor: 4 });
     const frame = (f) => `<iframe src="file://${path.join(DIR, f)}" style="width:${w}mm;height:${h}mm;border:1px solid #707070;background:#fff;display:block"></iframe>`;
     // a local wrapper page (a blank page may not load local files into frames)
-    const wrap = path.join(os.tmpdir(), `sfl-free-laptop-${w}x${h}.html`);
-    fs.writeFileSync(wrap, `<!DOCTYPE html><body style="margin:0;background:#d8d8d8"><div style="display:flex;gap:6mm;padding:3mm">${frame("laptop-today-150.html")}${frame("laptop-today-FREE.html")}</div></body>`);
+    const wrap = path.join(os.tmpdir(), `sfl-free-laptop-${w}x${h}-${qr}.html`);
+    fs.writeFileSync(wrap, `<!DOCTYPE html><body style="margin:0;background:#d8d8d8"><div style="display:flex;gap:6mm;padding:3mm">${frame(`laptop-today-150_${qr}.html`)}${frame(`laptop-today-FREE_${qr}.html`)}</div></body>`);
     await p.goto(`file://${wrap}`, { waitUntil: "load", timeout: 20000 });
     await p.waitForTimeout(200);
     const out = [];
@@ -32,8 +32,8 @@ const PX = 96 / 25.4;                                   // CSS px per mm
     }
     const [a, f] = out;
     if (f.cut || f.pageScrolls || Number(f.rightFreeMm) < 1 || f.fontMm !== a.fontMm) bad++;
-    lines.push(`today | laptop page (browser)    | ${`${w}x${h}`.padEnd(6)} | FREE ${f.wordMm[0]}x${f.wordMm[1]} mm, letters ${f.fontMm} mm, cut: ${f.cut} | "150" ${a.wordMm[0]}x${a.wordMm[1]} mm, letters ${a.fontMm} mm | right edge free ${f.rightFreeMm} mm, bottom free ${f.bottomFreeMm} mm | one page: ${!f.pageScrolls}`);
-    await p.screenshot({ path: path.join(DIR, `today_laptop_${w}x${h}.png`) });
+    lines.push(`today | laptop page (browser)    | ${`${w}x${h}`.padEnd(6)} | ${qr === "qr-on" ? "QR on " : "QR off"} | FREE ${f.wordMm[0]}x${f.wordMm[1]} mm, letters ${f.fontMm} mm, cut: ${f.cut} | "150" ${a.wordMm[0]}x${a.wordMm[1]} mm, letters ${a.fontMm} mm | right edge free ${f.rightFreeMm} mm, bottom free ${f.bottomFreeMm} mm | one page: ${!f.pageScrolls}`);
+    await p.screenshot({ path: path.join(DIR, `today_laptop_${w}x${h}_${qr}.png`) });
     await p.close();
   }
   await b.close();

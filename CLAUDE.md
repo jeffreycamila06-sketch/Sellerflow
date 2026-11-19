@@ -5742,6 +5742,11 @@ prints **FREE** (English in every language) where a price prints.
   that line shows the price). Totals unchanged: Today / Sales count it as +1 order, +0 revenue.
 - **NOT changed (Jeff, separate small branch later): the Messenger receipt.** A FREE line is drawn with no price and ONE
   such line makes the receipt total read "to be confirmed" (`receiptLayout.js`), phone sheet and automatic receipt.
+- **Print screen, a buyer with a FREE order + a priced order:** which orders show is today's rule (printing map row
+  26), unchanged — on a first-order-only size (50×30, 70×50, 80×50, generic 60×40, today's laptop page) FREE first =
+  the sticker says FREE only. The new sticker prints both ("FREE · 150").
+- `useOrders.sessionGate.test.tsx` counts the `orders.createOrder(` sites in RedesignApp: 7 now (1-Click and Pin have
+  the Free call and the price call on one line).
 - Proof: `freeSticker.proof.test.ts` (every picture path × size × QR, text-sticker commands, laptop),
   `freeOrder.flow.test.tsx`, `choosePrice.app.test.tsx` "Free button", `Orders.free.test.tsx`,
   `GeneralSettings.chooseFree.test.tsx`, `scripts/sql182-behaviour.mjs` (PGlite, 23 checks). Pictures:
