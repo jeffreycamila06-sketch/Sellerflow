@@ -1,5 +1,5 @@
 // Telegram alerts to the Admin (Jeff 2026-11-18). ONE small job: send one FIXED text with one HTTPS POST to
-// api.telegram.org (8 s limit).
+// api.telegram.org (20 s limit — the same for every send: the test button and each try of an alert).
 //   • Env TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (set on Render). Missing either = alerts off; nothing else changes.
 //   • Messages are fixed texts chosen by a key (ALERT_TEXTS). Never a phone, name, store number, tracking
 //     number, cookie or token — send() has no way to take free text.
@@ -8,8 +8,12 @@
 //   • A failed send is logged with ONE word and resolves { ok: false, word }; send() never throws.
 //   • An alert (fire) is tried up to 3 times, 1 minute apart, so a lost alert is not lost; alerts go out
 //     one after another, in the order they happened. The test button (send) is ONE try and answers at once.
+//   • KNOWN: a try that gets no answer inside the limit is tried again, although Telegram may have delivered
+//     it — the same alert can then arrive more than once. A longer limit makes that rarer, not impossible.
 //   • The token is never logged: the URL, the request and any error text never reach a log line.
-export const TELEGRAM_SEND_MS = 8000;
+// How long ONE send waits for Telegram's answer. 8 s until 2026-11-19: the first send after a server
+// restart was delivered, but its answer came later than 8 s and the Admin panel said "Not sent".
+export const TELEGRAM_SEND_MS = 20000;
 export const TELEGRAM_HOST = "api.telegram.org";
 export const ALERT_TRIES = 3;              // an alert: up to 3 tries …
 export const ALERT_RETRY_MS = 60 * 1000;   // … 1 minute apart
