@@ -5902,3 +5902,36 @@ the `fb_post_sales` key holders. The switch `fb_post_sales_enabled` stays the ki
   LIVE plans row back (md5 checked 2026-11-20).
 - **sql/188 rollback** now also restores the live texts of mark_printed / item_update / sale_end (sql-language ones too)
   and, AFTER the old end dates are back, ends every 'selling' sale whose end date passed (End-now sales).
+
+## 2026-11-20 — BLACKLIST for sellers outside Taiwan (branch `claude/blacklist`, NOT merged; sql/190 + sql/191 NOT applied; web only, no Render)
+Per-seller list of buyers who did not check out or returned an item; on the live rows it is an ALERT ONLY.
+- **Who sees it** (`blacklistVisible`, adapters/blacklist.ts): never Taiwan (market country `TW` or NULL; an admin's
+  "all markets" view counts as outside), then the switch `app_settings.blacklist_enabled` (exact 'true' = every
+  seller outside Taiwan, every plan — no plan check) OR an admin OR feature key `blacklist` (`feature_access_emails`).
+  Switch `featureSw.blacklist`; tester key in `FEATURE_KEYS` + my_feature_access (sql/190 = the live 25 keys + 'blacklist').
+- **sql/190 (+rollback):** table `buyer_blacklist` (id, user_id default auth.uid() → auth.users on delete cascade,
+  platform tiktok|facebook, buyer_label, buyer_key, reason not_checked_out|returned, added_day, created_at). RLS:
+  select / insert / delete `user_id = (select auth.uid())` only — NO update, NO admin rule, nothing for anon.
+  BEFORE INSERT trigger: label trimmed (TikTok: one "@" off), key made by the database
+  (`buyer_blacklist_key`: TikTok = lower(username without @), Facebook = lower(trimmed name)), time = now(), day must
+  be the UTC date ± 1. **Unique (user_id, platform, buyer_key, reason, added_day)** = "Already added today".
+  `blacklist_add(platform, label, reason, tz)` (INVOKER): the day from the phone's time zone (unknown / odd / far → UTC),
+  answers `{result: added, id, day}` or `{result: already_today}`. `blacklist_remove(platform, label)` (INVOKER): every
+  row of that buyer. Undo = delete that one row by id. Proof: `scripts/sql190-behaviour.mjs` (PGlite, 62 checks).
+- **App:** Settings tile 3rd (after General Settings / Customers), red no-entry icon, **NEW** badge on the tile's
+  top-right corner until opened once on that phone (`sfl_rd_blacklist_seen`). Screen `screens/Blacklist.tsx`: pick a
+  reason → **Scan sticker QR** (phone: camera / photo; laptop ≥ 900 px: **Upload sticker photo**) or type (TikTok /
+  Facebook) + **Add** (accent violet; red is only Remove) → Added + **Undo** / Already added today / This QR has no
+  buyer / No QR found. List: one row per buyer, counts per reason, platform, last added, search, **Remove** (in-app
+  yes/no). Live rows (`Dashboard` props `blacklist` + `onBlacklistTap`, absent = byte-identical): red tint + chip on its
+  OWN line under the comment, the name opens `components/BlacklistSheet.tsx` (dates + "Alert only — the order still
+  prints as usual."). Exact match only; Instagram / Shopee / Facebook "Unknown" never match.
+- **Strict QR reader** `blacklistHandleFromQr`: a TikTok PROFILE link (`tiktok.com/@name`, + optional `/`, `?…`, `#…`)
+  or a text starting with "@" — anything else = no buyer. Parcel Scan's `handleFromQrPayload` is unchanged.
+- **Reading:** `useBlacklist(allowed, ttEff || fbEff, userId)` reads when a TikTok / Facebook live STARTS, when the screen
+  opens and after add / undo / remove. No timer. Gate closed = no read at all.
+- **Fence:** 0 lines in printing files, order paths, buyer numbering, Buyer Alert (Taiwan), chrome-extension/
+  (`blacklist.fence.test.ts`; Dashboard test: 1-Click / Type price get the same calls with or without the list).
+- **Guide:** section `blacklist` in sfl-guide.md + 116b; **sql/191** = that ONE row (+ rollback deletes it).
+- **Order:** sql/190 (switch row 'false') → merge (Vercel) → tester logins in `feature_access_emails` → switch 'true'
+  → sql/191 (guide) when every seller outside Taiwan should see it. Pictures + breaks: `docs/design/blacklist/built/`.

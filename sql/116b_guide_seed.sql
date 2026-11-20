@@ -295,6 +295,27 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - **⬇ Export** gives Excel or PDF. In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.'),
   ('miners-customers', 'Miners and Customers', '2026-10-14'::date, 'miners, top buyers, customers, loyal, repeat buyer, suki, mamimili, 买家, 客户, 顧客, 常客', '- **Miners** (Orders → Miners tab) shows top buyers for a range (This session, Today, 7 days, This month, Custom): total buyers, orders, money spent.
 - **Customers** (Settings → Customers) lists buyers you''ve had. Use **Search loaded customers (name or @handle)** and **Load more**.'),
+  ('blacklist', 'Blacklist (sellers outside Taiwan)', '2026-11-20'::date, 'blacklist, bad buyer, bogus buyer, joy reserver, not checked out, return, returned, block buyer, hindi nag-check out, nag-return, bogus, 黑名单, 黑名單, 退货, 退貨, 未结账', 'Blacklist is for sellers outside Taiwan. Open **Settings → Blacklist**. Only you can see your list.
+
+**Add a buyer**
+1. Pick a reason: **Not checked out** or **Return item**.
+2. Tap **Scan sticker QR** and take a photo of the QR on the buyer''s sticker (on a laptop: **Upload sticker photo**). Or tap **TikTok** or **Facebook**, type the TikTok @username or the Facebook name, and tap **Add**.
+
+- The sticker has a QR only when **Print QR on sticker** is on and the sticker is taller than 40 mm. Otherwise type the name.
+- Facebook buyers have no QR: type their Facebook name exactly as it shows.
+- Tap **Undo** right after adding if you picked the wrong buyer or reason.
+- The same buyer with the same reason counts once a day. Adding it again that day shows **Already added today**.
+- **This QR has no buyer** means it is not a SellerFlowLive sticker QR. Type the username instead.
+
+**Your list**
+- Each buyer shows how many times per reason, the date last added, and TikTok or Facebook. Use **Search buyer** to find one.
+- **Remove** takes the buyer off your list (you are asked first).
+
+**On your live**
+- When a buyer on your list comments, the comment turns red and shows how many times, for example "2× Return · 1× Not checked out". Tap the buyer''s name to see the dates.
+- It is a reminder only: the order still prints as usual. Your viewers never see it.
+- The TikTok @username or the Facebook name must match exactly.
+- A buyer you add during a live shows right away on this phone, and on your other phones from your next live.'),
   ('raffle-games', 'Games (raffle)', '2026-10-28'::date, 'games, raffle, spin, wheel, winner, giveaway, roleta, pa-raffle, 抽奖, 抽獎, 转盘', 'On the **Live** screen, switch **Games** on. Orders placed while Games is on join the raffle.
 
 - Tap **🎮** (Games), then **Spin** to pick a **Winner**.
@@ -569,5 +590,5 @@ on conflict (id) do update set
   body = excluded.body, updated_at = now()
 where (support_guide.title, support_guide.checked, support_guide.keywords, support_guide.body)
   is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body);
-delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'choose-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'invite-friends', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
+delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'choose-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'blacklist', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'invite-friends', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
 commit;

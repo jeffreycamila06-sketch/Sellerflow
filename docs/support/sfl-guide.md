@@ -431,6 +431,32 @@ Keywords: miners, top buyers, customers, loyal, repeat buyer, suki, mamimili, �
 - **Miners** (Orders → Miners tab) shows top buyers for a range (This session, Today, 7 days, This month, Custom): total buyers, orders, money spent.
 - **Customers** (Settings → Customers) lists buyers you've had. Use **Search loaded customers (name or @handle)** and **Load more**.
 
+## blacklist — Blacklist (sellers outside Taiwan)
+Last checked: 2026-11-20
+Keywords: blacklist, bad buyer, bogus buyer, joy reserver, not checked out, return, returned, block buyer, hindi nag-check out, nag-return, bogus, 黑名单, 黑名單, 退货, 退貨, 未结账
+
+Blacklist is for sellers outside Taiwan. Open **Settings → Blacklist**. Only you can see your list.
+
+**Add a buyer**
+1. Pick a reason: **Not checked out** or **Return item**.
+2. Tap **Scan sticker QR** and take a photo of the QR on the buyer's sticker (on a laptop: **Upload sticker photo**). Or tap **TikTok** or **Facebook**, type the TikTok @username or the Facebook name, and tap **Add**.
+
+- The sticker has a QR only when **Print QR on sticker** is on and the sticker is taller than 40 mm. Otherwise type the name.
+- Facebook buyers have no QR: type their Facebook name exactly as it shows.
+- Tap **Undo** right after adding if you picked the wrong buyer or reason.
+- The same buyer with the same reason counts once a day. Adding it again that day shows **Already added today**.
+- **This QR has no buyer** means it is not a SellerFlowLive sticker QR. Type the username instead.
+
+**Your list**
+- Each buyer shows how many times per reason, the date last added, and TikTok or Facebook. Use **Search buyer** to find one.
+- **Remove** takes the buyer off your list (you are asked first).
+
+**On your live**
+- When a buyer on your list comments, the comment turns red and shows how many times, for example "2× Return · 1× Not checked out". Tap the buyer's name to see the dates.
+- It is a reminder only: the order still prints as usual. Your viewers never see it.
+- The TikTok @username or the Facebook name must match exactly.
+- A buyer you add during a live shows right away on this phone, and on your other phones from your next live.
+
 ## raffle-games — Games (raffle)
 Last checked: 2026-10-28
 Keywords: games, raffle, spin, wheel, winner, giveaway, roleta, pa-raffle, 抽奖, 抽獎, 转盘
