@@ -295,6 +295,26 @@ export function underFmCap(requestsSoFar, cap = FM_DAILY_REQUEST_CAP, perSession
   return requestsSoFar + fmMaxRequestsPerSession(perSession) <= cap;
 }
 
+// PURE — does this database error say the saved-answer column (sql/186) is not there?
+export function fmStateColumnMissing(error) {
+  if (!error) return false;
+  return error.code === "PGRST204" || error.code === "42703" || /fm_site_state|fm_not_found|fm_not_shipped|fm_left/.test(String(error.message || ""));
+}
+
+// The 全家 health row of one run, with the run's "nothing yet" counts (sql/186 columns). While
+// those columns are not in the database the row is written as before, without them.
+async function writeFmHealth(serviceSb, row, counts, logger) {
+  try {
+    const { error } = await serviceSb.from("parcel_tracking_health").insert({ ...row, ...counts });
+    if (!error) return;
+    if (!fmStateColumnMissing(error)) { logger.error("[PARCEL-POLL] health write failed:", error.code || "error"); return; }
+  } catch (e) {
+    logger.error("[PARCEL-POLL] health write failed:", (e && e.code) || "threw");
+    return;
+  }
+  await writePollHealth(serviceSb, row, logger);
+}
+
 // ── Rows ───────────────────────────────────────────────────────────────────────
 // The seller's 全家 rows that can be asked: not finished, with an 11-digit 寄件編號. Stalest first.
 // Any page error → error (never a partial set).
@@ -302,7 +322,7 @@ export async function selectFmRows(serviceSb, userId, pageSize = FM_PAGE_SIZE) {
   const out = [];
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await serviceSb.from("parcel_tracking")
-      .select("id,user_id,carrier,tracking_no,arrived_at,rec_store,status,terminal,created_at,last_polled_at,pickup_deadline")
+      .select("id,user_id,carrier,tracking_no,arrived_at,rec_store,status,terminal,created_at,last_polled_at,pickup_deadline,fm_answered_at")
       .eq("user_id", userId).eq("carrier", "fm").eq("terminal", false)
       .order("last_polled_at", { ascending: true, nullsFirst: true })
       .order("id", { ascending: true })
@@ -370,9 +390,12 @@ export async function checkFmRows({
     requestTimeoutMs = FM_FETCH_TIMEOUT_MS, sessionMaxMs = FM_SESSION_MAX_MS, solveTimeoutMs = FM_OCR_SOLVE_TIMEOUT_MS,
   } = limits;
   const stats = {
-    sessions: 0, checked: 0, removed: 0, notFound: 0, notShipped: 0, unknowns: 0, failures: 0, parcelFaults: 0,
+    sessions: 0, checked: 0, removed: 0, notFound: 0, notShipped: 0, left: 0, unknowns: 0, failures: 0, parcelFaults: 0,
     captchaTries: 0, captchaHits: 0, tripped: false, stopReason: null, sent: 0,
   };
+  // The saved-answer column (parcel_tracking.fm_site_state, sql/186) is not in the database yet →
+  // from the first write that says so, this job writes exactly what it wrote before that file.
+  let noStateColumn = false;
   const cancelled = () => !!(control && control.cancelled);
   let sessionEndsAt = null; // the running session must be over by then
   const sessionFits = (ms) => sessionEndsAt == null || now().getTime() + ms <= sessionEndsAt;
@@ -474,10 +497,16 @@ export async function checkFmRows({
         for (const row of byCode.get(String(tracking_no)) || []) {
           if (cancelled()) { stats.stopReason = "cancelled"; break job; }
           const change = fmRowChange(result, row, nowIso);
-          const q = change.action === "delete"
-            ? mine(serviceSb.from("parcel_tracking").delete(), row)
-            : mine(serviceSb.from("parcel_tracking").update(change.patch), row);
-          const { data, error } = await q.select("id");
+          const put = (patch) => mine(serviceSb.from("parcel_tracking").update(patch), row).select("id");
+          let saved = change.action !== "delete" && !noStateColumn && change.patch !== change.plain; // the fm_site_state write
+          let { data, error } = await (change.action === "delete"
+            ? mine(serviceSb.from("parcel_tracking").delete(), row).select("id")
+            : put(saved ? change.patch : change.plain));
+          if (error && saved && fmStateColumnMissing(error)) {
+            noStateColumn = true; saved = false;
+            logger.warn(`${FM_TAG} the saved-answer column is not in the database yet (sql/186) — writing as before`);
+            ({ data, error } = await put(change.plain));
+          }
           if (error) { logger.error(`${FM_TAG} row write failed:`, error.code || "error"); continue; }
           if (!(data || []).length) continue; // finished by an upload meanwhile → nothing was written
           stats.checked += 1;
@@ -485,6 +514,7 @@ export async function checkFmRows({
           if (change.action === "delete") { stats.removed += 1; logger.log(`${FM_TAG} removed row id=${row.id} user=${userId} (order void: only steps 01 / 40)`); }
           else if (result.kind === "not_found") stats.notFound += 1;
           else if (result.kind === "not_shipped") stats.notShipped += 1;
+          if (saved && change.site && change.site.leaves) stats.left += 1; // it left Pickup Status at this check
         }
       }
       if (cancelled()) { stats.stopReason = "cancelled"; break; }
@@ -605,7 +635,7 @@ export async function runFmPlan(opts) {
     let stats;
     if (d.error) {
       logger.error(`${FM_TAG} daily counter read failed:`, d.error.code || "error");
-      stats = { sessions: 0, checked: 0, removed: 0, notFound: 0, notShipped: 0, unknowns: 0, failures: 0, parcelFaults: 0, captchaTries: 0, captchaHits: 0, tripped: false, stopReason: "daily_read_failed", sent: 0 };
+      stats = { sessions: 0, checked: 0, removed: 0, notFound: 0, notShipped: 0, left: 0, unknowns: 0, failures: 0, parcelFaults: 0, captchaTries: 0, captchaHits: 0, tripped: false, stopReason: "daily_read_failed", sent: 0 };
     } else {
       const fmDeadline = startedMs + (limits.jobMaxMs ?? FM_JOB_MAX_MS);
       stats = await checkImpl({
@@ -616,13 +646,13 @@ export async function runFmPlan(opts) {
     const failed = stats.checked === 0;
     const reason = stats.stopReason || (plan.capped ? "capped" : null);
     if (!cancelled()) {
-      await writePollHealth(serviceSb, {
+      await writeFmHealth(serviceSb, {
         ran_at: new Date(startedMs).toISOString(), ok: !stats.tripped && !failed, reason, queries: stats.sessions,
         updated: stats.checked, errors: stats.failures, duration_ms: now().getTime() - startedMs, sellers: 1,
         skipped_cap: plan.capped ? 1 : 0, retired: stats.removed, requests: stats.sent, kind: "fm", job_id: job.id,
-      }, logger);
+      }, { fm_not_found: stats.notFound, fm_not_shipped: stats.notShipped, fm_left: stats.left || 0 }, logger);
     }
-    logger.log(`${FM_TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} checked=${stats.checked}/${total} not_found=${stats.notFound} not_shipped=${stats.notShipped} unknown=${stats.unknowns} parcel_faults=${stats.parcelFaults || 0} removed=${stats.removed} sessions=${stats.sessions} failed_sessions=${stats.failures} captcha=${stats.captchaHits}/${stats.captchaTries} requests=${stats.sent}${reason ? ` reason=${reason}` : ""}`);
+    logger.log(`${FM_TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} checked=${stats.checked}/${total} not_found=${stats.notFound} not_shipped=${stats.notShipped} left=${stats.left || 0} unknown=${stats.unknowns} parcel_faults=${stats.parcelFaults || 0} removed=${stats.removed} sessions=${stats.sessions} failed_sessions=${stats.failures} captcha=${stats.captchaHits}/${stats.captchaTries} requests=${stats.sent}${reason ? ` reason=${reason}` : ""}`);
     return { ran: true, reason, total, checked: stats.checked, failed, requests: stats.sent };
   } catch (e) {
     logger.error(`${FM_TAG} threw job=${job.id} user=${job.user_id}:`, safeWord((e && e.code) || "threw", 40));

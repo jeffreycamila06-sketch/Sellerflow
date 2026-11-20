@@ -5780,3 +5780,54 @@ laptop, 0 in the FamilyMart filter, and missing from the exact Waiting / In tran
   list). Phone apps need no new build (they load the web).
 - Pictures + proof: `docs/design/fm-pickup-tabs/` (before / after on iPhone 390, Android 360, laptop 1280; the new tests
   against main's code: 36 fail; 40 of 40 on-purpose breaks caught).
+
+## 2026-11-19 — 全家 PICKUP: CHECK NOW ASKS EVERY PARCEL + "NOT DROPPED OFF YET" GROUP (branch `claude/fm-pickup-accuracy-2`, NOT merged; sql/186 + sql/187 NOT applied; needs Render + Vercel)
+Two owner decisions (STEP 0 report, Nov 19). `chrome-extension/` 0 lines; printing not touched; 7-11 server files
+not touched (`git diff origin/main -- server/` = fmTracking.js, fmTrackingRunner.js, parcelTrackingWorker.js only).
+- **A — a seller's press asks every unfinished 全家 parcel** (`parcelTrackingWorker.js` `fmScopeForJob`): kind
+  `manual` → `orderForCheck` (at store first, nearest deadline; then least recently checked), cut to
+  `FM_PARCELS_PER_JOB` (60), NO 24-hour skip. urgent / new_parcels / health → `scopeForJob` unchanged; automatic →
+  `autoScope` unchanged; the 7-11 part → `sevenScopeForJob` unchanged. `IN_TRANSIT_FRESH_MS` is now used by no job.
+  Proof: `docs/design/fm-pickup-accuracy-2/proof/seven-scopes-vs-main.mjs` (4,000 generated jobs, 7-11 = main in all).
+- **B — the saved FamilyMart answer** (`parcel_tracking.fm_site_state`, sql/186): NULL | `not_found` (site does not
+  know the number) | `not_dropped` (knows the order, never handed in — newest step 01). Written ONLY by the server
+  check (`fmTracking.js` `fmNothingYet` + `fmRowChange`), only on an `in_transit` row with no `fm_answered_at`;
+  every real answer / unknown code / void-unclear writes NULL. **Leaves the list on the answer just received**
+  (`terminal = true`, status + message untouched): saved ≥ 10 Taipei days ago (`FM_LEAVE_AFTER_DAYS`, = 7-11's
+  `RETIRE_NOT_DROPPED_DAYS`), OR `not_found` AND the file's drop-off date (`pickup_deadline`) < today (Taipei).
+  "Left the list" = terminal ∧ in_transit ∧ carrier fm ∧ state not null; time left = `last_polled_at`.
+- **sql/186 (+ rollback, NOT applied):** the column + check constraint; `fm_upload_stays_out()` added to the 6
+  keep-conditions of `fm_pickup_upload` (a parcel that left stays out while the file still says in transit; a file
+  saying at store / picked up / returned brings it back) + `fm_site_state` cleared when the file shows progress —
+  otherwise sql/151's text word for word (test-pinned); `purge_left_fm_parcels()` + cron `purge-left-fm-parcels`
+  `27 17 * * *` (left parcels deleted 30 days later, never an open or 7-11 row); `parcel_tracking_health`
+  `fm_not_found` / `fm_not_shipped` / `fm_left` (counts of each 全家 run; the table keeps only its newest 200
+  rows ≈ 5 days). Rollback: job off, left parcels back in the list (nothing deleted), sql/151 upload, drops.
+  `scripts/sql186-behaviour.mjs` (PGlite, 59 checks).
+- **Works in any deploy order:** server without the column → the first refused write (PGRST204 / 42703) switches
+  the job to exactly main's write (`change.plain`), one warn line; health row falls back to `writePollHealth`.
+  Web without the column → module flag `fmSiteColumn` → the read is retried with exactly main's select and 7
+  questions (8 with the column). 全家 off → 6 questions, main's select (test-pinned).
+- **App:** `isFmNothingYet`, `fmLeaves` (same two rules as the server), sort rank 1.5, `tabCounts.transit` without
+  the group, `fmNotDroppedCount`, exact head counts `.is("fm_site_state", null)` / `.not("fm_site_state","is",null)`.
+  Screen: `FmGroupHead` (`pt-fm-group`, before the first such row, In transit only), `pt-card-held` "+N Not dropped
+  off yet", chips `pt-no-record` / `pt-not-dropped`, right column "Leaves this list {date}" / "…at the next check".
+  i18n: `rd_pt_fm_no_record`, `rd_pt_fm_leaves_on`, `rd_pt_fm_leaves_next`, `rd_pt_fm_group_hint` (8 languages);
+  the title reuses `rd_pt_fm_not_dropped`.
+- **Fix round 1 — right-hand lines wrap only between whole pieces** (`adapters/keepTogether.ts`, drawn by
+  `KeepTogether` in ParcelTracking.tsx for "Drop off before {date}", "Leaves this list {date}", "…at the next
+  check"): the date = one `nowrap` piece (`data-date`), a word group between spaces of ≤ 6 characters = one
+  piece, a longer run without spaces → the language's words (Intl.Segmenter) with one-character words joined
+  to a neighbour; `text-wrap: balance` only for zh / zh-TW / th. No Intl.Segmenter → a long run is left as
+  before. Measured on a real browser (`harness/wrap-check.cjs`, 96 lines): before 12 one-character lines +
+  dates cut in en/th/id/vi; after 0 / 0 / no overflow.
+- **Guide:** pickup-status section + 116b; `sql/187_guide_fm_not_dropped.sql` (+ rollback = the live row, md5
+  checked 2026-11-19) — only that row. NOT applied; apply last.
+- **Order:** sql/186 → Render → Vercel → sql/187. sql/182 (optional) any time.
+- Tests: `fmSiteAnswer.server.test.ts`, `parcelTrackingFmSite.test.ts`, `ParcelTracking.fmSite.test.tsx`,
+  `fmSiteAnswerSql.test.ts`, `keepTogether.test.ts`. ⚠️ `fmShipTypeSql.test.ts` no longer checks "no number above
+  182" (main's later sql/184/185 made it false; main's CI run 1865 was red on it). Pictures + proofs: `docs/design/fm-pickup-accuracy-2/`.
+- **Known limits:** the 10 days count from when the row was first saved (a re-issued delivery number on an old
+  order is not handled); after the 30-day delete a later upload that still lists the order adds it again as new;
+  the seller is not told when more than 60 全家 parcels were left for the next press; `not_dropped` with a passed
+  drop-off date waits for the 10 days or FamilyMart's own void step; rows get their label at their next check.

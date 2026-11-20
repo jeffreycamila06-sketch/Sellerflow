@@ -50,10 +50,10 @@ describe("sql/182 — 全家店寄店取 → C2C for 全家 rows only", () => {
     expect(downCode.match(/\bupdate\b/gi)).toHaveLength(1);
     expect(downCode).not.toMatch(/\bdelete\b|\btruncate\b/i);
   });
-  it("it is the newest numbered file (no other 182, nothing above it)", async () => {
+  // (2026-11-19) "nothing above 182" was dropped: later files (sql/184, 185 …) made it false and turned
+  // main's CI red (run 1865). What matters is that no other file uses 182.
+  it("no other file uses the number 182", async () => {
     const { readdirSync } = await import("node:fs");
-    const nums = readdirSync("sql").map((f) => Number(f.match(/^(\d+)_/)?.[1])).filter((x) => Number.isFinite(x));
-    expect(Math.max(...nums)).toBe(182);
     expect(readdirSync("sql").filter((f) => f.startsWith("182_")).sort()).toEqual(["182_fm_ship_type_fix.sql", "182_fm_ship_type_fix_rollback.sql"]);
   });
 });

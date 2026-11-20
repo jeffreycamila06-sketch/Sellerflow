@@ -162,37 +162,62 @@ describe("classifyFm — the rules one by one", () => {
 describe("fmRowChange — what is written", () => {
   const now = "2026-11-12T03:00:00.000Z";
   const row = { id: "r1", arrived_at: null, rec_store: null };
+  type Change = { action: string; patch: Record<string, unknown>; plain: Record<string, unknown>; site?: { state: string; leaves: boolean; why: string | null } };
+  const change = (result: unknown, r: unknown = row) => fmRowChange(result as never, r as never, now) as unknown as Change;
+  // `plain` = what was written before sql/186 (still written while its column is missing);
+  // `patch` = the same plus the saved answer.
   it("at_store: status, message, deadline, arrival and store (only when the row has none)", () => {
-    const c = fmRowChange(classifyFm(AT_STORE, "16354220151"), row, now);
-    expect(c).toEqual({ action: "update", patch: {
+    const c = change(classifyFm(AT_STORE, "16354220151"));
+    const before = {
       last_polled_at: now, fm_answered_at: now, arrived_at: "2026-11-10T20:31:00.000Z", rec_store: "全家取件店", status: "at_store",
       status_message: "貨件配達取件店舖", terminal: false, pickup_deadline: "2026-11-18",
-    } });
-    const kept = fmRowChange(classifyFm(AT_STORE, "16354220151"), { id: "r1", arrived_at: "2026-11-01T00:00:00.000Z", rec_store: "上傳的店名" }, now) as { patch: Record<string, unknown> };
-    expect(kept.patch).not.toHaveProperty("arrived_at");
-    expect(kept.patch).not.toHaveProperty("rec_store");
+    };
+    expect(c).toEqual({ action: "update", plain: before, patch: { ...before, fm_site_state: null } });
+    const kept = change(classifyFm(AT_STORE, "16354220151"), { id: "r1", arrived_at: "2026-11-01T00:00:00.000Z", rec_store: "上傳的店名" });
+    for (const w of [kept.patch, kept.plain]) { expect(w).not.toHaveProperty("arrived_at"); expect(w).not.toHaveProperty("rec_store"); }
   });
   it("picked_up / returned: finished, with the real time of the step", () => {
     expect(fmRowChange(classifyFm(PICKED, "16354226527"), row, now)).toMatchObject({ action: "update", patch: { status: "picked_up", terminal: true, picked_up_at: "2026-11-11T00:55:00.000Z" } });
     expect(fmRowChange(classifyFm(RETURNED, "16352835793"), row, now)).toMatchObject({ action: "update", patch: { status: "returned", terminal: true, returned_at: "2026-11-02T17:21:00.000Z", pickup_deadline: "2026-11-02" } });
   });
   it("in transit: the 'drop off before' date from the upload is cleared", () => {
-    expect(fmRowChange(classifyFm(history("16300000001", ["03", "02", "01"], ""), "16300000001"), row, now))
-      .toEqual({ action: "update", patch: { last_polled_at: now, fm_answered_at: now, status: "in_transit", status_message: "貨件前往物流中心", terminal: false, pickup_deadline: null } });
+    const before = { last_polled_at: now, fm_answered_at: now, status: "in_transit", status_message: "貨件前往物流中心", terminal: false, pickup_deadline: null };
+    expect(change(classifyFm(history("16300000001", ["03", "02", "01"], ""), "16300000001")))
+      .toEqual({ action: "update", plain: before, patch: { ...before, fm_site_state: null } });
   });
-  it("01 only and not found: nothing but the check time (the status is never lowered)", () => {
-    expect(fmRowChange(classifyFm(history("16300000001", ["01"], ""), "16300000001"), row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
-    expect(fmRowChange({ kind: "not_found" }, row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
+  it("01 only and not found on a row that is not 'in transit': nothing but the check time (the status is never lowered)", () => {
+    const base = { last_polled_at: now };
+    for (const r of [row, { ...row, status: "at_store" }, { ...row, status: "created" }]) {
+      expect(change(classifyFm(history("16300000001", ["01"], ""), "16300000001"), r)).toEqual({ action: "update", patch: base, plain: base });
+      expect(change({ kind: "not_found" }, r)).toEqual({ action: "update", patch: base, plain: base });
+    }
   });
-  it("[A][B] unknown code and '40 with other steps': the row keeps its status — only the check time", () => {
-    expect(fmRowChange({ kind: "unknown", unknownCode: "55", status_message: "新狀態" }, row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
-    expect(fmRowChange({ kind: "void_unclear", status_message: "訂單失效" }, row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
+  it("[A][B] unknown code and '40 with other steps': the row keeps its status — the check time, and the saved answer is cleared", () => {
+    const base = { last_polled_at: now };
+    expect(change({ kind: "unknown", unknownCode: "55", status_message: "新狀態" })).toEqual({ action: "update", plain: base, patch: { ...base, fm_site_state: null } });
+    expect(change({ kind: "void_unclear", status_message: "訂單失效" })).toEqual({ action: "update", plain: base, patch: { ...base, fm_site_state: null } });
   });
   it("fm_answered_at is stamped by the four real answers and by nothing else", () => {
     expect([...FM_ANSWER_KINDS].sort()).toEqual(["at_store", "in_transit", "picked_up", "returned"]);
-    for (const kind of FM_ANSWER_KINDS) expect((fmRowChange({ kind, status_message: "x", at: now, pickup_deadline: null }, row, now) as { patch: Record<string, unknown> }).patch.fm_answered_at).toBe(now);
+    for (const kind of FM_ANSWER_KINDS) {
+      const c = change({ kind, status_message: "x", at: now, pickup_deadline: null });
+      expect(c.patch.fm_answered_at).toBe(now);
+      expect(c.plain.fm_answered_at).toBe(now);
+    }
     for (const kind of ["not_found", "not_shipped", "unknown", "void_unclear"]) {
-      expect((fmRowChange({ kind }, row, now) as { patch: Record<string, unknown> }).patch).toEqual({ last_polled_at: now });
+      for (const r of [row, { ...row, status: "in_transit", created_at: "2026-11-10T00:00:00.000Z" }]) {
+        const c = change({ kind }, r);
+        expect(c.plain).toEqual({ last_polled_at: now });
+        expect(c.patch).not.toHaveProperty("fm_answered_at");
+      }
+    }
+  });
+  it("the write of before sql/186 (`plain`) never carries the saved answer and never finishes a row for 'nothing yet'", () => {
+    const old = { ...row, status: "in_transit", created_at: "2026-10-01T00:00:00.000Z", fm_answered_at: null, pickup_deadline: null };
+    for (const kind of ["not_found", "not_shipped", "unknown", "void_unclear", ...FM_ANSWER_KINDS]) {
+      const c = change({ kind, status_message: "x", at: now, pickup_deadline: null }, old);
+      expect(c.plain).not.toHaveProperty("fm_site_state");
+      if (kind === "not_found" || kind === "not_shipped") expect(c.plain).toEqual({ last_polled_at: now });
     }
   });
   it("expired (40): the row is removed", () => {

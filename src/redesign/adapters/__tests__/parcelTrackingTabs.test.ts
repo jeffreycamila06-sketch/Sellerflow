@@ -142,11 +142,11 @@ describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoi
     expect(adapter).toContain('.order("returned_at", { ascending: false');
     expect(adapter).toContain('.order("picked_up_at", { ascending: false');
     // never-partial (the S1 rule): any query error — incl. the S7 exact-count queries — fails the WHOLE load
-    expect(adapter).toContain("const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error || uncheckedFm.error;");
+    expect(adapter).toContain("const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error || uncheckedFm.error || held.error;");
   });
   it("S7: the unfinished list is PAGED in a stable order (deadline, then id) and Load more continues from the offset", () => {
     expect(adapter).toMatch(/\.order\("pickup_deadline", \{ ascending: true, nullsFirst: false \}\)\s*\.order\("id", \{ ascending: true \}\)\s*\.range\(from, from \+ PARCEL_TRACKING_PAGE - 1\)/);
-    expect(adapter).toContain("const { data, error } = await livePage(me, Math.max(0, offset), fm);");
+    expect(adapter).toContain("let { data, error } = await livePage(me, Math.max(0, offset), fm);");
     // exact waiting = chaseable at_store (+ a not-checked-yet 全家 row); transit = chaseable in_transit + not-checked-yet 7-11
     expect(adapter).toContain('.or("special_type.is.null,special_type.eq.")');
     expect(adapter).toContain("waiting: (atStore.count ?? 0) + (uncheckedFm.count ?? 0),");

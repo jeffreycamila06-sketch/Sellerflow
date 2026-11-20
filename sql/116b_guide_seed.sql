@@ -393,7 +393,7 @@ Both:
 - On a phone, turn on **Export on this phone** first (it is off by default).
 - Android: the file is saved to Downloads — use Chrome.
 - A field with a mistake shows a short message under it.'),
-  ('pickup-status', 'Pickup Status', '2026-11-17'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export, whatsapp, line, messenger, instagram, copy message, remind buyer, 催取件訊息, 提醒買家, nhắc người mua, เตือนผู้ซื้อ, ingatkan pembeli', '**Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
+  ('pickup-status', 'Pickup Status', '2026-11-19'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export, whatsapp, line, messenger, instagram, copy message, remind buyer, 催取件訊息, 提醒買家, nhắc người mua, เตือนผู้ซื้อ, ingatkan pembeli', '**Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
 
 Who has it:
 - **Plus / Pro / Master** in Taiwan. If you just upgraded, close the app fully and open it again.
@@ -415,7 +415,8 @@ Who has it:
 - Drag the bar on the right edge of the screen to move quickly up and down the list.
 - **Buyer waiting for pickup** rows have a button for the buyer''s app: **WhatsApp** opens the chat with a ready reminder (name, store, amount, pick-up-by date); **LINE** and **Instagram** open the buyer and copy the reminder so you can paste it; **Facebook** opens the buyer''s Facebook (**Messenger** when it is a username) and copies the reminder; **TikTok** opens the buyer''s TikTok profile; **Copy message** copies the reminder; **Copy** copies the contact. The app comes from what you picked in Parcel Scan; parcels saved before this had a TikTok @username and open TikTok.
 - Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
-- Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
+- Some 全家 parcels show **Not dropped off yet** (FamilyMart has not received them) or **No record yet** (FamilyMart has no record of them). They are listed last under **In transit**, under their own heading, and are not in the **In transit** number. On the phone the card shows them as "+N Not dropped off yet".
+- When such a parcel shows **Drop off before (date)**, drop it off before that date. Otherwise the row shows when it leaves the list (at most 10 days). A new Order export that shows the parcel at the store brings it back.
 - "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
 - "N orders have no delivery number yet" — in 好賣+ tap **Get the delivery number**, then download the Order export again and sync.
 - A 全家 parcel is no longer in the list — its order was cancelled or it expired on 好賣+ (訂單失效).

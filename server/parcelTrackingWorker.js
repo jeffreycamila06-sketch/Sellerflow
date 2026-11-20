@@ -32,7 +32,7 @@ export const JOB_MAX_MS = 30 * 60 * 1000;
 export const REST_MS = 10 * 60 * 1000;
 export const HEALTH_HOUR = 9;                          // Taipei — daily health job after 09:00
 export const NEW_PARCEL_SLACK_MS = 5 * 60 * 1000;      // new_parcels scope reaches 5 min before the request
-export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // 全家 part only (scopeForJob): manual skips in_transit rows checked < 24h ago
+export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // scopeForJob's manual branch only — no job uses that branch since 2026-11-19 (a seller's press asks every 全家 parcel: fmScopeForJob)
 export const AUTO_STALE_MS = 60 * 60 * 1000;           // an auto job queued > 1h ago (e.g. worker was off) is dropped
 export const HEALTH_FALLBACK_SCAN = 200;               // rows read to find one checkable health probe
 
@@ -127,6 +127,19 @@ export function scopeForJob(job, rows, nowDate, caps) {
   }
   const limit = job.kind === "new_parcels" ? Math.min(300, caps.parcels) : caps.parcels;
   return { rows: pick.slice(0, limit), capped: pick.length > limit };
+}
+
+// PURE — which of the seller's unfinished 全家 rows this job checks (2026-11-19).
+//   manual → EVERY row, no 24-hour skip: a seller who presses Check sees fresh statuses. Order:
+//            at a store first (nearest pickup deadline first), then the rest, least recently
+//            checked first — the order a 7-11 press uses (orderForCheck).
+//   urgent / new_parcels / health → scopeForJob, unchanged.
+// The automatic check has its own scope (autoScope) and is not decided here.
+// Cut to caps.parcels (the 全家 per-job limit); capped = some were left for the next check.
+export function fmScopeForJob(job, rows, nowDate, caps) {
+  if (job.kind !== "manual") return scopeForJob(job, rows, nowDate, caps);
+  const pick = orderForCheck(rows);
+  return { rows: pick.slice(0, caps.parcels), capped: pick.length > caps.parcels };
 }
 
 // PURE — the job row's final status/error from a checkRows result.
@@ -329,7 +342,7 @@ export function createWorker(opts) {
       if (auto && overMemoryLimit(memoryUsage().rss, MEMORY_LIMIT_MB, auto.memPct)) return null;
       const fmScope = (list) => (auto
         ? autoScope(list, now(), { ...auto, maxParcels: Math.min(auto.maxParcels, FM_PARCELS_PER_JOB) }, tier)
-        : scopeForJob(job, list, now(), { ...caps, parcels: FM_PARCELS_PER_JOB }));
+        : fmScopeForJob(job, list, now(), { ...caps, parcels: FM_PARCELS_PER_JOB }));
       const asked = Promise.resolve().then(() => planFmImpl({ serviceSb, job, scopeOf: fmScope, now, logger, limits: fmLimits }));
       asked.catch(() => {}); // a late failure after the limit is not an unhandled rejection
       const late = new Promise((resolve) => { planTimer = setTimeout(() => resolve(null), fmPlanMaxMs); planTimer.unref?.(); });

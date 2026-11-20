@@ -15,6 +15,13 @@ vi.mock("../../../supabase", () => {
     select(cols: string, o?: { count?: string; head?: boolean }) { DB.calls.push(["select", cols]); this.count = !!o?.count; this.head = !!o?.head; return this; }
     eq(c: string, v: unknown) { DB.calls.push(["eq", c, v]); this.f.push((r) => r[c] === v); return this; }
     in(c: string, v: unknown[]) { DB.calls.push(["in", c, v]); this.f.push((r) => v.includes(r[c])); return this; }
+    is(c: string, v: unknown) { DB.calls.push(["is", c, v]); this.f.push((r) => (r[c] ?? null) === v); return this; }
+    not(c: string, op: string, v: unknown) {
+      DB.calls.push(["not", c, op, v]);
+      if (op !== "is" || v !== null) throw new Error(`this fake does not know the filter: not ${op}`);
+      this.f.push((r) => (r[c] ?? null) !== null);
+      return this;
+    }
     or(expr: string) {
       DB.calls.push(["or", expr]);
       if (expr !== "special_type.is.null,special_type.eq.") throw new Error(`this fake does not know the filter: ${expr}`);
@@ -40,7 +47,7 @@ vi.mock("../../../supabase", () => {
 
 import {
   loadParcelTracking, groupParcels, rowTab, tabCounts, tabRows, leftCell, sortByDaysLeft, isChaseable, isUnchecked, inStatusTabs, rowToTracking,
-  FM_STORE_PICKUP_SAVED, PICKUP_STATUS_TABS, type ParcelTrackingRow,
+  FM_STORE_PICKUP_SAVED, PICKUP_STATUS_TABS, resetFmSiteColumnForTests, type ParcelTrackingRow,
 } from "../parcelTracking";
 
 const TODAY = "2026-11-19";
@@ -53,7 +60,7 @@ const fm = (o: Partial<ParcelTrackingRow> = {}) => mk({ carrier: "fm", shipType:
 const STATUSES = ["at_store", "in_transit", "picked_up", "returned"] as const;
 const TAB_OF = { at_store: "waiting", in_transit: "transit", picked_up: "picked", returned: "returned" } as const;
 
-beforeEach(() => { DB.rows = []; DB.calls = []; DB.fmHidden = false; });
+beforeEach(() => { DB.rows = []; DB.calls = []; DB.fmHidden = false; resetFmSiteColumnForTests(); });
 
 describe("T1 inStatusTabs — which row belongs in a status tab", () => {
   it("a 全家 row saved as 全家店寄店取 (the 70 live rows) → yes", () => {
@@ -176,8 +183,9 @@ describe("T3 the exact tab counts from the database (loadParcelTracking totals)"
     const on = await loadParcelTracking(true);
     DB.rows = seven();
     const off = await loadParcelTracking();
-    expect(on.totals).toEqual(off.totals);
+    expect(on.totals).toEqual({ ...off.totals, notDropped: 0 }); // the same numbers; 全家 on also carries the (empty) group count
     expect(off.totals).toMatchObject({ waiting: 2, transit: 2 });
+    expect("notDropped" in off.totals!).toBe(false);
   });
   it("全家 off: the count questions are EXACTLY the old ones (ship_type = C2C), and no 全家 word is sent", async () => {
     DB.rows = LIVE();
@@ -189,7 +197,7 @@ describe("T3 the exact tab counts from the database (loadParcelTracking totals)"
     expect(JSON.stringify(DB.calls)).not.toContain("全家");
     expect(DB.calls.some((c) => c[0] === "eq" && c[1] === "carrier")).toBe(false);
   });
-  it("全家 on: the same number of questions as before (7), only the delivery-type filter differs", async () => {
+  it("全家 on: 8 questions (the 7 of before + the count of the 'not dropped off yet' group), same delivery-type filter", async () => {
     DB.rows = LIVE();
     await loadParcelTracking(true);
     const on = DB.calls.slice();
@@ -197,12 +205,16 @@ describe("T3 the exact tab counts from the database (loadParcelTracking totals)"
     await loadParcelTracking();
     const off = DB.calls.slice();
     const selects = (c: unknown[][]) => c.filter((x) => x[0] === "select").length;
-    expect(selects(on)).toBe(7);
-    expect(selects(off)).toBe(6); // 全家 off never asks for the not-checked-yet 全家 rows
-    expect(on.filter((c) => c[0] === "in")).toEqual([["in", "ship_type", ["C2C", "全家店寄店取"]], ["in", "ship_type", ["C2C", "全家店寄店取"]]]);
+    expect(selects(on)).toBe(8);
+    expect(selects(off)).toBe(6); // 全家 off never asks for the not-checked-yet 全家 rows, nor for the group
+    // three counts carry the delivery-type filter now: at a store, moving, and the group
+    expect(on.filter((c) => c[0] === "in")).toEqual(Array(3).fill(["in", "ship_type", ["C2C", "全家店寄店取"]]));
     expect(on.some((c) => c[0] === "eq" && c[1] === "ship_type")).toBe(false);
     // the "no special flow" condition is the same sentence in both
-    expect(on.filter((c) => c[0] === "or")).toEqual(off.filter((c) => c[0] === "or"));
+    expect(new Set(on.filter((c) => c[0] === "or").map((c) => c[1]))).toEqual(new Set(off.filter((c) => c[0] === "or").map((c) => c[1])));
+    // 全家 off: nothing of the saved answer is ever sent
+    expect(off.some((c) => c[0] === "is" || c[0] === "not")).toBe(false);
+    expect(JSON.stringify(off)).not.toContain("fm_site_state");
   });
 });
 

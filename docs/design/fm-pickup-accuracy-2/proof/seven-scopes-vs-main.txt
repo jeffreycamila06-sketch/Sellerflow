@@ -1,0 +1,6 @@
+generated jobs: 4000
+7-11 part (sevenScopeForJob): same as main in 4000 of 4000
+scopeForJob: same as main in 4000 of 4000
+automatic check (autoScope): same as main in 4000 of 4000
+全家 part, urgent / new_parcels / health / other: same as main in 3274 of 3274
+全家 part, a seller's press (manual): different from main in 465 of 726 (by design: no 24-hour skip, the 7-11 order)
