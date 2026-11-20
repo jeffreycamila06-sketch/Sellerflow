@@ -4,6 +4,7 @@
 // counts per reason, last added + platform, search, Remove (an in-app yes / no). Props-driven: every
 // read / write goes through the callbacks (RedesignApp → adapters/blacklist useBlacklist).
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { headerBar, headerTitle } from "../ui";
 import { HeaderWithBack } from "../components/BackButton";
 import { tpl, useT } from "../i18n";
@@ -246,18 +247,24 @@ export default function Blacklist({
         {addPanel}
         {listPanel}
       </div>
-      {removing && (
+      {/* Portal into the [data-redesign] root (BlacklistSheet / ParcelScan pattern): rendered inside the screen it
+          sat in the scroll box's stacking context, UNDER the bottom nav, so Cancel / Remove could not be tapped on a
+          phone. The text scrolls inside the sheet; the buttons always stay on screen. */}
+      {removing && createPortal(
         <div onClick={() => { if (!removeBusy) setRemoving(null); }} data-testid="bl-remove-sheet" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", alignItems: wide ? "center" : "flex-end", justifyContent: "center" }}>
-          <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: "100%", maxWidth: wide ? 420 : undefined, boxSizing: "border-box", background: "var(--surface-2)", borderRadius: wide ? 18 : "20px 20px 0 0", padding: "18px 16px calc(18px + env(safe-area-inset-bottom))", boxShadow: "0 -14px 40px rgba(0,0,0,.35)" }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", lineHeight: 1.3, overflowWrap: "anywhere" }}>{tpl(t.rd_bl_remove_q, { buyer: displayBuyer(removing.platform, removing.label) })}</div>
-            <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.4 }}>{t.rd_bl_remove_sub}</div>
-            {removeFailed && <div role="alert" data-testid="bl-remove-err" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--danger)", marginTop: 8 }}>{t.rd_bl_save_err}</div>}
-            <div style={{ display: "flex", gap: 9, marginTop: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" data-testid="bl-remove-panel" style={{ width: "100%", maxWidth: wide ? 420 : undefined, boxSizing: "border-box", background: "var(--surface-2)", borderRadius: wide ? 18 : "20px 20px 0 0", padding: "18px 16px calc(18px + env(safe-area-inset-bottom))", boxShadow: "0 -14px 40px rgba(0,0,0,.35)", maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+            <div data-testid="bl-remove-body" style={{ minHeight: 0, overflowY: "auto" }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", lineHeight: 1.3, overflowWrap: "anywhere" }}>{tpl(t.rd_bl_remove_q, { buyer: displayBuyer(removing.platform, removing.label) })}</div>
+              <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.4 }}>{t.rd_bl_remove_sub}</div>
+              {removeFailed && <div role="alert" data-testid="bl-remove-err" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--danger)", marginTop: 8 }}>{t.rd_bl_save_err}</div>}
+            </div>
+            <div style={{ display: "flex", gap: 9, marginTop: 16, flexShrink: 0 }}>
               <button type="button" disabled={removeBusy} onClick={() => setRemoving(null)} data-testid="bl-remove-cancel" style={{ ...btnPrimary, flex: 1, background: "var(--surface)", color: "var(--text)", border: "1.5px solid var(--border-strong)" }}>{t.rd_bl_cancel}</button>
               <button type="button" disabled={removeBusy} onClick={() => void confirmRemove()} data-testid="bl-remove-ok" style={{ ...btnPrimary, flex: 1, background: "var(--danger)", color: "#fff", opacity: removeBusy ? 0.7 : 1 }}>{t.rd_bl_remove}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
       )}
     </div>
   );

@@ -80,6 +80,14 @@ const tables: Record<string, Row[]> = {
     { id: "fc7", user_id: UID, phone: "0944222333", name: "Grace Tan", store_id: "018274", buyer_username: "@user", contact_platform: null, created_at: iso(22), updated_at: iso(3) },
     { id: "fc8", user_id: UID, phone: "0966444555", name: "吳先生", store_id: "022131", buyer_username: "user", contact_platform: null, created_at: iso(25), updated_at: iso(5) },
   ],
+  // ?bl=1 (with ?admin=1, the admin sees Blacklist): a few made-up Blacklist rows, one with a very long
+  // Facebook name, so the Remove sheet can be opened in pictures.
+  buyer_blacklist: typeof location !== "undefined" && /[?&]bl=1\b/.test(location.search) ? [
+    { id: "bl1", user_id: UID, platform: "tiktok", buyer_label: "maria_shop", buyer_key: "maria_shop", reason: "returned", added_day: day(-1), created_at: iso(1) },
+    { id: "bl2", user_id: UID, platform: "tiktok", buyer_label: "maria_shop", buyer_key: "maria_shop", reason: "not_checked_out", added_day: day(-4), created_at: iso(4) },
+    { id: "bl3", user_id: UID, platform: "facebook", buyer_label: "Ana Reyes", buyer_key: "ana reyes", reason: "not_checked_out", added_day: day(-2), created_at: iso(2) },
+    { id: "bl4", user_id: UID, platform: "facebook", buyer_label: "Maria Cristina Dela Cruz Santos Villanueva Reyes Mendoza Bautista Ocampo", buyer_key: "maria cristina dela cruz santos villanueva reyes mendoza bautista ocampo", reason: "returned", added_day: day(-3), created_at: iso(3) },
+  ] : [],
   parcel_tracking: [
     { id: "t1", user_id: UID, tracking_no: "F1234567890", cm_order_no: null, buyer_username: "+886922333444", recipient_name: "陳*文", store_id: "133712", rec_store: "民生門市", status: "at_store", status_message: "包裹已到店", pickup_deadline: day(3), arrived_at: iso(1), ship_type: "C2C", special_type: null, order_amount: 1200, terminal: false, last_polled_at: iso(0.1), carrier: "711" },
     { id: "t2", user_id: UID, tracking_no: "F2234567890", cm_order_no: null, buyer_username: "yating.line", recipient_name: "林*婷", store_id: "991120", rec_store: "松山門市", status: "at_store", status_message: "包裹已到店", pickup_deadline: day(2), arrived_at: iso(1), ship_type: "C2C", special_type: null, order_amount: 380, terminal: false, last_polled_at: iso(0.1), carrier: "711" },
