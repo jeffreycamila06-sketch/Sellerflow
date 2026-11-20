@@ -1,8 +1,11 @@
--- Rollback of sql/188 — puts back the three functions EXACTLY as they are live (read 2026-11-20 with
+-- Rollback of sql/188 — puts back the six functions EXACTLY as they are live (read 2026-11-20 with
 -- pg_get_functiondef; md5 fb_post_sale_create 852273a1…, fb_post_order_claim 4849c8e4…,
--- fb_post_waitlist_give d1c09d91… — checked by scripts/sql188-behaviour.mjs), puts back the end
--- date of every sale sql/188 cut to 14 days, and removes everything sql/188 added (the two rule
--- functions, fb_waitlist.sale_id, the note table). One transaction.
+-- fb_post_waitlist_give d1c09d91…, fb_post_orders_mark_printed 10c4cee7…,
+-- fb_post_sale_item_update 8bfa2f8f…, fb_post_sale_end 2c294382… — checked by
+-- scripts/sql188-behaviour.mjs), ends the sales whose end date passed (sql/188's End now leaves
+-- them 'selling' until the poller has read them), puts back the end date of every sale sql/188 cut
+-- to 14 days, and removes everything sql/188 added (the two rule functions, fb_waitlist.sale_id,
+-- the note table). One transaction.
 begin;
 set local lock_timeout = '5s';
 
@@ -122,11 +125,54 @@ exception when unique_violation then
 end;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.fb_post_orders_mark_printed(p_ids bigint[])
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare n int;
+begin
+  if auth.uid() is null then raise exception 'not_signed_in' using errcode = '42501'; end if;
+  update public.fb_post_orders set printed_at = now()
+   where id = any(p_ids) and user_id = auth.uid() and printed_at is null;
+  get diagnostics n = row_count;
+  return n;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.fb_post_sale_item_update(p_item_id bigint, p_price numeric, p_stock integer)
+ RETURNS boolean
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  update public.fb_post_sale_items i set price = greatest(0, p_price), stock = case when p_stock is null then null else greatest(0, p_stock) end
+   where i.id = p_item_id and auth.uid() is not null
+     and exists (select 1 from public.fb_post_sales s where s.id = i.sale_id and s.user_id = auth.uid())
+  returning true;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.fb_post_sale_end(p_sale_id bigint)
+ RETURNS boolean
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  update public.fb_post_sales set status = 'ended', ends_at = least(ends_at, now())
+   where id = p_sale_id and auth.uid() is not null and user_id = auth.uid() and status = 'selling'
+  returning true;
+$function$;
+
 -- the end dates sql/188 cut (only while the sale still has the date sql/188 gave it)
 update public.fb_post_sales s set ends_at = n.old_ends_at
   from public.fb_post_sales_ends_188 n
  where s.id = n.sale_id and s.ends_at = s.starts_at + interval '14 days';
 drop table if exists public.fb_post_sales_ends_188;
+
+-- End now (sql/188) leaves a sale 'selling' with its end date set to now; the live End now ends it
+-- at once. After the old end dates are back, a sale whose end date passed is ended.
+update public.fb_post_sales set status = 'ended' where status = 'selling' and ends_at <= now();
 
 drop index if exists public.fb_waitlist_sale;
 alter table public.fb_waitlist drop constraint if exists fb_waitlist_sale_post;

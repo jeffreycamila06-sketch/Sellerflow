@@ -81,13 +81,19 @@ export async function joinWaitlist(a: { sessionId: string | null; code: string; 
 }
 
 // This session's rows only (null session = rows with no session). null = could not read.
+// The waiting line Orders shows: this live session's rows + (fix round 1, 2026-11-20) EVERY waiting
+// post-sale row — post rows have no session (session_id null), so during a live session they were
+// hidden before. No session → the rows without a session (post rows among them), as before.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function loadWaitlist(sessionId: string | null): Promise<WaitlistRow[] | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   try {
     const uid = (await supabase.auth.getSession()).data.session?.user?.id;
     if (!uid) return null;
     let q = supabase.from("fb_waitlist").select("*").eq("user_id", uid).eq("status", "waiting");
-    q = sessionId ? q.eq("session_id", sessionId) : q.is("session_id", null);
+    q = !sessionId ? q.is("session_id", null)
+      : UUID.test(sessionId) ? q.or(`session_id.eq.${sessionId},source.eq.post`)
+      : q.eq("session_id", sessionId);
     const { data, error } = await q.order("created_at", { ascending: true }).limit(500);
     if (error || !Array.isArray(data)) return null;
     return (data as Record<string, unknown>[]).map(mapWaitlistRow);

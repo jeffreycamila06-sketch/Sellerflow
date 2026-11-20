@@ -1,7 +1,7 @@
 -- ============================================================================
 -- sql/188 — FACEBOOK POST SALES for every paid seller (Plus / Pro / Master)
 -- ============================================================================
--- NOT APPLIED. Needs sql/137 (applied in production). Additive except the three function bodies
+-- NOT APPLIED. Needs sql/137 (applied in production). Additive except the six function bodies
 -- below (same signatures, CREATE OR REPLACE). One transaction. Rollback:
 -- sql/188_fb_post_sales_public_rollback.sql (puts back the LIVE definitions, read 2026-11-20).
 --
@@ -20,11 +20,19 @@
 --      no longer make 21).
 --   3. fb_post_order_claim — a seller who no longer passes the rule gets 'not_allowed' (no order;
 --      the poller leaves that comment for the next minute — see server/fbPostSales.js).
+--      The end date is judged by the COMMENT's time (fix round 1): a comment written before the
+--      end date becomes an order also when it is read later (the Page was live, a slow minute,
+--      End now); a comment written after it is 'ended'. A comment time in the future counts as now.
 --   4. fb_waitlist.sale_id — the post sale a waiting comment belongs to (set by the poller).
 --      fb_post_waitlist_give gives from THAT sale (a row without sale_id: as before, the newest
 --      selling sale with the code). Give also follows the rule ('not_allowed').
 --   5. An OPEN sale longer than 14 days is cut to 14 days from its start (0 rows on 2026-11-20).
 --      The old end dates are kept in fb_post_sales_ends_188 so the rollback puts them back.
+--   6. Read-only after a plan ends (fix round 1): fb_post_orders_mark_printed,
+--      fb_post_sale_item_update and fb_post_sale_end refuse ('not_allowed') a seller who does not
+--      pass the rule. End now moves the end date to now and leaves the sale 'selling': the
+--      poller reads the comments written before it, then marks the sale ended. Give no longer
+--      gives from a sale whose end date passed (as when End now set 'ended' at once).
 -- Nothing here touches live_session_orders, buyer numbers, orders, or the live Facebook path.
 -- ============================================================================
 begin;
@@ -152,9 +160,10 @@ declare
   v_sale public.fb_post_sales;
   v_item public.fb_post_sale_items;
   v_qty int := greatest(1, least(99, coalesce(p_qty, 1)));
+  v_at timestamptz := least(coalesce(p_created_at, now()), now()); -- when the comment was written
 begin
   select * into v_sale from public.fb_post_sales where id = p_sale_id;
-  if v_sale.id is null or v_sale.status <> 'selling' or now() < v_sale.starts_at or now() > v_sale.ends_at then return 'ended'; end if;
+  if v_sale.id is null or v_sale.status <> 'selling' or now() < v_sale.starts_at or v_at > v_sale.ends_at then return 'ended'; end if;
   if not public.fb_post_seller_allowed(v_sale.user_id) then return 'not_allowed'; end if;
   if exists (select 1 from public.fb_post_orders where comment_id = p_comment_id) then return 'dup'; end if;
   select * into v_item from public.fb_post_sale_items where id = p_item_id and sale_id = p_sale_id for update;
@@ -200,11 +209,11 @@ begin
   if not public.fb_post_seller_allowed(v_uid) then return 'not_allowed'; end if;
   if w.sale_id is not null then
     select i.* into v_item from public.fb_post_sale_items i join public.fb_post_sales s on s.id = i.sale_id
-     where s.id = w.sale_id and s.user_id = v_uid and s.status = 'selling' and lower(i.code) = lower(w.code)
+     where s.id = w.sale_id and s.user_id = v_uid and s.status = 'selling' and s.ends_at > now() and lower(i.code) = lower(w.code)
      order by i.id limit 1 for update of i;
   else
     select i.* into v_item from public.fb_post_sale_items i join public.fb_post_sales s on s.id = i.sale_id
-     where s.user_id = v_uid and s.status = 'selling' and lower(i.code) = lower(w.code)
+     where s.user_id = v_uid and s.status = 'selling' and s.ends_at > now() and lower(i.code) = lower(w.code)
      order by s.created_at desc limit 1 for update of i;
   end if;
   if v_item.id is null then return 'ended'; end if;
@@ -241,5 +250,65 @@ insert into public.fb_post_sales_ends_188 (sale_id, old_ends_at)
   on conflict (sale_id) do nothing;
 update public.fb_post_sales s set ends_at = s.starts_at + interval '14 days'
  where s.status = 'selling' and s.ends_at > s.starts_at + interval '14 days';
+
+-- ── 6. read-only after a plan ends ──────────────────────────────────────────
+-- Print new marks the printed orders; refused without the plan (the app hides the button).
+create or replace function public.fb_post_orders_mark_printed(p_ids bigint[]) returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare n int;
+begin
+  if auth.uid() is null then raise exception 'not_signed_in' using errcode = '42501'; end if;
+  if not public.fb_post_seller_allowed(auth.uid()) then raise exception 'not_allowed' using errcode = '42501'; end if;
+  update public.fb_post_orders set printed_at = now()
+   where id = any(p_ids) and user_id = auth.uid() and printed_at is null;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke all on function public.fb_post_orders_mark_printed(bigint[]) from public, anon;
+grant execute on function public.fb_post_orders_mark_printed(bigint[]) to authenticated;
+
+-- Edit price / stock of an item; refused without the plan.
+create or replace function public.fb_post_sale_item_update(p_item_id bigint, p_price numeric, p_stock integer) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_ok boolean;
+begin
+  if auth.uid() is null then return null; end if;
+  if not public.fb_post_seller_allowed(auth.uid()) then raise exception 'not_allowed' using errcode = '42501'; end if;
+  update public.fb_post_sale_items i set price = greatest(0, p_price), stock = case when p_stock is null then null else greatest(0, p_stock) end
+   where i.id = p_item_id
+     and exists (select 1 from public.fb_post_sales s where s.id = i.sale_id and s.user_id = auth.uid())
+  returning true into v_ok;
+  return v_ok;
+end;
+$$;
+revoke all on function public.fb_post_sale_item_update(bigint, numeric, integer) from public, anon;
+grant execute on function public.fb_post_sale_item_update(bigint, numeric, integer) to authenticated;
+
+-- End now: the end date becomes now; the sale stays 'selling' until the poller has read the
+-- comments written before it (then it marks it ended). Refused without the plan.
+create or replace function public.fb_post_sale_end(p_sale_id bigint) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_ok boolean;
+begin
+  if auth.uid() is null then return null; end if;
+  if not public.fb_post_seller_allowed(auth.uid()) then raise exception 'not_allowed' using errcode = '42501'; end if;
+  update public.fb_post_sales set ends_at = least(ends_at, now())
+   where id = p_sale_id and user_id = auth.uid() and status = 'selling'
+  returning true into v_ok;
+  return v_ok;
+end;
+$$;
+revoke all on function public.fb_post_sale_end(bigint) from public, anon;
+grant execute on function public.fb_post_sale_end(bigint) to authenticated;
 
 commit;

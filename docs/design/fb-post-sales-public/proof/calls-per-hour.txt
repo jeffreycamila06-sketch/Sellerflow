@@ -7,4 +7,10 @@ POST POLLER — one Page, 20 open sales, one pass every 60 s, ≤ 5 pages of 100
 LIVE POLLER — the same Page while live (server/fbLive.js timers, not run here)
   no new comments: one read every 5 s → 720 a hour; comments coming in: every 2 s → 1800 a hour
   a burst (a full page of 100 all new): up to 3 more pages per read → at most 7200 a hour; live-status check 12 a hour
-TOGETHER (20 quiet post sales): 1920–3000 a hour while live; 1200 a hour (28800 a day) from the post sales alone, all day, every day they are open
+BEFORE fix round 1 — TOGETHER (20 quiet post sales): 1920–3000 a hour while live
+AFTER fix round 1 — while the Page is live the post sales make 0 calls: 720–1800 a hour (the live reader alone); 1200 a hour (28800 a day) from the post sales when the Page is not live
+2-HOUR LIVE on the same Page (minute 60–179), new comments on each of the 20 posts every minute:
+    0 a minute → post calls during the live: 0 · first minute after: 20 calls · back to the normal 20 a minute after 1 minute(s) · catch-up total 20 calls (0 comments per post to read)
+    5 a minute → post calls during the live: 0 · first minute after: 100 calls · back to the normal 20 a minute after 2 minute(s) · catch-up total 140 calls (600 comments per post to read)
+   20 a minute → post calls during the live: 0 · first minute after: 100 calls · back to the normal 20 a minute after 5 minute(s) · catch-up total 500 calls (2400 comments per post to read)
+  100 a minute → post calls during the live: 0 · first minute after: 100 calls · back to the normal 20 a minute after 30 minute(s) · catch-up total 3000 calls (12000 comments per post to read)

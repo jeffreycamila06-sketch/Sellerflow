@@ -42,7 +42,7 @@ import { finalErrorHandler } from "./server/finalErrorHandler.js";
 import { registerHealthRoutes } from "./server/healthRoutes.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
-import { createFbPostSales } from "./server/fbPostSales.js";
+import { createFbPostSales, pageLiveIn } from "./server/fbPostSales.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbDiagHandler, FB_DIAG_PATH } from "./server/fbDiag.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
@@ -2760,6 +2760,9 @@ try {
     const postSales = createFbPostSales({
       config: fbCfg,
       enabled: fbPostSalesEnabled,
+      // Lives first: a Page whose live comment reader is running is not read for its posts.
+      // READ-ONLY look at fbLive's running pollers (nothing in fbLive changes).
+      isPageLive: (pageId) => pageLiveIn(fbRuntime ? fbRuntime._pollers : null, pageId),
       log: (line) => console.log(line),
       store: {
         getPage: (userId, pageId) => store.getPage(userId, pageId),

@@ -1,12 +1,15 @@
 // The REAL Orders screen (Posts side / Posts 🔒) and the REAL "Sell on a post" form on made-up data.
 // Nothing is drawn on top. The access answer comes from the REAL postSalesAccess for each plan.
-//   ?view=plus|free|ends&lang=en|fil|zh|zh-TW|vi|th|id|bg
+//   ?view=plus|free|ends|readonly&lang=en|fil|zh|zh-TW|vi|th|id|bg
+//   readonly (fix round 1): a Plus seller whose plan EXPIRED and who has post orders → view-only Posts
+//   + the waiting line with a post buyer (Give off) and a live buyer (Give on).
 import { createRoot } from "react-dom/client";
 import { useState } from "react";
 import "../../../../src/styles/design-tokens.css";
 import "../../../../src/redesign/redesign.css";
 import { TProvider, normalizeLang, buildT } from "../../../../src/redesign/i18n";
-import Orders from "../../../../src/redesign/screens/Orders";
+import Orders, { type WaitlistUi } from "../../../../src/redesign/screens/Orders";
+import { groupWaitlist, type WaitlistRow } from "../../../../src/redesign/adapters/fbWaitlist";
 import type { PostsUi } from "../../../../src/redesign/screens/PostSales";
 import ContactSupportPopup from "../../../../src/redesign/components/ContactSupportPopup";
 import { postSalesAccess, type PostSale, type PostOrder } from "../../../../src/redesign/adapters/fbPostSales";
@@ -31,18 +34,21 @@ const ORDERS = [ord(1, 1, 10, "Ana Cruz", 350, 50), ord(2, 1, 11, "Ana Cruz", 20
 
 export function Harness() {
   const plan = view === "free" ? "free" : "plus";
-  const access = postSalesAccess({ switchOn: true, isAdmin: false, hasKey: false, pageCount: 1, plan, planStatus: "active", planExpiry: iso(NOW + 30 * 86400000) });
+  const ro = view === "readonly";
+  const access = postSalesAccess({ switchOn: true, isAdmin: false, hasKey: false, pageCount: 1, plan, planStatus: ro ? "expired" : "active", planExpiry: iso(NOW + (ro ? -2 : 30) * 86400000), hasOrders: ro });
   const [popup, setPopup] = useState(false);
   const ui: PostsUi = {
-    state: "ready", sales: SALES, orders: view === "ends" ? [] : ORDERS, waitlistCounts: new Map([[1, 2]]), pages: [{ pageId: "P1", name: "My Shop" }], products: [], busy: false, note: null,
+    state: "ready", sales: SALES, orders: view === "ends" ? [] : ORDERS, waitlistCounts: new Map([[1, 2]]), pages: [{ pageId: "P1", name: "My Shop" }], products: [], busy: false, note: null, readOnly: access === "readonly",
     onReload: () => {}, onPrintNew: () => {}, onCreate: async () => ({ ok: true as const, id: 9 }), onEnd: async () => true, onUpdateItem: async () => true,
     loadPosts: async () => ({ ok: true as const, posts: [{ id: "P1_9", message: "New arrivals this week!", createdTime: iso(NOW - 3600000), picture: "", url: "" }, { id: "P1_8", message: "Restock: kids shoes", createdTime: iso(NOW - 86400000), picture: "", url: "" }] }),
   };
   const t = buildT(lang);
+  const wrow = (id: number, code: string, name: string, source: "live" | "post", saleId: number | null): WaitlistRow => ({ id, sessionId: source === "live" ? "s1" : null, code, productLocalId: null, commentId: `w${id}`, pageId: "P1", liveVideoId: null, commenterId: `W${id}`, commenterName: name, handle: name, createdAt: iso(NOW - id * 60000), status: "waiting", source, saleId });
+  const waitlist: WaitlistUi | undefined = ro ? { state: "ready", groups: groupWaitlist([wrow(1, "A", "Mei Lin", "post", 1), wrow(2, "A", "Rosa Diaz", "post", 1), wrow(3, "C2", "Joy Tan", "live", null)]), stockFor: () => 2, onGive: () => {}, onSkip: () => {}, busyId: null, postLabel: (sid) => SALES.find((x) => x.id === sid)!.postMessage, postGiveOff: true } : undefined;
   return (
     <div data-redesign="" data-theme="light" data-access={access} style={{ minHeight: "100vh", background: "var(--app-bg)", color: "var(--text)", fontFamily: "var(--font-ui)" }}>
       <Orders onGoPrint={() => {}} cur="NT$" orders={[]} state="live" todayId={iso(NOW).slice(0, 10)} buyers={[]}
-        {...(access === "full" ? { posts: ui } : access === "locked" ? { postsLocked: true, onPostsLocked: () => setPopup(true) } : {})} />
+        {...(access === "full" || access === "readonly" ? { posts: ui } : access === "locked" ? { postsLocked: true, onPostsLocked: () => setPopup(true) } : {})} {...(waitlist ? { waitlist } : {})} />
       {popup && <ContactSupportPopup title={t.rd_lock_title} message={t.rd_lock_body} onClose={() => setPopup(false)} />}
     </div>
   );

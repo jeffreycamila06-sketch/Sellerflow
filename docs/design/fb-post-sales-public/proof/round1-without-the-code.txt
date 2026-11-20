@@ -1,0 +1,183 @@
+Fix round 1 (2026-11-20): the new and changed tests run against the branch BEFORE fix round 1 (commit e868ffe7).
+33 fail (what fix round 1 adds), 42 pass (older checks, and new checks that something stays as before).
+
+ × src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 1 + 2. a live Page is not read for its posts; after the live every comment becomes one order > 2-hour live on P1: 0 post calls for P1, P2 read every minute; after the live P1's comments are ordered in order, once
+   → expected [ 'P1_a', 'P1_b', 'P1_a', …(237) ] to deeply equal []
+ ✓ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 1 + 2. a live Page is not read for its posts; after the live every comment becomes one order > a stopped poller (the live just ended) is not live; another seller's Page live does not block this Page
+ × src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 3 + 4 + 5. the end date during a live, End now, and the 24-hour limit > the end date passes during the live: waits; after the live, written before the end → order, after → no order, then ended
+   → expected [ 'P1_a', 'P1_a', 'P1_a', …(28) ] to deeply equal []
+ × src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 3 + 4 + 5. the end date during a live, End now, and the 24-hour limit > a long backlog (1,200 comments) after the end date: not ended until EVERY comment was read (500 a minute)
+   → expected 1000 to be 500 // Object.is equality
+ × src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 3 + 4 + 5. the end date during a live, End now, and the 24-hour limit > End now: the next pass orders what was written before it and ends the sale
+   → expected [ 'ordered', 'ordered', …(2) ] to deeply equal [ 'ordered', 'ordered', …(4) ]
+ × src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 3 + 4 + 5. the end date during a live, End now, and the 24-hour limit > past its end date with a comment that keeps failing: not ended (retried); 24 h after the end date → ended, not read
+   → expected [ 1 ] to deeply equal []
+ × src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 6. pageLiveIn — a read of the running pollers only > answers
+   → pageLiveIn is not a function
+ ✓ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 6. pageLiveIn — a read of the running pollers only > a live check that throws → read as not live (posts are never stopped by a broken check)
+ × src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts > 6. pageLiveIn — a read of the running pollers only > server.js hands the poller a READ of fbLive's pollers; nothing more is taken from fbLive.js
+   → expected 'import express from "express";\nimpor…' to contain 'import { createFbPostSales, pageLiveI…'
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > matching = Auto-mode rules > code mode: the WHOLE comment is the code, case-insensitive; one piece
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > matching = Auto-mode rules > plus_one mode: +1 / +N (fullwidth too), capped; only the one item
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > matching = Auto-mode rules > the Page's own comments are ignored; a comment without `from` is not the Page
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > matching = Auto-mode rules > sale window
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > matching = Auto-mode rules > claim args carry the buyer, comment id/text and time
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > poller > creates orders for matching comments, skips the Page's own and non-codes, sold out → waitlist, stores the cursor
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > poller > uses the stored cursor so a comment is processed once
+ × src/redesign/adapters/__tests__/fbPostSales.server.test.ts > poller > switch off → no Graph call; expired sale → read once, then marked ended
+   → expected "vi.fn()" to be called 1 times, but got 0 times
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > poller > rate limit → backs off that sale for 5 min; no claim; nothing thrown
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > poller > a claim error stops the pass for that sale and keeps the cursor
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > sql/137 contract > switch seeded false; feature key added; tables + RLS select-own; no browser writes
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > sql/137 contract > atomic claim: row lock, unique comment_id, one per buyer per item, service role only
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > sql/137 contract > seller RPCs are SECURITY DEFINER (the tables have no browser write grants) with explicit auth.uid() checks
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > sql/137 contract > create RPC is gated: switch 'true' AND (is_admin() OR my_feature_access()->>'fb_post_sales') → else 'not_allowed'
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > sql/137 contract > waitlist Give (post rows): own waiting source='post' row → selling item locked FOR UPDATE → stock check → post order + sold+1 + 'given'
+ ✓ src/redesign/adapters/__tests__/fbPostSales.server.test.ts > sql/137 contract > create RPC: own page, plus_one = one item, code unique among SELLING sales, cap 20; retention 3 months; waitlist source
+ × src/redesign/adapters/__tests__/fbPostSales.server.test.ts > sql/137 contract > server.js wires the module behind the Facebook block + the posts route
+   → expected 'import express from "express";\nimpor…' to contain 'import { createFbPostSales, pageLiveI…'
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > one transaction; only the files 188 + its rollback use the number
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > ONE rule: admin, the 'fb_post_sales' tester list, or an active Plus / Pro / Master plan not past its expiry
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > create: the rule; end date none = 7 days, in the future, at most 14 days (10 minutes grace → exactly 14)
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > create: "+1" sales never block each other; codes unique among OPEN code-mode sales
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > claim: 'not_allowed' after the window check, before any order
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > waitlist: sale_id (post rows only); Give takes THAT sale, only the seller's own
+   → expected 'create or replace function public.fb_…' to contain 'where s.id = w.sale_id and s.user_id …'
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > fix round 1 — claim: the end date judged by the COMMENT's time (a future time counts as now)
+   → expected 'create or replace function public.fb_…' to contain 'v_at timestamptz := least(coalesce(p_…'
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > fix round 1 — read-only after a plan ends: mark printed, edit, End now refuse without the rule
+   → fb_post_orders_mark_printed: expected '' to contain 'if not public.fb_post_seller_allowed(…'
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > open sales longer than 14 days → start + 14 days; the old date kept for the rollback
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > never touches live numbering, orders or the live Facebook path
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/188 > rollback: the live function texts, the old end dates back, everything added dropped
+   → expected '-- Rollback of sql/188 — puts back th…' to contain '  update public.fb_post_sales set sta…'
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/189 — the help guide rows for Posts and Plans > TWO rows, word for word the post-sales and plans rows of sql/116b (= the guide file)
+   → expected '-- ==================================…' to contain '  (\'post-sales\', \'Posts: sell on a…'
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/189 — the help guide rows for Posts and Plans > the Plans table has a Posts column: locked on Free and Basic, yes on Plus / Pro / Master
+   → expected '## plans — Plans: Free, Basic, Plus, …' to contain '| Plan | Live accounts | Order limit …'
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/189 — the help guide rows for Posts and Plans > the section says what a seller needs: start, code vs +1, one order per code, +2, only comments under the post, open Orders, Print new, 14 days, the plans
+   → Post orders are not in **Sales**, exports or **Send to TikTok**, and they do not lower your **Products** stock.: expected '## post-sales — Posts: sell on a Face…' to contain 'Post orders are not in **Sales**, exp…'
+ × src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts > sql/189 — the help guide rows for Posts and Plans > rollback: removes the post-sales row, puts the live plans row back (2026-11-17, no Posts column)
+   → expected '\n\nbegin;\ndelete from public.suppor…' to contain '  checked = \'2026-11-17\'::date,'
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > A. who gets the Posts side > Plus / Pro / Master, active, not past expiry → full (case and spaces ignored)
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > A. who gets the Posts side > Free / Basic / no plan / expired / pending / past expiry → locked
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > A. who gets the Posts side > admin and the 'fb_post_sales' key → full whatever the plan; switch off / no Page → none
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2a. who gets the view-only Posts side > plan rule fails + has post orders → readonly; no orders / not known yet → locked
+   → {"plan":"free","planStatus":"active"}: expected 'locked' to be 'readonly' // Object.is equality
+ ✓ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2a. who gets the view-only Posts side > an active Plus / Pro / Master, admin and testers stay full; switch off / no Page stay none
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2b. usePostOrdersExist — one read, only when the plan rule fails > not needed → no read; needed → one read for the user; the answer kept
+   → usePostOrdersExist is not a function
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2b. usePostOrdersExist — one read, only when the plan rule fails > a failed read → still null (locked); asked again when Orders opens; another user → asked again
+   → usePostOrdersExist is not a function
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2b. usePostOrdersExist — one read, only when the plan rule fails > no user → no read
+   → usePostOrdersExist is not a function
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2c. the view-only Posts side > shows the post orders + the one line; Print new is off and does nothing
+   → Unable to find an element by: [data-testid="posts-readonly"]
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2c. the view-only Posts side > My posts: the posts and counts are there; no Sell on a post, no Edit, no End now
+   → expected <button type="button" …(2)></button> to be null
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2c. the view-only Posts side > no orders left: no Sell button in the empty state, My posts still opens
+   → expected <button type="button" …(2)></button> to be null
+ ✓ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2c. the view-only Posts side > NOT read-only (an active plan) → everything as before
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2c. the view-only Posts side > the line in Traditional Chinese
+   → Unable to find an element by: [data-testid="posts-readonly"]
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2c. the view-only Posts side > both new texts are filled in all 8 languages
+   → en.rd_fps_readonly: expected undefined to be truthy
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2d. usePostSales readOnly — the actions do nothing (the database refuses them too) > Sell / End now / Edit / Print new: no database call, no print (a NEW order is waiting)
+   → expected undefined to be true // Object.is equality
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > B. Orders with Posts 🔒 > segment with a lock; tap → the popup callback, the screen stays on Live; no dot; nothing about posts loads
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > C. the end-date picker > 7 days at first with the date; + to 14 then +  is off; − to 1 then − is off; the old free date box is gone
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > B. Orders with Posts 🔒 > no posts and no lock → no segment (switch off / no Page = as before)
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > C. the end-date picker > Start sends now + the chosen days (7 by default, 14 at most)
+ × src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > B. Orders with Posts 🔒 > RedesignApp: locked → postsLocked + the SAME contact-support popup as Pickup Status; full → the Posts side
+   → expected '// Redesign root. Owns theme/accent/s…' to contain 'enabled: postAccess === "full" || pos…'
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2d. usePostSales readOnly — the actions do nothing (the database refuses them too) > not read-only → the calls go through as before (Print new prints the waiting order)
+   → expected undefined to be false // Object.is equality
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2e. Give for post buyers is off without the plan; live buyers unchanged > post group: Give off + the line; live group: Give works
+   → Unable to find an element by: [data-testid="waitlist-post-off"]
+ ✓ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2e. Give for post buyers is off without the plan; live buyers unchanged > with the plan: no line, post Give on
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2e. Give for post buyers is off without the plan; live buyers unchanged > a post whose end date passed (End now leaves it 'selling' until its comments are read) gives no stock
+   → expected 4 to be +0 // Object.is equality
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 2e. Give for post buyers is off without the plan; live buyers unchanged > RedesignApp: read-only wiring; Give on a post row stops before the database call without the plan
+   → expected '// Redesign root. Owns theme/accent/s…' to contain 'const postHasOrders = usePostOrdersEx…'
+ × src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 3. the waiting line during a live session also shows waiting post buyers > a session → this session's rows OR post rows; no session → the rows without a session (as before)
+   → expected [ Array(1) ] to deeply equal [ Array(1) ]
+ ✓ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx > 3. the waiting line during a live session also shows waiting post buyers > a session id that is not a uuid is never put into the filter text (old exact match)
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > C. the end-date picker > the database answers 'ends_too_late' / 'ends_in_past' → their own sentence
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > C. the end-date picker > pure: clampSaleDays 1..14, junk → 7; saleEndsAt
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > C. the end-date picker > every new text is filled in all 8 languages
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > the row keeps sale_id (post rows only)
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > two "+1" posts → two groups; a row without sale_id keeps the old grouping
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > stock is the waiting comment's own post (the older post sold out, the newer has stock)
+ ✓ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > Orders shows each post's line with its own stock and post text
+ ❯ src/redesign/adapters/__tests__/fbPostSales.server.test.ts:107:19
+ ❯ src/redesign/adapters/__tests__/fbPostSales.server.test.ts:193:20
+ ❯ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts:95:56
+ ❯ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts:129:21
+ ❯ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts:147:28
+ ❯ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts:166:38
+ ❯ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts:174:21
+ ❯ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts:185:12
+ ❯ src/redesign/adapters/__tests__/fbPostSalesLive.server.test.ts:209:17
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublic.test.tsx:72:17
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:68:15
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:75:15
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:82:23
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:112:16
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:129:15
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:135:17
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:148:170
+ ❯ src/redesign/adapters/__tests__/fbPostSalesPublicSql.test.ts:156:21
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:49:86
+ ❯ renderHook.initialProps.need src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:68:67
+ ❯ TestComponent ../../../../../../home/user/Sellerflow/node_modules/@testing-library/react/dist/pure.js:330:27
+ ❯ Object.react_stack_bottom_frame ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+ ❯ beginWork ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:11778:18
+ ❯ runWithFiberInDEV ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ performUnitOfWork ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17641:22
+ ❯ workLoopSync ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17469:41
+ ❯ renderRootSync ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17450:11
+ ❯ renderHook.initialProps.uid src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:79:66
+ ❯ TestComponent ../../../../../../home/user/Sellerflow/node_modules/@testing-library/react/dist/pure.js:330:27
+ ❯ Object.react_stack_bottom_frame ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+ ❯ beginWork ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:11778:18
+ ❯ runWithFiberInDEV ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ performUnitOfWork ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17641:22
+ ❯ workLoopSync ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17469:41
+ ❯ renderRootSync ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17450:11
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:89:22
+ ❯ TestComponent ../../../../../../home/user/Sellerflow/node_modules/@testing-library/react/dist/pure.js:330:27
+ ❯ Object.react_stack_bottom_frame ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+ ❯ beginWork ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:11778:18
+ ❯ runWithFiberInDEV ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ performUnitOfWork ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17641:22
+ ❯ workLoopSync ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17469:41
+ ❯ renderRootSync ../../../../../../home/user/Sellerflow/node_modules/react-dom/cjs/react-dom-client.development.js:17450:11
+ ❯ Object.getElementError ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:109:19
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:121:51
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:132:52
+ ❯ Object.getElementError ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:149:19
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:153:172
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:164:38
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:181:38
+ ❯ Object.getElementError ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../../../../../../home/user/Sellerflow/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:198:19
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:215:44
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:222:17
+ ❯ src/redesign/adapters/__tests__/fbPostSalesReadOnly.test.tsx:235:23

@@ -95,15 +95,18 @@ describe("poller", () => {
     await rt.tick();
     expect(new URL(String((graph.mock.calls as unknown[][])[0][0])).searchParams.get("after")).toBe("OLD");
   });
-  it("switch off → no Graph call; expired sale → marked ended, no fetch", async () => {
+  // Fix round 1 (2026-11-20; was "expired sale → marked ended, no fetch"): a sale past its end date
+  // is read once more — the comments written before the end become orders — then marked ended.
+  it("switch off → no Graph call; expired sale → read once, then marked ended", async () => {
     const graph = vi.fn(async () => commentsRes([comment("c1", "A")]));
     const off = setup(graph, { enabled: false });
     await off.rt.tick();
     expect(graph).not.toHaveBeenCalled();
     const exp = setup(graph, { sales: [sale({ ends_at: new Date(NOW - 1000).toISOString() })] });
     await exp.rt.tick();
+    expect(graph).toHaveBeenCalledTimes(1);
+    expect(exp.calls.claims.map((c) => (c as { commentId: string }).commentId)).toEqual(["c1"]);
     expect(exp.calls.ended).toEqual([1]);
-    expect(graph).not.toHaveBeenCalled();
   });
   it("rate limit → backs off that sale for 5 min; no claim; nothing thrown", async () => {
     const graph = vi.fn(async () => mkRes(429, { error: { code: 4, message: "limit" } }));
@@ -187,7 +190,7 @@ describe("sql/137 contract", () => {
   });
   it("server.js wires the module behind the Facebook block + the posts route", () => {
     const server = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8");
-    expect(server).toContain('import { createFbPostSales } from "./server/fbPostSales.js"');
+    expect(server).toContain('import { createFbPostSales, pageLiveIn } from "./server/fbPostSales.js"');
     expect(server).toContain('.eq("key", "fb_post_sales_enabled")');
     expect(server).toContain('app.get("/fb/post-sales/posts", requireAuth, requireFbAvailable');
     expect(server).toContain('serviceSb.rpc("fb_post_order_claim"');

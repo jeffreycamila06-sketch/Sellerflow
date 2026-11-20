@@ -31,21 +31,26 @@ export const LS_POSTS_SEEN = "sfl_rd_posts_seen"; // the red dot on "Posts" unti
 // sql/188: Post Sales is for Plus / Pro / Master (active, not past its expiry — the same rule as
 // Pickup Status and the database's fb_post_seller_allowed); admin and the 'fb_post_sales' testers
 // keep it whatever their plan. With the switch on and a connected Facebook Page:
-//   "full"   → the Live | Posts segment and the Posts side;
-//   "locked" → the segment with "Posts 🔒"; a tap opens the contact-support popup (nothing loads);
-//   "none"   → no segment: Orders exactly as before (switch off, or no Page).
+//   "full"     → the Live | Posts segment and the Posts side;
+//   "readonly" → (fix round 1) the plan rule fails but the seller HAS post orders (a plan that ended,
+//                was lowered, …): the Posts side opens view-only — their post orders and My posts;
+//                no Sell, Print new, Give, Edit or End now (the database refuses them too);
+//   "locked"   → the segment with "Posts 🔒"; a tap opens the contact-support popup (nothing loads);
+//   "none"     → no segment: Orders exactly as before (switch off, or no Page).
+// hasOrders: undefined / null = not known yet → "locked" until it is.
 export const POST_SALES_TIERS = ["plus", "pro", "master"] as const;
-export type PostSalesAccess = "full" | "locked" | "none";
+export type PostSalesAccess = "full" | "readonly" | "locked" | "none";
 export function postSalesAccess(a: {
   switchOn: boolean; isAdmin: boolean; hasKey: boolean; pageCount: number;
   plan?: string | null; planStatus?: string | null; planExpiry?: string | null; nowMs?: number;
+  hasOrders?: boolean | null;
 }): PostSalesAccess {
   if (!a.switchOn || a.pageCount <= 0) return "none";
   if (a.isAdmin || a.hasKey) return "full";
   const tier = String(a.plan ?? "").trim().toLowerCase();
   const paid = (POST_SALES_TIERS as readonly string[]).includes(tier)
     && isActivePaid({ plan: tier, planStatus: String(a.planStatus ?? ""), daysLeft: planDaysLeft(a.planExpiry, a.nowMs ?? Date.now()) });
-  return paid ? "full" : "locked";
+  return paid ? "full" : a.hasOrders === true ? "readonly" : "locked";
 }
 
 // The end date the "Ends" picker sends: `days` whole days from now (1..14; anything else → 7).
@@ -118,11 +123,12 @@ export function postLabel(s: PostSale | undefined): string {
   return m ? (m.length > 40 ? `${m.slice(0, 40)}…` : m) : `#${s.postId.split("_").pop()}`;
 }
 // Stock left for a code on the seller's SELLING post sales (waitlist "Give" button): no stock limit → 1.
-// saleId (sql/188: the post the waiting comment belongs to) → that sale only.
-export function postItemStock(sales: PostSale[], code: string, saleId: number | null = null): number {
+// saleId (sql/188: the post the waiting comment belongs to) → that sale only. A sale whose end date
+// passed gives nothing (End now leaves it 'selling' until the comments are read; Give refuses it).
+export function postItemStock(sales: PostSale[], code: string, saleId: number | null = null, nowMs = Date.now()): number {
   const k = code.trim().toLowerCase();
   for (const s of sales) {
-    if (s.status !== "selling") continue;
+    if (s.status !== "selling" || (Date.parse(s.endsAt) || Infinity) <= nowMs) continue;
     if (saleId != null && s.id !== saleId) continue;
     const it = s.items.find((i) => i.code.trim().toLowerCase() === k);
     if (it) return it.stock == null ? 1 : Math.max(0, it.stock - it.sold);
@@ -173,6 +179,17 @@ export async function loadPostOrders(): Promise<PostOrder[] | null> {
     const { data, error } = await supabase.from("fb_post_orders").select("*").eq("user_id", u).order("created_at", { ascending: false }).limit(1000);
     if (error || !Array.isArray(data)) return null;
     return (data as Record<string, unknown>[]).map(mapOrder);
+  } catch { return null; }
+}
+// Does this seller have ANY post order? (fix round 1: a seller without the plan who has post orders
+// gets the view-only Posts side.) One tiny own-rows read; null = could not read.
+export async function hasAnyPostOrders(): Promise<boolean | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const u = await uid(); if (!u) return null;
+    const { data, error } = await supabase.from("fb_post_orders").select("id").eq("user_id", u).limit(1);
+    if (error || !Array.isArray(data)) return null;
+    return data.length > 0;
   } catch { return null; }
 }
 // waiting waitlist rows that came from posts, counted per sale (by code, this seller's selling sales)

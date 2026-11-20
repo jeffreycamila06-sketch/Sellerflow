@@ -1,11 +1,13 @@
-without any break: tests all pass, PGlite 0 FAIL
-caught: a failed claim does not stop the pass — 8 test(s) failed
+Run 2026-11-20 (fix round 1): the 47 breaks of the first round + 47 new ones = 94, every one in a clean copy of the branch.
+
+without any break: tests all pass, PGlite sql/188 0 FAIL, sql/189 0 FAIL
+caught: a failed claim does not stop the pass — 9 test(s) failed
 caught: a failed waitlist write does not stop the pass — 1 test(s) failed
 caught: 'not_allowed' treated as done — 1 test(s) failed
 caught: 'ended' treated as done — 1 test(s) failed
-caught: the cursor saved before the page is done — 12 test(s) failed
+caught: the cursor saved before the page is done — 13 test(s) failed
 caught: the waitlist row without the sale — 1 test(s) failed
-caught: poller ignores the plan — 3 test(s) failed
+caught: poller ignores the plan — 4 test(s) failed
 caught: plan unreadable → everybody — 1 test(s) failed
 caught: picker ignores the plan — 1 test(s) failed
 caught: picker: unreadable plan allowed — 1 test(s) failed
@@ -13,9 +15,9 @@ caught: a paused seller's expired sale is not ended — 1 test(s) failed
 caught: route: plan answer as 502 — 1 test(s) failed
 caught: server: no plan list call — 1 test(s) failed
 caught: server: no retry without sale_id — 1 test(s) failed
-caught: Basic gets the Posts side — 1 test(s) failed
-caught: testers lose it — 2 test(s) failed
-caught: expiry ignored — 1 test(s) failed
+caught: Basic gets the Posts side — 2 test(s) failed
+caught: testers lose it — 3 test(s) failed
+caught: expiry ignored — 2 test(s) failed
 caught: locked tap opens Posts — 1 test(s) failed
 caught: no lock on the tab — 1 test(s) failed
 caught: app never passes the lock — 1 test(s) failed
@@ -31,9 +33,9 @@ caught: sale_id not read — 1 test(s) failed
 caught: count read names the columns (fails before sql/188) — 1 test(s) failed
 caught: count ignores the post — 1 test(s) failed
 caught: Give's 'not_allowed' dropped — 1 test(s) failed
-caught: Basic allowed in the database — 1 test(s) failed; PGlite 6 FAIL
-caught: expired status allowed — 1 test(s) failed; PGlite 4 FAIL
-caught: expiry date ignored — 1 test(s) failed; PGlite 3 FAIL
+caught: Basic allowed in the database — 1 test(s) failed; PGlite 13 FAIL
+caught: expired status allowed — 1 test(s) failed; PGlite 6 FAIL
+caught: expiry date ignored — 1 test(s) failed; PGlite 5 FAIL
 caught: 30 days allowed — 1 test(s) failed; PGlite 3 FAIL
 caught: a past end date allowed — 1 test(s) failed; PGlite 2 FAIL
 caught: no 7-day default — 1 test(s) failed; PGlite 1 FAIL
@@ -45,5 +47,60 @@ caught: long open sales not cut — 1 test(s) failed; PGlite 2 FAIL
 caught: a browser can call the rule — 1 test(s) failed; PGlite 0 FAIL
 caught: guide: the +2 line gone — 1 test(s) failed
 caught: guide: no plans line — 1 test(s) failed
-caught: guide SQL out of step with the guide — 1 test(s) failed
-47 of 47 breaks caught
+caught: guide SQL out of step with the guide — 1 test(s) failed; PGlite 1 FAIL
+caught: poller ignores the live — 2 test(s) failed
+caught: server passes no pollers — 1 test(s) failed
+caught: a stopped poller counts as live — 2 test(s) failed
+caught: 'waiting' logged every minute — 1 test(s) failed
+caught: past end date: ended at once, comments not read — 4 test(s) failed
+caught: closing: a later comment stops the pass — 2 test(s) failed
+MISSED: closing: ended before every comment had its answer — 0 test(s) failed
+caught: no 24-hour limit — 1 test(s) failed
+caught: claim: end judged by the read time — 1 test(s) failed; PGlite 2 FAIL
+caught: claim: a future comment time not held to now — 1 test(s) failed; PGlite -1 FAIL
+caught: End now ends at once (comments lost) — 1 test(s) failed; PGlite 2 FAIL
+caught: Give from a sale past its end date — 1 test(s) failed; PGlite 2 FAIL
+caught: Give stock shown after the end date — 1 test(s) failed
+caught: rollback: End-now sales stay 'selling' — 1 test(s) failed; PGlite 1 FAIL
+caught: rollback: End now not the live text — 1 test(s) failed; PGlite 4 FAIL
+caught: mark printed: no plan line — 1 test(s) failed; PGlite 6 FAIL
+caught: edit without the plan — 1 test(s) failed; PGlite 2 FAIL
+caught: End now without the plan — 1 test(s) failed; PGlite 2 FAIL
+caught: edit: another seller's item — 1 test(s) failed; PGlite 2 FAIL
+caught: has orders still locked — 1 test(s) failed
+caught: not known yet = read-only — 3 test(s) failed
+caught: app: read-only Posts not loaded — 1 test(s) failed
+caught: app: read-only flag not passed — 1 test(s) failed
+caught: app: Give guard gone — 1 test(s) failed
+caught: app: post Give never off — 1 test(s) failed
+MISSED: hook: Print new still prints — 0 test(s) failed
+caught: hook: End now still calls — 1 test(s) failed
+caught: hook: Edit still calls — 1 test(s) failed
+caught: hook: Sell still calls — 1 test(s) failed
+caught: hook: reads the orders when not needed — 1 test(s) failed
+caught: hook: no new try when Orders opens — 1 test(s) failed
+caught: screen: Print new on — 1 test(s) failed
+caught: screen: no read-only line — 2 test(s) failed
+caught: screen: Edit shown — 1 test(s) failed
+caught: screen: End now shown — 1 test(s) failed
+caught: screen: Sell shown in My posts — 1 test(s) failed
+caught: screen: Sell shown when empty — 1 test(s) failed
+caught: waitlist: post Give stays on — 1 test(s) failed
+caught: waitlist: no line — 1 test(s) failed
+caught: waitlist: post rows hidden during a session — 1 test(s) failed
+caught: waitlist: any text put into the filter — 1 test(s) failed
+caught: guide: no 'post orders wait' line — 1 test(s) failed
+caught: guide: no Sales / exports line — 1 test(s) failed
+caught: guide: no view-only words — 1 test(s) failed
+caught: guide: Plans table — Plus without Posts — 1 test(s) failed
+caught: guide SQL: Plans row out of step — 1 test(s) failed; PGlite 2 FAIL
+caught: guide rollback: wrong Plans date — 1 test(s) failed; PGlite 1 FAIL
+92 of 94 breaks caught
+
+The 2 MISSED breaks got a test each (fbPostSalesLive: a 1,200-comment backlog after the end date; fbPostSalesReadOnly: Print new with a NEW order waiting). Re-run of those two after adding the tests:
+without any break: tests all pass, PGlite sql/188 0 FAIL, sql/189 0 FAIL
+caught: closing: ended before every comment had its answer — 1 test(s) failed
+caught: hook: Print new still prints — 1 test(s) failed
+2 of 2 breaks caught
+
+Result: 94 of 94 caught.

@@ -176,7 +176,7 @@ import { FREE_TIER_CAP, freeOrdersLeft } from "../lib/freeTier";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
 import { useFeatureAccess, hasFeature, featureAccessOk } from "./adapters/featureAccess";
-import { usePostSales } from "./adapters/usePostSales";
+import { usePostSales, usePostOrdersExist } from "./adapters/usePostSales";
 import { postSalesAccess, postPrintSettings, givePostWaitlist, postItemStock, postLabel } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
 import { fmtMoney, moneyText, priceInput } from "../lib/money";
@@ -2325,12 +2325,16 @@ export default function RedesignApp() {
   // switch on + a connected Page; Plus / Pro / Master (active) or admin / 'fb_post_sales' key = the
   // Posts side; any other plan = "Posts 🔒" → the contact-support popup (nothing loads). Print = the
   // existing printSlip with the buyer-number line OFF (post orders have no buyer number); manual only.
-  const postAccess = postSalesAccess({
+  // Fix round 1: the plan rule fails but the seller has post orders → the Posts side VIEW-ONLY
+  // ("readonly": no Sell, Print new, Give, Edit, End now; the database refuses them too).
+  const postPlan = {
     switchOn: featureSw.fbPostSales, isAdmin, hasKey: hasFeature("fb_post_sales"), pageCount: fbPages.length,
     plan: auth.profile?.plan, planStatus: auth.profile?.planStatus, planExpiry: auth.profile?.planExpiry,
-  });
+  };
+  const postHasOrders = usePostOrdersExist(auth.status === "authed" ? auth.profile?.authUserId : null, postSalesAccess(postPlan) === "locked", screen === "orders");
+  const postAccess = postSalesAccess({ ...postPlan, hasOrders: postHasOrders });
   const postSales = usePostSales({
-    enabled: postAccess === "full", active: screen === "orders",
+    enabled: postAccess === "full" || postAccess === "readonly", readOnly: postAccess === "readonly", active: screen === "orders",
     pages: fbPages.map((p) => ({ pageId: p.pageId, name: p.name || p.username || p.pageId })),
     print: (buyer) => { const pc = printCfgRef.current; if (!pc) return false; const r = printSlip(buyer, pc.cur, pc.storeName, postPrintSettings(pc.settings)); track("print", { via: r.via, kind: "post" }); return r.ok; },
     texts: { printed: (n) => tpl(tApp.rd_fps_print_done, { n }), nothingNew: tApp.rd_fps_print_none, started: tApp.rd_fps_started, printFailed: tApp.rd_fps_print_failed },
@@ -2353,6 +2357,7 @@ export default function RedesignApp() {
     // POST SALES row (sql/137): one post order through fb_post_waitlist_give (same item lock as the
     // server claim) — NEVER the live order path below (no buyer number, no live_session_orders).
     if (r.source === "post") {
+      if (postAccess !== "full") { setWlNote(tApp.rd_wl_post_off); return; } // the plan does not include Posts (the database refuses too)
       wlGiveRef.current.add(r.id);
       setWlBusy(r.id);
       void givePostWaitlist(r.id).then((v) => {
@@ -2949,7 +2954,7 @@ export default function RedesignApp() {
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
-          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => { if (source === "post") return postItemStock(postSales?.sales ?? [], code, saleId ?? null); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote, postLabel: (sid: number) => postLabel(postSales?.sales.find((x) => x.id === sid)) } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
+          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => { if (source === "post") return postItemStock(postSales?.sales ?? [], code, saleId ?? null); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote, postLabel: (sid: number) => postLabel(postSales?.sales.find((x) => x.id === sid)), postGiveOff: postAccess !== "full" } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}

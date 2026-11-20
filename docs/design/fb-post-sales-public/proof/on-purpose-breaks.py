@@ -1,18 +1,21 @@
 # On-purpose breaks (2026-11-20, claude/fb-post-sales-public): each line below breaks ONE thing of this
 # branch in a throw-away copy; at least one test must then fail. SQL breaks also run the PGlite proof
 # (scripts/sql188-behaviour.mjs) when PGLITE_DIR is set.
-#   PGLITE_DIR=/tmp/pg188 python3 -I docs/design/fb-post-sales-public/proof/on-purpose-breaks.py <copy of the branch>
+#   PGLITE_DIR=/tmp/pg188 python3 -I docs/design/fb-post-sales-public/proof/on-purpose-breaks.py <copy of the branch> [name words…]
 # The copy needs node_modules (a link is enough).
 import os, subprocess, sys, re, pathlib
 
 root = pathlib.Path(sys.argv[1])
 T = "src/redesign/adapters/__tests__/"
 TESTS = [T + f for f in ["fbPostSalesNoLoss.server.test.ts", "fbPostSales.server.test.ts", "fbPostSalesPublic.test.tsx",
-                         "fbPostSalesPublic.adapter.test.ts", "fbPostSalesPublicSql.test.ts", "fbPostSales.test.tsx", "fbWaitlist.test.tsx"]]
+                         "fbPostSalesPublic.adapter.test.ts", "fbPostSalesPublicSql.test.ts", "fbPostSales.test.tsx", "fbWaitlist.test.tsx",
+                         "fbPostSalesLive.server.test.ts", "fbPostSalesReadOnly.test.tsx"]]
 POLL = "server/fbPostSales.js"; SRV = "server.js"
 AD = "src/redesign/adapters/fbPostSales.ts"; WL = "src/redesign/adapters/fbWaitlist.ts"
 ORD = "src/redesign/screens/Orders.tsx"; PS = "src/redesign/screens/PostSales.tsx"; APP = "src/redesign/RedesignApp.tsx"
 SQL = "sql/188_fb_post_sales_public.sql"; GUIDE = "docs/support/sfl-guide.md"; GSQL = "sql/189_guide_post_sales.sql"
+SQLRB = "sql/188_fb_post_sales_public_rollback.sql"; GSQLRB = "sql/189_guide_post_sales_rollback.sql"
+HOOK = "src/redesign/adapters/usePostSales.ts"
 
 BREAKS = [
     # ── 1. never lose a comment (server poller) ──
@@ -69,6 +72,59 @@ BREAKS = [
     ("guide: the +2 line gone", GUIDE, " To buy two, comment **+2** once.", ""),
     ("guide: no plans line", GUIDE, "Posts is on the **Plus**, **Pro** and **Master** plans.", "Posts is for everyone."),
     ("guide SQL out of step with the guide", GSQL, "up to **+10**.", "up to **+9**."),
+    # ══ FIX ROUND 1 ══
+    # ── 1. lives first (server poller) ──
+    ("poller ignores the live", POLL, "    if (pageLive(sale.page_id)) {", "    if (false && pageLive(sale.page_id)) {"),
+    ("server passes no pollers", SRV, "pageLiveIn(fbRuntime ? fbRuntime._pollers : null, pageId)", "pageLiveIn(null, pageId)"),
+    ("a stopped poller counts as live", POLL, "if (e && !e.stopped && String(e.pageId) === id) return true;", "if (e && String(e.pageId) === id) return true;"),
+    ("'waiting' logged every minute", POLL, "if (!waiting.has(sale.id)) { waiting.add(sale.id); log(", "{ log("),
+    ("past end date: ended at once, comments not read", POLL, '    if (win === "ended" || win === "not_yet") return;\n', '    if (win === "ended" || win === "not_yet") return;\n    if (win === "expired") { await store.markEnded(sale.id); return; }\n'),
+    ("closing: a later comment stops the pass", POLL, '} else if (verdict === "ended" && closing) {', '} else if (verdict === "ended" && false) {'),
+    ("closing: ended before every comment had its answer", POLL, "if (closing && done) {", "if (closing) {"),
+    ("no 24-hour limit", POLL, "(Date.parse(sale.ends_at || \"\") || 0) + CLOSE_GRACE_MS", "(Date.parse(sale.ends_at || \"\") || 0) + CLOSE_GRACE_MS * 1000"),
+    ("claim: end judged by the read time", SQL, "or v_at > v_sale.ends_at then return 'ended'", "or now() > v_sale.ends_at then return 'ended'"),
+    ("claim: a future comment time not held to now", SQL, "v_at timestamptz := least(coalesce(p_created_at, now()), now());", "v_at timestamptz := coalesce(p_created_at, now());"),
+    ("End now ends at once (comments lost)", SQL, "  update public.fb_post_sales set ends_at = least(ends_at, now())\n   where id = p_sale_id", "  update public.fb_post_sales set status = 'ended', ends_at = least(ends_at, now())\n   where id = p_sale_id"),
+    ("Give from a sale past its end date", SQL, "s.status = 'selling' and s.ends_at > now() and lower(i.code) = lower(w.code)\n     order by i.id", "s.status = 'selling' and lower(i.code) = lower(w.code)\n     order by i.id"),
+    ("Give stock shown after the end date", AD, ' || (Date.parse(s.endsAt) || Infinity) <= nowMs) continue;', ') continue;'),
+    ("rollback: End-now sales stay 'selling'", SQLRB, "update public.fb_post_sales set status = 'ended' where status = 'selling' and ends_at <= now();\n", ""),
+    ("rollback: End now not the live text", SQLRB, "  update public.fb_post_sales set status = 'ended', ends_at = least(ends_at, now())", "  update public.fb_post_sales set ends_at = least(ends_at, now())"),
+    # ── 2. read-only (database) ──
+    ("mark printed: no plan line", SQL, "  if not public.fb_post_seller_allowed(auth.uid()) then raise exception 'not_allowed' using errcode = '42501'; end if;\n  update public.fb_post_orders set printed_at", "  update public.fb_post_orders set printed_at"),
+    ("edit without the plan", SQL, "  if not public.fb_post_seller_allowed(auth.uid()) then raise exception 'not_allowed' using errcode = '42501'; end if;\n  update public.fb_post_sale_items i", "  update public.fb_post_sale_items i"),
+    ("End now without the plan", SQL, "  if not public.fb_post_seller_allowed(auth.uid()) then raise exception 'not_allowed' using errcode = '42501'; end if;\n  update public.fb_post_sales set ends_at", "  update public.fb_post_sales set ends_at"),
+    ("edit: another seller's item", SQL, "   where i.id = p_item_id\n     and exists (select 1 from public.fb_post_sales s where s.id = i.sale_id and s.user_id = auth.uid())\n  returning true into v_ok;", "   where i.id = p_item_id\n  returning true into v_ok;"),
+    # ── 2. read-only (app) ──
+    ("has orders still locked", AD, 'a.hasOrders === true ? "readonly" : "locked"', '"locked"'),
+    ("not known yet = read-only", AD, 'a.hasOrders === true ? "readonly" : "locked"', 'a.hasOrders !== false ? "readonly" : "locked"'),
+    ("app: read-only Posts not loaded", APP, 'enabled: postAccess === "full" || postAccess === "readonly",', 'enabled: postAccess === "full",'),
+    ("app: read-only flag not passed", APP, 'readOnly: postAccess === "readonly", active:', 'readOnly: false, active:'),
+    ("app: Give guard gone", APP, '      if (postAccess !== "full") { setWlNote(tApp.rd_wl_post_off); return; } // the plan does not include Posts (the database refuses too)\n', ""),
+    ("app: post Give never off", APP, 'postGiveOff: postAccess !== "full"', "postGiveOff: false"),
+    ("hook: Print new still prints", HOOK, "if (busy || readOnly) return;", "if (busy) return;"),
+    ("hook: End now still calls", HOOK, "if (readOnly) return false; const ok = await endPostSale(id);", "const ok = await endPostSale(id);"),
+    ("hook: Edit still calls", HOOK, "if (readOnly) return false; const ok = await updatePostItem(", "const ok = await updatePostItem("),
+    ("hook: Sell still calls", HOOK, '    if (readOnly) return { ok: false as const, error: "not_allowed" };\n', ""),
+    ("hook: reads the orders when not needed", HOOK, "if (!need || !uidKey || have) return;", "if (!uidKey || have) return;"),
+    ("hook: no new try when Orders opens", HOOK, "}, [need, uidKey, have, active]);", "}, [need, uidKey, have]);"),
+    ("screen: Print new on", PS, "disabled={ro || u.busy || newCount === 0}", "disabled={u.busy || newCount === 0}"),
+    ("screen: no read-only line", PS, "      {ro && <ReadOnlyLine />}\n", ""),
+    ("screen: Edit shown", PS, '{st !== "ended" && !ro && <button type="button" data-testid="my-post-edit"', '{st !== "ended" && <button type="button" data-testid="my-post-edit"'),
+    ("screen: End now shown", PS, '            {st !== "ended" && !ro && (', '            {st !== "ended" && ('),
+    ("screen: Sell shown in My posts", PS, "{ro ? <div style={{ marginTop: 10 }}><ReadOnlyLine /></div> : <button", "{false ? <div style={{ marginTop: 10 }}><ReadOnlyLine /></div> : <button"),
+    ("screen: Sell shown when empty", PS, '{!ro && <button type="button" data-testid="posts-sell-btn"', '{true && <button type="button" data-testid="posts-sell-btn"'),
+    ("waitlist: post Give stays on", ORD, 'const off = g.source === "post" && w.postGiveOff === true;', "const off = false;"),
+    ("waitlist: no line", ORD, '{w.postGiveOff && w.groups.some((g) => g.source === "post") && <div data-testid="waitlist-post-off"', '{false && <div data-testid="waitlist-post-off"'),
+    # ── 3. waiting post buyers during a live session ──
+    ("waitlist: post rows hidden during a session", WL, "UUID.test(sessionId) ? q.or(`session_id.eq.${sessionId},source.eq.post`)", "UUID.test(sessionId) ? q.eq(\"session_id\", sessionId)"),
+    ("waitlist: any text put into the filter", WL, "UUID.test(sessionId) ?", "true ?"),
+    # ── 4. help guide ──
+    ("guide: no 'post orders wait' line", GUIDE, "- **While your Facebook Page is live, post orders wait.** When the live ends, the comments written during it become orders, in the order they were written.\n", ""),
+    ("guide: no Sales / exports line", GUIDE, "Post orders are not in **Sales**, exports or **Send to TikTok**, and they do not lower your **Products** stock.", "Post orders are separate."),
+    ("guide: no view-only words", GUIDE, "Posts is **view-only**", "Posts is locked"),
+    ("guide: Plans table — Plus without Posts", GUIDE, "| Plus | 2 | unlimited | yes |", "| Plus | 2 | unlimited | 🔒 locked |"),
+    ("guide SQL: Plans row out of step", GSQL, "| Posts (sell on a Facebook post) |", "| Posts |"),
+    ("guide rollback: wrong Plans date", GSQLRB, "  checked = '2026-11-17'::date,", "  checked = '2026-11-20'::date,"),
 ]
 
 def run(tests):
@@ -78,17 +134,20 @@ def run(tests):
     suites = re.search(r"Test Files\s+(\d+) failed", out)
     return p.returncode, (int(m.group(1)) if m else 0), (int(suites.group(1)) if suites else 0)
 
-def pglite():
+def pglite(script="scripts/sql188-behaviour.mjs"):
     if not os.environ.get("PGLITE_DIR"): return None
-    p = subprocess.run(["node", "scripts/sql188-behaviour.mjs"], cwd=root, capture_output=True, text=True, timeout=900)
+    p = subprocess.run(["node", script], cwd=root, capture_output=True, text=True, timeout=900)
     m = re.search(r"(\d+) PASS, (\d+) FAIL", p.stdout)
     return int(m.group(2)) if m else -1
 
 base_rc, _, _ = run(TESTS)
 base_pg = pglite()
-print(f"without any break: tests {'all pass' if base_rc == 0 else 'FAILING — stop'}" + ("" if base_pg is None else f", PGlite {'0 FAIL' if base_pg == 0 else 'FAILING — stop'}"))
-if base_rc != 0 or (base_pg not in (None, 0)): sys.exit(1)
+base_pg2 = pglite("scripts/sql189-behaviour.mjs")
+print(f"without any break: tests {'all pass' if base_rc == 0 else 'FAILING — stop'}" + ("" if base_pg is None else f", PGlite sql/188 {'0 FAIL' if base_pg == 0 else 'FAILING — stop'}, sql/189 {'0 FAIL' if base_pg2 == 0 else 'FAILING — stop'}"))
+if base_rc != 0 or (base_pg not in (None, 0)) or (base_pg2 not in (None, 0)): sys.exit(1)
 caught = 0
+only = sys.argv[2:]  # optional: run only the breaks whose name contains one of these words
+if only: BREAKS = [b for b in BREAKS if any(o in b[0] for o in only)]
 for name, rel, old, new in BREAKS:
     f = root / rel
     text = f.read_text()
@@ -99,7 +158,7 @@ for name, rel, old, new in BREAKS:
     f.write_text(text.replace(old, new))
     try:
         rc, failed, suites = run(TESTS)
-        pg = pglite() if rel == SQL else None
+        pg = pglite() if rel in (SQL, SQLRB) else pglite("scripts/sql189-behaviour.mjs") if rel in (GSQL, GSQLRB) else None
     finally:
         f.write_text(text)
     ok = rc != 0 or (pg is not None and pg != 0)

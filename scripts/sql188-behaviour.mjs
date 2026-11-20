@@ -15,6 +15,9 @@
 //   8. open sales longer than 14 days are cut to 14 days from their start; the rollback puts the
 //      old end date back
 //   9. the rollback: live functions again, everything added gone; 188 applies again
+//  10. fix round 1: the end date judged by the COMMENT's time (a comment read late still counts);
+//      End now moves the end date only; Give refuses a sale past its end date; read-only after
+//      a plan ends: Print new (mark printed), Edit, End now refused ('not_allowed')
 // Not part of CI (PGlite is not a dependency of the repo):
 //   mkdir /tmp/pg188 && (cd /tmp/pg188 && npm i @electric-sql/pglite@0.2.17)
 //   PGLITE_DIR=/tmp/pg188 node scripts/sql188-behaviour.mjs            (from the repo root)
@@ -39,7 +42,8 @@ const ROLLBACK = read("sql/188_fb_post_sales_public_rollback.sql");
 // The three CREATE OR REPLACE blocks of the rollback = the live definitions.
 const LIVE_FUNCS = ROLLBACK.match(/CREATE OR REPLACE FUNCTION[\s\S]*?\$function\$;/g).join("\n\n");
 // md5(pg_get_functiondef) in production, read 2026-11-20.
-const LIVE_MD5 = { fb_post_sale_create: "852273a1681b1ea0b57a9e6d735c108e", fb_post_order_claim: "4849c8e409416ff9296328c6c3dc2460", fb_post_waitlist_give: "d1c09d912d8e7e29b6233933fbbc3c8a" };
+const LIVE_MD5 = { fb_post_sale_create: "852273a1681b1ea0b57a9e6d735c108e", fb_post_order_claim: "4849c8e409416ff9296328c6c3dc2460", fb_post_waitlist_give: "d1c09d912d8e7e29b6233933fbbc3c8a",
+  fb_post_orders_mark_printed: "10c4cee7e9db18cf74ee3ccdbc2297fe", fb_post_sale_item_update: "8bfa2f8fb929bab6fe2b2166b43a3285", fb_post_sale_end: "2c29438295737d9cd1697ca1db144096" };
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
@@ -116,7 +120,9 @@ async function makeDb({ with188 = true } = {}) {
     return as(uid, `select fb_post_sale_create('P' || $1, $2, 'msg', '', $3, ${ends}, $4::jsonb) id`, [uid.slice(-2), o.post ?? `post_${Math.random().toString(36).slice(2)}`, o.mode ?? "code", JSON.stringify(items)]);
   };
   const claim = (saleId, itemId, buyer, commentId, qty = 1) => svc("select fb_post_order_claim($1,$2,$3,'Buyer',$4,$5,'A',null) v", [saleId, itemId, buyer, qty, commentId]);
-  return { db, q, as, svc, create, claim };
+  // the comment written at a given time (SQL expression)
+  const claimAt = (saleId, itemId, buyer, commentId, atSql) => svc(`select fb_post_order_claim($1,$2,$3,'Buyer',1,$4,'A',${atSql}) v`, [saleId, itemId, buyer, commentId]);
+  return { db, q, as, svc, create, claim, claimAt };
 }
 const md5Of = async (d, name) => (await d.q("select md5(pg_get_functiondef(p.oid)) m from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname='public' and p.proname = $1", [name])).rows[0]?.m;
 const itemOf = async (d, saleId) => (await d.q("select id, sold from fb_post_sale_items where sale_id = $1 order by id", [saleId])).rows[0];
@@ -330,6 +336,115 @@ async function giveScenario(x, with188) {
   await x.db.exec(read("sql/188_fb_post_sales_public.sql"));
   ok(!!(await md5Of(x, "fb_post_seller_allowed")), "188 applies again after the rollback");
   // a sale the seller ended after 188 cut it keeps its own date at rollback
+}
+{ // rollback: a sale End now left 'selling' is ended; a sale 188 cut into the past is back to selling
+  const x = await makeDb({ with188: false });
+  const old = (await x.create(ADMIN, { code: "R20", endsSql: "now() + interval '20 days'" })).rows[0].id;
+  await x.q("update fb_post_sales set starts_at = now() - interval '15 days' where id = $1", [old]);
+  await x.db.exec(read("sql/188_fb_post_sales_public.sql"));
+  const endNow = (await x.create(PLUS, { code: "REN" })).rows[0].id;
+  ok((await x.as(PLUS, "select fb_post_sale_end($1) v", [endNow])).rows[0].v === true, "188: End now → true");
+  await x.db.exec(ROLLBACK);
+  const st = async (id) => (await x.q("select status, ends_at > now() future from fb_post_sales where id = $1", [id])).rows[0];
+  ok((await st(endNow)).status === "ended", "rollback: the End-now sale (still 'selling' under 188) is ended");
+  const o = await st(old);
+  ok(o.status === "selling" && o.future === true, "rollback: the sale 188 cut into the past has its old end date and is still selling");
+  for (const [fn, m] of Object.entries(LIVE_MD5)) ok((await md5Of(x, fn)) === m, `rollback (2): ${fn} = live`);
+}
+
+// ── 10. fix round 1 ─────────────────────────────────────────────────────────
+// a. the end date by the COMMENT's time: live vs 188
+async function lateScenario(x) {
+  const sale = (await x.create(TESTER, { code: "LATE", stock: 5, post: "late_post" })).rows[0].id;
+  const it = await itemOf(x, sale);
+  await x.q("update fb_post_sales set ends_at = now() - interval '1 hour' where id = $1", [sale]); // the end date passed an hour ago
+  return [
+    (await x.claimAt(sale, it.id, "lb1", "late1", "now() - interval '2 hours'")).rows[0].v,   // written before the end, read late
+    (await x.claimAt(sale, it.id, "lb2", "late2", "now() - interval '30 minutes'")).rows[0].v, // written after the end
+    (await x.claimAt(sale, it.id, "lb3", "late3", "null")).rows[0].v,                          // no time → now → after the end
+  ];
+}
+{
+  const live = await lateScenario(await makeDb({ with188: false }));
+  const now = await lateScenario(await makeDb());
+  ok(JSON.stringify(live) === JSON.stringify(["ended", "ended", "ended"]), `live: a comment read after the end date is lost even if written before (${live})`);
+  ok(JSON.stringify(now) === JSON.stringify(["ordered", "ended", "ended"]), `188: written before the end → order; after → ended (${now})`);
+  // a comment time in the future counts as now
+  const s = (await d.create(TESTER, { code: "FUT", stock: 5 })).rows[0].id;
+  const it = await itemOf(d, s);
+  await d.q("update fb_post_sales set ends_at = now() + interval '30 minutes' where id = $1", [s]);
+  ok((await d.claimAt(s, it.id, "fb1", "fut1", "now() + interval '2 hours'")).rows[0].v === "ordered", "a comment time in the future → counted as now (open sale → ordered)");
+  ok((await d.q("select created_at <= now() + interval '2 hours 1 second' ok from fb_post_orders where comment_id = 'fut1'")).rows[0].ok === true, "…the order keeps Facebook's time as before");
+}
+// b. End now
+async function endNowScenario(x) {
+  const sale = (await x.create(TESTER, { code: "ENDN", stock: 5, post: "endn_post" })).rows[0].id;
+  const it = await itemOf(x, sale);
+  const v = (await x.as(TESTER, "select fb_post_sale_end($1) v", [sale])).rows[0]?.v;
+  const row = (await x.q("select status, ends_at <= now() passed from fb_post_sales where id = $1", [sale])).rows[0];
+  const before = (await x.claimAt(sale, it.id, "eb1", "endn1", "now() - interval '1 minute'")).rows[0].v; // written before End now, read after
+  const after = (await x.claimAt(sale, it.id, "eb2", "endn2", "now()")).rows[0].v;
+  return { v, status: row.status, passed: row.passed, before, after };
+}
+{
+  const live = await endNowScenario(await makeDb({ with188: false }));
+  const now = await endNowScenario(await makeDb());
+  ok(live.v === true && live.status === "ended" && live.before === "ended", `live: End now ends at once — a comment written before it but not read yet is lost (${JSON.stringify(live)})`);
+  ok(now.v === true && now.status === "selling" && now.passed === true, `188: End now moves the end date to now, the sale stays 'selling' for the poller (${JSON.stringify(now)})`);
+  ok(now.before === "ordered" && now.after === "ended", `188: written before End now → order; after → ended (${now.before}, ${now.after})`);
+  // End now frees the code and the place in the 20 at once
+  const k = (await d.create(MASTER, { code: "ENDK" })).rows[0].id;
+  await d.as(MASTER, "select fb_post_sale_end($1) v", [k]);
+  ok(!(await d.create(MASTER, { code: "ENDK" })).error, "after End now the code can be used again");
+  // Give refuses a sale whose end date passed
+  const gs = (await d.create(MASTER, { code: "GEND", stock: 3, post: "gend" })).rows[0].id;
+  await d.q("insert into fb_waitlist (user_id, code, comment_id, page_id, source, sale_id) values ($1, 'GEND', 'gend1', 'P04', 'post', $2)", [MASTER, gs]);
+  await d.q("insert into fb_waitlist (user_id, code, comment_id, page_id, source) values ($1, 'GEND', 'gend2', 'P04', 'post')", [MASTER]);
+  await d.as(MASTER, "select fb_post_sale_end($1) v", [gs]);
+  for (const c of ["gend1", "gend2"]) {
+    const w = (await d.q("select id from fb_waitlist where comment_id = $1", [c])).rows[0].id;
+    ok((await d.as(MASTER, "select fb_post_waitlist_give($1) v", [w])).rows[0].v === "ended", `Give after End now → ended (${c === "gend1" ? "own sale" : "no sale_id"})`);
+  }
+  ok(Number((await d.q("select count(*) n from fb_post_orders where comment_id in ('gend1','gend2')")).rows[0].n) === 0, "…no order");
+}
+// c. read-only after a plan ends: Print new (mark printed), Edit, End now
+{
+  const x = await makeDb();
+  const sale = (await x.create(PLUS, { code: "RO", stock: 5, post: "ro_post" })).rows[0].id;
+  const it = await itemOf(x, sale);
+  await x.claim(sale, it.id, "rb1", "ro1");
+  const oid = (await x.q("select id from fb_post_orders where comment_id = 'ro1'")).rows[0].id;
+  await x.q("update seller_profiles set plan = 'basic' where auth_user_id = $1", [PLUS]); // the plan changed to Basic
+  ok(/not_allowed/.test((await x.as(PLUS, "select fb_post_orders_mark_printed(array[$1::bigint]) n", [oid])).error || ""), "lapsed: mark printed → not_allowed");
+  ok((await x.q("select printed_at from fb_post_orders where id = $1", [oid])).rows[0].printed_at === null, "…not marked");
+  ok(/not_allowed/.test((await x.as(PLUS, "select fb_post_sale_item_update($1, 999, 9) v", [it.id])).error || ""), "lapsed: edit item → not_allowed");
+  ok(Number((await x.q("select price from fb_post_sale_items where id = $1", [it.id])).rows[0].price) === 100, "…price unchanged");
+  ok(/not_allowed/.test((await x.as(PLUS, "select fb_post_sale_end($1) v", [sale])).error || ""), "lapsed: End now → not_allowed");
+  ok((await x.q("select ends_at > now() f from fb_post_sales where id = $1", [sale])).rows[0].f === true, "…end date unchanged");
+  ok(Number((await x.as(PLUS, "select count(*) n from fb_post_orders")).rows[0].n) === 1, "lapsed: still READS its own post orders");
+  ok(Number((await x.as(PLUS, "select count(*) n from fb_post_sales")).rows[0].n) === 1, "lapsed: still READS its own posts");
+  for (const [plan, st, exp, name] of [["plus", "expired", null, "status expired"], ["pro", "active", "-1 minute", "expiry passed"], ["free", "active", null, "Free"]]) {
+    await x.q(`update seller_profiles set plan = $2, plan_status = $3, plan_expiry = ${exp ? `now() + interval '${exp}'` : "null"} where auth_user_id = $1`, [PLUS, plan, st]);
+    ok(/not_allowed/.test((await x.as(PLUS, "select fb_post_orders_mark_printed(array[$1::bigint]) n", [oid])).error || ""), `${name}: mark printed → not_allowed`);
+  }
+  await x.q("update seller_profiles set plan = 'plus', plan_status = 'active', plan_expiry = null where auth_user_id = $1", [PLUS]); // renewed
+  ok(Number((await x.as(PLUS, "select fb_post_orders_mark_printed(array[$1::bigint]) n", [oid])).rows[0].n) === 1, "renewed: mark printed → 1");
+  ok((await x.as(PLUS, "select fb_post_sale_item_update($1, 120, 4) v", [it.id])).rows[0].v === true, "renewed: edit → true");
+  ok(Number((await x.q("select price from fb_post_sale_items where id = $1", [it.id])).rows[0].price) === 120, "…price 120");
+  ok((await x.as(OTHER, "select fb_post_sale_item_update($1, 1, 1) v", [it.id])).rows[0].v === null, "another seller's item → nothing (null)");
+  ok((await x.q("select price from fb_post_sale_items where id = $1", [it.id])).rows[0].price == 120, "…unchanged");
+  ok((await x.as(OTHER, "select fb_post_sale_end($1) v", [sale])).rows[0].v === null, "another seller's sale → End now does nothing (null)");
+  ok((await x.as(OTHER, "select fb_post_orders_mark_printed(array[$1::bigint]) n", [oid])).rows[0].n === 0, "another seller's order → 0 marked");
+  // testers + admin pass whatever the plan
+  const ts = (await x.create(TESTER, { code: "TRO", stock: 2 })).rows[0].id;
+  const ti = await itemOf(x, ts);
+  ok((await x.as(TESTER, "select fb_post_sale_item_update($1, 5, 1) v", [ti.id])).rows[0].v === true, "tester on Basic: edit → true");
+  ok((await x.as(TESTER, "select fb_post_sale_end($1) v", [ts])).rows[0].v === true, "tester on Basic: End now → true");
+  const as_ = (await x.create(ADMIN, { code: "ARO", stock: 2 })).rows[0].id;
+  ok((await x.as(ADMIN, "select fb_post_sale_end($1) v", [as_])).rows[0].v === true, "admin on Free: End now → true");
+  ok(/not_signed_in/.test((await x.as("", "select fb_post_orders_mark_printed(array[1::bigint])")).error || ""), "mark printed not signed in → not_signed_in (as live)");
+  ok((await x.as("", "select fb_post_sale_end(1) v")).rows[0].v === null, "End now not signed in → nothing (as live)");
+  ok(/permission denied/.test((await x.db.exec("set role anon;").then(() => x.db.query("select fb_post_sale_end(1)")).catch((e) => ({ error: String(e.message) })).finally(() => x.db.exec("reset role;")))?.error || ""), "anon cannot call End now");
 }
 
 console.log(`${pass} PASS, ${fail} FAIL`);

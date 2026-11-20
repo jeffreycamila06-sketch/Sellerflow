@@ -69,7 +69,7 @@ describe("B. Orders with Posts 🔒", () => {
   it("RedesignApp: locked → postsLocked + the SAME contact-support popup as Pickup Status; full → the Posts side", () => {
     const app = readFileSync(resolve(__dirname, "../../RedesignApp.tsx"), "utf8");
     expect(app).toContain('postAccess === "locked" ? { postsLocked: true, onPostsLocked: () => setUpsellOpen(true) }');
-    expect(app).toContain('enabled: postAccess === "full", active: screen === "orders"');
+    expect(app).toContain('enabled: postAccess === "full" || postAccess === "readonly", readOnly: postAccess === "readonly", active: screen === "orders"');
     expect(app).toMatch(/upsellOpen && \(\s*<ContactSupportPopup\s*title=\{tApp\.rd_lock_title\}\s*message=\{tApp\.rd_lock_body\}/);
     expect(app).toContain('v === "not_allowed" ? tApp.rd_lock_body');
   });

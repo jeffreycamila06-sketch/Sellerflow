@@ -640,6 +640,7 @@ export interface WaitlistUi {
   // this device's live stock for the code (post rows: the post item's stock — of the group's own post sale, sql/188)
   stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => number;
   postLabel?: (saleId: number) => string; // post rows: which post (two "+1" posts are two groups)
+  postGiveOff?: boolean;                   // fix round 1: the plan does not include Posts → Give off for post rows
   onGive: (r: WaitlistRow) => void;
   onSkip: (r: WaitlistRow) => void;
   busyId: number | null;
@@ -654,8 +655,10 @@ function WaitlistSection({ w }: { w: WaitlistUi }) {
       {w.state === "loading" && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>…</div>}
       {w.state === "error" && <div data-testid="waitlist-error" style={{ fontSize: 12.5, color: "var(--danger)" }}>{t.rd_wl_load_failed}</div>}
       {w.note && <div role="status" data-testid="waitlist-note" style={{ fontSize: 12, color: "var(--danger)", fontWeight: 600, margin: "4px 0" }}>{w.note}</div>}
+      {w.postGiveOff && w.groups.some((g) => g.source === "post") && <div data-testid="waitlist-post-off" style={{ fontSize: 12, color: "var(--text-dim)", fontWeight: 600, lineHeight: 1.4, margin: "4px 0" }}>🔒 {t.rd_wl_post_off}</div>}
       {w.groups.map((g) => {
-        const inStock = w.stockFor(g.code, g.source, g.saleId ?? null) > 0;
+        const off = g.source === "post" && w.postGiveOff === true;
+        const inStock = !off && w.stockFor(g.code, g.source, g.saleId ?? null) > 0;
         const label = g.source === "post" && g.saleId != null && w.postLabel ? w.postLabel(g.saleId) : "";
         return (
           <div key={`${g.source || "live"}:${g.saleId ?? ""}:${g.code}`} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
@@ -663,7 +666,7 @@ function WaitlistSection({ w }: { w: WaitlistUi }) {
               <span style={{ fontFamily: mono }}>{g.code}</span>
               {g.source === "post" && <span data-testid="waitlist-post-tag" style={{ fontSize: 10, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6, flexShrink: 0 }}>{t.rd_fps_tab_post_one}</span>}
               {label && <span data-testid="waitlist-post-label" style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>}
-              <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "var(--ok)" : "var(--text-muted)" }}>{inStock ? t.rd_wl_in_stock : t.rd_wl_out}</span>
+              {!off && <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "var(--ok)" : "var(--text-muted)" }}>{inStock ? t.rd_wl_in_stock : t.rd_wl_out}</span>}
             </div>
             {g.rows.map((r, i) => {
               const next = i === 0 && inStock;

@@ -43,15 +43,15 @@ Every other screen has **‹ Back** at the top left. It takes you back to where 
 - **CHANNELS** — TikTok Live and Facebook Live rows. Tap one to manage your accounts.
 - **Printer Settings** — tap **Printer**, then under **CHOOSE PRINTER** pick the WiFi receipt printer or the Bluetooth sticker printer.
 - **ACCOUNT** — **Subscription** (not shown on iPhone), **Support & user guide**, **Delete account**.'),
-  ('plans', 'Plans: Free, Basic, Plus, Pro, Master', '2026-11-17'::date, 'plan, plans, subscription, free, basic, plus, pro, master, which plan, features, anong plan, 方案, 订阅, 哪個方案', 'There are five plans. What the app shows per plan:
+  ('plans', 'Plans: Free, Basic, Plus, Pro, Master', '2026-11-20'::date, 'plan, plans, subscription, free, basic, plus, pro, master, which plan, features, anong plan, 方案, 订阅, 哪個方案', 'There are five plans. What the app shows per plan:
 
-| Plan | Live accounts | Order limit | Parcel Scan / Customer Details / Pickup Status (Taiwan only) |
-|---|---|---|---|
-| Free | 1 | 150 orders in total (see "Free order limit") | 🔒 locked |
-| Basic | 1 | unlimited | 🔒 locked |
-| Plus | 2 | unlimited | Pickup Status (tap **Check now** to update) and parcel check. Parcel Scan: see that section |
-| Pro | 3 | unlimited | same as Plus |
-| Master | 5 | unlimited | same as Plus |
+| Plan | Live accounts | Order limit | Posts (sell on a Facebook post) | Parcel Scan / Customer Details / Pickup Status (Taiwan only) |
+|---|---|---|---|---|
+| Free | 1 | 150 orders in total (see "Free order limit") | 🔒 locked | 🔒 locked |
+| Basic | 1 | unlimited | 🔒 locked | 🔒 locked |
+| Plus | 2 | unlimited | yes | Pickup Status (tap **Check now** to update) and parcel check. Parcel Scan: see that section |
+| Pro | 3 | unlimited | yes | same as Plus |
+| Master | 5 | unlimited | yes | same as Plus |
 
 - The account number is the **total across all live platforms**.
 - "Print QR on sticker" is on every plan.
@@ -133,6 +133,8 @@ Common messages:
 
 Posts is on the **Plus**, **Pro** and **Master** plans. On Free or Basic, Posts shows a 🔒 — tap it to contact support.
 
+Post orders are not in **Sales**, exports or **Send to TikTok**, and they do not lower your **Products** stock.
+
 **Start selling on a post**
 1. **Orders → Posts → ＋ Sell on a post**.
 2. Pick one of your Page''s recent posts.
@@ -149,10 +151,12 @@ Posts is on the **Plus**, **Pro** and **Master** plans. On Free or Basic, Posts 
 
 **Your post orders**
 - New orders come in within about a minute. They show when you open **Orders**. If Orders is already open, go to another screen and come back.
+- **While your Facebook Page is live, post orders wait.** When the live ends, the comments written during it become orders, in the order they were written.
+- Comments written before the end date (or before you tap **End now**) still become orders, even when they come in a little later.
 - Orders show in **Posts** as one card per buyer, with the items, the total and a **New** or **Printed** pill.
 - Tap **Print new** to print stickers for the new buyers. Post stickers have **no buyer number** and show "Post" on each item line. Nothing prints by itself.
 - **My posts** shows each post as **Selling**, **Sold out** or **Ended**. There you can **End now** or **Edit** an item''s price and stock.
-- If your plan ends, Posts is locked and your posts take no new orders. Renew before a post''s end date and it takes orders again, including comments buyers wrote in between.'),
+- **If your plan ends**, your posts take no new orders and Posts is **view-only**: you can still see your post orders and **My posts**, but you cannot sell on a post, **Print new**, **Give** to a waiting buyer, **Edit** or **End now**. Renew before a post''s end date and it takes orders again, including comments buyers wrote in between.'),
   ('connect-shopee', 'Shopee Live (beta)', '2026-10-28'::date, 'shopee, shopee live, share link, copy link, beta, paste link, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph', 'Shopee Live is a **beta**. Admin turns it on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
 
 When Shopee is on for you:

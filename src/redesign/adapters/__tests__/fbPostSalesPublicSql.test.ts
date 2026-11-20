@@ -65,9 +65,31 @@ describe("sql/188", () => {
     expect(sql).toContain("check (sale_id is null or source = 'post')");
     const g = fn(sql, "fb_post_waitlist_give");
     expect(g).toContain("if w.sale_id is not null then");
-    expect(g).toContain("where s.id = w.sale_id and s.user_id = v_uid and s.status = 'selling' and lower(i.code) = lower(w.code)");
+    expect(g).toContain("where s.id = w.sale_id and s.user_id = v_uid and s.status = 'selling' and s.ends_at > now() and lower(i.code) = lower(w.code)");
+    expect(g).toContain("where s.user_id = v_uid and s.status = 'selling' and s.ends_at > now() and lower(i.code) = lower(w.code)"); // no sale_id: same, end date not passed
     expect(g).toContain("if not public.fb_post_seller_allowed(v_uid) then return 'not_allowed'; end if;");
     expect(g.indexOf("not_found")).toBeLessThan(g.indexOf("not_allowed")); // someone else's row says nothing about the plan
+  });
+  it("fix round 1 — claim: the end date judged by the COMMENT's time (a future time counts as now)", () => {
+    const c = fn(sql, "fb_post_order_claim");
+    expect(c).toContain("v_at timestamptz := least(coalesce(p_created_at, now()), now());");
+    expect(c).toContain("or now() < v_sale.starts_at or v_at > v_sale.ends_at then return 'ended'; end if;");
+    expect(c).not.toContain("now() > v_sale.ends_at");
+  });
+  it("fix round 1 — read-only after a plan ends: mark printed, edit, End now refuse without the rule", () => {
+    for (const name of ["fb_post_orders_mark_printed", "fb_post_sale_item_update", "fb_post_sale_end"]) {
+      const f = fn(sql, name);
+      expect(f, name).toContain("if not public.fb_post_seller_allowed(auth.uid()) then raise exception 'not_allowed' using errcode = '42501'; end if;");
+      expect(f.indexOf("not_allowed"), name).toBeLessThan(f.indexOf("update public."));
+      expect(f, name).toContain("security definer");
+      expect(sql, name).toMatch(new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to authenticated;`));
+    }
+    const e = fn(sql, "fb_post_sale_end");
+    expect(e).toContain("update public.fb_post_sales set ends_at = least(ends_at, now())");
+    expect(e).not.toContain("status = 'ended'"); // the poller ends it after reading the comments written before
+    expect(e).toContain("where id = p_sale_id and user_id = auth.uid() and status = 'selling'");
+    expect(fn(sql, "fb_post_orders_mark_printed")).toContain("where id = any(p_ids) and user_id = auth.uid() and printed_at is null;");
+    expect(fn(sql, "fb_post_sale_item_update")).toContain("and exists (select 1 from public.fb_post_sales s where s.id = i.sale_id and s.user_id = auth.uid())");
   });
   it("open sales longer than 14 days → start + 14 days; the old date kept for the rollback", () => {
     expect(sql).toContain("insert into public.fb_post_sales_ends_188 (sale_id, old_ends_at)");
@@ -86,31 +108,55 @@ describe("sql/188", () => {
     expect(rb).toContain("drop function if exists public.fb_post_sellers_allowed(uuid[]);");
     expect(rb).toContain("set ends_at = n.old_ends_at");
     expect(rb).toContain("drop table if exists public.fb_post_sales_ends_188;");
+    // fix round 1: the three more live texts, and End-now sales ended after the old dates are back
+    expect(rb).toContain("  update public.fb_post_sales set status = 'ended', ends_at = least(ends_at, now())\n   where id = p_sale_id and auth.uid() is not null and user_id = auth.uid() and status = 'selling'\n  returning true;");
+    expect(rb).toContain(" LANGUAGE sql");
+    expect(rb.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(6);
+    expect(rb.indexOf("set ends_at = n.old_ends_at")).toBeLessThan(rb.indexOf("update public.fb_post_sales set status = 'ended' where status = 'selling' and ends_at <= now();"));
   });
 });
 
-describe("sql/189 — the help guide row for Posts", () => {
+describe("sql/189 — the help guide rows for Posts and Plans", () => {
   const g = readFileSync("sql/189_guide_post_sales.sql", "utf8");
   const seed = readFileSync("sql/116b_guide_seed.sql", "utf8");
   const guide = readFileSync("docs/support/sfl-guide.md", "utf8");
-  it("ONE row, word for word the post-sales row of sql/116b (= the guide file)", () => {
-    const a = seed.indexOf("  ('post-sales',");
-    const tuple = seed.slice(a, seed.indexOf("),\n  ('connect-shopee'", a) + 1);
-    expect(tuple.length).toBeGreaterThan(500);
-    expect(g).toContain(`${tuple}\non conflict (id) do update set`);
-    expect(g.match(/^ {2}\('/gm)).toHaveLength(1);
+  const tupleOf = (id: string, next: string) => { const a = seed.indexOf(`  ('${id}',`); return seed.slice(a, seed.indexOf(`),\n  ('${next}'`, a) + 1); };
+  it("TWO rows, word for word the post-sales and plans rows of sql/116b (= the guide file)", () => {
+    const post = tupleOf("post-sales", "connect-shopee");
+    const plans = tupleOf("plans", "account-limit");
+    expect(post.length).toBeGreaterThan(500);
+    expect(plans.length).toBeGreaterThan(500);
+    expect(g).toContain(`${post},\n${plans}\non conflict (id) do update set`);
+    expect(g.match(/^ {2}\('/gm)).toHaveLength(2);
     expect(code(g)).not.toMatch(/delete from/);
+  });
+  it("the Plans table has a Posts column: locked on Free and Basic, yes on Plus / Pro / Master", () => {
+    const sec = guide.slice(guide.indexOf("## plans"), guide.indexOf("## account-limit"));
+    expect(sec).toContain("| Plan | Live accounts | Order limit | Posts (sell on a Facebook post) |");
+    expect(sec).toMatch(/\| Free \| 1 \| [^|]+ \| 🔒 locked \|/);
+    expect(sec).toMatch(/\| Basic \| 1 \| unlimited \| 🔒 locked \|/);
+    for (const p of ["Plus", "Pro", "Master"]) expect(sec).toMatch(new RegExp(`\\| ${p} \\| \\d \\| unlimited \\| yes \\|`));
+    expect(sec).toContain("Last checked: 2026-11-20");
   });
   it("the section says what a seller needs: start, code vs +1, one order per code, +2, only comments under the post, open Orders, Print new, 14 days, the plans", () => {
     const sec = guide.slice(guide.indexOf("## post-sales"), guide.indexOf("## connect-shopee"));
     for (const words of ["Sell on a post", "Comment a code", "\"+1\" for one item", "one order per code", "comment **+2** once", "directly under your post",
-      "go to another screen and come back", "**Print new**", "up to 14 days", "**Plus**, **Pro** and **Master**", "🔒"]) expect(sec, words).toContain(words);
+      "go to another screen and come back", "**Print new**", "up to 14 days", "**Plus**, **Pro** and **Master**", "🔒",
+      // fix round 1
+      "Post orders are not in **Sales**, exports or **Send to TikTok**, and they do not lower your **Products** stock.",
+      "While your Facebook Page is live, post orders wait.", "in the order they were written", "before you tap **End now**",
+      "**view-only**", "you can still see your post orders and **My posts**", "**Print new**, **Give** to a waiting buyer, **Edit** or **End now**"]) expect(sec, words).toContain(words);
     expect(sec).toContain("Last checked: 2026-11-20");
     for (const inside of ["cursor", "poller", "RPC", "database", "server", "Graph", "fb_post"]) expect(sec, inside).not.toContain(inside);
   });
-  it("rollback removes only that row", () => {
+  it("rollback: removes the post-sales row, puts the live plans row back (2026-11-17, no Posts column)", () => {
     const r = readFileSync("sql/189_guide_post_sales_rollback.sql", "utf8");
     expect(code(r)).toContain("delete from public.support_guide where id = 'post-sales';");
     expect(code(r).match(/delete from/g)).toHaveLength(1);
+    expect(code(r)).toContain("  checked = '2026-11-17'::date,");
+    expect(code(r)).toContain("where id = 'plans';");
+    expect(code(r)).toContain("| Plan | Live accounts | Order limit | Parcel Scan / Customer Details / Pickup Status (Taiwan only) |");
+    expect(code(r)).not.toContain("Posts (sell on a Facebook post)");
+    expect(code(r).match(/^update /gm)).toHaveLength(1);
   });
 });

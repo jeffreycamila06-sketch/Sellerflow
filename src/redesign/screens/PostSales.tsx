@@ -29,6 +29,7 @@ export interface PostsUi {
   products: Product[];
   busy: boolean;
   note: string | null;                               // last action result (toast-like line)
+  readOnly?: boolean;                                // fix round 1: no plan, has post orders → view only
   onReload: () => void;
   onPrintNew: () => void;                            // prints every buyer's NEW orders, marks printed
   onCreate: (a: { pageId: string; postId: string; postMessage: string; postPicture: string; mode: PostSaleMode; endsAt: string; items: NewPostItem[] }) => Promise<CreateResult>;
@@ -61,11 +62,13 @@ export default function PostsBody({ ui: u, cur }: { ui: PostsUi; cur: string }) 
   const groups = useMemo(() => groupPostOrders(u.orders, u.sales), [u.orders, u.sales]);
   const newCount = groups.filter((g) => !g.printed).length; // buyers with something new to print (one sticker each)
 
-  if (view === "sell") return <SellOnPost ui={u} cur={cur} onClose={() => setView("orders")} />;
+  if (view === "sell" && u.readOnly !== true) return <SellOnPost ui={u} cur={cur} onClose={() => setView("orders")} />;
   if (view === "my") return <MyPosts ui={u} cur={cur} onClose={() => setView("orders")} onSell={() => setView("sell")} />;
 
+  const ro = u.readOnly === true;
   return (
     <div data-testid="posts-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {ro && <ReadOnlyLine />}
       {u.note && <div role="status" data-testid="posts-note" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 10, padding: "8px 11px" }}>{u.note}</div>}
       {u.state === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>{t.rd_fps_loading}</div>}
       {u.state === "error" && (
@@ -79,14 +82,14 @@ export default function PostsBody({ ui: u, cur }: { ui: PostsUi; cur: string }) 
           <div aria-hidden="true" style={{ width: 76, height: 76, borderRadius: 20, margin: "0 auto", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>📣</div>
           <div style={{ fontFamily: "var(--font-display)", fontSize: 18.5, fontWeight: 700, color: "var(--text)", marginTop: 20 }}>{t.rd_fps_empty_title}</div>
           <div style={{ fontSize: 13.5, color: "var(--text-dim)", lineHeight: 1.5, margin: "8px 10px 0" }}>{t.rd_fps_empty}</div>
-          <button type="button" data-testid="posts-sell-btn" onClick={() => setView("sell")} style={{ ...btnPrimary, marginTop: 22, width: "100%" }}>{t.rd_fps_sell_btn}</button>
+          {!ro && <button type="button" data-testid="posts-sell-btn" onClick={() => setView("sell")} style={{ ...btnPrimary, marginTop: 22, width: "100%" }}>{t.rd_fps_sell_btn}</button>}
           {u.sales.length > 0 && <button type="button" data-testid="posts-my-link" onClick={() => setView("my")} style={{ marginTop: 14, border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: ui }}>{t.rd_fps_my_posts} ›</button>}
         </div>
       )}
       {u.state === "ready" && groups.length > 0 && (
         <>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" data-testid="posts-print-new" disabled={u.busy || newCount === 0} onClick={u.onPrintNew} style={{ ...btnPrimary, flex: 1, minWidth: 0, opacity: newCount === 0 || u.busy ? 0.55 : 1 }}>🖨 {tpl(t.rd_fps_print_new, { n: newCount })}</button>
+            <button type="button" data-testid="posts-print-new" disabled={ro || u.busy || newCount === 0} aria-describedby={ro ? "posts-readonly" : undefined} onClick={u.onPrintNew} style={{ ...btnPrimary, flex: 1, minWidth: 0, opacity: ro || newCount === 0 || u.busy ? 0.55 : 1, cursor: ro ? "default" : "pointer" }}>🖨 {tpl(t.rd_fps_print_new, { n: newCount })}</button>
             <button type="button" data-testid="posts-my-btn" onClick={() => setView("my")} style={{ ...btnSoft, flexShrink: 0 }}>{t.rd_fps_my_posts}</button>
           </div>
           {groups.map((g) => <BuyerCard key={g.key} g={g} sales={u.sales} cur={cur} />)}
@@ -94,6 +97,12 @@ export default function PostsBody({ ui: u, cur }: { ui: PostsUi; cur: string }) 
       )}
     </div>
   );
+}
+
+// The one line a view-only seller sees (same words style as the plan lock popup).
+function ReadOnlyLine() {
+  const t = useT();
+  return <div role="note" id="posts-readonly" data-testid="posts-readonly" style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, fontWeight: 600, lineHeight: 1.45, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 12px" }}><span aria-hidden="true">🔒</span><span style={{ minWidth: 0 }}>{t.rd_fps_readonly}</span></div>;
 }
 
 function Avatar({ name }: { name: string }) {
@@ -300,6 +309,7 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
   const [busy, setBusy] = useState(false);
   const statusText = { selling: t.rd_fps_st_selling, sold_out: t.rd_fps_st_sold_out, ended: t.rd_fps_st_ended } as const;
   const tone = { selling: "selling", sold_out: "soldout", ended: "ended" } as const;
+  const ro = u.readOnly === true;
   const withStatus = u.sales.map((s) => ({ s, st: saleStatus(s) }));
   const selling = withStatus.filter((x) => x.st !== "ended");
   const ended = withStatus.filter((x) => x.st === "ended");
@@ -344,12 +354,12 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
                   <>
                     <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-dim)" }}>{cur}{fmt(it.price)}</span>
                     <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{tpl(t.rd_fps_sold, { sold: it.sold })}{it.stock != null ? ` / ${it.stock}` : ""}</span>
-                    {st !== "ended" && <button type="button" data-testid="my-post-edit" onClick={() => { setEditing(it.id); setDraft({ price: it.price, priceText: moneyText(it.price), stock: it.stock }); }} style={{ ...btnSoft, minHeight: 34, padding: "0 12px", fontSize: 13 }}>{t.rd_fps_edit}</button>}
+                    {st !== "ended" && !ro && <button type="button" data-testid="my-post-edit" onClick={() => { setEditing(it.id); setDraft({ price: it.price, priceText: moneyText(it.price), stock: it.stock }); }} style={{ ...btnSoft, minHeight: 34, padding: "0 12px", fontSize: 13 }}>{t.rd_fps_edit}</button>}
                   </>
                 )}
               </div>
             ))}
-            {st !== "ended" && (
+            {st !== "ended" && !ro && (
               confirmEnd === s.id ? (
                 <div data-testid="my-post-end-confirm" style={{ marginTop: 8, fontSize: 13, color: "var(--text-dim)" }}>
                   {t.rd_fps_end_confirm}
@@ -371,7 +381,7 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
   return (
     <div data-testid="my-posts">
       <SubHeader title={t.rd_fps_my_posts} onBack={onClose} />
-      <button type="button" data-testid="my-posts-sell" onClick={onSell} style={{ ...btnPrimary, width: "100%", minHeight: 52, marginTop: 10, fontSize: 16 }}>{t.rd_fps_sell_fb_btn}</button>
+      {ro ? <div style={{ marginTop: 10 }}><ReadOnlyLine /></div> : <button type="button" data-testid="my-posts-sell" onClick={onSell} style={{ ...btnPrimary, width: "100%", minHeight: 52, marginTop: 10, fontSize: 16 }}>{t.rd_fps_sell_fb_btn}</button>}
       {u.sales.length === 0 && <div style={{ ...card, marginTop: 14, textAlign: "center", fontSize: 13.5, color: "var(--text-muted)" }}>{t.rd_fps_my_empty}</div>}
       {selling.length > 0 && <div style={sectionLabel}>{t.rd_fps_selling_now}</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{selling.map(saleCard)}</div>

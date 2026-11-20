@@ -5840,11 +5840,11 @@ the `fb_post_sales` key holders. The switch `fb_post_sales_enabled` stays the ki
   (`plan_expiry` null or in the future) = the app's `isActivePaid`. `fb_post_sellers_allowed(uids[])` = the same for a list.
   Used by: `fb_post_sale_create` ('not_allowed'), `fb_post_order_claim` ('not_allowed'), `fb_post_waitlist_give`
   ('not_allowed'), the poller (once a pass) and `GET /fb/post-sales/posts` (403 `plan_not_allowed` / 503 `plan_check_failed`).
-  App: `postSalesAccess()` (adapters/fbPostSales.ts) → "full" | "locked" | "none" — locked = "Posts 🔒" in the Orders
-  segment, a tap opens the SAME `ContactSupportPopup` (rd_lock_title / rd_lock_body) as Pickup Status; nothing loads.
+  App: `postSalesAccess()` (adapters/fbPostSales.ts) → "full" | "readonly" | "locked" | "none" — locked = "Posts 🔒" in
+  the Orders segment, a tap opens the SAME `ContactSupportPopup` (rd_lock_title / rd_lock_body) as Pickup Status; nothing loads.
 - **Plan lapsed:** the sale stays; the poller makes NO Facebook call for it and does not move its cursor. Renewed before
   the end date → the comments written meanwhile are read and become orders in their order. An expired sale of such a
-  seller is still marked ended.
+  seller is still marked ended (without reading).
 - **🔴 Never lose a comment (server/fbPostSales.js):** a comments page's cursor is saved only after every comment of the
   page got an answer. A claim that throws / answers anything but ordered | dup | sold_out, or a waitlist write that
   fails → the pass for that sale stops (`[FB-POST] sale=… stopped at comment=… reason=…`), the cursor stays before that
@@ -5863,7 +5863,42 @@ the `fb_post_sales` key holders. The switch `fb_post_sales_enabled` stays the ki
   your account yet"). Apply sql/188 → merge (Vercel) → Render deploy → sql/189 (guide, ONE new row `post-sales`; the
   live table had none).
 - **Proof:** `fbPostSalesNoLoss.server.test.ts`, `fbPostSalesPublic.test.tsx`, `fbPostSalesPublic.adapter.test.ts`,
-  `fbPostSalesPublicSql.test.ts`; `scripts/sql188-behaviour.mjs` (PGlite, 98 checks; the rollback = the LIVE function
-  texts, md5 checked 2026-11-20); `docs/design/fb-post-sales-public/` (pictures, on-purpose breaks, calls per hour).
-- **Facebook calls:** 20 quiet open sales on one Page = 1,200 calls an hour (28,800 a day, every day they are open); the
-  live poller on the same Page = 720–1,800 an hour. Same app + same Page token = the same Facebook per-Page budget.
+  `fbPostSalesPublicSql.test.ts`, `fbPostSalesLive.server.test.ts`, `fbPostSalesReadOnly.test.tsx`;
+  `scripts/sql188-behaviour.mjs` (PGlite, 148 checks; the rollback = the LIVE texts of all SIX functions it changes,
+  md5 checked 2026-11-20) + `scripts/sql189-behaviour.mjs` (10); `docs/design/fb-post-sales-public/` (pictures,
+  on-purpose breaks, calls per hour).
+- **Facebook calls:** 20 quiet open sales on one Page = 1,200 calls an hour (28,800 a day, every day they are open) —
+  only while that Page is NOT live (fix round 1). While live: 0 post calls; the live poller alone = 720–1,800 an hour.
+
+### Fix round 1 (same branch, 2026-11-20 — owner's decisions)
+- **Lives first (`server/fbPostSales.js`):** while the live comment reader runs for a Page, the post reader makes NO
+  Facebook call for that Page's posts and does not move their cursor (one log line `[FB-POST] sale=… waiting — page=… is
+  live`); after the live (`reading again`) the comments written meanwhile are read in order, each one order. Other Pages
+  are not affected. The check is a READ of fbLive's running pollers: `pageLiveIn(fbRuntime._pollers, pageId)` (a poller
+  not `stopped` with that pageId), passed as `isPageLive` from server.js. **server/fbLive.js = 0 lines changed.** A check
+  that throws = not live (posts never stop on a broken check). 2-hour live re-measured: 0 post calls during it; after it
+  ~100 calls a minute for a few minutes (20 sales) to catch up (`proof/calls-per-hour.txt`).
+- **End date by the COMMENT's time (sql/188 claim):** `v_at = least(coalesce(p_created_at, now()), now())`; ended when
+  `v_at > ends_at`. A sale past its end date is read once more ("closing"): comments written before the end → orders,
+  later ones skipped ('ended' = read on), then `markEnded` once every comment had its answer. Still unreadable 24 h after
+  its end date (`CLOSE_GRACE_MS`, > fbLive MAX_SESSION_MS 12 h) → ended without reading. Plan lapsed + past its end date →
+  ended at once (no reading). Old poller + sql/188, or new poller before sql/188: a closing sale's claims all answer
+  'ended' → skipped → ended = today's result.
+- **End now (sql/188 `fb_post_sale_end`):** sets ONLY `ends_at = least(ends_at, now())`; status stays 'selling' until the
+  poller has read the comments written before it. The app shows it Ended at once (`saleStatus` uses endsAt). Give and the
+  waitlist stock (`postItemStock`) refuse a sale whose end date passed. Code + the place in the 20 are free at once.
+- **View-only Posts (`postSalesAccess` → "readonly"):** the plan rule fails AND the seller has post orders
+  (`usePostOrdersExist` — one `fb_post_orders` `limit(1)` read, only when the rule fails; a failed read = "locked" and is
+  asked again when Orders opens). The Posts side + My posts load; Sell on a post / Print new / Edit / End now are hidden or
+  off with ONE line (`rd_fps_readonly`, 🔒); post rows in the waiting line get Give off + `rd_wl_post_off` (live rows
+  unchanged). The hook's actions do nothing in read-only. **Database too:** `fb_post_orders_mark_printed`,
+  `fb_post_sale_item_update`, `fb_post_sale_end` raise 'not_allowed' (42501) when `fb_post_seller_allowed` fails (admin /
+  testers pass); `fb_post_waitlist_give` already did. Printing code untouched (only the button is gated).
+- **Waiting line during a live session (`loadWaitlist`):** a session → `session_id = <id> OR source = 'post'` (only
+  when the id is a uuid; anything else = the old exact match); no session = as before.
+- **Help guide:** post-sales gets 4 lines (not in Sales / exports / Send to TikTok / Products stock; post orders wait
+  while the Page is live; comments before the end / End now still count; the view-only state); Plans table gets a
+  "Posts" column. **sql/189 = TWO rows** (post-sales insert + plans update); its rollback deletes post-sales and puts the
+  LIVE plans row back (md5 checked 2026-11-20).
+- **sql/188 rollback** now also restores the live texts of mark_printed / item_update / sale_end (sql-language ones too)
+  and, AFTER the old end dates are back, ends every 'selling' sale whose end date passed (End-now sales).
