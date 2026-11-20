@@ -54,7 +54,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping, shippingSoon = false,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
-  tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow, posts,
+  tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow, posts, postsLocked = false, onPostsLocked,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   shippingSoon?: boolean; // Build 16: non-admin seller → the 🚚 button shows "Coming soon" and never opens Shipping
@@ -99,6 +99,11 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // the switch / access allow) → a "Live | Posts" segment appears, Live stays the default. Absent
   // (every seller without a Page) = the screen exactly as before: no segment, nothing new.
   posts?: PostsUi;
+  // sql/188: a seller WITH a Facebook Page whose plan does not include post sales (Free / Basic /
+  // expired) → the segment shows "Posts 🔒"; a tap calls onPostsLocked (the contact-support popup)
+  // and the screen stays on Live. Nothing about post sales is loaded.
+  postsLocked?: boolean;
+  onPostsLocked?: () => void;
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
@@ -477,15 +482,18 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           {tpl(t.rd_psn_banner, { range: sessionRange(pastSel) })}
         </div>
       )}
-        {posts && (
+        {(posts || postsLocked) && (
           <div data-testid="ord-live-posts" role="tablist" style={{ display: "flex", gap: 4, margin: "14px 14px 0", background: "var(--accent-soft)", borderRadius: 14, padding: 4 }}>
             {(["live", "posts"] as const).map((v) => {
-              const on = postsView === v;
+              const on = postsView === v && !(v === "posts" && !posts);
+              const locked = v === "posts" && !posts;
               return (
-                <button key={v} type="button" role="tab" aria-selected={on} data-testid={`ord-seg-${v}`} onClick={() => (v === "posts" ? openPosts() : setPostsView("live"))}
+                <button key={v} type="button" role="tab" aria-selected={on} data-testid={`ord-seg-${v}`} {...(locked ? { "aria-label": t.rd_fps_tab_locked_aria } : {})}
+                  onClick={() => (locked ? onPostsLocked?.() : v === "posts" ? openPosts() : setPostsView("live"))}
                   style={{ flex: 1, minHeight: 44, borderRadius: 11, border: "none", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "var(--font-ui)", background: on ? "var(--surface)" : "transparent", color: on ? "var(--accent-fg)" : "var(--text-dim)", boxShadow: on ? "var(--shadow)" : "none", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-                  {v === "live" ? t.rd_fps_tab_live : posts.orders.length ? `${t.rd_fps_tab_posts} · ${posts.orders.length}` : t.rd_fps_tab_posts}
-                  {v === "posts" && postsDot && <span data-testid="ord-posts-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: "#e11d48" }} />}
+                  {v === "live" ? t.rd_fps_tab_live : posts && posts.orders.length ? `${t.rd_fps_tab_posts} · ${posts.orders.length}` : t.rd_fps_tab_posts}
+                  {locked && <span data-testid="ord-posts-lock" aria-hidden="true" style={{ fontSize: 13 }}>🔒</span>}
+                  {v === "posts" && posts && postsDot && <span data-testid="ord-posts-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: "#e11d48" }} />}
                 </button>
               );
             })}
@@ -628,8 +636,10 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
 // ── F3 — Facebook waitlist (this session's line per code, oldest first) ─────────────────────
 export interface WaitlistUi {
   state: "loading" | "ready" | "error";
-  groups: { code: string; source?: "live" | "post"; rows: WaitlistRow[] }[];
-  stockFor: (code: string, source?: "live" | "post") => number; // this device's live stock for the code (post rows: the post item's stock)
+  groups: { code: string; source?: "live" | "post"; saleId?: number | null; rows: WaitlistRow[] }[];
+  // this device's live stock for the code (post rows: the post item's stock — of the group's own post sale, sql/188)
+  stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => number;
+  postLabel?: (saleId: number) => string; // post rows: which post (two "+1" posts are two groups)
   onGive: (r: WaitlistRow) => void;
   onSkip: (r: WaitlistRow) => void;
   busyId: number | null;
@@ -645,12 +655,14 @@ function WaitlistSection({ w }: { w: WaitlistUi }) {
       {w.state === "error" && <div data-testid="waitlist-error" style={{ fontSize: 12.5, color: "var(--danger)" }}>{t.rd_wl_load_failed}</div>}
       {w.note && <div role="status" data-testid="waitlist-note" style={{ fontSize: 12, color: "var(--danger)", fontWeight: 600, margin: "4px 0" }}>{w.note}</div>}
       {w.groups.map((g) => {
-        const inStock = w.stockFor(g.code, g.source) > 0;
+        const inStock = w.stockFor(g.code, g.source, g.saleId ?? null) > 0;
+        const label = g.source === "post" && g.saleId != null && w.postLabel ? w.postLabel(g.saleId) : "";
         return (
-          <div key={`${g.source || "live"}:${g.code}`} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>
+          <div key={`${g.source || "live"}:${g.saleId ?? ""}:${g.code}`} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, color: "var(--text)", minWidth: 0 }}>
               <span style={{ fontFamily: mono }}>{g.code}</span>
-              {g.source === "post" && <span data-testid="waitlist-post-tag" style={{ fontSize: 10, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_fps_tab_post_one}</span>}
+              {g.source === "post" && <span data-testid="waitlist-post-tag" style={{ fontSize: 10, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6, flexShrink: 0 }}>{t.rd_fps_tab_post_one}</span>}
+              {label && <span data-testid="waitlist-post-label" style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>}
               <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "var(--ok)" : "var(--text-muted)" }}>{inStock ? t.rd_wl_in_stock : t.rd_wl_out}</span>
             </div>
             {g.rows.map((r, i) => {

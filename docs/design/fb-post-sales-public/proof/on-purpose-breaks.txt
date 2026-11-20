@@ -1,0 +1,49 @@
+without any break: tests all pass, PGlite 0 FAIL
+caught: a failed claim does not stop the pass — 8 test(s) failed
+caught: a failed waitlist write does not stop the pass — 1 test(s) failed
+caught: 'not_allowed' treated as done — 1 test(s) failed
+caught: 'ended' treated as done — 1 test(s) failed
+caught: the cursor saved before the page is done — 12 test(s) failed
+caught: the waitlist row without the sale — 1 test(s) failed
+caught: poller ignores the plan — 3 test(s) failed
+caught: plan unreadable → everybody — 1 test(s) failed
+caught: picker ignores the plan — 1 test(s) failed
+caught: picker: unreadable plan allowed — 1 test(s) failed
+caught: a paused seller's expired sale is not ended — 1 test(s) failed
+caught: route: plan answer as 502 — 1 test(s) failed
+caught: server: no plan list call — 1 test(s) failed
+caught: server: no retry without sale_id — 1 test(s) failed
+caught: Basic gets the Posts side — 1 test(s) failed
+caught: testers lose it — 2 test(s) failed
+caught: expiry ignored — 1 test(s) failed
+caught: locked tap opens Posts — 1 test(s) failed
+caught: no lock on the tab — 1 test(s) failed
+caught: app never passes the lock — 1 test(s) failed
+caught: Give's plan answer shows the generic text — 1 test(s) failed
+caught: picker goes past 14 days — 1 test(s) failed
+caught: + never turns off — 1 test(s) failed
+caught: starts at 8 days — 3 test(s) failed
+caught: ends_too_late not read — 1 test(s) failed
+caught: ends_too_late shows the generic text — 1 test(s) failed
+caught: waitlist groups ignore the post — 2 test(s) failed
+caught: Give stock ignores the post — 2 test(s) failed
+caught: sale_id not read — 1 test(s) failed
+caught: count read names the columns (fails before sql/188) — 1 test(s) failed
+caught: count ignores the post — 1 test(s) failed
+caught: Give's 'not_allowed' dropped — 1 test(s) failed
+caught: Basic allowed in the database — 1 test(s) failed; PGlite 6 FAIL
+caught: expired status allowed — 1 test(s) failed; PGlite 4 FAIL
+caught: expiry date ignored — 1 test(s) failed; PGlite 3 FAIL
+caught: 30 days allowed — 1 test(s) failed; PGlite 3 FAIL
+caught: a past end date allowed — 1 test(s) failed; PGlite 2 FAIL
+caught: no 7-day default — 1 test(s) failed; PGlite 1 FAIL
+caught: "+1" sales block each other again — 1 test(s) failed; PGlite -1 FAIL
+caught: claim without the plan rule — 1 test(s) failed; PGlite 6 FAIL
+caught: Give ignores the waiting comment's post — 1 test(s) failed; PGlite 1 FAIL
+caught: Give takes another seller's sale — 1 test(s) failed; PGlite 2 FAIL
+caught: long open sales not cut — 1 test(s) failed; PGlite 2 FAIL
+caught: a browser can call the rule — 1 test(s) failed; PGlite 0 FAIL
+caught: guide: the +2 line gone — 1 test(s) failed
+caught: guide: no plans line — 1 test(s) failed
+caught: guide SQL out of step with the guide — 1 test(s) failed
+47 of 47 breaks caught

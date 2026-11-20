@@ -5831,3 +5831,39 @@ not touched (`git diff origin/main -- server/` = fmTracking.js, fmTrackingRunner
   order is not handled); after the 30-day delete a later upload that still lists the order adds it again as new;
   the seller is not told when more than 60 全家 parcels were left for the next press; `not_dropped` with a passed
   drop-off date waits for the 10 days or FamilyMart's own void step; rows get their label at their next check.
+
+## 2026-11-20 — FACEBOOK POST SALES FOR EVERY PAID SELLER (branch `claude/fb-post-sales-public`, NOT merged; sql/188 + sql/189 NOT applied; server half needs a Render deploy)
+Posts (sell on a Facebook post, sql/137) leaves the tester list: Plus / Pro / Master (active, not past expiry), admin and
+the `fb_post_sales` key holders. The switch `fb_post_sales_enabled` stays the kill switch (live: 'true').
+- **ONE rule in the database — `fb_post_seller_allowed(uid)`** (sql/188, service role only): admin role, OR the
+  `fb_post_sales` tester list, OR `lower(btrim(plan)) in ('plus','pro','master')` + `plan_status = 'active'` +
+  (`plan_expiry` null or in the future) = the app's `isActivePaid`. `fb_post_sellers_allowed(uids[])` = the same for a list.
+  Used by: `fb_post_sale_create` ('not_allowed'), `fb_post_order_claim` ('not_allowed'), `fb_post_waitlist_give`
+  ('not_allowed'), the poller (once a pass) and `GET /fb/post-sales/posts` (403 `plan_not_allowed` / 503 `plan_check_failed`).
+  App: `postSalesAccess()` (adapters/fbPostSales.ts) → "full" | "locked" | "none" — locked = "Posts 🔒" in the Orders
+  segment, a tap opens the SAME `ContactSupportPopup` (rd_lock_title / rd_lock_body) as Pickup Status; nothing loads.
+- **Plan lapsed:** the sale stays; the poller makes NO Facebook call for it and does not move its cursor. Renewed before
+  the end date → the comments written meanwhile are read and become orders in their order. An expired sale of such a
+  seller is still marked ended.
+- **🔴 Never lose a comment (server/fbPostSales.js):** a comments page's cursor is saved only after every comment of the
+  page got an answer. A claim that throws / answers anything but ordered | dup | sold_out, or a waitlist write that
+  fails → the pass for that sale stops (`[FB-POST] sale=… stopped at comment=… reason=…`), the cursor stays before that
+  page, the next minute reads it again (comment_id keeps each order once). ⚠️ A comment that fails EVERY time would stop
+  that sale for good — watch for the same `stopped at comment=` line minute after minute.
+- **End date:** none sent = 7 days; must be in the future; at most 14 days from now (up to 10 min over = exactly 14,
+  more → `ends_too_late`). App: a − / + day picker (1–14, starts at 7, `saleEndsAt`). sql/188 cuts any OPEN sale longer
+  than 14 days to start + 14 (0 rows on 2026-11-20) and keeps the old date in `fb_post_sales_ends_188` for the rollback.
+- **Several "+1" posts at once:** the code check runs only for code-mode sales and only against OPEN code-mode sales
+  (`status='selling' and ends_at > now()`); the 20-sale count also counts only open ones, after the per-seller lock.
+- **The waiting line knows its post:** `fb_waitlist.sale_id` (post rows only, FK on delete set null). The poller writes
+  it (before sql/188 it retries the row without it on PGRST204/42703). Give takes that sale, only the seller's own; a row
+  without one = the newest selling sale with the code (as before). Orders shows one waitlist group per post (+ its text).
+- **Deploy order:** either is safe. Server before sql/188: `fb_post_sellers_allowed` missing (PGRST202/42883) → every
+  seller as before. Web before sql/188: the create RPC is still the tester one (a paid non-tester gets "isn't open for
+  your account yet"). Apply sql/188 → merge (Vercel) → Render deploy → sql/189 (guide, ONE new row `post-sales`; the
+  live table had none).
+- **Proof:** `fbPostSalesNoLoss.server.test.ts`, `fbPostSalesPublic.test.tsx`, `fbPostSalesPublic.adapter.test.ts`,
+  `fbPostSalesPublicSql.test.ts`; `scripts/sql188-behaviour.mjs` (PGlite, 98 checks; the rollback = the LIVE function
+  texts, md5 checked 2026-11-20); `docs/design/fb-post-sales-public/` (pictures, on-purpose breaks, calls per hour).
+- **Facebook calls:** 20 quiet open sales on one Page = 1,200 calls an hour (28,800 a day, every day they are open); the
+  live poller on the same Page = 720–1,800 an hour. Same app + same Page token = the same Facebook per-Page budget.

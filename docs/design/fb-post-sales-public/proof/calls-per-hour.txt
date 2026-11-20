@@ -1,0 +1,10 @@
+POST POLLER — one Page, 20 open sales, one pass every 60 s, ≤ 5 pages of 100 per sale per pass
+  new comments per post per minute   0 → 1200 Facebook calls in one hour (20.0 a minute) · 28800 a day at that rate
+  new comments per post per minute  20 → 1200 Facebook calls in one hour (20.0 a minute) · 28800 a day at that rate
+  new comments per post per minute 100 → 1200 Facebook calls in one hour (20.0 a minute) · 28800 a day at that rate
+  new comments per post per minute 250 → 3600 Facebook calls in one hour (60.0 a minute) · 86400 a day at that rate
+  new comments per post per minute 600 → 6000 Facebook calls in one hour (100.0 a minute) · 144000 a day at that rate
+LIVE POLLER — the same Page while live (server/fbLive.js timers, not run here)
+  no new comments: one read every 5 s → 720 a hour; comments coming in: every 2 s → 1800 a hour
+  a burst (a full page of 100 all new): up to 3 more pages per read → at most 7200 a hour; live-status check 12 a hour
+TOGETHER (20 quiet post sales): 1920–3000 a hour while live; 1200 a hour (28800 a day) from the post sales alone, all day, every day they are open

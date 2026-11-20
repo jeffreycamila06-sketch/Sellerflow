@@ -9,7 +9,7 @@ import { TProvider, REDESIGN_STRINGS } from "../../i18n";
 import Orders from "../../screens/Orders";
 import type { PostsUi } from "../../screens/PostSales";
 import {
-  postSalesGate, groupPostOrders, postBuyerForPrint, postPrintSettings, saleStatus, saleCounts, mapSale, mapOrder, LS_POSTS_SEEN, postItemStock,
+  postSalesAccess, groupPostOrders, postBuyerForPrint, postPrintSettings, saleStatus, saleCounts, mapSale, mapOrder, LS_POSTS_SEEN, postItemStock,
   type PostSale, type PostOrder,
 } from "../fbPostSales";
 import { DEF_SETTINGS } from "../printing";
@@ -42,12 +42,12 @@ describe("Orders without a Facebook Page = exactly as before", () => {
     expect(screen.queryByTestId("posts-body")).toBeNull();
     expect(container.innerHTML).not.toContain("Posts");
   });
-  it("gate: switch + (admin or key) + a connected Page — ONE place", () => {
-    expect(postSalesGate({ switchOn: true, isAdmin: true, hasKey: false, pageCount: 1 })).toBe(true);
-    expect(postSalesGate({ switchOn: true, isAdmin: false, hasKey: true, pageCount: 1 })).toBe(true);
-    expect(postSalesGate({ switchOn: true, isAdmin: true, hasKey: true, pageCount: 0 })).toBe(false); // no Page → nothing
-    expect(postSalesGate({ switchOn: false, isAdmin: true, hasKey: true, pageCount: 1 })).toBe(false); // switch off → nothing
-    expect(postSalesGate({ switchOn: true, isAdmin: false, hasKey: false, pageCount: 1 })).toBe(false);
+  it("gate: switch + a connected Page — ONE place (the plan rule: fbPostSalesPublic.test.tsx)", () => {
+    expect(postSalesAccess({ switchOn: true, isAdmin: true, hasKey: false, pageCount: 1 })).toBe("full");
+    expect(postSalesAccess({ switchOn: true, isAdmin: false, hasKey: true, pageCount: 1 })).toBe("full");
+    expect(postSalesAccess({ switchOn: true, isAdmin: true, hasKey: true, pageCount: 0 })).toBe("none"); // no Page → nothing
+    expect(postSalesAccess({ switchOn: false, isAdmin: true, hasKey: true, pageCount: 1 })).toBe("none"); // switch off → nothing
+    expect(postSalesAccess({ switchOn: true, isAdmin: false, hasKey: false, pageCount: 1 })).toBe("locked"); // no plan → 🔒
   });
 });
 
@@ -174,7 +174,7 @@ describe("pure", () => {
     expect(mapOrder({ id: 1, qty: "3", printed_at: null })).toMatchObject({ qty: 3, printedAt: null });
   });
   it("waitlist: post rows group apart from live rows of the same code; Give routes to the post RPC, never the live order path", () => {
-    const wl = (o: Partial<WaitlistRow>): WaitlistRow => ({ id: 1, sessionId: null, code: "A", productLocalId: null, commentId: "c1", pageId: "P1", liveVideoId: null, commenterId: "B1", commenterName: "Ana", handle: "Ana", createdAt: "2026-10-27T02:00:00Z", status: "waiting", source: "live", ...o });
+    const wl = (o: Partial<WaitlistRow>): WaitlistRow => ({ id: 1, sessionId: null, code: "A", productLocalId: null, commentId: "c1", pageId: "P1", liveVideoId: null, commenterId: "B1", commenterName: "Ana", handle: "Ana", createdAt: "2026-10-27T02:00:00Z", status: "waiting", source: "live", saleId: null, ...o });
     const g = groupWaitlist([wl({ id: 1 }), wl({ id: 2, commentId: "c2", source: "post" }), wl({ id: 3, commentId: "c3", code: "a", source: "post" })]);
     expect(g.map((x) => [x.code, x.source, x.rows.map((r) => r.id)])).toEqual([["A", "live", [1]], ["A", "post", [2, 3]]]);
     expect(postItemStock([sale()], "a")).toBe(2);       // stock 2 − sold 0

@@ -10,6 +10,7 @@ export interface WaitlistRow {
   commentId: string; pageId: string; liveVideoId: string | null; commenterId: string | null;
   commenterName: string; handle: string; createdAt: string; status: "waiting" | "given" | "skipped";
   source: "live" | "post"; // sql/137: a post-sales row ("Give" = fb_post_waitlist_give, never the live order path)
+  saleId: number | null;    // sql/188: the post sale a post row belongs to (null = live row, or written before sql/188)
 }
 
 export function mapWaitlistRow(r: Record<string, unknown>): WaitlistRow {
@@ -22,18 +23,22 @@ export function mapWaitlistRow(r: Record<string, unknown>): WaitlistRow {
     commenterName: String(r.commenter_name ?? ""), handle: String(r.handle ?? ""), createdAt: String(r.created_at ?? ""),
     status: s === "given" || s === "skipped" ? s : "waiting",
     source: r.source === "post" ? "post" : "live",
+    saleId: r.source === "post" && r.sale_id != null && Number.isFinite(Number(r.sale_id)) ? Number(r.sale_id) : null,
   };
 }
 
-// Waiting rows grouped by code (case-insensitive) AND source (live vs post), each group oldest
-// first; groups in the order their first row arrived. Pure.
-export function groupWaitlist(rows: WaitlistRow[]): { code: string; source: "live" | "post"; rows: WaitlistRow[] }[] {
+// Waiting rows grouped by code (case-insensitive) AND source (live vs post) AND — for post rows —
+// the post sale (sql/188: two "+1" posts are two lines), each group oldest first; groups in the
+// order their first row arrived. Pure.
+export interface WaitlistGroup { code: string; source: "live" | "post"; saleId: number | null; rows: WaitlistRow[] }
+export function groupWaitlist(rows: WaitlistRow[]): WaitlistGroup[] {
   const waiting = rows.filter((r) => r.status === "waiting").sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
-  const out: { code: string; source: "live" | "post"; rows: WaitlistRow[] }[] = [];
+  const out: WaitlistGroup[] = [];
   for (const r of waiting) {
     const k = r.code.trim().toLowerCase();
-    const g = out.find((x) => x.code.trim().toLowerCase() === k && x.source === r.source);
-    if (g) g.rows.push(r); else out.push({ code: r.code, source: r.source, rows: [r] });
+    const sid = r.source === "post" ? r.saleId ?? null : null;
+    const g = out.find((x) => x.code.trim().toLowerCase() === k && x.source === r.source && x.saleId === sid);
+    if (g) g.rows.push(r); else out.push({ code: r.code, source: r.source, saleId: sid, rows: [r] });
   }
   return out;
 }

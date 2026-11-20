@@ -117,11 +117,15 @@ describe("poller", () => {
     expect(RATE_LIMIT_BACKOFF_MS).toBe(5 * 60 * 1000);
     expect(POLL_MS).toBe(60 * 1000);
   });
-  it("a claim error for one comment does not stop the others", async () => {
-    const graph = vi.fn(async () => commentsRes([comment("c1", "A"), comment("c2", "A", { id: "B9", name: "Zed" })]));
+  // 2026-11-20 (was: "a claim error for one comment does not stop the others" — that saved the
+  // cursor past the failed comment, so its order was never made). Now the pass stops there and the
+  // cursor stays; fbPostSalesNoLoss.server.test.ts covers the retry.
+  it("a claim error stops the pass for that sale and keeps the cursor", async () => {
+    const graph = vi.fn(async () => commentsRes([comment("c1", "A"), comment("c2", "A", { id: "B9", name: "Zed" })], "CUR1"));
     const { rt, calls } = setup(graph, { claim: (a) => { if (a.commentId === "c1") throw new Error("db"); return "ordered"; } });
     await rt.tick();
-    expect(calls.claims).toHaveLength(2);
+    expect(calls.claims).toHaveLength(1);
+    expect(calls.cursors).toEqual([]);
   });
 });
 

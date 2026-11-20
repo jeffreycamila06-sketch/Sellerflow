@@ -8,6 +8,7 @@
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
 import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
+import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
 import type { Settings } from "./printing";
 
@@ -22,15 +23,37 @@ export interface PagePost { id: string; message: string; createdTime: string; pi
 export interface NewPostItem { name: string; code: string; price: number; stock: number | null; productId?: number | null }
 
 export const POST_SALE_DEFAULT_DAYS = 7;
+export const POST_SALE_MAX_DAYS = 14;    // sql/188: the create RPC refuses a later end date
 export const MAX_ACTIVE_POST_SALES = 20; // mirrors the create RPC
 export const LS_POSTS_SEEN = "sfl_rd_posts_seen"; // the red dot on "Posts" until first opened (per device)
 
-// ── gate (ONE place to change when plan gating is decided) ─────────────────────────────────
-// The Posts tab exists ONLY when: the switch is on, the seller is admin or on the 'fb_post_sales'
-// list, and they have a connected Facebook Page. Without a Page, Orders is exactly as before.
-export function postSalesGate(a: { switchOn: boolean; isAdmin: boolean; hasKey: boolean; pageCount: number }): boolean {
-  return a.switchOn && (a.isAdmin || a.hasKey) && a.pageCount > 0;
+// ── gate (ONE place) ─────────────────────────────────────────────────────────────────────────
+// sql/188: Post Sales is for Plus / Pro / Master (active, not past its expiry — the same rule as
+// Pickup Status and the database's fb_post_seller_allowed); admin and the 'fb_post_sales' testers
+// keep it whatever their plan. With the switch on and a connected Facebook Page:
+//   "full"   → the Live | Posts segment and the Posts side;
+//   "locked" → the segment with "Posts 🔒"; a tap opens the contact-support popup (nothing loads);
+//   "none"   → no segment: Orders exactly as before (switch off, or no Page).
+export const POST_SALES_TIERS = ["plus", "pro", "master"] as const;
+export type PostSalesAccess = "full" | "locked" | "none";
+export function postSalesAccess(a: {
+  switchOn: boolean; isAdmin: boolean; hasKey: boolean; pageCount: number;
+  plan?: string | null; planStatus?: string | null; planExpiry?: string | null; nowMs?: number;
+}): PostSalesAccess {
+  if (!a.switchOn || a.pageCount <= 0) return "none";
+  if (a.isAdmin || a.hasKey) return "full";
+  const tier = String(a.plan ?? "").trim().toLowerCase();
+  const paid = (POST_SALES_TIERS as readonly string[]).includes(tier)
+    && isActivePaid({ plan: tier, planStatus: String(a.planStatus ?? ""), daysLeft: planDaysLeft(a.planExpiry, a.nowMs ?? Date.now()) });
+  return paid ? "full" : "locked";
 }
+
+// The end date the "Ends" picker sends: `days` whole days from now (1..14; anything else → 7).
+export function clampSaleDays(days: number): number {
+  const n = Math.round(Number(days));
+  return Number.isFinite(n) && n >= 1 ? Math.min(POST_SALE_MAX_DAYS, n) : POST_SALE_DEFAULT_DAYS;
+}
+export const saleEndsAt = (days: number, nowMs: number): string => new Date(nowMs + clampSaleDays(days) * 86400000).toISOString();
 
 export function postsSeen(): boolean { try { return window.localStorage.getItem(LS_POSTS_SEEN) === "1"; } catch { return true; } }
 export function markPostsSeen(): void { try { window.localStorage.setItem(LS_POSTS_SEEN, "1"); } catch { /* per-device dot only */ } }
@@ -95,10 +118,12 @@ export function postLabel(s: PostSale | undefined): string {
   return m ? (m.length > 40 ? `${m.slice(0, 40)}…` : m) : `#${s.postId.split("_").pop()}`;
 }
 // Stock left for a code on the seller's SELLING post sales (waitlist "Give" button): no stock limit → 1.
-export function postItemStock(sales: PostSale[], code: string): number {
+// saleId (sql/188: the post the waiting comment belongs to) → that sale only.
+export function postItemStock(sales: PostSale[], code: string, saleId: number | null = null): number {
   const k = code.trim().toLowerCase();
   for (const s of sales) {
     if (s.status !== "selling") continue;
+    if (saleId != null && s.id !== saleId) continue;
     const it = s.items.find((i) => i.code.trim().toLowerCase() === k);
     if (it) return it.stock == null ? 1 : Math.max(0, it.stock - it.sold);
   }
@@ -156,11 +181,13 @@ export async function loadPostWaitlistCounts(sales: PostSale[]): Promise<Map<num
   if (!isSupabaseConfigured || !supabase || !sales.length) return out;
   try {
     const u = await uid(); if (!u) return out;
-    const { data, error } = await supabase.from("fb_waitlist").select("code, comment_id").eq("user_id", u).eq("status", "waiting").eq("source", "post").limit(500);
+    // select("*"): sale_id exists only after sql/188 (naming it before would make the read fail)
+    const { data, error } = await supabase.from("fb_waitlist").select("*").eq("user_id", u).eq("status", "waiting").eq("source", "post").limit(500);
     if (error || !Array.isArray(data)) return out;
-    for (const r of data as { code?: unknown }[]) {
+    for (const r of data as { code?: unknown; sale_id?: unknown }[]) {
       const code = String(r.code ?? "").trim().toLowerCase();
-      const sale = sales.find((s) => s.status === "selling" && s.items.some((i) => i.code.trim().toLowerCase() === code));
+      const own = r.sale_id == null ? null : sales.find((s) => s.id === Number(r.sale_id));
+      const sale = own ?? (r.sale_id == null ? sales.find((s) => s.status === "selling" && s.items.some((i) => i.code.trim().toLowerCase() === code)) : undefined);
       if (sale) out.set(sale.id, (out.get(sale.id) || 0) + 1);
     }
   } catch { /* counts only */ }
@@ -180,6 +207,8 @@ export async function createPostSale(a: { pageId: string; postId: string; postMe
       const m = msg.match(/code_in_use:(.+)$/);
       if (m) return { ok: false, error: "code_in_use", code: m[1].trim() };
       if (/too_many_sales/.test(msg)) return { ok: false, error: "too_many" };
+      if (/ends_too_late/.test(msg)) return { ok: false, error: "ends_too_late" };
+      if (/ends_in_past/.test(msg)) return { ok: false, error: "ends_in_past" };
       if (/not_allowed/.test(msg)) return { ok: false, error: "not_allowed" };
       if (/duplicate key|fb_post_sales_user_id_post_id/.test(msg)) return { ok: false, error: "post_in_use" };
       return { ok: false, error: "failed" };
@@ -189,13 +218,13 @@ export async function createPostSale(a: { pageId: string; postId: string; postMe
 }
 // Waitlist "Give" for a post row (sql/137 fb_post_waitlist_give): one post order, same item lock as the
 // server claim. Returns the RPC verdict, or null on any failure.
-export async function givePostWaitlist(waitlistId: number): Promise<"ordered" | "sold_out" | "ended" | "not_found" | "dup" | null> {
+export async function givePostWaitlist(waitlistId: number): Promise<"ordered" | "sold_out" | "ended" | "not_found" | "dup" | "not_allowed" | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   try {
     const { data, error } = await supabase.rpc("fb_post_waitlist_give", { p_waitlist_id: waitlistId });
     if (error) return null;
     const v = String(data ?? "");
-    return v === "ordered" || v === "sold_out" || v === "ended" || v === "not_found" || v === "dup" ? v : null;
+    return v === "ordered" || v === "sold_out" || v === "ended" || v === "not_found" || v === "dup" || v === "not_allowed" ? v : null;
   } catch { return null; }
 }
 export async function endPostSale(id: number): Promise<boolean> {

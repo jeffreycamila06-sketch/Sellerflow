@@ -1,0 +1,96 @@
+# The new and changed tests of claude/fb-post-sales-public run against MAIN's source files (origin/main e5dadd46),
+# 2026-11-20. ✓ = passes on main, × = fails on main. fbPostSalesPublicSql.test.ts cannot load on main
+# (sql/188 and sql/189 are not there): its 21 checks are not in this list.
+# The 11 new tests that pass on main each check that something stays as before.
+
+ × fbPostSalesNoLoss.server.test.ts > 1. a failed claim never loses the order > claim answer "throw" on c2 → stop at c2, cursor kept; next minute c2 is ordered once
+ × fbPostSalesNoLoss.server.test.ts > 1. a failed claim never loses the order > claim answer "error" on c2 → stop at c2, cursor kept; next minute c2 is ordered once
+ × fbPostSalesNoLoss.server.test.ts > 1. a failed claim never loses the order > claim answer "not_allowed" on c2 → stop at c2, cursor kept; next minute c2 is ordered once
+ × fbPostSalesNoLoss.server.test.ts > 1. a failed claim never loses the order > claim answer "ended" on c2 → stop at c2, cursor kept; next minute c2 is ordered once
+ × fbPostSalesNoLoss.server.test.ts > 1. a failed claim never loses the order > claim answer "weird" on c2 → stop at c2, cursor kept; next minute c2 is ordered once
+ × fbPostSalesNoLoss.server.test.ts > 1. a failed claim never loses the order > claim answer "" on c2 → stop at c2, cursor kept; next minute c2 is ordered once
+ ✓ fbPostSalesNoLoss.server.test.ts > 1. a failed claim never loses the order > 'dup' does not stop the pass
+ × fbPostSalesNoLoss.server.test.ts > 2. a failed waitlist write never loses the waiting buyer > sold out + waitlist write throws → stop, cursor kept; next minute the row is written with the sale id
+ × fbPostSalesNoLoss.server.test.ts > 3. a failure on a later page keeps the earlier page's cursor > page 1 done (cursor saved), page 2 fails → next minute starts at page 2
+ × fbPostSalesNoLoss.server.test.ts > 4. the plan rule in the poller > seller not allowed → no Facebook call, no claim, cursor untouched, logged once; renewed → the comments left meanwhile become orders
+ ✓ fbPostSalesNoLoss.server.test.ts > 4. the plan rule in the poller > an ended (past end date) sale of a seller without the plan is still marked ended
+ × fbPostSalesNoLoss.server.test.ts > 4. the plan rule in the poller > the rule unreadable → nobody this pass (no call, cursor kept), logged
+ ✓ fbPostSalesNoLoss.server.test.ts > 4. the plan rule in the poller > no rule in the database yet (null) → every seller, as before
+ × fbPostSalesNoLoss.server.test.ts > 4. the plan rule in the poller > only the allowed sellers are read; the store is asked once per pass with each seller once
+ × fbPostSalesNoLoss.server.test.ts > 5. the "Sell on a post" picker > seller without the plan → plan_not_allowed, no Page read, no Facebook call
+ × fbPostSalesNoLoss.server.test.ts > 5. the "Sell on a post" picker > the rule unreadable → plan_check_failed
+ ✓ fbPostSalesNoLoss.server.test.ts > 5. the "Sell on a post" picker > allowed (or no rule yet) → the posts
+ × fbPostSalesNoLoss.server.test.ts > server.js wiring (post-sales block only) > the plan list comes from fb_post_sellers_allowed; missing function → null (every seller)
+ × fbPostSalesNoLoss.server.test.ts > server.js wiring (post-sales block only) > the waitlist row keeps the sale id; before sql/188 it is written without it
+ × fbPostSalesNoLoss.server.test.ts > server.js wiring (post-sales block only) > the picker route answers 403 for the plan and 503 when the rule cannot be read
+ ✓ fbPostSales.server.test.ts > matching = Auto-mode rules > code mode: the WHOLE comment is the code, case-insensitive; one piece
+ ✓ fbPostSales.server.test.ts > matching = Auto-mode rules > plus_one mode: +1 / +N (fullwidth too), capped; only the one item
+ ✓ fbPostSales.server.test.ts > matching = Auto-mode rules > the Page's own comments are ignored; a comment without `from` is not the Page
+ ✓ fbPostSales.server.test.ts > matching = Auto-mode rules > sale window
+ ✓ fbPostSales.server.test.ts > matching = Auto-mode rules > claim args carry the buyer, comment id/text and time
+ ✓ fbPostSales.server.test.ts > poller > creates orders for matching comments, skips the Page's own and non-codes, sold out → waitlist, stores the cursor
+ ✓ fbPostSales.server.test.ts > poller > uses the stored cursor so a comment is processed once
+ ✓ fbPostSales.server.test.ts > poller > switch off → no Graph call; expired sale → marked ended, no fetch
+ ✓ fbPostSales.server.test.ts > poller > rate limit → backs off that sale for 5 min; no claim; nothing thrown
+ × fbPostSales.server.test.ts > poller > a claim error stops the pass for that sale and keeps the cursor
+ ✓ fbPostSales.server.test.ts > sql/137 contract > switch seeded false; feature key added; tables + RLS select-own; no browser writes
+ ✓ fbPostSales.server.test.ts > sql/137 contract > atomic claim: row lock, unique comment_id, one per buyer per item, service role only
+ ✓ fbPostSales.server.test.ts > sql/137 contract > seller RPCs are SECURITY DEFINER (the tables have no browser write grants) with explicit auth.uid() checks
+ ✓ fbPostSales.server.test.ts > sql/137 contract > create RPC is gated: switch 'true' AND (is_admin() OR my_feature_access()->>'fb_post_sales') → else 'not_allowed'
+ ✓ fbPostSales.server.test.ts > sql/137 contract > waitlist Give (post rows): own waiting source='post' row → selling item locked FOR UPDATE → stock check → post order + sold+1 + 'given'
+ ✓ fbPostSales.server.test.ts > sql/137 contract > create RPC: own page, plus_one = one item, code unique among SELLING sales, cap 20; retention 3 months; waitlist source
+ ✓ fbPostSales.server.test.ts > sql/137 contract > server.js wires the module behind the Facebook block + the posts route
+ × fbPostSalesPublic.adapter.test.ts > createPostSale — the database's end-date answers > ends_too_late → ends_too_late
+ × fbPostSalesPublic.adapter.test.ts > createPostSale — the database's end-date answers > ends_in_past → ends_in_past
+ ✓ fbPostSalesPublic.adapter.test.ts > createPostSale — the database's end-date answers > code_in_use:+1 → code_in_use
+ ✓ fbPostSalesPublic.adapter.test.ts > createPostSale — the database's end-date answers > not_allowed → not_allowed
+ ✓ fbPostSalesPublic.adapter.test.ts > createPostSale — the database's end-date answers > too_many_sales → too_many
+ ✓ fbPostSalesPublic.adapter.test.ts > createPostSale — the database's end-date answers > boom → failed
+ ✓ fbPostSalesPublic.adapter.test.ts > createPostSale — the database's end-date answers > sends the end date it was given
+ × fbPostSalesPublic.adapter.test.ts > givePostWaitlist > 'not_allowed' comes through (the plan); unknown answers → null
+ × fbPostSalesPublic.adapter.test.ts > loadPostWaitlistCounts — per post > counts each waiting comment on ITS sale (two "+1" posts); select("*")
+ × fbPostSalesPublic.adapter.test.ts > loadPostWaitlistCounts — per post > a row of a sale that is no longer listed counts nowhere; a row without sale_id → first selling sale with the code (as before)
+ × fbPostSalesPublic.test.tsx > A. who gets the Posts side > Plus / Pro / Master, active, not past expiry → full (case and spaces ignored)
+ × fbPostSalesPublic.test.tsx > A. who gets the Posts side > Free / Basic / no plan / expired / pending / past expiry → locked
+ × fbPostSalesPublic.test.tsx > A. who gets the Posts side > admin and the 'fb_post_sales' key → full whatever the plan; switch off / no Page → none
+ × fbPostSalesPublic.test.tsx > B. Orders with Posts 🔒 > segment with a lock; tap → the popup callback, the screen stays on Live; no dot; nothing about posts loads
+ ✓ fbPostSalesPublic.test.tsx > B. Orders with Posts 🔒 > no posts and no lock → no segment (switch off / no Page = as before)
+ × fbPostSalesPublic.test.tsx > B. Orders with Posts 🔒 > RedesignApp: locked → postsLocked + the SAME contact-support popup as Pickup Status; full → the Posts side
+ × fbPostSalesPublic.test.tsx > C. the end-date picker > 7 days at first with the date; + to 14 then +  is off; − to 1 then − is off; the old free date box is gone
+ ✓ fbPostSalesPublic.test.tsx > C. the end-date picker > Start sends now + the chosen days (7 by default, 14 at most)
+ × fbPostSalesPublic.test.tsx > C. the end-date picker > the database answers 'ends_too_late' / 'ends_in_past' → their own sentence
+ × fbPostSalesPublic.test.tsx > C. the end-date picker > pure: clampSaleDays 1..14, junk → 7; saleEndsAt
+ × fbPostSalesPublic.test.tsx > C. the end-date picker > every new text is filled in all 8 languages
+ × fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > the row keeps sale_id (post rows only)
+ × fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > two "+1" posts → two groups; a row without sale_id keeps the old grouping
+ × fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > stock is the waiting comment's own post (the older post sold out, the newer has stock)
+ × fbPostSalesPublic.test.tsx > D. waitlist: each post is its own line > Orders shows each post's line with its own stock and post text
+ ✓ fbPostSales.test.tsx > Orders without a Facebook Page = exactly as before > no posts prop → no segment, no Posts body, no dot
+ × fbPostSales.test.tsx > Orders without a Facebook Page = exactly as before > gate: switch + a connected Page — ONE place (the plan rule: fbPostSalesPublic.test.tsx)
+ ✓ fbPostSales.test.tsx > Orders with the posts prop > Live | Posts segment, Live default, red dot until Posts opened once (remembered per device)
+ ✓ fbPostSales.test.tsx > Orders with the posts prop > empty state (preview B) = tile + title + one line + ONE button
+ ✓ fbPostSales.test.tsx > Orders with the posts prop > with orders: Print new (N) + My posts, one card per buyer, New/Printed pill, total
+ ✓ fbPostSales.test.tsx > Orders with the posts prop > edit draft: Save is disabled while the price is blank, '.' or 0
+ ✓ fbPostSales.test.tsx > Orders with the posts prop > Sell on a post (preview ②): one form — pick the post, mode, items table, Start selling → onCreate
+ ✓ fbPostSales.test.tsx > pure > groups per buyer, newest first; posts listed; printed only when all printed
+ ✓ fbPostSales.test.tsx > pure > print Buyer: no buyer number, Post on every line, Facebook platform, new orders only
+ ✓ fbPostSales.test.tsx > pure > sale status + counts
+ ✓ fbPostSales.test.tsx > pure > row mappers are defensive
+ ✓ fbPostSales.test.tsx > pure > waitlist: post rows group apart from live rows of the same code; Give routes to the post RPC, never the live order path
+ ✓ fbPostSales.test.tsx > pure > every rd_fps_* key is filled in all 8 languages
+ ✓ fbWaitlist.test.tsx > pure helpers > groups by code (case-insensitive), oldest first; given/skipped rows dropped
+ ✓ fbWaitlist.test.tsx > pure helpers > same-name rule
+ ✓ fbWaitlist.test.tsx > pure helpers > status is guarded
+ ✓ fbWaitlist.test.tsx > Give: the rebuilt comment through the REAL order builders > Facebook order with comment_msg_id + page meta, numbered by handle
+ ✓ fbWaitlist.test.tsx > Orders section > no prop → no section; no rows → no section
+ ✓ fbWaitlist.test.tsx > Orders section > back in stock: the oldest is next in line; Give / Skip report the row
+ ✓ fbWaitlist.test.tsx > Orders section > still sold out: nobody is next and Give is disabled
+ ✓ fbWaitlist.test.tsx > Orders section > error and note are shown
+ ✓ fbWaitlist.test.tsx > RedesignApp wiring (source contract) > gate: own switch + fbAccess.receipt + fbEnabled + Facebook world
+ ✓ fbWaitlist.test.tsx > RedesignApp wiring (source contract) > Give: sync guard BEFORE createOrder, no autoCode / productLocalId, failure keeps waiting, 'waitlist' log, no message
+ ✓ fbWaitlist.test.tsx > RedesignApp wiring (source contract) > joins the line after the DB stock check and BEFORE the sold-out message (position)
+ ✓ fbWaitlist.test.tsx > sql/92 contract > own RLS, unique per comment, status-only updates, 10-day purge, invoker join
+ ✓ fbWaitlist.test.tsx > sql/92 contract > rollback keeps old log rows (not valid), plain drops
+
+#      36 ×
+#      52 ✓
