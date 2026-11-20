@@ -1,0 +1,18 @@
+CAUGHT  193: own 'full' asked again every hour (extension only)  (PGlite proof: red, CI test: red)
+CAUGHT  193: backup keeps phone ok 6 hours (backup != extension)  (PGlite proof: red, CI test: red)
+CAUGHT  193: phone restricted copied only 5 min (rule changed)  (PGlite proof: red, CI test: red)
+CAUGHT  193: trigger on save keeps no_frozen 30 days  (PGlite proof: red, CI test: red)
+CAUGHT  193: frozen per-store gap 10 -> 5 min (timing changed)  (PGlite proof: red, CI test: red)
+CAUGHT  193: frozen ok copied up to 6 min (extension)  (PGlite proof: red, CI test: red)
+CAUGHT  193: company / not_found still copied 24 h (extension)  (PGlite proof: red, CI test: red)
+CAUGHT  193: also turns the warm-up switch off (app_settings change)  (PGlite proof: red, CI test: red)
+CAUGHT  193: re-ask of 'full' uses the 5-minute copy rule  (PGlite proof: red, CI test: red)
+CAUGHT  rollback: one character changed inside a function  (PGlite proof: red, CI test: red)
+CAUGHT  rollback: phone ok back to 5 min only  (PGlite proof: red, CI test: red)
+CAUGHT  194: store update without the 'not exported' rule  (PGlite proof: red, CI test: red)
+CAUGHT  194: also empties phone restricted  (PGlite proof: red, CI test: red)
+CAUGHT  194: store answers older than 1 minute (not 5)  (PGlite proof: red, CI test: red)
+CAUGHT  194: frozen update for sellers without the check too  (PGlite proof: red, CI test: red)
+CAUGHT  194: also empties store 'full'  (PGlite proof: red, CI test: red)
+
+16 of 16 on-purpose breaks caught
