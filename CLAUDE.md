@@ -6026,3 +6026,27 @@ not-logged-in reader). STEP 0 table of every drop point: `docs/design/shopee-dia
   production sends only user-agent + accept (a possible B factor, not changed here).
 - **Read after the deploy:** `from_others = 0` and `msgs_system = 0` while a second phone comments → B;
   `dropped_notext` / other `types` / `dupe_collide` growing → A. 15/15 on-purpose breaks (`docs/design/shopee-diag/proof/`).
+
+## 2026-11-21 — PARCEL CHECKS: NO "NO" FROM AN OLD REMEMBERED ANSWER (branch `claude/great-wright-3v8plu`, NOT merged; sql/193 + sql/194 NOT applied; no Render, no extension change)
+Jeff's rule (Nov 21): never tell a seller "no" from an old remembered answer — ask 7-11. Trigger: a 冷凍 parcel refused from a
+no_frozen of Nov 9 (30-day trust, copied 5× on save); OpenPoint accepted it by hand.
+- **The extension and the server keep no answer memory** (only retry timers, the 10-min per-store frozen gap, the working
+  E-Map address). How long an answer is re-used is decided ONLY in the database → SQL only.
+- **sql/193 (+ rollback):** copy of a remembered answer onto a waiting parcel only when **≤ 5 min** old — store open / full /
+  company / not_found, phone ok, frozen ok / no_frozen (pending read AND the trigger on save). **Phone restricted UNCHANGED**
+  (until its date). A waiting parcel's own "full" is re-asked every **15 min** (Jeff's decision A; was 1 h): the shared
+  `v_store_full_ttl` is split into `v_store_full_ttl` (copy, 5 min) + `v_store_recheck_ttl` (re-ask, 15 min). Own no_frozen
+  re-asked after 5 min (= every 10 min, the per-store gap). Five functions, each = the live text with only those lines changed:
+  `admin_parcel_checks_pending` + `pc711_backup_pending_rows`, `admin_parcel_frozen_pending` + `pc711_backup_frozen_pending_rows`,
+  `parcel_scans_frozen_instant`. A guard refuses to run (nothing changed) if any of the five is not the expected text.
+  NOT changed: 10-min frozen gap, retries, give-ups, night rules, re-queue, lease, 24-h late check, `admin_frozen_warmup_next`.
+- **⚠️ If one of the five functions is changed later, change its pair too** (extension ↔ backup), and refresh the live md5s
+  in `scripts/sql193-behaviour.mjs` (`LIVE`).
+- **sql/194 (one-time, after 193, on Jeff's go):** empties a "no" older than 5 min on waiting parcels of sellers with the check
+  (store company / not_found → the existing Recheck trigger also drops that store's memory; frozen no_frozen → status only,
+  check time kept). Rule only, no ids. Preview on production Nov 21: **6** (2 company · 3 not_found · 1 no_frozen).
+- **Warm-up:** chat-Claude sets `frozen_warmup_enabled` = 'false' after sql/193 (with 5-min memory it no longer helps).
+- **Proof:** `scripts/sql193-behaviour.mjs` (PGlite, 219 checks: live md5s of 18 functions, only the listed lines change,
+  rest byte for byte, old-vs-new table, backup = extension, guard, rollback = live, sql/194's six rows) ·
+  `parcelFreshMemorySql.test.ts` (CI) · `docs/design/parcel-fresh-memory/` (README, outputs, breaks).
+- **Order:** sql/193 → warm-up switch off → sql/194.

@@ -1,0 +1,43 @@
+
+What a waiting parcel gets (live rules vs after sql/193):
+  store open 4 min                                           live: copied    after 193: copied
+  store open 6 min                                           live: copied    after 193: asked
+  store open 11 min                                          live: asked     after 193: asked
+  store full 4 min                                           live: copied    after 193: copied
+  store full 6 min                                           live: copied    after 193: asked
+  store full 61 min                                          live: asked     after 193: asked
+  store company 4 min                                        live: copied    after 193: copied
+  store company 6 min                                        live: copied    after 193: asked
+  store company 25 h                                         live: asked     after 193: asked
+  store not_found 4 min                                      live: copied    after 193: copied
+  store not_found 6 min                                      live: copied    after 193: asked
+  store not_found 25 h                                       live: asked     after 193: asked
+  phone ok 4 min                                             live: copied    after 193: copied
+  phone ok 6 min                                             live: copied    after 193: asked
+  phone ok 7 h                                               live: asked     after 193: asked
+  phone restricted 30 days old, until in 10 days             live: copied    after 193: copied
+  phone restricted 30 days old, until yesterday              live: asked     after 193: asked
+  own full 14 min, store last asked 14 min                   live: kept      after 193: kept
+  own full 16 min, store last asked 16 min                   live: kept      after 193: re-asked
+  own full 61 min, store last asked 61 min                   live: re-asked  after 193: re-asked
+  own full 16 min, store asked 10 min ago (full)             live: kept      after 193: kept
+  own full 16 min, store asked 3 min ago (open)              live: now open  after 193: now open
+  frozen ok 4 min                                            live: copied    after 193: copied
+  frozen ok 6 min                                            live: copied    after 193: waits (10-min gap)
+  frozen ok 61 min                                           live: asked     after 193: asked
+  frozen no_frozen 4 min                                     live: copied    after 193: copied
+  frozen no_frozen 6 min                                     live: copied    after 193: waits (10-min gap)
+  frozen no_frozen 11 days (the Nov 9 case)                  live: copied    after 193: asked
+  frozen, nothing remembered                                 live: asked     after 193: asked
+  own no_frozen 6 min, store last asked 11 min               live: kept      after 193: re-asked
+  own no_frozen 4 min, store last asked 11 min               live: kept      after 193: kept
+  save: frozen ok 4 min                                      live: ok        after 193: ok
+  save: frozen ok 6 min                                      live: ok        after 193: empty
+  save: frozen ok 61 min                                     live: empty     after 193: empty
+  save: frozen no_frozen 4 min                               live: no_frozen after 193: no_frozen
+  save: frozen no_frozen 6 min                               live: no_frozen after 193: empty
+  save: frozen no_frozen 11 days (the Nov 9 case)            live: no_frozen after 193: empty
+  save: store changed to one answered no_frozen 6 min ago    live: no_frozen after 193: empty
+  save: store changed to one answered no_frozen 4 min ago    live: no_frozen after 193: no_frozen
+
+sql193-behaviour: 219 passed, 0 failed
