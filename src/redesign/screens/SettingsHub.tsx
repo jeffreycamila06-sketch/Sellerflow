@@ -8,6 +8,7 @@ import SoonBadge from "../components/SoonBadge";
 import { telegramDraftUrl } from "../../lib/telegram";
 import ParcelStoreIcon from "../components/ParcelStoreIcon";
 import HelpBot from "../components/HelpBot";
+import { BlacklistIcon } from "../components/BlacklistSheet";
 
 const tile: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "15px 13px", border: "1px solid var(--border)", borderRadius: 15, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
 const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
@@ -78,7 +79,7 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false,
+  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false, onBlacklist, blacklistNew = false,
 }: {
   onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
   onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
@@ -106,6 +107,10 @@ export default function SettingsHub({
   // Parcel Scan FamilyMart — passed ONLY when fm_scan_enabled (or the fm_pickup preview) AND the
   // 7-11 manual Parcel Scan rule allow it. Absent → the FamilyMart tile stays "Soon".
   onFmScan?: () => void;
+  // BLACKLIST (sql/190) — passed ONLY outside Taiwan when the switch is on, for an admin or a tester.
+  // blacklistNew = the "NEW" badge until the seller opens it once on this phone. Absent → no tile.
+  onBlacklist?: () => void;
+  blacklistNew?: boolean;
 }) {
   const t = useT();
   // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
@@ -144,6 +149,14 @@ export default function SettingsHub({
           )}
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
+          {onBlacklist && (
+            <button onClick={onBlacklist} style={{ ...tile, position: "relative" }} data-testid="tile-blacklist">
+              <span style={chip("danger")}><BlacklistIcon /></span>
+              <span style={{ ...tileLabel, minWidth: 0 }}>{t.rd_bl_title}</span>
+              {/* On the tile's top-right corner, so it never pushes the name out on a 360 px phone. */}
+              {blacklistNew && <span data-testid="tile-blacklist-new" style={{ position: "absolute", top: -7, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: "var(--danger)", padding: "3px 7px", borderRadius: 6, lineHeight: 1.2, boxShadow: "0 2px 6px rgba(225,29,72,.35)" }}>{t.rd_bl_new}</span>}
+            </button>
+          )}
           {/* Parcel tiles right after General / Customers: when the 7-11 + FamilyMart pair takes a
               full row, every single tile after it still pairs up (no empty half-row). */}
           {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED

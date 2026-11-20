@@ -21,6 +21,7 @@ import InviteFriends from "./screens/InviteFriends";
 import { claimSignupCode, takePendingInvite } from "./adapters/invite";
 import GeneralSettings from "./screens/GeneralSettings";
 import Customers from "./screens/Customers";
+import Blacklist from "./screens/Blacklist";
 import Subscription from "./screens/Subscription";
 import Support from "./screens/Support";
 import Admin, { AdminPanel, type AdminPanelKind } from "./screens/Admin";
@@ -61,6 +62,8 @@ import { fbPreviewEnabled } from "./adapters/fbPreview";
 import { useFbAccess, fbUiGates } from "./adapters/fbAccess";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
+import BlacklistSheet from "./components/BlacklistSheet";
+import { blacklistSeen, blacklistVisible, blMapKey, markBlacklistSeen, useBlacklist, type BlEntry } from "./adapters/blacklist";
 import ReceiptFormat from "./screens/ReceiptFormat";
 import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
 import { useBuyerTags } from "./adapters/buyerTag";
@@ -186,10 +189,10 @@ type Screen =
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
   | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts"
-  | "website" | "websitepay" | "invite";
+  | "website" | "websitepay" | "invite" | "blacklist";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite", "blacklist"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -934,6 +937,8 @@ export default function RedesignApp() {
   const scanQrLookupOn = scanQrLookupVisible({ switchOn: featureSw.scanQrLookup, previewKey: hasFeature("scan_qr_lookup") });
   // Parcel Scan FamilyMart: store # check (sql/155). Switch OR this login on the list; off = the screen as before.
   const fmStoreCheckOn = fmStoreCheckVisible({ switchOn: featureSw.fmStoreCheck, previewKey: hasFeature("fm_store_check") });
+  // BLACKLIST (sql/190): never Taiwan; outside Taiwan = the switch (every plan) OR an admin OR a tester login.
+  const blacklistOn = blacklistVisible({ country: market.market.country, adminUnion: market.adminUnion, switchOn: featureSw.blacklist, isAdmin, hasKey: hasFeature("blacklist") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
   const helpBotIosOn = useHelpBotSwitch(authed && isIOS() ? (authUserId || "") : "", "support_ai_ios");
@@ -1491,6 +1496,17 @@ export default function RedesignApp() {
   // OLD / NEW buyer tag (no gate): one RPC at live start + every 10 min (adapters/buyerTag.ts).
   const buyerTags = useBuyerTags(ttEff || fbEff || shopeeEff || igEff, featureSw.fbIdentityV2);
   const [buyerAlertHandle, setBuyerAlertHandle] = useState<string | null>(null);
+  // BLACKLIST — the seller's own list: read when a TikTok / Facebook live starts, when the screen opens and
+  // after an add / undo / remove. No timer. Rows only READ the map (no order / print / buyer-number path).
+  const blacklist = useBlacklist(blacklistOn, ttEff || fbEff, authUserId || "");
+  const [blacklistTap, setBlacklistTap] = useState<BlEntry | null>(null);
+  const [blacklistNewSeen, setBlacklistNewSeen] = useState(blacklistSeen);
+  const openBlacklist = () => {
+    markBlacklistSeen();
+    setBlacklistNewSeen(true);
+    setScreen("blacklist");
+    void blacklist.reload();
+  };
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never
   // modified). Connected → today's behavior ("Session continues …").
@@ -2937,6 +2953,8 @@ export default function RedesignApp() {
               buyerTags={buyerTags}
               fbPolish={featureSw.fbPolishV2}
               onBuyerTap={buyerAlert.views ? setBuyerAlertHandle : undefined}
+              blacklist={blacklist.map}
+              onBlacklistTap={blacklist.map ? setBlacklistTap : undefined}
               /* "Same price for all items" — persistent chip while ON; ✕ = same as turning it
                  OFF in Settings: instant off + toast, the price stays remembered. */
               samePrice={samePriceCfg.active}
@@ -2952,6 +2970,9 @@ export default function RedesignApp() {
               overrides={buyerAlert.overrides} cur={cur}
               onForgive={buyerAlert.setForgiven} onClose={() => setBuyerAlertHandle(null)}
             />
+          )}
+          {screen === "dashboard" && blacklistTap && blacklist.map?.get(blMapKey(blacklistTap.platform, blacklistTap.key)) && (
+            <BlacklistSheet entry={blacklist.map.get(blMapKey(blacklistTap.platform, blacklistTap.key))!} onClose={() => setBlacklistTap(null)} />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => { if (source === "post") return postItemStock(postSales?.sales ?? [], code, saleId ?? null); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote, postLabel: (sid: number) => postLabel(postSales?.sales.find((x) => x.id === sid)), postGiveOff: postAccess !== "full" } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
@@ -2998,6 +3019,8 @@ export default function RedesignApp() {
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
               onWebsite={sellerWebsiteOn ? () => setScreen("website") : undefined}
               websiteTeaser={websiteTeaserOn}
+              onBlacklist={blacklistOn ? openBlacklist : undefined}
+              blacklistNew={blacklistOn && !blacklistNewSeen}
               helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview") || helpBotPaid(auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry), isAdmin, ios, helpBotIosOn)}
             />
           )}
@@ -3069,6 +3092,10 @@ export default function RedesignApp() {
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
+          {screen === "blacklist" && blacklistOn && (
+            <Blacklist onBack={() => goBack()} rows={blacklist.rows} error={blacklist.error} onReload={() => void blacklist.reload()}
+              onAdd={blacklist.add} onUndo={blacklist.undo} onRemove={blacklist.remove} />
+          )}
           {screen === "customers" && <Customers onBack={() => goBack()} cur={cur} customers={customersData.customers} state={customersData.state} onExport={customersData.state === "live" ? exportCustomers : undefined} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}
           {screen === "subscription" && !ios && <Subscription onBack={() => goBack()} cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onBack={() => goBack()} onLegal={() => setScreen("legal")} />}

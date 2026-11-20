@@ -22,6 +22,7 @@ import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
+import { blacklistChipText, blacklistForComment, type BlEntry, type BlMap } from "../adapters/blacklist";
 import {
   livePickerView, LIVE_PICKER_MOTION, LIVE_PICKER_ONCE_ITERATIONS, LIVE_PICKER_TIMING, PICKER_ORDER, type PickerPlatform,
 } from "../adapters/livePicker";
@@ -201,6 +202,7 @@ export default function Dashboard({
   basketCounts,
   minerRisk,
   buyerAlerts, onBuyerTap, buyerTags, fbPolish = false,
+  blacklist, onBlacklistTap,
 }: {
   comments: Comment[]; cur: string;
   // 🛒 per-buyer order count for the current session window (key: "handle platform").
@@ -216,6 +218,10 @@ export default function Dashboard({
   buyerTags?: BuyerTagMap | null;
   fbPolish?: boolean; // fb_polish_v2: the buyer-tag pill readable in both themes
   onBuyerTap?: (handle: string) => void;
+  // BLACKLIST (sql/190, outside Taiwan) — the seller's own list; undefined for everyone else → rows
+  // render exactly as before. O(1) lookup per row; tapping the name opens the dates sheet. Alert only.
+  blacklist?: BlMap;
+  onBlacklistTap?: (entry: BlEntry) => void;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
   announcement?: Announcement | null; annDismissedId?: string; onDismissAnn?: (id: string) => void;
@@ -993,6 +999,7 @@ export default function Dashboard({
             const ba = buyerAlerts?.get(baKey);
             const baRed = !!ba?.red, baNear = ba?.near ?? null;
             const bt = buyerTagFor(buyerTags, c.handle, c.name, c.platform); // O(1); null → no pill
+            const bl = blacklist ? blacklistForComment(blacklist, c) : null; // O(1); null → row unchanged
             return (
               <Fragment key={c.id}>
               {firstRestored && (
@@ -1006,13 +1013,21 @@ export default function Dashboard({
                   ...(risk === "risky" ? { background: "var(--danger-soft)", boxShadow: "inset 3px 0 0 var(--risk-risky-bg)" } : null),
                   // Buyer Alert tint (same language): red = returns, amber = parcel near return.
                   ...(baRed ? { background: "var(--danger-soft)", boxShadow: "inset 3px 0 0 var(--risk-risky-bg)" }
-                    : baNear && risk !== "risky" ? { background: "var(--warn-soft)", boxShadow: "inset 3px 0 0 var(--risk-watch-bg)" } : null) }}
-                  {...(ba ? { "data-buyer-alert": baRed ? "red" : baNear ? "amber" : "none" } : null)}>
+                    : baNear && risk !== "risky" ? { background: "var(--warn-soft)", boxShadow: "inset 3px 0 0 var(--risk-watch-bg)" } : null),
+                  // Blacklist: the same red tint (alert only).
+                  ...(bl ? { background: "var(--danger-soft)", boxShadow: "inset 3px 0 0 var(--risk-risky-bg)" } : null) }}
+                  {...(ba ? { "data-buyer-alert": baRed ? "red" : baNear ? "amber" : "none" } : null)}
+                  {...(bl ? { "data-blacklist": "1" } : null)}>
                 <CommentAvatar name={c.name} avatar={c.avatar} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     {ba && onBuyerTap ? (
                       <button onClick={() => onBuyerTap(baKey)} title={t.rd_ba_tap_title} data-testid="ba-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", lineHeight: "inherit", textDecoration: "underline dotted", textUnderlineOffset: 3 }}>{c.name}</button>
+                    ) : bl && onBlacklistTap ? (
+                      <button onClick={() => onBlacklistTap(bl)} title={t.rd_bl_tap_title} data-testid="bl-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", lineHeight: "inherit", textDecoration: "underline dotted", textUnderlineOffset: 3,
+                        // a 44 px tap area that moves nothing: the padding is taken back by the negative margin; it grows
+                        // downward over the comment text / chip (not up into the row above, where the 1-Click buttons are).
+                        padding: "6px 0 23px", margin: "-6px 0 -23px", minWidth: 44, position: "relative", zIndex: 1 }}>{c.name}</button>
                     ) : (
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     )}
@@ -1040,6 +1055,12 @@ export default function Dashboard({
                       </span>
                     )}
                   </div>
+                  {/* Blacklist chip — on its own line under the comment (alert only; never shown to viewers). */}
+                  {bl && (
+                    <div data-testid="bl-chip-line" style={{ marginTop: 5 }}>
+                      <span data-testid="bl-chip" aria-label={t.rd_bl_chip_aria} style={{ ...RISK_CHIP.risky, fontSize: 10.5, letterSpacing: ".02em", padding: "3px 7px", borderRadius: 6, lineHeight: 1.25, maxWidth: "100%", whiteSpace: "normal", overflowWrap: "anywhere" }}>⛔ {blacklistChipText(bl, t)}</span>
+                    </div>
+                  )}
                   {baNear && (
                     <div data-testid="ba-near-line" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--warn)", marginTop: 3, lineHeight: 1.3 }}>
                       {tpl(t.rd_ba_near_line, { store: baNear.store, n: baNear.days })}
