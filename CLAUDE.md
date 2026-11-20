@@ -5968,3 +5968,17 @@ print or the iPhone opening the photo.
 - ⚠️ `package.json` / lock change (zxing-wasm) → the nightly Render deploy treats them as server files: one server
   restart in the next night window after the merge (if the deploy secret is saved). The server does not use it.
 - **Order:** merge (Vercel) → sql/192. No phone app build.
+
+## 2026-11-20 — BLACKLIST REMOVE SHEET ABOVE THE BOTTOM NAV (branch `claude/great-wright-3v8plu`, NOT merged; web only, no SQL, no Render)
+- **Bug:** the "Remove … from your blacklist?" sheet (`bl-remove-sheet`) was drawn inside the Blacklist screen
+  (`.sfl-scroll.sfl-anim-screen` stacking context) → on a phone the bottom nav covered Cancel / Remove (a tap hit
+  the nav). Laptop was fine.
+- **Fix (`screens/Blacklist.tsx`):** `createPortal` into `[data-redesign]` || `document.body` (the BlacklistSheet /
+  ParcelScan confirm pattern), zIndex 1300 kept, bottom padding `calc(18px + env(safe-area-inset-bottom))` kept;
+  panel `maxHeight: 80vh` flex column — text in `bl-remove-body` (scrolls), buttons row `flexShrink: 0`. Texts,
+  `confirmRemove()`, busy / error states, tap-outside and the centered laptop dialog unchanged.
+- 🔑 **PATTERN:** any fixed overlay drawn inside a screen sits under the bottom nav — draw sheets / dialogs in a portal
+  into `[data-redesign]` (the tokens live there).
+- **Proof:** `Blacklist.test.tsx` "the Remove sheet is drawn outside the screen" (3 tests fail on main's screen);
+  `docs/design/blacklist-remove-sheet/` (real app, before / after at 390×844, 412×915, 1280×800 + a 390×240 stress,
+  a tap at each button's centre). Preview rows: `src/dev/fakeSupabase.ts` `?bl=1` (preview-only, never shipped).
