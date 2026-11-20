@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 
-const Q = vi.hoisted(() => ({ decode: vi.fn(async (_f: File): Promise<string | null> => null) }));
-vi.mock("../../adapters/qrDecode", () => ({ decodeQrFromFile: (f: File) => Q.decode(f) }));
+const Q = vi.hoisted(() => ({ decode: vi.fn(async (_f: File): Promise<string | null | string[]> => null) }));
+vi.mock("../../adapters/qrDecode", async () => (await import("./qrReaderMock")).qrReaderModule((f: File) => Q.decode(f)));
 
 import Blacklist from "../Blacklist";
 import type { BlAddResult, BlRow } from "../../adapters/blacklist";
@@ -135,6 +135,15 @@ describe("scanning the sticker QR", () => {
     await pickFile();
     expect(p.onAdd).not.toHaveBeenCalled();
     expect(screen.getByTestId("bl-noqr-found").textContent).toContain("No QR found");
+  });
+  it("2 stickers in the photo → '2 stickers in the photo — show only one', nothing saved (never a guess)", async () => {
+    Q.decode.mockResolvedValue(["https://tiktok.com/@jhun.belle", "https://tiktok.com/@maria_live"]);
+    const p = mount();
+    fireEvent.click(screen.getByTestId("bl-reason-return"));
+    await pickFile();
+    expect(p.onAdd).not.toHaveBeenCalled();
+    expect(screen.getByTestId("bl-qr-many").textContent).toContain("2 stickers in the photo — show only one");
+    expect(screen.queryByTestId("bl-noqr-found")).toBeNull();
   });
 });
 

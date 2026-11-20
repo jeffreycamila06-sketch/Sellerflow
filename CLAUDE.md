@@ -5935,3 +5935,36 @@ Per-seller list of buyers who did not check out or returned an item; on the live
 - **Guide:** section `blacklist` in sfl-guide.md + 116b; **sql/191** = that ONE row (+ rollback deletes it).
 - **Order:** sql/190 (switch row 'false') → merge (Vercel) → tester logins in `feature_access_emails` → switch 'true'
   → sql/191 (guide) when every seller outside Taiwan should see it. Pictures + breaks: `docs/design/blacklist/built/`.
+
+## 2026-11-20 — SCAN QR ON IPHONE: 2+ STICKERS / CURVED → STRONGER READER + "2 stickers" (branch `claude/qr-read-iphone`, NOT merged; sql/192 NOT applied; web only)
+**Cause** (chat-Claude on the owner's iPhone photos, confirmed with generated photos): iPhone has no
+`BarcodeDetector` → main used **jsQR** only, and jsQR (a) mixes the corner squares of 2–3 stickers in one photo
+→ reads nothing or ONE of them (a guess), (b) gives up on a sticker curved over the fingers. Not the photo size,
+print or the iPhone opening the photo.
+- **`adapters/qrDecode.ts` `readQrFromFile(file)`** → `{kind:"one",text} | {kind:"many",count} | {kind:"none",reason}`
+  + `diag`. ONE function for 7-11 Parcel Scan, FamilyMart Parcel Scan, Blacklist (`decodeQrFromFile` kept: text or
+  null). Order: the phone's own reader (BarcodeDetector, every code) → **zxing-wasm 3.1.6** (MIT; ZXing C++ =
+  Apache-2.0; returns every QR) → jsQR only if the WebAssembly can't load (10 s). Passes: whole photo ≤ 2400 px,
+  then overlapping parts drawn from the photo (halves, thirds, quadrants — `TILE_LEVELS`), stop at the first pass
+  with a code. **2 different codes → "many"** (never a guess); in the jsQR fallback a single hit is checked against
+  the remaining parts first. Canvases ≤ 2400 px long edge, freed after use (iPhone canvas limit ~16.7 MP).
+- **WebAssembly from our own build** (`adapters/qrWasm.ts`, Vite `?url` → `dist/assets/zxing_reader-*.wasm`, never a
+  CDN): 947 KB (410 KB compressed) + 38 KB code, loaded only on the Scan tap (`warmQrReader()`, only without a
+  built-in reader) — not in the main bundle. Tests replace `qrWasm` with the package's bytes (`vi.mock("../qrWasm")`).
+- **Screens:** "many" → `rd_qr_many` "{n} stickers in the photo — show only one" (8 langs), nothing filled/saved;
+  Scan buttons call `warmQrReader()` before opening the picker. Screen tests fake the reader through
+  `screens/__tests__/qrReaderMock.ts` (a list of 2+ texts = "many").
+- **Why "No QR found":** one PostHog event `qr_scan` per scan (result, reason `image_unreadable|canvas_failed|
+  decoder_unavailable|no_code`, size, file type, reader, pass times). **Never the QR text or a name** (test-pinned).
+- **Proof:** `qrRead.photos.test.ts` (REAL stickers from the app's sticker code in 12 MP / 48 MP photos; main's
+  frozen reader `fixtures/qrDecode.main.ts` vs the new one), `qrRead.paths.test.ts`, screen tests,
+  `docs/design/qr-read-iphone/` (real screens + real JPEGs on branch vs main, pictures 360/390/430/1280 + 8 langs,
+  real-browser speed, on-purpose breaks). Speed (desktop browser, iPhone path): 1 sticker 0.2 s (12 MP) / 0.5 s
+  (48 MP); 2–3 stickers 0.2–0.45 s; no QR 1.5–1.6 s.
+- **Limits:** a QR bent > ~50° away from the camera or a sticker < ~5 % of a 48 MP photo still reads nothing.
+  Not run on a real iPhone (none here).
+- **Guide:** Parcel Scan + Blacklist sections (one-sticker line), 116b regenerated; **sql/192** = the parcel-scan row
+  (+ rollback = the live row, md5 checked 2026-11-20); sql/191 (not applied) carries the Blacklist line.
+- ⚠️ `package.json` / lock change (zxing-wasm) → the nightly Render deploy treats them as server files: one server
+  restart in the next night window after the merge (if the deploy secret is saved). The server does not use it.
+- **Order:** merge (Vercel) → sql/192. No phone app build.

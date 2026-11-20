@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>QR reader speed</title>
+<!-- Picture harness only (nothing here ships). Times the app's REAL reader and main's reader (frozen copy)
+     on photos picked into the file box. Served by harness/vite.config.mjs (repo root). -->
+<input type="file" id="f" multiple>
+<script type="module">
+import { readQrFromFile, warmQrReader } from "/src/redesign/adapters/qrDecode.ts";
+import { decodeQrFromFile as mainDecode } from "/src/redesign/adapters/__tests__/fixtures/qrDecode.main.ts";
+window.__run = async (which) => {
+  const out = [];
+  for (const f of document.getElementById("f").files) {
+    const t = performance.now();
+    if (which === "main") { const r = await mainDecode(f); out.push({ photo: f.name, main: r ? "QR read" : "No QR found", ms: Math.round(performance.now() - t) }); continue; }
+    const r = await readQrFromFile(f);
+    out.push({ photo: f.name, result: r.kind === "one" ? "one QR" : r.kind === "many" ? `${r.count} stickers` : `none (${r.reason})`, ms: Math.round(performance.now() - t),
+      passes: r.diag.passes.map((p) => `${p.pass} ${p.ms}ms found ${p.found}`).join(" · "), size: `${r.diag.imgW}×${r.diag.imgH}` });
+  }
+  return out;
+};
+window.__warm = () => warmQrReader();
+window.__ready = true;
+</script>

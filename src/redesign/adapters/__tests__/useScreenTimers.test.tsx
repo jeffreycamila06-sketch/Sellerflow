@@ -175,8 +175,8 @@ describe("the screens that use it", () => {
       expect(bare, f).toEqual([]);
     }
   });
-  it("the number of timers moved to it, per file (16 in all)", () => {
+  it("the number of timers moved to it, per file (16 in all, + 1 for the Scan QR '2 stickers' toast of 2026-11-20)", () => {
     const count = (f: string) => (codeOf(f).match(/\blater\(/g) || []).length;
-    expect(SCREENS.map(count)).toEqual([2, 4, 1, 1, 5, 1, 2]);
+    expect(SCREENS.map(count)).toEqual([2, 4, 1, 1, 6, 1, 2]);
   });
 });

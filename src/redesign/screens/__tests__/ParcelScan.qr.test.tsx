@@ -6,10 +6,11 @@ import { render, fireEvent, waitFor } from "@testing-library/react";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
 import { TProvider } from "../../i18n";
 
-const { saveParcelScan, loadRows, decodeQrFromFile } = vi.hoisted(() => ({
+const { saveParcelScan, loadRows, decodeQrFromFile, warmQrReader } = vi.hoisted(() => ({
   saveParcelScan: vi.fn(async () => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
   loadRows: { current: [] as ParcelScanRow[] },
-  decodeQrFromFile: vi.fn(async () => null as string | null),
+  decodeQrFromFile: vi.fn(async (_f?: File) => null as string | null | string[]),
+  warmQrReader: vi.fn(),
 }));
 vi.mock("../../adapters/parcelScan", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../adapters/parcelScan")>();
@@ -23,7 +24,7 @@ vi.mock("../../adapters/parcelScan", async (importOriginal) => {
     getCreditBalance: vi.fn(async () => ({ ok: true, balance: 99 })),
   };
 });
-vi.mock("../../adapters/qrDecode", () => ({ decodeQrFromFile }));
+vi.mock("../../adapters/qrDecode", async () => (await import("./qrReaderMock")).qrReaderModule((f: File) => decodeQrFromFile(f), () => warmQrReader()));
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
 
 import ParcelScan from "../ParcelScan";
@@ -95,5 +96,22 @@ describe("Parcel Scan — Scan QR → auto-fill @username", () => {
     pickQr(r);
     await waitFor(() => expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("buyer.99"));
     expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("2 stickers in the photo → '2 stickers in the photo — show only one'; the field is NOT filled (never a guess)", async () => {
+    decodeQrFromFile.mockResolvedValue(["https://tiktok.com/@jhun.belle", "https://tiktok.com/@maria_live"]);
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    pickQr(r);
+    await waitFor(() => expect(r.getByTestId("ps-toast").textContent).toBe("2 stickers in the photo — show only one"));
+    expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("");
+  });
+
+  it("tapping Scan QR starts loading the reader (then opens the photo picker)", async () => {
+    warmQrReader.mockClear();
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fireEvent.click(r.getByTestId("ps-scan-qr"));
+    expect(warmQrReader).toHaveBeenCalledTimes(1);
   });
 });

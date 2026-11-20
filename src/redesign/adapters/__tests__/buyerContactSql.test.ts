@@ -84,7 +84,8 @@ describe("the docs the plan asks for", () => {
     expect(read("docs/plans/tiktok-api.md")).toContain("keeping every key the live function has — `'buyer_contact'` included");
     expect(read("public/privacy/index.html")).toContain("including a buyer contact (phone number or messaging ID) you record for a parcel");
     const guide = read("docs/support/sfl-guide.md");
-    expect(guide).toContain("## parcel-scan — Parcel Scan (7-11) and Customer Details\nLast checked: 2026-11-12");
+    // bumped on 2026-11-12 or later (the Scan QR "show only one sticker" line bumped it again on 2026-11-20)
+    expect(guide.match(/## parcel-scan — Parcel Scan \(7-11\) and Customer Details\nLast checked: (\d{4}-\d{2}-\d{2})/)?.[1] >= "2026-11-12").toBe(true);
     // bumped on 2026-11-14 or later (the Pickup Status check-flow change bumped it again on 2026-11-17)
     expect(guide.match(/## pickup-status — Pickup Status\nLast checked: (\d{4}-\d{2}-\d{2})/)?.[1] >= "2026-11-14").toBe(true);
     expect(guide).toContain("**Buyer contact** (Plus / Pro / Master)");

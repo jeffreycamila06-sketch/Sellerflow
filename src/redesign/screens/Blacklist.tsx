@@ -8,7 +8,7 @@ import { headerBar, headerTitle } from "../ui";
 import { HeaderWithBack } from "../components/BackButton";
 import { tpl, useT } from "../i18n";
 import { useLang } from "../i18n/langContext";
-import { decodeQrFromFile } from "../adapters/qrDecode";
+import { readQrFromFile, warmQrReader } from "../adapters/qrDecode";
 import {
   blacklistChipText, blacklistHandleFromQr, blacklistInputProblem, blacklistLabel, displayBuyer, filterBlacklist, formatBlacklistDay, groupBlacklist,
   type BlAddResult, type BlEntry, type BlPlatform, type BlReason, type BlRow,
@@ -36,7 +36,7 @@ type Note =
   | { kind: "added"; id: string; buyer: string; reason: BlReason }
   | { kind: "already"; buyer: string; reason: BlReason }
   | { kind: "undone"; buyer: string }
-  | { kind: "noqr" } | { kind: "noqrfound" } | { kind: "err" };
+  | { kind: "noqr" } | { kind: "noqrfound" } | { kind: "many"; count: number } | { kind: "err" };
 
 function ReasonButton({ on, text, icon, onClick, testid }: { on: boolean; text: string; icon: ReactNode; onClick: () => void; testid: string }) {
   return (
@@ -101,11 +101,12 @@ export default function Blacklist({
     if (fileRef.current) fileRef.current.value = ""; // the same photo can be picked again
     if (!f || !reason) return;
     setReading(true); setNote(null);
-    const payload = await decodeQrFromFile(f);
+    const read = await readQrFromFile(f);
     if (!alive.current) return;
     setReading(false);
-    if (payload == null) { setNote({ kind: "noqrfound" }); return; }
-    const handle = blacklistHandleFromQr(payload);
+    if (read.kind === "many") { setNote({ kind: "many", count: read.count }); return; } // 2+ stickers: never a guess
+    if (read.kind === "none") { setNote({ kind: "noqrfound" }); return; }
+    const handle = blacklistHandleFromQr(read.text);
     if (!handle) { setNote({ kind: "noqr" }); return; }
     await save("tiktok", handle);
   };
@@ -138,7 +139,7 @@ export default function Blacklist({
         <div style={label}>{t.rd_bl_step2}</div>
         {!on && <div data-testid="bl-pick-first" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-dim)", margin: "-2px 2px 10px" }}>{t.rd_bl_pick_first}</div>}
         <input ref={fileRef} type="file" accept="image/*" hidden data-testid="bl-file" onChange={(e) => void onScanFile(e.target.files)} />
-        <button type="button" disabled={!on || reading || busy} onClick={() => fileRef.current?.click()} data-testid="bl-scan"
+        <button type="button" disabled={!on || reading || busy} onClick={() => { warmQrReader(); fileRef.current?.click(); }} data-testid="bl-scan"
           style={{ ...btnPrimary, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: reading ? 0.75 : 1, cursor: on ? "pointer" : "default" }}>
           {camIcon}{reading ? t.rd_bl_reading : wide ? t.rd_bl_upload : t.rd_bl_scan}
         </button>
@@ -175,6 +176,7 @@ export default function Blacklist({
       {note?.kind === "undone" && <NoteBox tone="ok" testid="bl-undone"><span style={{ overflowWrap: "anywhere" }}>↩ {tpl(t.rd_bl_undone, { buyer: note.buyer })}</span></NoteBox>}
       {note?.kind === "noqr" && <NoteBox tone="bad" testid="bl-noqr"><span><b style={{ display: "block" }}>✕ {t.rd_bl_no_qr}</b><span style={{ fontWeight: 600 }}>{t.rd_bl_no_qr_sub}</span></span></NoteBox>}
       {note?.kind === "noqrfound" && <NoteBox tone="bad" testid="bl-noqr-found"><span>✕ {t.rd_bl_no_qr_found}</span></NoteBox>}
+      {note?.kind === "many" && <NoteBox tone="bad" testid="bl-qr-many"><span>✕ {tpl(t.rd_qr_many, { n: String(note.count) })}</span></NoteBox>}
       {note?.kind === "err" && <NoteBox tone="bad" testid="bl-err"><span>✕ {t.rd_bl_save_err}</span></NoteBox>}
     </div>
   );

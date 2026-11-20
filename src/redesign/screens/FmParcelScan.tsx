@@ -12,7 +12,7 @@ import { HeaderWithBack } from "../components/BackButton";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { isAndroid } from "../adapters/platform";
-import { decodeQrFromFile } from "../adapters/qrDecode";
+import { readQrFromFile, warmQrReader } from "../adapters/qrDecode";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import { validHandle, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import {
@@ -254,12 +254,13 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     if (!file) return;
     setQrBusy(true);
     try {
-      const decoded = await decodeQrFromFile(file);
-      const handle = decoded ? handleFromQrPayload(decoded) : null;
+      const read = await readQrFromFile(file);
+      const handle = read.kind === "one" ? handleFromQrPayload(read.text) : null;
       if (handle) {
         F({ username: handle.slice(0, 50) }); setNoHandle(false); if (contactOn) setPlatform("tiktok"); flash(t.rd_ps2_qr_filled);
         if (lookupOn && !editing) lookup.scanned(handle.slice(0, 50)); // then look this username up in Customers
       }
+      else if (read.kind === "many") flash(tpl(t.rd_qr_many, { n: String(read.count) })); // 2+ stickers: never a guess
       else flash(t.rd_ps2_qr_none);
     } catch { flash(t.rd_ps2_qr_none); }
     finally { if (aliveRef.current) setQrBusy(false); }
@@ -472,7 +473,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>{editing ? t.rd_ps2_edit_title : t.rd_ps2_manual_title}</div>
               {contactOn ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
+                  <button type="button" onClick={() => { warmQrReader(); qrRef.current?.click(); }} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                   {manual && (
@@ -517,7 +518,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }} htmlFor="fms-handle">{t.rd_ps2_handle}</label>
-                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: qrBusy ? "default" : "pointer", whiteSpace: "nowrap", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
+                  <button type="button" onClick={() => { warmQrReader(); qrRef.current?.click(); }} disabled={qrBusy} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: qrBusy ? "default" : "pointer", whiteSpace: "nowrap", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                 </div>

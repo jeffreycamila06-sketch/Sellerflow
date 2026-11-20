@@ -20,7 +20,7 @@ vi.mock("../../adapters/fmScan", async (orig) => {
     undoFmExport: m.undoFmExport, deleteFmScan: m.deleteFmScan, deleteFmExported: m.deleteFmExported, loadFmGlobalFee: m.loadFmGlobalFee,
   };
 });
-vi.mock("../../adapters/qrDecode", () => ({ decodeQrFromFile: m.decodeQrFromFile }));
+vi.mock("../../adapters/qrDecode", async () => (await import("./qrReaderMock")).qrReaderModule((f: File) => m.decodeQrFromFile(f)));
 vi.mock("../../adapters/fmCustomers", () => ({
   loadRecentFmCustomers: m.loadRecentFmCustomers,
   searchFmCustomers: async () => ({ ok: true, rows: [] }),
@@ -142,6 +142,11 @@ describe("FmParcelScan screen", () => {
     m.decodeQrFromFile.mockResolvedValue("https://example.com/x");
     fireEvent.change(r.getByTestId("fms-qr-file"), { target: { files: [new File(["x"], "s.png", { type: "image/png" })] } });
     await waitFor(() => expect(r.getByTestId("fms-toast").textContent).toBe("No QR found — type the username"));
+    expect((r.getByTestId("fms-username") as HTMLInputElement).value).toBe("buyer.one");
+    // 3 stickers in the photo → said so; the username stays as it was (never a guess)
+    m.decodeQrFromFile.mockResolvedValue(["https://tiktok.com/@a1", "https://tiktok.com/@b2", "https://tiktok.com/@c3"]);
+    fireEvent.change(r.getByTestId("fms-qr-file"), { target: { files: [new File(["x"], "s.png", { type: "image/png" })] } });
+    await waitFor(() => expect(r.getByTestId("fms-toast").textContent).toBe("3 stickers in the photo — show only one"));
     expect((r.getByTestId("fms-username") as HTMLInputElement).value).toBe("buyer.one");
   });
 
