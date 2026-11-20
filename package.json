@@ -41,7 +41,8 @@
     "socket.io-client": "^4.8.3",
     "tesseract.js": "^6.0.1",
     "tiktok-live-connector": "2.1.1-beta1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zxing-wasm": "3.1.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

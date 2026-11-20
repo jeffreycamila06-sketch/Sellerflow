@@ -20,6 +20,7 @@ insert into public.support_guide (id, title, checked, keywords, body) values
 - Tap **Undo** right after adding if you picked the wrong buyer or reason.
 - The same buyer with the same reason counts once a day. Adding it again that day shows **Already added today**.
 - **This QR has no buyer** means it is not a SellerFlowLive sticker QR. Type the username instead.
+- **2 stickers in the photo — show only one**: take the photo again with only one sticker in it.
 
 **Your list**
 - Each buyer shows how many times per reason, the date last added, and TikTok or Facebook. Use **Search buyer** to find one.

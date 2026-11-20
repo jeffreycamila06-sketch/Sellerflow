@@ -18,7 +18,7 @@ vi.mock("../../adapters/fmScan", async (orig) => {
     undoFmExport: m.undoFmExport, deleteFmScan: m.deleteFmScan, deleteFmExported: m.deleteFmExported, loadFmGlobalFee: m.loadFmGlobalFee,
   };
 });
-vi.mock("../../adapters/qrDecode", () => ({ decodeQrFromFile: m.decodeQrFromFile }));
+vi.mock("../../adapters/qrDecode", async () => (await import("./qrReaderMock")).qrReaderModule((f: File) => m.decodeQrFromFile(f)));
 vi.mock("../../adapters/fmCustomers", () => ({
   loadRecentFmCustomers: m.loadRecentFmCustomers,
   searchFmCustomers: async () => ({ ok: true, rows: [] }),

@@ -446,6 +446,7 @@ Blacklist is for sellers outside Taiwan. Open **Settings → Blacklist**. Only y
 - Tap **Undo** right after adding if you picked the wrong buyer or reason.
 - The same buyer with the same reason counts once a day. Adding it again that day shows **Already added today**.
 - **This QR has no buyer** means it is not a SellerFlowLive sticker QR. Type the username instead.
+- **2 stickers in the photo — show only one**: take the photo again with only one sticker in it.
 
 **Your list**
 - Each buyer shows how many times per reason, the date last added, and TikTok or Facebook. Use **Search buyer** to find one.
@@ -591,7 +592,7 @@ Keywords: bluetooth off, bluetooth, printer busy, another app, other phone, naka
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.
 
 ## parcel-scan — Parcel Scan (7-11) and Customer Details
-Last checked: 2026-11-12
+Last checked: 2026-11-20
 Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家, buyer contact, whatsapp, line, messenger, instagram, contact ng buyer, 買家聯絡方式, 买家联系方式, liên hệ người mua, ช่องทางติดต่อผู้ซื้อ, kontak pembeli
 
 **Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
@@ -604,7 +605,7 @@ Who sees what:
 
 **Parcel Scan 7-11**
 1. Tap **✏️ Manual add parcel** and type the customer name (2 to 10 letters — a Chinese character counts as 2, so 1 to 5 Chinese characters; no numbers or symbols), phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
-2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo. If this is open for your account and that @username is already in your **Customers**, the name, phone and store # are filled in too — check them, then type the amount. If nothing is filled in, type the details as usual. If you already typed a name, phone or store #, nothing is filled in. Scanning another sticker clears the details the last scan filled in (what you typed yourself stays). If you change the @username by hand to another one after a scan filled in the details, those details are cleared too (what you typed yourself stays) — scan the sticker again to fill them in again. Adding a note after the username, like (U) or #3, keeps them. An Import from Customers also clears an entry that a scan filled in. While you edit a saved parcel, Scan QR fills only the @username.
+2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo. Show only one sticker in the photo: with 2 or more, nothing is filled in and the app asks you to show only one. If this is open for your account and that @username is already in your **Customers**, the name, phone and store # are filled in too — check them, then type the amount. If nothing is filled in, type the details as usual. If you already typed a name, phone or store #, nothing is filled in. Scanning another sticker clears the details the last scan filled in (what you typed yourself stays). If you change the @username by hand to another one after a scan filled in the details, those details are cleared too (what you typed yourself stays) — scan the sticker again to fill them in again. Adding a note after the username, like (U) or #3, keeps them. An Import from Customers also clears an entry that a scan filled in. While you edit a saved parcel, Scan QR fills only the @username.
 3. **Buyer contact** (Plus / Pro / Master): under the amount, tap the buyer's app — TikTok, LINE, WhatsApp, Facebook, Instagram or Other — then type the contact: TikTok or Instagram @username, LINE ID (not the phone number), WhatsApp number (Taiwan 09… works; other countries with the country code), Facebook name or profile link. The app you picked stays selected for the next parcel. Tick **Buyer has no contact** if there is none. A WhatsApp number that is not 8–15 digits shows a short message and cannot be saved. Scan QR still fills the TikTok @username.
 4. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel (the buyer's app and contact come back with them; you can change them before Import or with ✏️ Edit).
 5. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.

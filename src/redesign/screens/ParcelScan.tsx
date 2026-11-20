@@ -29,7 +29,7 @@ import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
 import { useWakeLock } from "../adapters/useWakeLock";
-import { decodeQrFromFile } from "../adapters/qrDecode";
+import { readQrFromFile, warmQrReader } from "../adapters/qrDecode";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import CustomerDetails from "./CustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
@@ -1150,21 +1150,24 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // "Scan QR" — decode the buyer @username off the printed SFL sticker (camera photo or
   // an uploaded label image) and auto-fill the required handle field VERBATIM. No QR
   // found → field untouched (the seller types it / ticks "no social handle"). Client-side
-  // only (qrDecode: BarcodeDetector → jsQR); works on the laptop too (file upload).
+  // only (qrDecode: the phone's reader → ZXing WebAssembly → jsQR); works on the laptop too (file upload).
+  // Two different QRs in the photo → "2 stickers in the photo — show only one" (never a guess).
   const onScanQr = async (files: FileList | null) => {
     const file = files && files[0];
     if (qrRef.current) qrRef.current.value = "";
     if (!file) return;
     setQrBusy(true);
     try {
-      const decoded = await decodeQrFromFile(file);
-      const handle = decoded ? handleFromQrPayload(decoded) : null; // bare @username OR a tiktok.com/@handle URL
+      const read = await readQrFromFile(file);
+      const handle = read.kind === "one" ? handleFromQrPayload(read.text) : null; // bare @username OR a tiktok.com/@handle URL
       if (handle) {
         F({ notes: handle.slice(0, 50) }); // handle only (never a raw URL / random QR)
         setNoHandle(false);                // text present → "no handle" can't be true (rule 4)
         if (contactOn) setPlatform("tiktok"); // a sticker QR is always the buyer's TikTok
         setToast(t.rd_ps2_qr_filled); later(() => setToast(""), 2500);
         if (lookupOn && !editing) lookup.scanned(handle.slice(0, 50)); // then look this username up in Customers
+      } else if (read.kind === "many") {
+        setToast(tpl(t.rd_qr_many, { n: String(read.count) })); later(() => setToast(""), 3500); // field left as-is
       } else {
         setToast(t.rd_ps2_qr_none); later(() => setToast(""), 2500); // field left as-is
       }
@@ -1406,7 +1409,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>{editing ? t.rd_ps2_edit_title : manual ? t.rd_ps2_manual_title : tpl(t.rd_ps2_confirm, progress)}</div>
               {contactOn ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="ps-scan-qr">
+                  <button type="button" onClick={() => { warmQrReader(); qrRef.current?.click(); }} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="ps-scan-qr">
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                   {manual && (
@@ -1477,7 +1480,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }} htmlFor="ps-handle">{t.rd_ps2_handle}</label>
-                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: qrBusy ? "default" : "pointer", whiteSpace: "nowrap", opacity: qrBusy ? 0.6 : 1 }} data-testid="ps-scan-qr">
+                  <button type="button" onClick={() => { warmQrReader(); qrRef.current?.click(); }} disabled={qrBusy} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: qrBusy ? "default" : "pointer", whiteSpace: "nowrap", opacity: qrBusy ? 0.6 : 1 }} data-testid="ps-scan-qr">
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                 </div>

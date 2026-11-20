@@ -1,0 +1,42 @@
+CAUGHT: two DIFFERENT codes counted as one (a guess)
+    × none · one · the same sticker twice = one · two different = many 19ms
+    × two stickers on the roll → 2 stickers (the parts of the photo find each one) — never a guess 5150ms
+    × decodeQrFromFile (kept for older callers): the one text, else null — also null for 2 stickers 8573ms
+CAUGHT: the stronger reader returns only 1 code per look
+    × 50 stickers, 12 MP 1524ms
+    × 60 stickers, 12 MP 1534ms
+    × 100 stickers, 12 MP 1601ms
+CAUGHT: no parts of the photo (whole photo only)
+    × two stickers, ~6% of the photo's width each 8731ms
+    × a sticker printed without a QR, 12 MP: every pass tried, reason no_code 3302ms
+CAUGHT: the photo read at 1000 px like main (not 2400)
+    × curved: the QR on the steep side of the bend, 12 MP 2628ms
+CAUGHT: a canvas bigger than the iPhone-safe size
+    × two stickers, ~6% of the photo's width each 8531ms
+    × the canvas never holds more than 2400 px on the long edge (iPhone's canvas limit is ~16.7 MP) 2ms
+CAUGHT: jsQR fallback answers its first hit (no check for a 2nd sticker)
+    × one sticker → read by jsQR's quick pass 423ms
+CAUGHT: no stronger reader at all (jsQR only, as main)
+    × 50 sticker, 12 MP 5318ms
+    × 60 sticker, 12 MP 5294ms
+    × 100 sticker, 12 MP 5814ms
+CAUGHT: the phone's own reader skipped (Android)
+    × it sees two codes → 2 stickers; the stronger reader is never loaded 4237ms
+    × it sees one code → that code 3822ms
+    × it sees nothing → the other passes still run (here: jsQR reads the sticker) 3797ms
+CAUGHT: the event carries the QR text
+    × one event per scan: result, reason, sizes, times — no QR text, no username 8509ms
+CAUGHT: the reason is not recorded (every none = no_code)
+    × the photo cannot be opened → image_unreadable (no pass runs) 11ms
+CAUGHT: Scan does not start loading the reader
+    × no BarcodeDetector (iPhone): Scan starts loading it 1009ms
+CAUGHT: 7-11 screen: 2 stickers shown as No QR found
+    × 2 stickers in the photo → '2 stickers in the photo — show only one'; the field is NOT filled (never a guess) 1095ms
+CAUGHT: FamilyMart screen: 2 stickers shown as No QR found
+    × Scan QR fills the @username (a TikTok sticker); a random QR leaves it alone 1098ms
+CAUGHT: Blacklist: 2 stickers shown as No QR found
+    × 2 stickers in the photo → '2 stickers in the photo — show only one', nothing saved (never a guess) 62ms
+CAUGHT: 7-11 Scan button does not start loading the reader
+    × tapping Scan QR starts loading the reader (then opens the photo picker) 38ms
+
+15 of 15 breaks caught

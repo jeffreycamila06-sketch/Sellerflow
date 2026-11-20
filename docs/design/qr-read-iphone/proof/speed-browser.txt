@@ -1,0 +1,23 @@
+BarcodeDetector in this browser: false  (false = the iPhone path)
+COLD first scan (reader not loaded yet): [{"photo":"one_12mp.jpg","result":"one QR","ms":249,"passes":"zxing_load 28ms found 0 · whole 67ms found 1","size":"4032×3024"}]
+new  12mp {"photo":"one_12mp.jpg","result":"one QR","ms":199,"passes":"zxing_load 0ms found 0 · whole 32ms found 1","size":"4032×3024"}
+new  12mp {"photo":"two_12mp.jpg","result":"2 stickers","ms":216,"passes":"zxing_load 0ms found 0 · whole 44ms found 2","size":"4032×3024"}
+new  12mp {"photo":"three_12mp.jpg","result":"2 stickers","ms":250,"passes":"zxing_load 0ms found 0 · whole 58ms found 2","size":"4032×3024"}
+new  12mp {"photo":"curved_12mp.jpg","result":"one QR","ms":204,"passes":"zxing_load 0ms found 0 · whole 33ms found 1","size":"4032×3024"}
+new  12mp {"photo":"noqr_12mp.jpg","result":"none (no_code)","ms":1517,"passes":"zxing_load 5ms found 0 · whole 40ms found 0 · halves 372ms found 0 · thirds 408ms found 0 · quadrants 513ms found 0","size":"4032×3024"}
+main 12mp {"photo":"one_12mp.jpg","main":"QR read","ms":169}
+main 12mp {"photo":"two_12mp.jpg","main":"QR read","ms":163}
+main 12mp {"photo":"three_12mp.jpg","main":"No QR found","ms":173}
+main 12mp {"photo":"curved_12mp.jpg","main":"No QR found","ms":149}
+main 12mp {"photo":"noqr_12mp.jpg","main":"No QR found","ms":138}
+new  48mp {"photo":"one_48mp.jpg","result":"one QR","ms":508,"passes":"zxing_load 0ms found 0 · whole 39ms found 1","size":"8064×6048"}
+new  48mp {"photo":"two_48mp.jpg","result":"2 stickers","ms":449,"passes":"zxing_load 0ms found 0 · whole 42ms found 2","size":"8064×6048"}
+new  48mp {"photo":"three_48mp.jpg","result":"2 stickers","ms":388,"passes":"zxing_load 0ms found 0 · whole 32ms found 2","size":"8064×6048"}
+new  48mp {"photo":"curved_48mp.jpg","result":"one QR","ms":388,"passes":"zxing_load 0ms found 0 · whole 27ms found 1","size":"8064×6048"}
+new  48mp {"photo":"noqr_48mp.jpg","result":"none (no_code)","ms":1588,"passes":"zxing_load 0ms found 0 · whole 29ms found 0 · halves 303ms found 0 · thirds 345ms found 0 · quadrants 530ms found 0","size":"8064×6048"}
+main 48mp {"photo":"one_48mp.jpg","main":"QR read","ms":327}
+main 48mp {"photo":"two_48mp.jpg","main":"No QR found","ms":488}
+main 48mp {"photo":"three_48mp.jpg","main":"No QR found","ms":436}
+main 48mp {"photo":"curved_48mp.jpg","main":"No QR found","ms":407}
+main 48mp {"photo":"noqr_48mp.jpg","main":"No QR found","ms":410}
+files fetched for the reader (dev server, not compressed): {"zxing-wasm_reader.js":50401,"zxing_reader.wasm":946860,"jsqr.js":233170}

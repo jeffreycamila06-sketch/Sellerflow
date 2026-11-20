@@ -18,7 +18,7 @@ vi.mock("../../adapters/parcelScan", async (orig) => ({
   getCreditBalance: async () => ({ ok: true, balance: 9 }), updateParcelScan: async () => ({ ok: true }),
 }));
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
-vi.mock("../../adapters/qrDecode", () => ({ decodeQrFromFile: m.decode }));
+vi.mock("../../adapters/qrDecode", async () => (await import("./qrReaderMock")).qrReaderModule((f: File) => m.decode(f)));
 vi.mock("../../adapters/scanQrLookup", async (orig) => ({ ...(await orig<typeof import("../../adapters/scanQrLookup")>()), lookupCustomersByHandle: m.lookup }));
 
 import ParcelScan from "../ParcelScan";

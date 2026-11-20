@@ -34,7 +34,7 @@ vi.mock("../../adapters/parcelScan", async (orig) => ({
 }));
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
 vi.mock("../../../lib/dateHelpers", async (orig) => ({ ...(await orig<typeof import("../../../lib/dateHelpers")>()), taipeiDayId: () => "2026-11-11" }));
-vi.mock("../../adapters/qrDecode", () => ({ decodeQrFromFile: m.decode }));
+vi.mock("../../adapters/qrDecode", async () => (await import("./qrReaderMock")).qrReaderModule((f: File) => m.decode(f)));
 vi.mock("../../adapters/scanQrLookup", async (orig) => ({
   ...(await orig<typeof import("../../adapters/scanQrLookup")>()),
   lookupCustomersByHandle: m.lookup,

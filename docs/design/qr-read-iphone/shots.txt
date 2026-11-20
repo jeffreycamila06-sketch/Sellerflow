@@ -1,0 +1,50 @@
+711_two_iphone390_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+711_curved_iphone390_en.png: "Filled @username from QR" sideways=0px cut=none
+711_noqr_iphone390_en.png: "No QR found — type the username" sideways=0px cut=none
+fm_two_iphone390_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+fm_curved_iphone390_en.png: "Filled @username from QR" sideways=0px cut=none
+fm_noqr_iphone390_en.png: "No QR found — type the username" sideways=0px cut=none
+bl_two_iphone390_en.png: "✕ 2 stickers in the photo — show only one" sideways=0px cut=none
+bl_curved_iphone390_en.png: "✓ Added @jhun.belle — Return itemUndo" sideways=0px cut=none
+bl_noqr_iphone390_en.png: "✕ No QR found — try again or type the username." sideways=0px cut=none
+711_two_android360_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+711_curved_android360_en.png: "Filled @username from QR" sideways=0px cut=none
+711_noqr_android360_en.png: "No QR found — type the username" sideways=0px cut=none
+fm_two_android360_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+fm_curved_android360_en.png: "Filled @username from QR" sideways=0px cut=none
+fm_noqr_android360_en.png: "No QR found — type the username" sideways=0px cut=none
+bl_two_android360_en.png: "✕ 2 stickers in the photo — show only one" sideways=0px cut=none
+bl_curved_android360_en.png: "✓ Added @jhun.belle — Return itemUndo" sideways=0px cut=none
+bl_noqr_android360_en.png: "✕ No QR found — try again or type the username." sideways=0px cut=none
+711_two_android430_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+711_curved_android430_en.png: "Filled @username from QR" sideways=0px cut=none
+711_noqr_android430_en.png: "No QR found — type the username" sideways=0px cut=none
+fm_two_android430_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+fm_curved_android430_en.png: "Filled @username from QR" sideways=0px cut=none
+fm_noqr_android430_en.png: "No QR found — type the username" sideways=0px cut=none
+bl_two_android430_en.png: "✕ 2 stickers in the photo — show only one" sideways=0px cut=none
+bl_curved_android430_en.png: "✓ Added @jhun.belle — Return itemUndo" sideways=0px cut=none
+bl_noqr_android430_en.png: "✕ No QR found — try again or type the username." sideways=0px cut=none
+711_two_laptop1280_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+711_curved_laptop1280_en.png: "Filled @username from QR" sideways=0px cut=none
+711_noqr_laptop1280_en.png: "No QR found — type the username" sideways=0px cut=none
+fm_two_laptop1280_en.png: "2 stickers in the photo — show only one" sideways=0px cut=none
+fm_curved_laptop1280_en.png: "Filled @username from QR" sideways=0px cut=none
+fm_noqr_laptop1280_en.png: "No QR found — type the username" sideways=0px cut=none
+bl_two_laptop1280_en.png: "✕ 2 stickers in the photo — show only one" sideways=0px cut=none
+bl_curved_laptop1280_en.png: "✓ Added @jhun.belle — Return itemUndo" sideways=0px cut=none
+bl_noqr_laptop1280_en.png: "✕ No QR found — try again or type the username." sideways=0px cut=none
+711_two_android360_fil.png: "2 sticker ang nasa litrato — isa lang ang ipakita" sideways=0px cut=none
+bl_two_android360_fil.png: "✕ 2 sticker ang nasa litrato — isa lang ang ipakita" sideways=0px cut=none
+711_two_android360_zh.png: "照片里有 2 张贴纸 — 只拍一张" sideways=0px cut=none
+bl_two_android360_zh.png: "✕ 照片里有 2 张贴纸 — 只拍一张" sideways=0px cut=none
+711_two_android360_zh-TW.png: "照片中有 2 張貼紙 — 只拍一張" sideways=0px cut=none
+bl_two_android360_zh-TW.png: "✕ 照片中有 2 張貼紙 — 只拍一張" sideways=0px cut=none
+711_two_android360_vi.png: "Ảnh có 2 nhãn — chỉ chụp một nhãn" sideways=0px cut=none
+bl_two_android360_vi.png: "✕ Ảnh có 2 nhãn — chỉ chụp một nhãn" sideways=0px cut=none
+711_two_android360_th.png: "ในรูปมีสติกเกอร์ 2 ใบ — ถ่ายให้เห็นแค่ใบเดียว" sideways=0px cut=none
+bl_two_android360_th.png: "✕ ในรูปมีสติกเกอร์ 2 ใบ — ถ่ายให้เห็นแค่ใบเดียว" sideways=0px cut=none
+711_two_android360_id.png: "Ada 2 stiker di foto — tampilkan satu saja" sideways=0px cut=none
+bl_two_android360_id.png: "✕ Ada 2 stiker di foto — tampilkan satu saja" sideways=0px cut=none
+711_two_android360_bg.png: "2 стикера на снимката — покажи само един" sideways=0px cut=none
+bl_two_android360_bg.png: "✕ 2 стикера на снимката — покажи само един" sideways=0px cut=none
