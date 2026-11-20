@@ -1,0 +1,43 @@
+CAUGHT: e2e messages counted as message
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 39ms
+CAUGHT: the system list not counted
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 37ms
+CAUGHT: the host never recognised (every sender = others)
+    × messageShape: content kind, type, sender, unknown field names 14ms
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 22ms
+    × only the host's messages arrive (the case seen in production) → from_others stays 0 4ms
+CAUGHT: a repeat never told from a different message with the same id
+    × repeats: the same message in the next poll = dropped_dupe; a DIFFERENT message with an id already used = dupe_collide too 14ms
+CAUGHT: type taken only from the message, not its content
+    × messageShape: content kind, type, sender, unknown field names 9ms
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 27ms
+    × no text: a non-101 type, an empty comment, a content with no text field → dropped_notext 3ms
+CAUGHT: no line at once for a new shape (60 s only)
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 36ms
+    × keys_unknown = the field NAMES of the first unknown shape (data level too); never a value 2ms
+    × at once on the first message shape, again on a new shape (a viewer's first message), then every 60 s; one more at stop 5ms
+CAUGHT: the line every 10 min instead of 60 s
+    × new-shape lines stop after DIAG_SHAPE_LINES_MAX (the 60 s line still comes) 11ms
+    × failing polls are counted; the 60 s line still comes while the chat room is down 2ms
+CAUGHT: a map keyed by names prints its names
+    × no comment text, name, username, uid, avatar, link, chatroom id or uuid in any [SHOPEE-DIAG] line 14ms
+CAUGHT: a long number in a field name is printed
+    × typeWord / safeKeyName never let a number that could be a uid or a strange name through 10ms
+    × keys_unknown = the field NAMES of the first unknown shape (data level too); never a value 3ms
+    × no comment text, name, username, uid, avatar, link, chatroom id or uuid in any [SHOPEE-DIAG] line 3ms
+CAUGHT: the walk misses the array-of-messages batch shape
+    × bucketMsgs over message + e2e_message = exactly what parseChatBatches reads (same objects, same order) 12ms
+CAUGHT: no last line at stop
+    × at once on the first message shape, again on a new shape (a viewer's first message), then every 60 s; one more at stop 12ms
+CAUGHT: a throw inside the diagnostic reaches the reader
+    × a throw inside the diagnostic changes nothing: the comment is still emitted, the poll answers the same 10ms
+CAUGHT: the diagnostic changes a comment (adds a field to the payload)
+    × same comments (every payload field), same statuses, same requests, same answers, same other log lines 15ms
+CAUGHT: the reader starts reading the system list (a behaviour change)
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 39ms
+    × same comments (every payload field), same statuses, same requests, same answers, same other log lines 14ms
+    × diag: false = main, log line for log line 8ms
+CAUGHT: failing polls not counted
+    × failing polls are counted; the 60 s line still comes while the chat room is down 11ms
+
+15 of 15 breaks caught

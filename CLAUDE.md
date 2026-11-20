@@ -6005,3 +6005,24 @@ re-checks a day kept the server's E-Map session alive; with shadow OFF a take-ov
   a day with shadow ON. 11/11 on-purpose breaks (`docs/design/pc711-standby/proof/`). Pictures `docs/design/pc711-standby/shots/`.
 - **Order:** merge → Render deploy (quiet window) → Jeff turns `pc711_shadow_enabled` OFF. Note: `pc711_mirror_enabled`
   was switched off on Nov 20 21:10 (its `updated_at` still says Nov 17 — app_settings has no updated_at trigger).
+
+## 2026-11-20 — SHOPEE LIVE: [SHOPEE-DIAG] COUNTERS — do other viewers' comments arrive? (branch `claude/great-wright-3v8plu` from main `5177fd13`, NOT merged; no SQL; needs a Render deploy)
+Only the seller's own comments have ever arrived through the share-link reader (two PH beta sellers). Log-only build
+to tell A (they arrive, our parsing drops them) from B (the chat room never sends other viewers' messages to a
+not-logged-in reader). STEP 0 table of every drop point: `docs/design/shopee-diag/README.md`.
+- **`server/shopeeDiag.js` (new) + `dg(…)` calls in `server/shopeeLiveLink.js`** (`pollOnce` / `stopPoller`): per
+  poller, since its start, one `[SHOPEE-DIAG] seller=… polls= msgs_message= msgs_e2e= msgs_system= types=101:n,…
+  content=json:n,string:n,object:n,other:n from_host= from_others= from_nouid= kept= dropped_notext= dropped_dupe=
+  dupe_collide= keys_unknown=` line every 60 s, at once on a new message shape (≤ 10), and at stop. from_host = sender
+  uid == the live host's uid (compared in memory). dupe_collide = a "repeat" whose id was first seen on a different
+  message (sender + content hash, never logged). keys_unknown = field NAMES only (≤ 24 chars, no 4+ digit run; > 12
+  unknown names = `many:<n>`). Never text / names / usernames / uids / avatars / links / chatroom ids / tokens.
+- **Reader unchanged:** every diag call is wrapped (a throw is ignored); `deps.diag = false` turns it off.
+  `shopeeDiag.server.test.ts` D4 runs the same script on the branch reader and a frozen copy of main's
+  (`fixtures/shopeeLiveLink.main.js`): same payloads, statuses, requests, answers and non-diag log lines.
+  ⚠️ When `shopeeLiveLink.js` changes ON PURPOSE later, refresh that fixture from the new main.
+- **Research notes:** only on branch `claude/shopee-probe` (`scripts/probes/shopee/FINDINGS.md`); the probe tested the
+  HOST's comments only, never a second viewer. The probe sent `client-info` + `x-livestreaming-source: shopee` headers;
+  production sends only user-agent + accept (a possible B factor, not changed here).
+- **Read after the deploy:** `from_others = 0` and `msgs_system = 0` while a second phone comments → B;
+  `dropped_notext` / other `types` / `dupe_collide` growing → A. 15/15 on-purpose breaks (`docs/design/shopee-diag/proof/`).
