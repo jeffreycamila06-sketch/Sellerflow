@@ -1,0 +1,73 @@
+plus  iphone390_en: access=full sideways 0px cut 0
+free  iphone390_en: access=locked sideways 0px cut 0 · popup "Feature locked" · Posts opened: false
+ends  iphone390_en: "7 days" Nov 27, 11:07 → "14 days" Dec 4, 11:07 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  iphone390_fil: access=full sideways 0px cut 0
+free  iphone390_fil: access=locked sideways 0px cut 0 · popup "Naka-lock ang feature" · Posts opened: false
+ends  iphone390_fil: "7 araw" Nov 27, 11:07 → "14 araw" Dec 4, 11:07 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  iphone390_zh: access=full sideways 0px cut 0
+free  iphone390_zh: access=locked sideways 0px cut 0 · popup "功能已锁定" · Posts opened: false
+ends  iphone390_zh: "7 天" Nov 27, 11:07 → "14 天" Dec 4, 11:07 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  iphone390_zh-TW: access=full sideways 0px cut 0
+free  iphone390_zh-TW: access=locked sideways 0px cut 0 · popup "功能已鎖定" · Posts opened: false
+ends  iphone390_zh-TW: "7 天" Nov 27, 11:07 → "14 天" Dec 4, 11:07 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  iphone390_vi: access=full sideways 0px cut 0
+free  iphone390_vi: access=locked sideways 0px cut 0 · popup "Tính năng bị khóa" · Posts opened: false
+ends  iphone390_vi: "7 ngày" Nov 27, 11:07 → "14 ngày" Dec 4, 11:07 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  iphone390_th: access=full sideways 0px cut 0
+free  iphone390_th: access=locked sideways 0px cut 0 · popup "ฟีเจอร์ถูกล็อก" · Posts opened: false
+ends  iphone390_th: "7 วัน" Nov 27, 11:08 → "14 วัน" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  iphone390_id: access=full sideways 0px cut 0
+free  iphone390_id: access=locked sideways 0px cut 0 · popup "Fitur terkunci" · Posts opened: false
+ends  iphone390_id: "7 hari" Nov 27, 11:08 → "14 hari" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  iphone390_bg: access=full sideways 0px cut 0
+free  iphone390_bg: access=locked sideways 0px cut 0 · popup "Заключена функция" · Posts opened: false
+ends  iphone390_bg: "7 дни" Nov 27, 11:08 → "14 дни" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_en: access=full sideways 0px cut 0
+free  android360_en: access=locked sideways 0px cut 0 · popup "Feature locked" · Posts opened: false
+ends  android360_en: "7 days" Nov 27, 11:08 → "14 days" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_fil: access=full sideways 0px cut 0
+free  android360_fil: access=locked sideways 0px cut 0 · popup "Naka-lock ang feature" · Posts opened: false
+ends  android360_fil: "7 araw" Nov 27, 11:08 → "14 araw" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_zh: access=full sideways 0px cut 0
+free  android360_zh: access=locked sideways 0px cut 0 · popup "功能已锁定" · Posts opened: false
+ends  android360_zh: "7 天" Nov 27, 11:08 → "14 天" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_zh-TW: access=full sideways 0px cut 0
+free  android360_zh-TW: access=locked sideways 0px cut 0 · popup "功能已鎖定" · Posts opened: false
+ends  android360_zh-TW: "7 天" Nov 27, 11:08 → "14 天" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_vi: access=full sideways 0px cut 0
+free  android360_vi: access=locked sideways 0px cut 0 · popup "Tính năng bị khóa" · Posts opened: false
+ends  android360_vi: "7 ngày" Nov 27, 11:08 → "14 ngày" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_th: access=full sideways 0px cut 0
+free  android360_th: access=locked sideways 0px cut 0 · popup "ฟีเจอร์ถูกล็อก" · Posts opened: false
+ends  android360_th: "7 วัน" Nov 27, 11:08 → "14 วัน" Dec 4, 11:08 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_id: access=full sideways 0px cut 0
+free  android360_id: access=locked sideways 0px cut 0 · popup "Fitur terkunci" · Posts opened: false
+ends  android360_id: "7 hari" Nov 27, 11:09 → "14 hari" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  android360_bg: access=full sideways 0px cut 0
+free  android360_bg: access=locked sideways 0px cut 0 · popup "Заключена функция" · Posts opened: false
+ends  android360_bg: "7 дни" Nov 27, 11:09 → "14 дни" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_en: access=full sideways 0px cut 0
+free  laptop1280_en: access=locked sideways 0px cut 0 · popup "Feature locked" · Posts opened: false
+ends  laptop1280_en: "7 days" Nov 27, 11:09 → "14 days" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_fil: access=full sideways 0px cut 0
+free  laptop1280_fil: access=locked sideways 0px cut 0 · popup "Naka-lock ang feature" · Posts opened: false
+ends  laptop1280_fil: "7 araw" Nov 27, 11:09 → "14 araw" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_zh: access=full sideways 0px cut 0
+free  laptop1280_zh: access=locked sideways 0px cut 0 · popup "功能已锁定" · Posts opened: false
+ends  laptop1280_zh: "7 天" Nov 27, 11:09 → "14 天" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_zh-TW: access=full sideways 0px cut 0
+free  laptop1280_zh-TW: access=locked sideways 0px cut 0 · popup "功能已鎖定" · Posts opened: false
+ends  laptop1280_zh-TW: "7 天" Nov 27, 11:09 → "14 天" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_vi: access=full sideways 0px cut 0
+free  laptop1280_vi: access=locked sideways 0px cut 0 · popup "Tính năng bị khóa" · Posts opened: false
+ends  laptop1280_vi: "7 ngày" Nov 27, 11:09 → "14 ngày" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_th: access=full sideways 0px cut 0
+free  laptop1280_th: access=locked sideways 0px cut 0 · popup "ฟีเจอร์ถูกล็อก" · Posts opened: false
+ends  laptop1280_th: "7 วัน" Nov 27, 11:09 → "14 วัน" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_id: access=full sideways 0px cut 0
+free  laptop1280_id: access=locked sideways 0px cut 0 · popup "Fitur terkunci" · Posts opened: false
+ends  laptop1280_id: "7 hari" Nov 27, 11:09 → "14 hari" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+plus  laptop1280_bg: access=full sideways 0px cut 0
+free  laptop1280_bg: access=locked sideways 0px cut 0 · popup "Заключена функция" · Posts opened: false
+ends  laptop1280_bg: "7 дни" Nov 27, 11:09 → "14 дни" Dec 4, 11:09 (+ off: true) · buttons 44x44 · sideways 0px cut 0
+no sideways scroll, no cut text, access right in every case

@@ -17,7 +17,7 @@ import { hasCents, moneyText, priceInput } from "../../lib/money";
 import type { Product } from "../adapters/products";
 import {
   type PostSale, type PostOrder, type PagePost, type NewPostItem, type PostSaleMode, type CreateResult, type BuyerGroup,
-  groupPostOrders, itemCodeAndName, saleStatus, saleCounts, POST_SALE_DEFAULT_DAYS,
+  groupPostOrders, itemCodeAndName, saleStatus, saleCounts, POST_SALE_DEFAULT_DAYS, POST_SALE_MAX_DAYS, clampSaleDays, saleEndsAt,
 } from "../adapters/fbPostSales";
 
 export interface PostsUi {
@@ -29,6 +29,7 @@ export interface PostsUi {
   products: Product[];
   busy: boolean;
   note: string | null;                               // last action result (toast-like line)
+  readOnly?: boolean;                                // fix round 1: no plan, has post orders → view only
   onReload: () => void;
   onPrintNew: () => void;                            // prints every buyer's NEW orders, marks printed
   onCreate: (a: { pageId: string; postId: string; postMessage: string; postPicture: string; mode: PostSaleMode; endsAt: string; items: NewPostItem[] }) => Promise<CreateResult>;
@@ -53,8 +54,6 @@ const dayKey = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, yea
 const fmtTime = (d: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
 const fmtMonthDay = (d: Date) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "short", day: "numeric" }).format(d);
 const parse = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : d; };
-const toLocalInput = (iso: string) => { const d = new Date(iso); const p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-const daysFrom = (local: string, nowMs: number) => Math.max(0, Math.round((new Date(local).getTime() - nowMs) / 86400000));
 
 // ── the Posts tab body ───────────────────────────────────────────────────────
 export default function PostsBody({ ui: u, cur }: { ui: PostsUi; cur: string }) {
@@ -63,11 +62,13 @@ export default function PostsBody({ ui: u, cur }: { ui: PostsUi; cur: string }) 
   const groups = useMemo(() => groupPostOrders(u.orders, u.sales), [u.orders, u.sales]);
   const newCount = groups.filter((g) => !g.printed).length; // buyers with something new to print (one sticker each)
 
-  if (view === "sell") return <SellOnPost ui={u} cur={cur} onClose={() => setView("orders")} />;
+  if (view === "sell" && u.readOnly !== true) return <SellOnPost ui={u} cur={cur} onClose={() => setView("orders")} />;
   if (view === "my") return <MyPosts ui={u} cur={cur} onClose={() => setView("orders")} onSell={() => setView("sell")} />;
 
+  const ro = u.readOnly === true;
   return (
     <div data-testid="posts-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {ro && <ReadOnlyLine />}
       {u.note && <div role="status" data-testid="posts-note" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 10, padding: "8px 11px" }}>{u.note}</div>}
       {u.state === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>{t.rd_fps_loading}</div>}
       {u.state === "error" && (
@@ -81,14 +82,14 @@ export default function PostsBody({ ui: u, cur }: { ui: PostsUi; cur: string }) 
           <div aria-hidden="true" style={{ width: 76, height: 76, borderRadius: 20, margin: "0 auto", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>📣</div>
           <div style={{ fontFamily: "var(--font-display)", fontSize: 18.5, fontWeight: 700, color: "var(--text)", marginTop: 20 }}>{t.rd_fps_empty_title}</div>
           <div style={{ fontSize: 13.5, color: "var(--text-dim)", lineHeight: 1.5, margin: "8px 10px 0" }}>{t.rd_fps_empty}</div>
-          <button type="button" data-testid="posts-sell-btn" onClick={() => setView("sell")} style={{ ...btnPrimary, marginTop: 22, width: "100%" }}>{t.rd_fps_sell_btn}</button>
+          {!ro && <button type="button" data-testid="posts-sell-btn" onClick={() => setView("sell")} style={{ ...btnPrimary, marginTop: 22, width: "100%" }}>{t.rd_fps_sell_btn}</button>}
           {u.sales.length > 0 && <button type="button" data-testid="posts-my-link" onClick={() => setView("my")} style={{ marginTop: 14, border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: ui }}>{t.rd_fps_my_posts} ›</button>}
         </div>
       )}
       {u.state === "ready" && groups.length > 0 && (
         <>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" data-testid="posts-print-new" disabled={u.busy || newCount === 0} onClick={u.onPrintNew} style={{ ...btnPrimary, flex: 1, minWidth: 0, opacity: newCount === 0 || u.busy ? 0.55 : 1 }}>🖨 {tpl(t.rd_fps_print_new, { n: newCount })}</button>
+            <button type="button" data-testid="posts-print-new" disabled={ro || u.busy || newCount === 0} aria-describedby={ro ? "posts-readonly" : undefined} onClick={u.onPrintNew} style={{ ...btnPrimary, flex: 1, minWidth: 0, opacity: ro || newCount === 0 || u.busy ? 0.55 : 1, cursor: ro ? "default" : "pointer" }}>🖨 {tpl(t.rd_fps_print_new, { n: newCount })}</button>
             <button type="button" data-testid="posts-my-btn" onClick={() => setView("my")} style={{ ...btnSoft, flexShrink: 0 }}>{t.rd_fps_my_posts}</button>
           </div>
           {groups.map((g) => <BuyerCard key={g.key} g={g} sales={u.sales} cur={cur} />)}
@@ -96,6 +97,12 @@ export default function PostsBody({ ui: u, cur }: { ui: PostsUi; cur: string }) 
       )}
     </div>
   );
+}
+
+// The one line a view-only seller sees (same words style as the plan lock popup).
+function ReadOnlyLine() {
+  const t = useT();
+  return <div role="note" id="posts-readonly" data-testid="posts-readonly" style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, fontWeight: 600, lineHeight: 1.45, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 12px" }}><span aria-hidden="true">🔒</span><span style={{ minWidth: 0 }}>{t.rd_fps_readonly}</span></div>;
 }
 
 function Avatar({ name }: { name: string }) {
@@ -159,7 +166,8 @@ export function SellOnPost({ ui: u, cur, onClose }: { ui: PostsUi; cur: string; 
   const [mode, setMode] = useState<PostSaleMode>("code");
   const [items, setItems] = useState<Row[]>([blankItem()]);
   const [picker, setPicker] = useState(false);
-  const [endsAt, setEndsAt] = useState(() => toLocalInput(new Date(Date.now() + POST_SALE_DEFAULT_DAYS * 86400000).toISOString()));
+  // sql/188: the end date = whole days from now, 1..14 (the database refuses more); starts at 7
+  const [days, setDays] = useState(POST_SALE_DEFAULT_DAYS);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [nowMs] = useState(() => Date.now()); // one clock read at open (pure render)
@@ -186,22 +194,24 @@ export function SellOnPost({ ui: u, cur, onClose }: { ui: PostsUi; cur: string; 
   const complete = (r: NewPostItem) => !!r.name.trim() && (mode === "plus_one" || !!r.code.trim()) && r.price > 0;
   const itemsValid = filled.length > 0 && filled.every(complete)
     && (mode === "plus_one" || new Set(filled.map((r) => r.code.trim().toLowerCase())).size === filled.length);
-  const canStart = !!post && itemsValid && !!endsAt && !saving;
+  const canStart = !!post && itemsValid && !saving;
 
   const start = async () => {
     if (!canStart || !post) return;
     setSaving(true); setErr("");
-    const r = await u.onCreate({ pageId, postId: post.id, postMessage: post.message, postPicture: post.picture, mode, endsAt: new Date(endsAt).toISOString(), items: filled.map((x) => ({ ...x, code: mode === "plus_one" ? "+1" : x.code.trim(), name: x.name.trim() })) });
+    const r = await u.onCreate({ pageId, postId: post.id, postMessage: post.message, postPicture: post.picture, mode, endsAt: saleEndsAt(days, Date.now()), items: filled.map((x) => ({ ...x, code: mode === "plus_one" ? "+1" : x.code.trim(), name: x.name.trim() })) });
     setSaving(false);
     if (!("error" in r)) { onClose(); return; }
-    setErr(r.error === "code_in_use" ? tpl(t.rd_fps_err_code_in_use, { code: r.code || "" }) : r.error === "too_many" ? t.rd_fps_err_too_many : r.error === "post_in_use" ? t.rd_fps_err_post_in_use : r.error === "not_allowed" ? t.rd_fps_err_not_allowed : t.rd_fps_err_failed);
+    setErr(r.error === "code_in_use" ? tpl(t.rd_fps_err_code_in_use, { code: r.code || "" }) : r.error === "too_many" ? t.rd_fps_err_too_many : r.error === "post_in_use" ? t.rd_fps_err_post_in_use : r.error === "not_allowed" ? t.rd_fps_err_not_allowed
+      : r.error === "ends_too_late" ? t.rd_fps_err_ends_late : r.error === "ends_in_past" ? t.rd_fps_err_ends_past : t.rd_fps_err_failed);
   };
   const postedLine = (iso: string) => {
     const d = parse(iso); if (!d) return "";
     const today = dayKey(new Date(nowMs)), yday = dayKey(new Date(nowMs - 86400000)), k = dayKey(d);
     return k === today ? tpl(t.rd_fps_posted_today, { time: fmtTime(d) }) : k === yday ? tpl(t.rd_fps_posted_yday, { time: fmtTime(d) }) : `${fmtMonthDay(d)}, ${fmtTime(d)}`;
   };
-  const endsD = parse(endsAt);
+  const endsD = new Date(nowMs + days * 86400000);
+  const stepBtn = (on: boolean): CSSProperties => ({ width: 44, height: 44, borderRadius: 12, border: "none", flexShrink: 0, background: on ? "var(--accent-soft)" : "var(--surface-2)", color: on ? "var(--accent-fg)" : "var(--text-muted)", fontSize: 22, fontWeight: 800, lineHeight: 1, cursor: on ? "pointer" : "default", fontFamily: ui });
 
   return (
     <div data-testid="sell-on-post">
@@ -271,12 +281,17 @@ export function SellOnPost({ ui: u, cur, onClose }: { ui: PostsUi; cur: string; 
         {!itemsValid && filled.length > 0 && <div style={{ fontSize: 12.5, color: "var(--danger)", marginTop: 8 }}>{t.rd_fps_err_items}</div>}
       </div>
 
-      <div style={{ ...card, marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
-        <label htmlFor="sell-ends" style={{ flex: 1, fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{t.rd_fps_ends}</label>
-        <div style={{ position: "relative", flexShrink: 0 }}>
-          <span aria-hidden="true" style={{ ...cell, display: "inline-flex", alignItems: "center", width: "auto", fontFamily: ui, fontWeight: 700, padding: "0 12px", pointerEvents: "none" }}>{endsD ? `${fmtMonthDay(endsD)}, ${fmtTime(endsD)} (${tpl(t.rd_fps_days_n, { n: daysFrom(endsAt, nowMs) })})` : "—"}</span>
-          <input id="sell-ends" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} data-testid="sell-ends" aria-label={t.rd_fps_ends} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" }} />
+      <div data-testid="sell-ends" role="group" aria-labelledby="sell-ends-label" style={{ ...card, marginTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div id="sell-ends-label" style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{t.rd_fps_ends}</div>
+            <div data-testid="sell-ends-date" style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 3, fontWeight: 600 }}>{`${fmtMonthDay(endsD)}, ${fmtTime(endsD)}`}</div>
+          </div>
+          <button type="button" data-testid="sell-days-less" aria-label={t.rd_fps_day_less} disabled={days <= 1} onClick={() => setDays((d) => clampSaleDays(d - 1))} style={stepBtn(days > 1)}>−</button>
+          <span data-testid="sell-days" aria-live="polite" style={{ minWidth: 58, textAlign: "center", fontSize: 14.5, fontWeight: 800, color: "var(--text)", whiteSpace: "nowrap" }}>{days === 1 ? t.rd_fps_day_1 : tpl(t.rd_fps_days_n, { n: days })}</span>
+          <button type="button" data-testid="sell-days-more" aria-label={t.rd_fps_day_more} disabled={days >= POST_SALE_MAX_DAYS} onClick={() => setDays((d) => clampSaleDays(d + 1))} style={stepBtn(days < POST_SALE_MAX_DAYS)}>+</button>
         </div>
+        <div data-testid="sell-ends-max" style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>{t.rd_fps_ends_max}</div>
       </div>
       {err && <div role="alert" data-testid="sell-error" style={{ fontSize: 13, color: "var(--danger)", marginTop: 10, fontWeight: 600 }}>{err}</div>}
       <button type="button" data-testid="sell-start" disabled={!canStart} onClick={() => { void start(); }} style={{ ...btnPrimary, width: "100%", minHeight: 52, marginTop: 14, fontSize: 16, opacity: canStart ? 1 : 0.5 }}>{t.rd_fps_start}</button>
@@ -294,6 +309,7 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
   const [busy, setBusy] = useState(false);
   const statusText = { selling: t.rd_fps_st_selling, sold_out: t.rd_fps_st_sold_out, ended: t.rd_fps_st_ended } as const;
   const tone = { selling: "selling", sold_out: "soldout", ended: "ended" } as const;
+  const ro = u.readOnly === true;
   const withStatus = u.sales.map((s) => ({ s, st: saleStatus(s) }));
   const selling = withStatus.filter((x) => x.st !== "ended");
   const ended = withStatus.filter((x) => x.st === "ended");
@@ -338,12 +354,12 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
                   <>
                     <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-dim)" }}>{cur}{fmt(it.price)}</span>
                     <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{tpl(t.rd_fps_sold, { sold: it.sold })}{it.stock != null ? ` / ${it.stock}` : ""}</span>
-                    {st !== "ended" && <button type="button" data-testid="my-post-edit" onClick={() => { setEditing(it.id); setDraft({ price: it.price, priceText: moneyText(it.price), stock: it.stock }); }} style={{ ...btnSoft, minHeight: 34, padding: "0 12px", fontSize: 13 }}>{t.rd_fps_edit}</button>}
+                    {st !== "ended" && !ro && <button type="button" data-testid="my-post-edit" onClick={() => { setEditing(it.id); setDraft({ price: it.price, priceText: moneyText(it.price), stock: it.stock }); }} style={{ ...btnSoft, minHeight: 34, padding: "0 12px", fontSize: 13 }}>{t.rd_fps_edit}</button>}
                   </>
                 )}
               </div>
             ))}
-            {st !== "ended" && (
+            {st !== "ended" && !ro && (
               confirmEnd === s.id ? (
                 <div data-testid="my-post-end-confirm" style={{ marginTop: 8, fontSize: 13, color: "var(--text-dim)" }}>
                   {t.rd_fps_end_confirm}
@@ -365,7 +381,7 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
   return (
     <div data-testid="my-posts">
       <SubHeader title={t.rd_fps_my_posts} onBack={onClose} />
-      <button type="button" data-testid="my-posts-sell" onClick={onSell} style={{ ...btnPrimary, width: "100%", minHeight: 52, marginTop: 10, fontSize: 16 }}>{t.rd_fps_sell_fb_btn}</button>
+      {ro ? <div style={{ marginTop: 10 }}><ReadOnlyLine /></div> : <button type="button" data-testid="my-posts-sell" onClick={onSell} style={{ ...btnPrimary, width: "100%", minHeight: 52, marginTop: 10, fontSize: 16 }}>{t.rd_fps_sell_fb_btn}</button>}
       {u.sales.length === 0 && <div style={{ ...card, marginTop: 14, textAlign: "center", fontSize: 13.5, color: "var(--text-muted)" }}>{t.rd_fps_my_empty}</div>}
       {selling.length > 0 && <div style={sectionLabel}>{t.rd_fps_selling_now}</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{selling.map(saleCard)}</div>

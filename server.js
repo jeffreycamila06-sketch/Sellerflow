@@ -42,7 +42,7 @@ import { finalErrorHandler } from "./server/finalErrorHandler.js";
 import { registerHealthRoutes } from "./server/healthRoutes.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
-import { createFbPostSales } from "./server/fbPostSales.js";
+import { createFbPostSales, pageLiveIn } from "./server/fbPostSales.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbDiagHandler, FB_DIAG_PATH } from "./server/fbDiag.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
@@ -2760,6 +2760,9 @@ try {
     const postSales = createFbPostSales({
       config: fbCfg,
       enabled: fbPostSalesEnabled,
+      // Lives first: a Page whose live comment reader is running is not read for its posts.
+      // READ-ONLY look at fbLive's running pollers (nothing in fbLive changes).
+      isPageLive: (pageId) => pageLiveIn(fbRuntime ? fbRuntime._pollers : null, pageId),
       log: (line) => console.log(line),
       store: {
         getPage: (userId, pageId) => store.getPage(userId, pageId),
@@ -2791,9 +2794,26 @@ try {
           return String(data || "error");
         },
         // Sold out → the same waitlist as the live path (sql/92), source 'post'. Idempotent per comment.
+        // sale_id (sql/188) = the post this comment belongs to; before sql/188 the column does not
+        // exist yet → the row is written without it (exactly the row written before).
         async joinWaitlist(row) {
-          const { error } = await serviceSb.from("fb_waitlist").upsert(row, { onConflict: "user_id,comment_id", ignoreDuplicates: true });
+          const up = (r) => serviceSb.from("fb_waitlist").upsert(r, { onConflict: "user_id,comment_id", ignoreDuplicates: true });
+          let { error } = await up(row);
+          if (error && "sale_id" in row && (error.code === "PGRST204" || error.code === "42703")) {
+            const { sale_id: _saleId, ...without } = row;
+            ({ error } = await up(without));
+          }
           if (error) throw new Error("fb_waitlist_insert");
+        },
+        // sql/188: the sellers that may sell on posts (admin / tester / active Plus-Pro-Master).
+        // The function missing (sql/188 not applied yet) → null = every seller, as before.
+        async allowedSellers(userIds) {
+          const { data, error } = await serviceSb.rpc("fb_post_sellers_allowed", { p_uids: userIds });
+          if (error) {
+            if (error.code === "PGRST202" || error.code === "42883") return null;
+            throw new Error("fb_post_sellers_allowed");
+          }
+          return Array.isArray(data) ? data.map(String) : [];
         },
       },
     });
@@ -2805,7 +2825,8 @@ try {
       if (!/^\d{1,40}$/.test(pageId)) return res.status(400).json({ ok: false, error: "bad_page" });
       try {
         const r = await postSales.recentPosts(req.authUserId, pageId);
-        return res.status(r.ok ? 200 : 502).json(r);
+        const code = r.ok ? 200 : r.error === "plan_not_allowed" ? 403 : r.error === "plan_check_failed" ? 503 : 502;
+        return res.status(code).json(r);
       } catch { return res.status(502).json({ ok: false, error: "fb_failed" }); }
     });
     // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
