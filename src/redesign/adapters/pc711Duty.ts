@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { pc711Call, taipeiStamp } from "./pc711Login";
 
 export type Pc711DutyReason = "silent" | "degraded";
+/** the server's kept E-Map store-search session: answers now · being repaired / opened · neither */
+export type Pc711StoreSession = "ready" | "opening" | "not_ready";
 export interface Pc711DutyLast { start: string; end: string; reason: Pc711DutyReason | null }
 export interface Pc711Duty {
   /** "on" = the backup switch is on and its tables exist; "off" = switch off or sql/179 not applied */
@@ -25,6 +27,8 @@ export interface Pc711Duty {
   lastCallAt: string | null;
   /** the last finished take-over; null = there was none */
   last: Pc711DutyLast | null;
+  /** the kept E-Map session (only while the backup is on); null = not known */
+  storeSession: Pc711StoreSession | null;
   /** the server's clock minus this device's clock when the answer arrived (ms) */
   skewMs: number;
 }
@@ -62,6 +66,7 @@ export function toPc711Duty(j: unknown, nowMs: number = Date.now()): Pc711Duty |
     label: labelOf(checker.label),
     lastCallAt: isoOrNull(checker.lastCallAt),
     last: start && end && Date.parse(start) <= Date.parse(end) ? { start, end, reason: reasonOf(l!.reason) } : null,
+    storeSession: on && (o.storeSession === "ready" || o.storeSession === "opening" || o.storeSession === "not_ready") ? o.storeSession : null,
     skewMs: serverNow ? Date.parse(serverNow) - nowMs : 0,
   };
 }

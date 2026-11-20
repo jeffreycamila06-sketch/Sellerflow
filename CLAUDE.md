@@ -5982,3 +5982,26 @@ print or the iPhone opening the photo.
 - **Proof:** `Blacklist.test.tsx` "the Remove sheet is drawn outside the screen" (3 tests fail on main's screen);
   `docs/design/blacklist-remove-sheet/` (real app, before / after at 390×844, 412×915, 1280×800 + a 390×240 stress,
   a tap at each button's centre). Preview rows: `src/dev/fakeSupabase.ts` `?bl=1` (preview-only, never shipped).
+
+## 2026-11-20 — 7-11 BACKUP: STANDBY KEEPS THE E-MAP SESSION READY (branch `claude/great-wright-3v8plu`, NOT merged; no SQL; needs a Render deploy)
+So the shadow switch (`pc711_shadow_enabled`) can go OFF without a slow backup: until now only the shadow's ~1,200
+re-checks a day kept the server's E-Map session alive; with shadow OFF a take-over started on a dead session
+(main, simulated: up to 682 s to the first store answer, parcels written "unknown" first).
+- **`server/pc711Shadow.js` `standbyKeep`:** runs in `tickEvidence` ONLY where the shadow switch reads OFF and
+  `backup.state().enabled === true` (the backup is a follower — on duty the backup's own pass runs first). No parcel
+  check; the extension's standby (`background.js` pcRunOnce: pick · keepalive every 5 min with lastAnyNeedStore=false ·
+  repair) on the SAME `pc711Emap` object, + Jeff's open rule (open at once, confirm once, then every 2 min; at once after
+  a new login). `emap.refresh(…, null)` = no safety brake. Night 01:00–05:00: keepalive yes, no repair, no open.
+  Logged out: same rule as the shadow pass (only while the kept session answers). Log `[PC711_STANDBY] on|off`.
+  The return stays `{ skipped: "off" }` when standby does not run (old tests pin it); `{ skipped: "off", standby: true }` when it does.
+- **Shadow ON and on duty = main request-for-request** (`pc711Standby.server.test.ts` S5 vs the frozen
+  `fixtures/pc711Shadow.main.js`). ⚠️ If `pc711Shadow.js` changes on purpose later, the S5 tests compare against main's
+  OLD copy — refresh the fixture from the new main when the change is meant to alter shadow-ON behaviour.
+- **Admin card line "Store session: ready / opening / not ready"** (backup on only): `pc711Emap.sessionWord(inMaint,
+  loggedIn)` → `storeSessionWord` (pure) → `GET /admin/pc711/duty` key `storeSession` (now 11 keys) → `Pc711DutyCard`
+  (`pc711-duty-store`, green / orange / red). Texts `rd_pc711_duty_store*` (same English ×8).
+- **Proof:** take-over after shadow OFF 10/60 min, 1–3 parcels → first real store answer 123 s after the Lenovo stops
+  (= the take-over pass), 0 "unknown", no open; one standby day = 288 keepalives + 1 open (289 requests) vs ~3,800–4,100
+  a day with shadow ON. 11/11 on-purpose breaks (`docs/design/pc711-standby/proof/`). Pictures `docs/design/pc711-standby/shots/`.
+- **Order:** merge → Render deploy (quiet window) → Jeff turns `pc711_shadow_enabled` OFF. Note: `pc711_mirror_enabled`
+  was switched off on Nov 20 21:10 (its `updated_at` still says Nov 17 — app_settings has no updated_at trigger).

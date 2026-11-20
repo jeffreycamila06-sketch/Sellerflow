@@ -1,0 +1,35 @@
+CAUGHT: no standby step at all (main's behaviour)
+    × opens at once, then only the keepalive every 5 min: 0 parcel checks, 0 shadow checks, 0 writes; the session stays alive for 3 hours 35ms
+    × one log line when standby starts and one when the shadow switch goes ON again — words only 13ms
+    × a session that cannot be opened: one try, one more right away to confirm, then one every 2 min — no 15-min pause, no shadow row 2ms
+CAUGHT: standby also when the backup switch is off
+    × the standby step = onLogin kick · pick · keepalive(nothing waits) · refresh with NO brake hooks, in that order 12ms
+    × the backup switch OFF → no standby: not one 7-11 request in a day (main's behaviour) 94ms
+CAUGHT: the keepalive told a store check is waiting (never fires)
+    × the standby step = onLogin kick · pick · keepalive(nothing waits) · refresh with NO brake hooks, in that order 6ms
+    × opens at once, then only the keepalive every 5 min: 0 parcel checks, 0 shadow checks, 0 writes; the session stays alive for 3 hours 30ms
+    × the server's session is reset (e.g. 7-11 restarts it): the keepalive misses, the repair re-loads, the session is opened again 10ms
+CAUGHT: no repair / open on standby
+    × the standby step = onLogin kick · pick · keepalive(nothing waits) · refresh with NO brake hooks, in that order 6ms
+    × opens at once, then only the keepalive every 5 min: 0 parcel checks, 0 shadow checks, 0 writes; the session stays alive for 3 hours 25ms
+    × a session that cannot be opened: one try, one more right away to confirm, then one every 2 min — no 15-min pause, no shadow row 2ms
+CAUGHT: the shadow's safety brake on standby
+    × the standby step = onLogin kick · pick · keepalive(nothing waits) · refresh with NO brake hooks, in that order 6ms
+    × a session that cannot be opened: one try, one more right away to confirm, then one every 2 min — no 15-min pause, no shadow row 3ms
+CAUGHT: no open at once after a new login
+    × the standby step = onLogin kick · pick · keepalive(nothing waits) · refresh with NO brake hooks, in that order 6ms
+    × a new 7-11 login → the dead session is opened at once (no 2-min wait) 5ms
+CAUGHT: standby ignores the night window (repair / open at night)
+    × the standby step = onLogin kick · pick · keepalive(nothing waits) · refresh with NO brake hooks, in that order 6ms
+CAUGHT: standby also runs with the shadow switch ON (a second keepalive)
+    × one log line when standby starts and one when the shadow switch goes ON again — words only 15ms
+    × shadow ON, backup on: the same requests at the same times as main (store, phone, frozen, keepalive, repair, open, take-over, hand-back) 154ms
+CAUGHT: the card word says ready for a stale session
+    × the keepalive runs all night; a session that dies at night is not repaired or opened before 05:00, then it is 25ms
+    × the word 2ms
+CAUGHT: the duty answer carries the word with the backup off
+    × the duty answer carries it only while the backup is on, and only one of the three words 7ms
+CAUGHT: the card shows the line with the backup off
+    × the card's own rule: no line with the backup off, even when it is handed a word 14ms
+
+11 of 11 breaks caught

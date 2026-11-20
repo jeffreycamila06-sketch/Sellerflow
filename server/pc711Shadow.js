@@ -17,6 +17,8 @@
 // /cart/finish (the probe's URL allowlist refuses it). The queue comes from ONE small service-role
 // RPC (sql/162 pc711_shadow_pending) — an empty pass costs a few bytes.
 // Log, one line per check: [PC711_SHADOW] kind=… match=1|0|err step=… http=… ms=… gap=… — no data.
+// Switch OFF + backup switch on (Jeff 2026-11-20): STANDBY — no parcel check, only the kept E-Map session is
+// kept ready the extension's standby way (see standbyKeep); log [PC711_STANDBY] on|off once per change.
 import { randomUUID } from "node:crypto";
 import { SELF_STOP_EVERY_MS, SELF_STOP_WINDOW_MS, selfStopDecision, MIRROR_SWITCH, EVIDENCE_SAVE_TRIES, EVIDENCE_SAVE_RETRY_MS, evidenceJobs, evidenceRow, pairPatch, oldRowFromPair, reaskWord, nextReaskAt } from "./pc711Evidence.js";
 
@@ -496,7 +498,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     const kept = Boolean(st) && st.state === "needs_login" && keptSession();
     if (!kept) {
       if (loginLost(st)) await stopMirrorOnLoginLoss();
-      if (!st || st.state !== "connected") return { skipped: "not_connected" };
+      if (!st || st.state !== "connected") { noteStandby(false); return { skipped: "not_connected" }; }
       if (stoppedSince !== null && stoppedSince === (st.since ?? null)) return { skipped: "stopped" };
     }
     stoppedSince = null;
@@ -512,7 +514,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     let p;
     try { p = await evidence.pass(since, SHADOW_FETCH_LIMIT, SHADOW_LIMIT, mirrorAllowed, healthFrom); }
     catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
-    if (!p.shadow) return { skipped: "off" };
+    if (!p.shadow) return (await standbyKeep(st)) ? { skipped: "off", standby: true } : { skipped: "off" };
+    noteStandby(false);
     const d = taipeiDay(t);
     if (d.key !== day) {
       day = d.key;
@@ -709,6 +712,33 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     return checked;
   }
 
+  // STANDBY (Jeff 2026-11-20): the shadow switch is OFF and the backup is a follower with its switch on → no
+  // parcel check at all, only what the extension's standby does to stay ready (background.js pcRunOnce:
+  // pcPickEmapTab · pcEmapKeepalive with lastAnyNeedStore = false · pcRefreshTabStatus) on the SAME kept
+  // E-Map session, so a take-over starts on a session that answers. One difference, Jeff's: the server also
+  // OPENS a session on standby (at once, one more try to confirm, then every 2 min — pc711Emap.js refresh);
+  // the extension's standby leaves that to its leader. No safety brake (like on duty). Logged out: the same
+  // rule as the shadow pass (tickEvidence runs only while connected or while the kept session answers).
+  // Night (01:00–05:00 Taipei): the keepalive runs, a miss is not counted, no repair, no open (pc711Emap.js).
+  // → true when the standby step ran this pass. Never throws.
+  let standbyOn = false;
+  function noteStandby(on) {
+    if (on === standbyOn) return;
+    standbyOn = on;
+    say(`[PC711_STANDBY] ${on ? "on" : "off"}`);
+  }
+  async function standbyKeep(st) {
+    let on = false;
+    try { on = Boolean(emap) && Boolean(backup) && typeof backup.state === "function" && backup.state().enabled === true; } catch { on = false; }
+    noteStandby(on);
+    if (!on) return false;
+    if (st && st.since !== loginSince) { loginSince = st.since; try { emap.onLogin(); } catch { /* never stops the pass */ } }
+    try { emap.pick(inShadowMaint(now())); } catch { /* never stops the pass */ }
+    try { await emap.keepalive(false, inShadowMaint(now())); } catch { /* never stops the pass */ }
+    try { await emap.refresh(inShadowMaint(now()), null); } catch { /* never stops the pass */ }
+    return true;
+  }
+
   async function tick() {
     if (running) return { skipped: "running" };
     running = true;
@@ -773,7 +803,7 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     /** What Admin sees (no data): the brake, the last Waiting, today's max. */
     state: () => ({ pausedUntil: pausedUntil > now() ? pausedUntil : null, waiting, waitingAt: waitingAt || null, dayMax: Object.fromEntries(dayMax),
       selfStop: { silentSince, lastCheckAt: lastHealthAt ? new Date(lastHealthAt).toISOString() : null } }),
-    _state: () => ({ day, stoppedSince, lastEnd, streak, pausedUntil, backoff: new Map(backoff) }),
+    _state: () => ({ day, stoppedSince, lastEnd, streak, pausedUntil, backoff: new Map(backoff), standbyOn }),
     /** the kept E-Map session's state (words and counts only) */
     emapState: () => (emap ? emap.state() : null),
   };

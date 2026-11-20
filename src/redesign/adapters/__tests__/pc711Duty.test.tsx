@@ -33,7 +33,7 @@ describe("A — the answer", () => {
     const d = toPc711Duty(answer({ ...ON_DUTY, answeredMore: true, last: { start: iso(NOW - 3 * 3600_000), end: iso(NOW - 2 * 3600_000), reason: "degraded" } }), NOW)!;
     expect(d).toEqual({
       backup: "on", onDuty: true, loggedOut: false, reason: "silent", since: iso(NOW - 22 * 60_000), answered: 37, answeredMore: true,
-      label: "Lenovo", lastCallAt: iso(NOW - 4000), last: { start: iso(NOW - 3 * 3600_000), end: iso(NOW - 2 * 3600_000), reason: "degraded" }, skewMs: 0,
+      label: "Lenovo", lastCallAt: iso(NOW - 4000), last: { start: iso(NOW - 3 * 3600_000), end: iso(NOW - 2 * 3600_000), reason: "degraded" }, storeSession: null, skewMs: 0,
     } satisfies Pc711Duty);
   });
   it("backup off: nothing of a duty is kept, whatever the answer carries", () => {

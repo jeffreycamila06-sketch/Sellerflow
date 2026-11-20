@@ -18,6 +18,7 @@
 export const DUTY_LEASE_KEY = "parcel_check_worker_lease";
 export const DUTY_SWITCH_KEY = "pc711_backup_enabled";
 export const DUTY_REASONS = ["silent", "degraded"];
+export const DUTY_STORE_SESSION = ["ready", "opening", "not_ready"]; // the kept E-Map session (server memory, no read)
 export const DUTY_ANSWER_KINDS = ["store", "phone", "frozen"]; // a parcel's answers in pc711_backup_log
 export const DUTY_PAGE = 1000;            // rows a read (the database answers at most 1,000 rows a request)
 export const DUTY_MAX_PAGES = 10;         // … and at most this many reads for one answer; the next answer goes on
@@ -92,7 +93,7 @@ export function lastTakeOver(rows, state) {
 }
 
 /** The answer, built key by key (nothing is copied through). Pure. */
-export function dutyAnswer({ enabled = false, state = null, lease = null, dutyRows = [], answered = null, more = false, loggedOut = false, nowMs = Date.now() } = {}) {
+export function dutyAnswer({ enabled = false, state = null, lease = null, dutyRows = [], answered = null, more = false, loggedOut = false, storeSession = null, nowMs = Date.now() } = {}) {
   const on = enabled === true;
   const onDuty = on && Boolean(state && state.on_duty === true);
   const l = lease && typeof lease === "object" ? lease : { label: "", lastCallAt: null };
@@ -106,6 +107,8 @@ export function dutyAnswer({ enabled = false, state = null, lease = null, dutyRo
     answeredMore: onDuty && more === true,
     checker: { label: machineLabel(l.label), lastCallAt: isoOrNull(l.lastCallAt) },
     last: lastTakeOver(dutyRows, state),
+    // only while the backup is on (the card shows it then); one of three fixed words
+    storeSession: on && DUTY_STORE_SESSION.includes(storeSession) ? storeSession : null,
     now: new Date(nowMs).toISOString(),
   };
 }
@@ -145,11 +148,12 @@ export function createDutyDb(sb) {
 
 /**
  * get() → the answer. db = createDutyDb (null → every get() fails); loginState() → the saved 7-11 login's
- * state word (memory, no read). One read serves all requests for cacheMs, and requests that arrive while
+ * state word (memory, no read); storeSession() → the kept E-Map session's word (memory, no read: ready /
+ * opening / not_ready). One read serves all requests for cacheMs, and requests that arrive while
  * a read is running share it. The parcels of the current duty are counted from where the last answer
  * stopped (only new log rows are read).
  */
-export function createDutyReader({ db, loginState = () => null, now = Date.now, cacheMs = DUTY_CACHE_MS, log = console.log }) {
+export function createDutyReader({ db, loginState = () => null, storeSession = () => null, now = Date.now, cacheMs = DUTY_CACHE_MS, log = console.log }) {
   let cache = null;      // { at, answer }
   let running = null;    // the read in flight
   let count = { since: null, lastId: 0, ids: new Set() };
@@ -197,7 +201,9 @@ export function createDutyReader({ db, loginState = () => null, now = Date.now, 
     }
     let loggedOut = false;
     try { loggedOut = loginState() === "needs_login"; } catch { loggedOut = false; }
-    return dutyAnswer({ enabled, state, lease: parseLease(s.lease), dutyRows, answered, more, loggedOut, nowMs: now() });
+    let session = null;
+    try { session = storeSession(); } catch { session = null; }
+    return dutyAnswer({ enabled, state, lease: parseLease(s.lease), dutyRows, answered, more, loggedOut, storeSession: session, nowMs: now() });
   }
 
   return {
