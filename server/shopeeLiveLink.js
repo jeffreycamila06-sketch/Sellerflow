@@ -10,6 +10,12 @@
 //
 // Pure helpers (exported, unit-tested): parseShareUrl, regionOfHost, verifyHost,
 // parseChatBatches, shopeeToPayload, nextDelayMs. Runtime: createShopeeLinkRuntime(deps).
+//
+// DIAGNOSTIC (2026-11-20, log only — server/shopeeDiag.js): every poller counts what the chat room sends and
+// what the reader does with each message, and logs one [SHOPEE-DIAG] line every 60 s (+ the first time a new
+// message shape is seen, + at stop). Counts and field names only. It reads the same objects and never changes a
+// comment, the dedupe, the cursor or the timing; any error inside it is swallowed. deps.diag = false turns it off.
+import { createShopeeDiag } from "./shopeeDiag.js";
 
 export const SHOPEE_UA = "SellerFlowLive/1.0 (+https://www.sellerflowlive.com)"; // honest UA, no browser imitation
 export const REGIONS = new Set(["tw", "ph"]);
@@ -125,8 +131,11 @@ export function createShopeeLinkRuntime(deps) {
     rememberAccount = async () => {},  // (userId, region, uid) → the Shopee account key (account seats)
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
     setLoop = (fn, ms) => setTimeout(fn, ms), clearLoop = (h) => clearTimeout(h),
+    diag: diagOn = true,
   } = deps;
   const pollers = new Map(); // key → entry
+  // the diagnostic never reaches the reader: no diag object → nothing; a throw inside it → ignored
+  const dg = (entry, fn) => { if (!entry.diag) return; try { fn(entry.diag); } catch { /* diagnostic only */ } };
 
   async function get(url) {
     const ctl = typeof AbortController === "function" ? new AbortController() : null;
@@ -188,30 +197,35 @@ export function createShopeeLinkRuntime(deps) {
     try {
       r = await get(`https://chatroom-live.shopee.${entry.region}/api/v1/fetch/chatroom/${encodeURIComponent(entry.chatroomId)}/message?uuid=${entry.uuid}&timestamp=${entry.cursor}&version=v2`);
     } catch { r = { status: 0, body: null }; }
+    dg(entry, (d) => d.poll());
     const okResp = r.status === 200 && r.body && Number(r.body.code) === 0;
     if (!okResp) {
       entry.fails++;
       if (entry.fails === 1 || entry.fails % 5 === 0) log(`[SHOPEE-LINK] poll fail #${entry.fails} http=${r.status} code=${r.body && r.body.code} seller=${entry.sellerId}`);
+      dg(entry, (d) => d.maybeLog(t, log, entry.sellerId));
       if (entry.fails >= MAX_CONSECUTIVE_FAILS) return { stop: "unreachable" };
       return { delayMs: nextDelayMs({ ok: false, fails: entry.fails }) };
     }
     entry.fails = 0;
+    dg(entry, (d) => d.data(r.body.data));
     const { msgs, cursor, pollIntervalMs } = parseChatBatches(r.body.data);
     if (cursor != null) entry.cursor = cursor;
     const asInitial = !entry.firstPollDone; // F1 mirror: the first poll's backlog is display-only
     let fresh = 0;
     for (const m of msgs) {
       const payload = shopeeToPayload(m, { sellerId: entry.sellerId, sessionId: entry.sessionId, uid: entry.uid, liveSessionId: entry.liveSessionId, nowMs: t });
-      if (!payload) continue;
-      if (entry.seen.has(payload.msgId)) continue;
+      if (!payload) { dg(entry, (d) => d.msg(m, "notext")); continue; }
+      if (entry.seen.has(payload.msgId)) { dg(entry, (d) => d.msg(m, "dupe", payload.msgId)); continue; }
       entry.seen.add(payload.msgId); entry.seenOrder.push(payload.msgId);
       if (entry.seenOrder.length > DEDUPE_CAP) entry.seen.delete(entry.seenOrder.shift());
       if (asInitial) payload.initial = true;
+      dg(entry, (d) => d.msg(m, "kept", payload.msgId));
       emitComment(entry.sellerId, entry.scopeKey, payload);
       fresh++;
     }
     entry.firstPollDone = true;
     if (fresh > 0) entry.lastActivityMs = t;
+    dg(entry, (d) => d.maybeLog(t, log, entry.sellerId));
     return { delayMs: pollIntervalMs };
   }
   function scheduleNext(entry, delayMs) {
@@ -235,6 +249,7 @@ export function createShopeeLinkRuntime(deps) {
       scopeKey: String(uid), uuid: cryptoUuid(), cursor: 0, seen: new Set(), seenOrder: [], fails: 0, timer: null, stopped: false,
       firstPollDone: false, startedAtMs: t, lastActivityMs: t, lastStatusMs: t,
     };
+    if (diagOn) { try { entry.diag = createShopeeDiag({ hostUid: String(uid), startMs: t }); } catch { entry.diag = null; } }
     pollers.set(key, entry);
     statusEmit(sellerId, { connected: true, scopeKey: entry.scopeKey, sessionId: entry.sessionId });
     log(`[SHOPEE-LINK] poller start seller=${sellerId} region=${region} live=${liveSessionId}`);
@@ -249,6 +264,7 @@ export function createShopeeLinkRuntime(deps) {
     pollers.delete(key);
     try { statusEmit(entry.sellerId, { connected: false, scopeKey: entry.scopeKey, sessionId: entry.sessionId, reason: String(reason) }); } catch { /* best effort */ }
     log(`[SHOPEE-LINK] poller stop seller=${entry.sellerId} reason=${reason}`);
+    dg(entry, (d) => log(d.line(entry.sellerId)));
     return true;
   }
   function stopAll() { for (const k of [...pollers.keys()]) stopPoller(k, "shutdown"); }
