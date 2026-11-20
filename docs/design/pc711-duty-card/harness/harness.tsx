@@ -3,6 +3,7 @@
 //   ?panel=connected | out | notconnected | keymissing     the state of the panel
 //   ?card=normal | duty | dutyout | off | failed            what GET /admin/pc711/duty answers
 //   ?reason=silent | degraded    ?hist=1 | 0    ?dark=1
+//   ?store=ready | opening | not_ready                       the "Store session" line (2026-11-20; absent = no line)
 // The screenshot script fixes the page's clock at 2026-11-18 14:08 Taipei, so the times below read
 // "4 s ago" and "11/18 13:46 (22 min)".
 import { createRoot } from "react-dom/client";
@@ -17,6 +18,7 @@ const card = q.get("card") || "normal";
 const reason = q.get("reason") === "degraded" ? "degraded" : "silent";
 const hist = q.get("hist") === "1";
 const dark = q.get("dark") === "1";
+const store = q.get("store");
 
 const NOW = Date.parse("2026-11-18T06:08:00Z");
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -32,6 +34,7 @@ const DUTY = {
   reason: onDuty ? reason : null, since: onDuty ? iso(NOW - 22 * 60_000) : null, answered: onDuty ? 37 : null, answeredMore: false,
   checker: { label: "Lenovo", lastCallAt: iso(NOW - 4000) },
   last: hist ? { start: "2026-11-16T19:12:00Z", end: "2026-11-16T19:58:00Z", reason: "silent" } : null,
+  ...(store ? { storeSession: store } : {}),
   now: iso(NOW),
 };
 const PART = { n: 0, matchPct: null, errors: 0 };

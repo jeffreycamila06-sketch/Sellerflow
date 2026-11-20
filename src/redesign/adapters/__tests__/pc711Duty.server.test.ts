@@ -85,7 +85,7 @@ const reader = (tables: Tables, opt: { wide?: boolean; missingCode?: string; log
   const r = createDutyReader({ db: createDutyDb(f.sb), loginState: () => opt.login ?? "connected", now: () => nowRef.ms, log: (l: string) => { (opt.logs ?? []).push(l); } });
   return { ...f, r, nowRef };
 };
-const KEYS = ["answered", "answeredMore", "backup", "checker", "last", "loggedOut", "now", "onDuty", "reason", "since"];
+const KEYS = ["answered", "answeredMore", "backup", "checker", "last", "loggedOut", "now", "onDuty", "reason", "since", "storeSession"];
 
 describe("A — the small rules", () => {
   it("machineLabel: one plain word or the extension's own \"<platform> <4 id characters>\"; anything else is not answered", () => {
@@ -137,7 +137,7 @@ describe("A — the small rules", () => {
     expect(lastTakeOver([{ at: iso(T0), word: "handed_back" }], { on_duty: false, since: iso(T0 + 5), handed_back_at: iso(T0), reason: "silent" })).toBeNull();
     for (const junk of [null, undefined, "x", [null, 5, {}, { at: "nope", word: "handed_back" }]]) expect(lastTakeOver(junk, null)).toBeNull();
   });
-  it("dutyAnswer: always the same ten keys, whatever goes in", () => {
+  it("dutyAnswer: always the same eleven keys, whatever goes in", () => {
     for (const a of [dutyAnswer(), dutyAnswer({ enabled: true, state: STATE_DUTY, lease: parseLease(LEASE()), answered: 3 }), dutyAnswer({ enabled: true, state: { on_duty: true, extra: "x", phone: "0912345678" } as never })]) {
       expect(Object.keys(a).sort()).toEqual(KEYS);
       expect(Object.keys(a.checker).sort()).toEqual(["label", "lastCallAt"]);
@@ -154,7 +154,7 @@ describe("B — the answer in each situation", () => {
       const a = await h.r.get();
       expect(a).toEqual({
         backup: "off", onDuty: false, loggedOut: false, reason: null, since: null, answered: null, answeredMore: false,
-        checker: { label: "Lenovo", lastCallAt: iso(T0 + 22 * 60_000 - 4000) }, last: null, now: iso(T0 + 22 * 60_000),
+        checker: { label: "Lenovo", lastCallAt: iso(T0 + 22 * 60_000 - 4000) }, last: null, storeSession: null, now: iso(T0 + 22 * 60_000),
       });
       // … also when the switch row was created by hand before the tables
       const h2 = reader({ app_settings: settings("true") }, { missingCode });
@@ -176,7 +176,7 @@ describe("B — the answer in each situation", () => {
     expect(await h.r.get()).toEqual({
       backup: "on", onDuty: false, loggedOut: false, reason: null, since: null, answered: null, answeredMore: false,
       checker: { label: "Lenovo", lastCallAt: iso(T0 + 22 * 60_000 - 4000) },
-      last: { start: iso(T0 - 26 * 3600_000), end: iso(T0 - 26 * 3600_000 + 46 * 60_000), reason: "silent" }, now: iso(T0 + 22 * 60_000),
+      last: { start: iso(T0 - 26 * 3600_000), end: iso(T0 - 26 * 3600_000 + 46 * 60_000), reason: "silent" }, storeSession: null, now: iso(T0 + 22 * 60_000),
     });
   });
   it("backup on but the duty function never ran yet (no state row) → on, not on duty", async () => {
@@ -422,6 +422,7 @@ describe("F — nothing private in the answer", () => {
     expect(String(last.start)).toMatch(time);
     expect(String(last.end)).toMatch(time);
     expect(["silent", "degraded", null]).toContain(last.reason);
+    expect(["ready", "opening", "not_ready", null]).toContain(a.storeSession);
   });
   it("the log line of a failed read carries a code only — never the database's own words", async () => {
     const logs: string[] = [];
@@ -492,7 +493,9 @@ describe("G — the route", () => {
   });
   it("server.js: the route is behind requireAuth THEN requireAdmin, GET only, and the reader gets no way to write", () => {
     expect(server).toContain('import { createDutyDb, createDutyReader, createDutyHandler } from "./server/pc711Duty.js";');
-    expect(server).toContain('const pc711DutyReader = createDutyReader({ db: serviceSb ? createDutyDb(serviceSb) : null, loginState: () => pc711.status().state });');
+    expect(server).toContain('const pc711DutyReader = createDutyReader({ db: serviceSb ? createDutyDb(serviceSb) : null, loginState: () => pc711.status().state,');
+    // the store-session word: the kept E-Map session's own read-only word (memory, sends nothing)
+    expect(server).toContain('storeSession: () => (pc711EmapForCard ? pc711EmapForCard.sessionWord(inShadowMaint(Date.now()), pc711.status().state === "connected") : null) });');
     expect(server).toContain('app.get("/admin/pc711/duty", requireAuth, requireAdmin, createDutyHandler({ reader: pc711DutyReader, allowed: pc711StatusAllowed }));');
     expect(server.match(/\/admin\/pc711\/duty/g)).toHaveLength(1);                // one route, one method
     expect(server.match(/pc711DutyReader/g)).toHaveLength(2);                     // made once, used once

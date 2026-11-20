@@ -2,11 +2,12 @@
 // Four states: the checker laptop is checking (green) · the server is checking now (orange) · the
 // server is checking but logged out of 7-11 (red) · backup off (grey). Under the card, one small line
 // about the last finished take-over (nothing when there was none). Counts and times only.
+// While the backup is on: one line "Store session: ready / opening / not ready" (the server's kept E-Map session).
 // The card asks nothing itself: the answer comes from usePc711Duty (the panel owns it). The only
 // timer here counts the "… ago" numbers up once a second, and it is stopped when the card goes away.
 import { useEffect, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
-import { dutyState, spanWords, taipeiMinute, taipeiRange, type Pc711Duty, type Pc711DutyState } from "../adapters/pc711Duty";
+import { dutyState, spanWords, taipeiMinute, taipeiRange, type Pc711Duty, type Pc711DutyState, type Pc711StoreSession } from "../adapters/pc711Duty";
 
 // the panel's own card (Pc711Panel.tsx `card`); orange and red reuse the app's existing tints —
 // red is exactly the panel's "Logged out of 7-11" card
@@ -18,6 +19,8 @@ const TINT: Record<Pc711DutyState, CSSProperties> = {
   duty_out: { ...card, background: "var(--danger-soft)", border: "1.5px solid var(--danger)" },
 };
 const COLOUR: Record<Pc711DutyState, string> = { normal: "var(--ok)", duty: "var(--warn)", duty_out: "var(--danger)", off: "var(--text-muted)" };
+// "Store session" line (Jeff 2026-11-20): the server's kept E-Map session — words only
+const SESSION_COLOUR: Record<Pc711StoreSession, string> = { ready: "var(--ok)", opening: "var(--warn)", not_ready: "var(--danger)" };
 const dim: CSSProperties = { color: "var(--text-dim)" };
 const val: CSSProperties = { color: "var(--text)", fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" };
 const title: CSSProperties = { fontSize: 13, fontWeight: 800, color: "var(--text)" };
@@ -75,6 +78,10 @@ export default function Pc711DutyCard({ duty }: { duty: Pc711Duty | null | undef
             <span style={dim}>{tpl(t.rd_pc711_duty_last_call, { name })}</span>
             <span data-testid="pc711-duty-last-call" style={val}>{duty.lastCallAt ? tpl(t.rd_pc711_duty_ago, { t: spanWords(serverNow - Date.parse(duty.lastCallAt)) }) : "—"}</span>
           </>}
+          {state !== "off" && duty.storeSession ? <>
+            <span style={dim}>{t.rd_pc711_duty_store}</span>
+            <span data-testid="pc711-duty-store" data-session={duty.storeSession} style={{ ...val, color: SESSION_COLOUR[duty.storeSession] }}>{duty.storeSession === "ready" ? t.rd_pc711_duty_store_ready : duty.storeSession === "opening" ? t.rd_pc711_duty_store_opening : t.rd_pc711_duty_store_not_ready}</span>
+          </> : null}
         </div>
         {state === "duty_out" ? <div role="alert" data-testid="pc711-duty-out" style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 13, fontWeight: 800, color: "var(--danger)", lineHeight: 1.4 }}>{t.rd_pc711_duty_out}</div> : null}
       </div>

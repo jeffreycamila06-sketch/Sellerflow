@@ -60,6 +60,13 @@ export function emapDerive(now, e, inMaint) {
   if (recent && latestFailed) return "degraded";
   return "stale";
 }
+/** The Admin card's word for the kept session (Jeff 2026-11-20). derived = emapDerive(now, …).
+ *  ready = it answered in the last 6 min and its last try did not fail; opening = not ready, but the login
+ *  is fine and it is outside 01:00–05:00 Taipei (the server is repairing / opening it); not_ready = else. */
+export function storeSessionWord(derived, loggedIn, inMaint) {
+  if (derived === "ok") return "ready";
+  return loggedIn === true && inMaint !== true ? "opening" : "not_ready";
+}
 /** emap-711.js parseByIdData: field 3 enable → open · disable → full · close → company; "NO2" → not_found; else null. */
 export function emapParseByIdData(text) {
   const raw = String(text).trim();
@@ -325,6 +332,8 @@ export function createPc711Emap({ open, fetchImpl = fetch, now = Date.now, log =
 
   return {
     pick, usable, answering, checkStore, checkFrozen, keepalive, refresh, onLogin,
+    /** the Admin card's word (storeSessionWord): read only, sends nothing */
+    sessionWord: (inMaint, loggedIn) => storeSessionWord(emapDerive(now(), e, inMaint), loggedIn, inMaint),
     /** the keepalive's clock (frozen-check.js laneBusy is NOT copied: the server sends one request at a time) */
     /** the store half's verdict / miss (pcEmapVerdict / pcEmapMiss), and the once-per-generation counter */
     verdict: () => verdict(now()),

@@ -1,0 +1,21 @@
+normal-ready_android-360.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-ready_iphone-390.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-ready_android-430.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-ready_laptop-1280.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-opening_android-360.png: "Store session: opening" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-opening_iphone-390.png: "Store session: opening" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-opening_android-430.png: "Store session: opening" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-opening_laptop-1280.png: "Store session: opening" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-not-ready_android-360.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-not-ready_iphone-390.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-not-ready_android-430.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+normal-not-ready_laptop-1280.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 115px tall
+on-duty-ready_android-360.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 155px tall
+on-duty-ready_iphone-390.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 155px tall
+on-duty-ready_android-430.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 155px tall
+on-duty-ready_laptop-1280.png: "Store session: ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 155px tall
+on-duty-logged-out-not-ready_android-360.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 208px tall
+on-duty-logged-out-not-ready_iphone-390.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 194px tall
+on-duty-logged-out-not-ready_android-430.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 194px tall
+on-duty-logged-out-not-ready_laptop-1280.png: "Store session: not ready" · sideways scroll page 0px, sheet 0px · cut text 0 · card 194px tall
+backup-off-no-line_iphone-390.png: "(no line)" · sideways scroll page 0px, sheet 0px · cut text 0 · card 95px tall

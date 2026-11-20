@@ -54,7 +54,7 @@ import { runPcLoginWalk } from "./server/pcLoginWalk.js";
 import { createPc711Login, createPc711Handlers, createPc711Store } from "./server/pc711Login.js";
 import { createTelegramAlert, createAlertTestHandler } from "./server/telegramAlert.js";
 import { createVersionAnnouncer, createVersionStore } from "./server/versionAlert.js";
-import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipeiDay } from "./server/pc711Shadow.js";
+import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, taipeiDay, inShadowMaint } from "./server/pc711Shadow.js";
 import { createEvidenceDb, evidenceList, evidenceTotals } from "./server/pc711Evidence.js";
 import { createPc711Emap, EMAP_KEEPALIVE_STORE } from "./server/pc711Emap.js";
 import { createPc711Backup, createBackupDb } from "./server/pc711Backup.js";
@@ -1294,7 +1294,10 @@ app.post("/admin/pc711/alert-test", requireAuth, requireAdmin, pc711Json, create
 app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
 // "Who is checking" (server/pc711Duty.js): Admin only, READ ONLY — the lease the extension writes, the backup switch,
 // pc711_backup_state and pc711_backup_log. It never calls the duty function and answers counts and times only.
-const pc711DutyReader = createDutyReader({ db: serviceSb ? createDutyDb(serviceSb) : null, loginState: () => pc711.status().state });
+// + one line "Store session: ready / opening / not ready" — the kept E-Map session's word (memory only, sends nothing)
+let pc711EmapForCard = null;
+const pc711DutyReader = createDutyReader({ db: serviceSb ? createDutyDb(serviceSb) : null, loginState: () => pc711.status().state,
+  storeSession: () => (pc711EmapForCard ? pc711EmapForCard.sessionWord(inShadowMaint(Date.now()), pc711.status().state === "connected") : null) });
 app.get("/admin/pc711/duty", requireAuth, requireAdmin, createDutyHandler({ reader: pc711DutyReader, allowed: pc711StatusAllowed }));
 const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut } });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
@@ -1302,6 +1305,9 @@ app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandl
 // 7-11 server checker SHADOW (server/pc711Shadow.js, sql/159 + sql/162): compares the server's answer with the
 // extension's on parcels the extension already checked. Off until app_settings pc711_shadow_enabled =
 // 'true' AND the 7-11 login is connected. Writes only pc711_shadow; never parcel_scans.
+// Switch OFF + backup switch on (Jeff 2026-11-20): STANDBY — no parcel check; the pass only keeps the kept
+// E-Map session ready the extension's standby way (keepalive every 5 min, repair, open), so a take-over
+// starts on a session that answers.
 // Speed (server/pc711Speed.js, Jeff 2026-11-18) — no new request to 7-11, no rule changed:
 //   pc711Net       the connections to the two 7-11 hosts stay open between checks (anon = the phone check,
 //                  session = the E-Map open and the kept E-Map session). Render env PC711_KEEPALIVE_MS=0 → off.
@@ -1328,6 +1334,7 @@ if (serviceSb) {
     open: () => pc711CartLock(() => runPcServerProbe({ readSetting: pc711Settings.read, fetchImpl: pc711Net.session, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies, lost: pc711.markLoggedOut }, target: { kind: "store", storeId: EMAP_KEEPALIVE_STORE }, gate: false, openOnly: true, log: () => {} })),
     fetchImpl: pc711Net.session,
   });
+  pc711EmapForCard = pc711Emap;
   // the BACKUP checker (server/pc711Backup.js, sql/179): off until app_settings pc711_backup_enabled = 'true'.
   // When the Lenovo stops it checks parcels and writes the answers; it only READS the extension's lease.
   // A phone check needs no 7-11 login, so it gets no session (and can never reach a login step).
