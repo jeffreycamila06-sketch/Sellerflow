@@ -6064,3 +6064,22 @@ type 100, json content, `dropped_notext`. ⚠️ The type-100 shape was NEVER sa
 - Proof: `shopeeViewerComments.server.test.ts` (corpus: branch = main with real type-100 rewritten to 101),
   `docs/design/shopee-viewer-comments/` (README, 18/18 breaks). ⚠️ When `shopeeDiag.js` changes on purpose later, refresh
   `fixtures/shopeeDiag.main.js`.
+
+## 2026-11-21 — TELEGRAM ALERT FROM THE DATABASE WHEN NOBODY CHECKS PARCELS (branch `claude/great-wright-3v8plu` from main `1f38ec2d`, NOT merged; sql/195 NOT applied; no server / Render / extension / app change)
+Covers "Lenovo AND server dead": pg_cron + Vault + the **http extension** (pgsql-http 1.6) send it from Supabase.
+- 🔑 **Not pg_net (Jeff 2026-11-21):** pg_net 0.20.0's install script grants ALL on `net.http_request_queue` /
+  `net._http_response` to PUBLIC; supautils creates privileged extensions as `supabase_admin` (pg_cron is owned by it),
+  so `postgres` cannot revoke that. The http extension sends synchronously → the address with the token is in no table.
+- **Rule** (`parcel_silence_check()`, cron `parcel-silence-alert` `3-59/10 * * * *`): waiting = the checker queue's rows
+  (access enabled, not exported, phone or store answer missing, 30 min–2 days, shop-pool condition); answer = newest
+  `store_check_log` / `phone_check_at` / frozen log source live|cache|warmup (not 'instant'); alert when waiting and no
+  answer 30 min, never 01–05 Taipei, repeat ≤ 1/60 min, "back" after a real answer (only if an alert was delivered),
+  3 tries with " (sent again)" (no retry on 4xx except 429).
+- **Secrets:** Vault `telegram_bot_token` / `telegram_chat_id` (Jeff creates them, same values as Render). Read ONLY in
+  `parcel_silence_send` (SECURITY INVOKER, executable by its owner only); shapes = server's TOKEN_RE / CHAT_RE; every
+  error → one word; tables `parcel_silence_state` (no browser access) + `parcel_silence_log` (admins read, RLS).
+- **Test:** `select public.admin_parcel_silence_test();` — SQL editor (session_user postgres, 20 s) or app admin (6 s);
+  one a minute. Off: `select cron.unschedule('parcel-silence-alert');`.
+- **After applying:** `docs/ops/db-silence-alert-check.sql` (read only, 18 rows, all ok; Vault row ok after Jeff's secrets).
+- Proof: `scripts/sql195-behaviour.mjs` (PGlite, 202 checks, stand-in http / Vault / pg_cron, Supabase default grants
+  modelled), `parcelSilenceSql.test.ts` (CI), `docs/design/db-silence-alert/` (README, breaks).

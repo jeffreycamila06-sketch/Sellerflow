@@ -1,0 +1,73 @@
+CAUGHT: the send prints the address in a notice
+    PGlite: FAIL: "123456789:AA…" is in no log row, state row, cron job, return value or notice
+    pins: × the token is used in ONE expression: the request address 11ms
+CAUGHT: a success word carries the chat id
+    PGlite: FAIL: 3 waiting, last answer 45 min ago → alert
+CAUGHT: the error text is kept
+    PGlite: FAIL: a timeout → timeout
+    pins: × no notice, warning or log message anywhere; an error text is only looked at, never kept 15ms
+CAUGHT: secrets not trimmed
+    PGlite: FAIL: empty token → no_secrets
+    pins: × the token is used in ONE expression: the request address 7ms
+CAUGHT: no token shape check
+    PGlite: FAIL: token of the wrong shape → bad_secrets
+    pins: × are read from Vault by name, with the server's own shapes 14ms
+CAUGHT: the night window ends at 06:00
+    PGlite: FAIL: 05:03 Taipei: the first run after the window alerts
+    pins: × 30 min quiet, 60 min repeat, 3 tries, 20 s, night 01:00–05:00 Taipei 19ms
+CAUGHT: quiet after 20 min instead of 30
+    PGlite: FAIL: an answer exactly 30 min old still counts
+    pins: × 30 min quiet, 60 min repeat, 3 tries, 20 s, night 01:00–05:00 Taipei 14ms
+CAUGHT: parcels count from 0 min instead of 30
+    PGlite: FAIL: body: chat id + counts only, nothing else
+    pins: × waiting = the checker's own queue rows, 30 min to 2 days old 13ms
+CAUGHT: repeat every 30 min instead of 60
+    PGlite: FAIL: +30 min: no repeat yet
+    pins: × 30 min quiet, 60 min repeat, 3 tries, 20 s, night 01:00–05:00 Taipei 17ms
+CAUGHT: the copy on save counts as an answer
+    PGlite: FAIL: frozen answer copied on save ('instant') does not count
+    pins: × an answer = store log, phone answer, frozen answer of a checker (never the copy on save) 16ms
+CAUGHT: exported parcels wait too
+    PGlite: FAIL: body: chat id + counts only, nothing else
+    pins: × waiting = the checker's own queue rows, 30 min to 2 days old 12ms
+CAUGHT: sellers with the check switched off wait too
+    PGlite: FAIL: body: chat id + counts only, nothing else
+    pins: × waiting = the checker's own queue rows, 30 min to 2 days old 25ms
+CAUGHT: the shop-pool condition is gone
+    PGlite: FAIL: pool empty + seller without a shop → never checked → not waiting
+    pins: × waiting = the checker's own queue rows, 30 min to 2 days old 16ms
+CAUGHT: 'back' after an alert that never reached Telegram
+    PGlite: FAIL: an alert that never reached Telegram → no 'back' either
+CAUGHT: no ' (sent again)'
+    PGlite: FAIL: tries 2 and 3 end with ' (sent again)'
+    pins: × 30 min quiet, 60 min repeat, 3 tries, 20 s, night 01:00–05:00 Taipei 13ms
+CAUGHT: 4 tries
+    PGlite: FAIL: try 3 fails
+    pins: × 30 min quiet, 60 min repeat, 3 tries, 20 s, night 01:00–05:00 Taipei 12ms
+CAUGHT: a 401 is tried again
+    pins: × 30 min quiet, 60 min repeat, 3 tries, 20 s, night 01:00–05:00 Taipei 6ms
+CAUGHT: a stale alert retry is sent after recovery
+    PGlite: FAIL: … a checker answers: the stale retry is dropped and nothing is said
+CAUGHT: anon may run the check
+    PGlite: FAIL: anon cannot run public.parcel_silence_check(timestamptz)
+    pins: × check + send run as the caller and are closed to everyone but their owner; only the test runs as its owner 22ms
+CAUGHT: every signed-in user reads the log
+    PGlite: FAIL: a non-admin reads no log row (RLS)
+    pins: × the tables: RLS on, no browser access, the log readable by admins only 15ms
+CAUGHT: authenticated may read the state
+    PGlite: FAIL: authenticated has no SELECT on the state
+    pins: × the tables: RLS on, no browser access, the log readable by admins only 6ms
+CAUGHT: the SQL editor cannot test
+    PGlite: FAIL: SQL editor (session user postgres) → sent
+    pins: × the test: SQL editor (session user postgres) or an app admin; 6 s from the app, 20 s from the editor; one a minute 16ms
+CAUGHT: the app test waits 20 s
+    PGlite: FAIL: … with 6 s (the app's request limit is 8 s)
+    pins: × the test: SQL editor (session user postgres) or an app admin; 6 s from the app, 20 s from the editor; one a minute 11ms
+CAUGHT: no one-test-a-minute limit
+    PGlite: FAIL: one test a minute
+    pins: × the test: SQL editor (session user postgres) or an app admin; 6 s from the app, 20 s from the editor; one a minute 12ms
+CAUGHT: the send runs as its owner
+    PGlite: FAIL: only the test runs as its owner; the send + check run as the caller (cron = postgres)
+    pins: × check + send run as the caller and are closed to everyone but their owner; only the test runs as its owner 5ms
+
+25 of 25 breaks caught
