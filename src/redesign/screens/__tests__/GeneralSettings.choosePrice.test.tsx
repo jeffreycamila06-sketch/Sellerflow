@@ -95,7 +95,7 @@ describe("Choose price before print — Settings row", () => {
     expect(screen.queryByTestId("cpp-area")).toBeNull();
   });
 
-  it("list: add at the end, no duplicates, no zero, max 6; ☆ makes a price the default; × removes; the last one cannot be removed", () => {
+  it("list: add at the end, no duplicates, no zero, max 9; ☆ makes a price the default; × removes; the last one cannot be removed", () => {
     render(<App cp prices={[39]} />);
     expect(screen.queryByTestId("cpp-remove-0")).toBeNull();           // only one → keep it
     expect(screen.getByTestId("cpp-keep-one")).toBeTruthy();
@@ -104,15 +104,15 @@ describe("Choose price before print — Settings row", () => {
     expect(screen.getByTestId("cpp-add-err").textContent).toBe(t.rd_cpp_err_dup);
     add("0");
     expect(screen.getByTestId("cpp-add-err").textContent).toBe(t.rd_cpp_err_bad);
-    add("59"); add("79"); add("99"); add("129"); add("149");
-    expect(spy.cpPrices).toHaveBeenLastCalledWith([39, 59, 79, 99, 129, 149]);
-    expect(screen.queryByTestId("cpp-add-input")).toBeNull();          // 6 = full
-    expect(screen.getByTestId("cpp-add-err").textContent).toBe(t.rd_cpp_err_max);
+    add("59"); add("79"); add("99"); add("129"); add("149"); add("199"); add("249"); add("299");
+    expect(spy.cpPrices).toHaveBeenLastCalledWith([39, 59, 79, 99, 129, 149, 199, 249, 299]);
+    expect(screen.queryByTestId("cpp-add-input")).toBeNull();          // 9 = full
+    expect(screen.getByTestId("cpp-full").textContent).toBe(t.rd_cpp_full);
     fireEvent.click(screen.getByTestId("cpp-make-default-3"));
-    expect(spy.cpPrices).toHaveBeenLastCalledWith([99, 39, 59, 79, 129, 149]);
+    expect(spy.cpPrices).toHaveBeenLastCalledWith([99, 39, 59, 79, 129, 149, 199, 249, 299]);
     expect(screen.getByTestId("cpp-chip-0").textContent).toContain("₱99");
     fireEvent.click(screen.getByTestId("cpp-remove-1"));
-    expect(spy.cpPrices).toHaveBeenLastCalledWith([99, 59, 79, 129, 149]);
+    expect(spy.cpPrices).toHaveBeenLastCalledWith([99, 59, 79, 129, 149, 199, 249, 299]);
   });
 
   it("only one ON: Choose price ON turns Same price OFF (its price kept) + a note", async () => {

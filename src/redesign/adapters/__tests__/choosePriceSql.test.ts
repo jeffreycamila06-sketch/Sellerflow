@@ -47,10 +47,11 @@ describe("sql/180 contract", () => {
     expect(down).toContain("drop function if exists public.seller_price_choices_distinct(numeric[]);");
     expect((down.match(/drop /g) || []).length).toBe(2);
   });
-  it("the app writes only what the table takes: user_id, enabled, prices, updated_at (+ show_free, sql/184, only when it is ON or being changed)", () => {
+  it("the app writes only what the table takes: user_id, enabled, prices, updated_at (+ show_free, sql/184, only when it is ON or being changed; + prices_more, sql/196, only when the list has / had more than 6)", () => {
     const hook = readFileSync("src/redesign/adapters/useChoosePrice.ts", "utf8");
-    expect(hook).toContain("const row: Record<string, unknown> = { user_id: uid, enabled: nextEnabled, prices: nextPrices, updated_at: new Date().toISOString() };");
+    expect(hook).toContain("const row: Record<string, unknown> = { user_id: uid, enabled: nextEnabled, prices: cols.prices, updated_at: new Date().toISOString() };");
     expect(hook).toContain("if (free.send) row.show_free = free.next;");
+    expect(hook).toContain("if (cols.more) row.prices_more = cols.more;");
     expect(hook).toContain(".upsert(row)");
     expect(hook).toContain('.from("seller_price_choices")');
     expect(hook).not.toContain(".delete(");

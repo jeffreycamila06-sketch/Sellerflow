@@ -1,4 +1,4 @@
-// "Choose price before print" — a per-seller list of up to 6 prices + an ON/OFF switch.
+// "Choose price before print" — a per-seller list of up to 9 prices + an ON/OFF switch.
 // Stored the same way as "Same price for all items" (useSamePrice): ONE read of the
 // seller_price_choices row (sql/180) per signed-in user + ONE upsert per change. ZERO polling.
 //
@@ -16,19 +16,29 @@
 //             whole row (a missing column simply reads as OFF) and a save sends `show_free` ONLY
 //             when it is ON or is the thing being changed — a seller who never touches it sends
 //             exactly the request sent before this switch existed.
+//
+// TWO COLUMNS (sql/196): prices 1–6 live in `prices` (unchanged column), prices 7–9 in `prices_more`.
+// The read joins them into ONE list; a save splits it again. WHY: an app opened before the 9-price
+// change (still open on a second device) knows only `prices` and sends its whole list of up to 6 on
+// every Settings change; a save writes only the columns it sends → such a device can never delete
+// prices 7–9. `prices_more` is sent only when the list has, or had, more than 6 prices → a seller
+// with 6 or fewer sends exactly the request sent before (safe before sql/196: a 7th price simply
+// fails with the normal "Couldn't save" and the list goes back).
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { log } from "../../lib/log";
 import { normalizeSamePrice } from "./useSamePrice";
 
-export const MAX_CHOICE_PRICES = 6;
+export const MAX_CHOICE_PRICES = 9;
+// How many of them the `prices` column holds (its own sql/180 check: at most 6). The rest → `prices_more`.
+export const PRICES_COLUMN_MAX = 6;
 
 // ── Pure helpers (unit-tested) ────────────────────────────────────────────────
 
 // Same rule as Same price: blank / 0 / negative / not a number → null.
 export const normalizeChoicePrice = normalizeSamePrice;
 
-// Any stored value → a clean list: positive numbers only, no duplicates (first kept), max 6.
+// Any stored value → a clean list: positive numbers only, no duplicates (first kept), max 9.
 export function normalizePriceList(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
   const out: number[] = [];
@@ -39,6 +49,18 @@ export function normalizePriceList(v: unknown): number[] {
     if (out.length >= MAX_CHOICE_PRICES) break;
   }
   return out;
+}
+
+// The stored row → ONE list: `prices` (1–6) then `prices_more` (7–9; missing before sql/196 → none).
+export function joinStoredPrices(prices: unknown, more: unknown): number[] {
+  return normalizePriceList([...(Array.isArray(prices) ? prices : []), ...(Array.isArray(more) ? more : [])]);
+}
+
+// A save → the two columns. `more` is null when the request must NOT carry `prices_more`
+// (the list has 6 or fewer prices now AND had 6 or fewer before) — the request sent before sql/196.
+export function splitForSave(next: number[], prev: number[]): { prices: number[]; more: number[] | null } {
+  const send = next.length > PRICES_COLUMN_MAX || prev.length > PRICES_COLUMN_MAX;
+  return { prices: next.slice(0, PRICES_COLUMN_MAX), more: send ? next.slice(PRICES_COLUMN_MAX) : null };
 }
 
 export type AddPriceResult = { ok: true; prices: number[] } | { ok: false; reason: "bad" | "dup" | "max" };
@@ -131,7 +153,7 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
         .maybeSingle();
       if (!alive) return;
       if (error) { patch(uid, { loading: false }); return; }   // keep the saved copy
-      const list = normalizePriceList(data?.prices);
+      const list = joinStoredPrices(data?.prices, (data as { prices_more?: unknown } | null)?.prices_more);
       const on = !!data?.enabled && canEnableChoosePrice(list);  // never ON with no price; no row = OFF
       const free = (data as { show_free?: unknown } | null)?.show_free === true;
       writeChoiceCache(uid, on, list, free);
@@ -145,8 +167,10 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
   const persist = useCallback(async (nextEnabled: boolean, nextPrices: number[], prevEnabled: boolean, prevPrices: number[], free: { next: boolean; prev: boolean; send: boolean }): Promise<boolean> => {
     if (!uid) return false;                              // nobody signed in → nothing was saved
     if (!isSupabaseConfigured || !supabase) return true;
-    const row: Record<string, unknown> = { user_id: uid, enabled: nextEnabled, prices: nextPrices, updated_at: new Date().toISOString() };
+    const cols = splitForSave(nextPrices, prevPrices);
+    const row: Record<string, unknown> = { user_id: uid, enabled: nextEnabled, prices: cols.prices, updated_at: new Date().toISOString() };
     if (free.send) row.show_free = free.next;
+    if (cols.more) row.prices_more = cols.more;
     const { error } = await supabase
       .from("seller_price_choices")
       .upsert(row);
