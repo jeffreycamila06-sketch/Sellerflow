@@ -40,3 +40,9 @@ scripts/sql196-behaviour.mjs  now=2026-11-23T02:30:00+08:00  → sql/196 behavio
 scripts/sql196-behaviour.mjs  now=2026-12-31T23:59:30+08:00  → sql/196 behaviour: 54 passed, 0 failed
 scripts/sql196-behaviour.mjs  now=2027-01-01T00:00:30+08:00  → sql/196 behaviour: 54 passed, 0 failed
 scripts/sql196-behaviour.mjs  now=2027-06-15T12:00:00+08:00  → sql/196 behaviour: 54 passed, 0 failed
+
+CI on the real clock (GitHub, branch claude/great-wright-3v8plu)
+- run 1891, commit 920ea004, started 2026-11-21 21:19 UTC = 2026-11-22 05:19 Taipei (the day main went red):
+  success. Full local run the same morning: 783 files / 11,142 tests passed, 9 skipped.
+- run 2 = the commit that added these lines (Re-run is not allowed from this session, and the CI workflow
+  has no "Run workflow" button, so a second run needs a new push).
