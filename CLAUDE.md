@@ -6050,3 +6050,17 @@ no_frozen of Nov 9 (30-day trust, copied 5× on save); OpenPoint accepted it by 
   rest byte for byte, old-vs-new table, backup = extension, guard, rollback = live, sql/194's six rows) ·
   `parcelFreshMemorySql.test.ts` (CI) · `docs/design/parcel-fresh-memory/` (README, outputs, breaks).
 - **Order:** sql/193 → warm-up switch off → sql/194.
+
+## 2026-11-21 — SHOPEE LIVE: OTHER VIEWERS' COMMENTS (content type 100) (branch `claude/great-wright-3v8plu` from main `c398f565`, NOT merged; no SQL; needs a Render deploy)
+Live [SHOPEE-DIAG] (Nov 21, PH test live): the host's comments = content type 101 (kept); a second account's 2 comments =
+type 100, json content, `dropped_notext`. ⚠️ The type-100 shape was NEVER sampled (the probe tested the host only).
+- **`commentTextOf` (server/shopeeLiveLink.js):** type 100 read like 101 (string `content`, else string `text`) only with
+  a sender uid AND a text that is not empty / spaces → same payload, dedupe, cursor, timing as 101. Every other type =
+  main (tested). Constants `SHOPEE_HOST_TEXT_TYPE` 101 / `SHOPEE_VIEWER_TEXT_TYPE` 100.
+- **Diag (server/shopeeDiag.js):** line ends ` kept_100=<n> keys_100=<paths|->` — field paths (names only, strings never
+  parsed, `safeKeyName`, map → `many:<n>`, ≤ 24 paths, ≤ 4 shapes `|+<n>`) of each distinct type-100 content shape; a new
+  one writes a line at once (own budget). `contentPaths()` pure. Old counters = main's (`fixtures/shopeeDiag.main.js`).
+- **Read after deploy:** `kept_100` grows = fixed; `kept_100=0` + `keys_100` showing the text elsewhere = one more change.
+- Proof: `shopeeViewerComments.server.test.ts` (corpus: branch = main with real type-100 rewritten to 101),
+  `docs/design/shopee-viewer-comments/` (README, 18/18 breaks). ⚠️ When `shopeeDiag.js` changes on purpose later, refresh
+  `fixtures/shopeeDiag.main.js`.

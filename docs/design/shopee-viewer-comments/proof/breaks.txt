@@ -1,0 +1,61 @@
+CAUGHT: type 100 still dropped (main's rule)
+    × type 100 with a sender uid and a real text → the text (read like 101: `content`, else `text`) 12ms
+    × the production case: the host's 2 comments (101) + a viewer's 2 comments (100) → all 4 emitted, in order 26ms
+    × a type-100 comment gets the very payload a type-101 comment with the same fields gets (every field) 3ms
+CAUGHT: type 100 kept without a sender uid
+    × type 100 without a sender uid, or without a real text → not a comment 8ms
+    × type 100 without text or without a uid is dropped (no comment, counted as no text) 3ms
+    × 10 runs, 2,047 messages: same comments (every payload field), statuses, requests, answers, other log lines 37ms
+CAUGHT: type 100 kept with a spaces-only text
+    × type 100 without a sender uid, or without a real text → not a comment 7ms
+    × type 100 without text or without a uid is dropped (no comment, counted as no text) 3ms
+    × 10 runs, 2,047 messages: same comments (every payload field), statuses, requests, answers, other log lines 40ms
+CAUGHT: the type-100 guard also applied to 101 (a host 101 without uid lost)
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 29ms
+    × every message that is not type 100 gives exactly main's answer 8ms
+    × 10 runs, 2,047 messages: same comments (every payload field), statuses, requests, answers, other log lines 45ms
+CAUGHT: every type read as text (a type-7 notice becomes a comment)
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 28ms
+    × no text: a non-101 type, an empty comment, a content with no text field → dropped_notext 2ms
+    × same comments (every payload field), same statuses, same requests, same answers, same other log lines 13ms
+CAUGHT: type 100 read from a different field (content_v2)
+    × type 100 with a sender uid and a real text → the text (read like 101: `content`, else `text`) 14ms
+    × type 100 without a sender uid, or without a real text → not a comment 1ms
+    × the production case: the host's 2 comments (101) + a viewer's 2 comments (100) → all 4 emitted, in order 18ms
+CAUGHT: a type-100 comment's text trimmed (payload differs from 101)
+    × type 100 with a sender uid and a real text → the text (read like 101: `content`, else `text`) 13ms
+    × 10 runs, 2,047 messages: same comments (every payload field), statuses, requests, answers, other log lines 37ms
+CAUGHT: kept_100 counts every kept message
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 27ms
+    × the production case: the host's 2 comments (101) + a viewer's 2 comments (100) → all 4 emitted, in order 27ms
+    × kept_100 and keys_100 in the line; a new type-100 shape writes a line at once 2ms
+CAUGHT: a kept type-100 message also counted as no text (an old counter changes)
+    × the production case: the host's 2 comments (101) + a viewer's 2 comments (100) → all 4 emitted, in order 27ms
+    × the old counters are exactly main's (same messages, same outcomes: every count, the line, when it is written) 13ms
+CAUGHT: no line at once for a new type-100 shape
+    × kept_100 and keys_100 in the line; a new type-100 shape writes a line at once 9ms
+    × type-100 shapes have their own budget (a line even after the other shape lines ran out); at most 4 listed, then +n 2ms
+CAUGHT: type-100 shapes share the other shapes' budget
+    × type-100 shapes have their own budget (a line even after the other shape lines ran out); at most 4 listed, then +n 9ms
+CAUGHT: no cap on the type-100 shapes listed
+    × type-100 shapes have their own budget (a line even after the other shape lines ran out); at most 4 listed, then +n 46ms
+CAUGHT: a field path carries its value
+    × contentPaths: names only, nested objects and arrays, maps and long lists capped; never a value 8ms
+    × kept_100 and keys_100 in the line; a new type-100 shape writes a line at once 2ms
+    × type-100 shapes have their own budget (a line even after the other shape lines ran out); at most 4 listed, then +n 3ms
+CAUGHT: a JSON-looking string is walked (a typed comment's words in the log)
+    × contentPaths: names only, nested objects and arrays, maps and long lists capped; never a value 9ms
+    × no comment text, name, username, uid, avatar or link in a line with type-100 messages 4ms
+CAUGHT: a map keyed by names prints its names
+    × contentPaths: names only, nested objects and arrays, maps and long lists capped; never a value 8ms
+CAUGHT: a field name not cleaned (a uid-like name printed)
+    × contentPaths: names only, nested objects and arrays, maps and long lists capped; never a value 8ms
+    × no comment text, name, username, uid, avatar or link in a line with type-100 messages 2ms
+CAUGHT: no path cap
+    × contentPaths: names only, nested objects and arrays, maps and long lists capped; never a value 8ms
+CAUGHT: kept_100 / keys_100 missing from the line
+    × message vs e2e (and the system list the reader never reads); type 101 vs other; host vs others vs no uid 32ms
+    × 60 s cadence from the poller start; counts() is a copy 1ms
+    × 10 runs, 2,047 messages: same comments (every payload field), statuses, requests, answers, other log lines 190ms
+
+18 of 18 breaks caught
