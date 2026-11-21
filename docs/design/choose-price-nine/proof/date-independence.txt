@@ -1,0 +1,48 @@
+Main CI red on Nov 22 Taipei: choosePriceNine.sticker.test.ts — today's sticker prints the day it is printed,
+so the fingerprints taken on Nov 21 matched only on Nov 21. Fix (test only): the clock is pinned to AT
+(2026-11-21 14:05 Taipei) for that file. The stored fingerprints = main 991c24b2 run with the same pin
+(re-taken 2026-11-22: 20 of 20 equal). Break: pin one day later → 10 failed.
+
+Every run below moves "now" with date-shift.mjs (real time passes from that point).
+
+sticker test (main)  now=2026-11-21T14:05:00+08:00  → 20 passed
+sticker test (main)  now=2026-11-22T05:10:00+08:00  → 10 failed | 10 passed
+sticker test (main)  now=2026-11-23T00:01:00+08:00  → 10 failed | 10 passed
+sticker test (main)  now=2026-11-23T02:30:00+08:00  → 10 failed | 10 passed
+sticker test (main)  now=2026-12-31T23:59:30+08:00  → 10 failed | 10 passed
+sticker test (main)  now=2027-01-01T00:00:30+08:00  → 10 failed | 10 passed
+sticker test (main)  now=2027-06-15T12:00:00+08:00  → 10 failed | 10 passed
+sticker test (fixed)  now=2026-11-21T14:05:00+08:00  → 20 passed
+sticker test (fixed)  now=2026-11-22T05:10:00+08:00  → 20 passed
+sticker test (fixed)  now=2026-11-23T00:01:00+08:00  → 20 passed
+sticker test (fixed)  now=2026-11-23T02:30:00+08:00  → 20 passed
+sticker test (fixed)  now=2026-12-31T23:59:30+08:00  → 20 passed
+sticker test (fixed)  now=2027-01-01T00:00:30+08:00  → 20 passed
+sticker test (fixed)  now=2027-06-15T12:00:00+08:00  → 20 passed
+11 other new test files  now=2026-11-21T14:05:00+08:00  → Test Files  11 passed Tests  173 passed 
+11 other new test files  now=2026-11-22T05:10:00+08:00  → Test Files  11 passed Tests  173 passed 
+11 other new test files  now=2026-11-23T00:01:00+08:00  → Test Files  11 passed Tests  173 passed 
+11 other new test files  now=2026-11-23T02:30:00+08:00  → Test Files  11 passed Tests  173 passed 
+11 other new test files  now=2026-12-31T23:59:30+08:00  → Test Files  11 passed Tests  173 passed 
+11 other new test files  now=2027-01-01T00:00:30+08:00  → Test Files  11 passed Tests  173 passed 
+11 other new test files  now=2027-06-15T12:00:00+08:00  → Test Files  11 passed Tests  173 passed 
+scripts/sql195-behaviour.mjs  now=2026-11-21T14:05:00+08:00  → sql/195 behaviour: 202 passed, 0 failed
+scripts/sql195-behaviour.mjs  now=2026-11-22T05:10:00+08:00  → sql/195 behaviour: 202 passed, 0 failed
+scripts/sql195-behaviour.mjs  now=2026-11-23T00:01:00+08:00  → sql/195 behaviour: 202 passed, 0 failed
+scripts/sql195-behaviour.mjs  now=2026-11-23T02:30:00+08:00  → sql/195 behaviour: 202 passed, 0 failed
+scripts/sql195-behaviour.mjs  now=2026-12-31T23:59:30+08:00  → sql/195 behaviour: 202 passed, 0 failed
+scripts/sql195-behaviour.mjs  now=2027-01-01T00:00:30+08:00  → sql/195 behaviour: 202 passed, 0 failed
+scripts/sql195-behaviour.mjs  now=2027-06-15T12:00:00+08:00  → sql/195 behaviour: 202 passed, 0 failed
+scripts/sql196-behaviour.mjs  now=2026-11-21T14:05:00+08:00  → sql/196 behaviour: 54 passed, 0 failed
+scripts/sql196-behaviour.mjs  now=2026-11-22T05:10:00+08:00  → sql/196 behaviour: 54 passed, 0 failed
+scripts/sql196-behaviour.mjs  now=2026-11-23T00:01:00+08:00  → sql/196 behaviour: 54 passed, 0 failed
+scripts/sql196-behaviour.mjs  now=2026-11-23T02:30:00+08:00  → sql/196 behaviour: 54 passed, 0 failed
+scripts/sql196-behaviour.mjs  now=2026-12-31T23:59:30+08:00  → sql/196 behaviour: 54 passed, 0 failed
+scripts/sql196-behaviour.mjs  now=2027-01-01T00:00:30+08:00  → sql/196 behaviour: 54 passed, 0 failed
+scripts/sql196-behaviour.mjs  now=2027-06-15T12:00:00+08:00  → sql/196 behaviour: 54 passed, 0 failed
+
+CI on the real clock (GitHub, branch claude/great-wright-3v8plu)
+- run 1891, commit 920ea004, started 2026-11-21 21:19 UTC = 2026-11-22 05:19 Taipei (the day main went red):
+  success. Full local run the same morning: 783 files / 11,142 tests passed, 9 skipped.
+- run 2 = the commit that added these lines (Re-run is not allowed from this session, and the CI workflow
+  has no "Run workflow" button, so a second run needs a new push).

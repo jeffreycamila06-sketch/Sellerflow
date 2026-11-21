@@ -6109,4 +6109,9 @@ at 9 the Price + Add row hides and `rd_cpp_full` "9 of 9 prices saved. Remove on
   the sticker changes on purpose later) · 18/18 breaks · pictures `docs/design/choose-price-nine/`.
 - ⚠️ If `useChoosePrice.ts` changes on purpose later, the old-device test still plays MAIN's frozen copy (the point: an
   old app). Only refresh the fixture if the old-app behaviour to guard against changes.
+- ⚠️ **Fixed 2026-11-22 (main CI red on Nov 22):** `choosePriceNine.sticker.test.ts` pins the clock to AT (Nov 21 14:05
+  Taipei, `vi.useFakeTimers({ toFake: ["Date"] })` + `setSystemTime` in beforeAll) — today's sticker prints the print
+  day, so unpinned fingerprints only matched on the day they were taken. 🔑 **Any printer-byte fingerprint test must pin
+  the clock.** Proof the new tests of the 9-price / Shopee / sql/195 work no longer depend on the day:
+  `docs/design/choose-price-nine/proof/date-independence.txt` (7 dates, tool `date-shift.mjs`).
 - **Order:** sql/196 and the web merge in either order → sql/197.
