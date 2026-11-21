@@ -6083,3 +6083,30 @@ Covers "Lenovo AND server dead": pg_cron + Vault + the **http extension** (pgsql
 - **After applying:** `docs/ops/db-silence-alert-check.sql` (read only, 18 rows, all ok; Vault row ok after Jeff's secrets).
 - Proof: `scripts/sql195-behaviour.mjs` (PGlite, 202 checks, stand-in http / Vault / pg_cron, Supabase default grants
   modelled), `parcelSilenceSql.test.ts` (CI), `docs/design/db-silence-alert/` (README, breaks).
+
+## 2026-11-21 — CHOOSE PRICE: UP TO 9 PRICES (branch `claude/great-wright-3v8plu`, NOT merged; sql/196 + sql/197 NOT applied; web only, no Render)
+Choose price before print allows **9** prices (was 6), for every seller. Jeff approved the preview
+(claude.ai/artifact/RFpSZxJbgLwBvuvYkfNc4E). Settings layout = today's (one price per row on phones, auto-fill wider);
+at 9 the Price + Add row hides and `rd_cpp_full` "9 of 9 prices saved. Remove one to add a new price." shows (8 langs,
+`cpp-full`). Price window: 3 per row; ONLY at exactly 9 prices + Show Free the Free cell gets `gridColumn: "1 / -1"`
+(`FREE_OWN_ROW_AT` in priceChoiceQueue.ts = `MAX_CHOICE_PRICES`, test-pinned); 1–8 = unchanged.
+- 🔑 **TWO COLUMNS — old devices can never delete prices 7–9:** prices 1–6 stay in `prices` (sql/180 6-check unchanged),
+  7–9 in NEW `prices_more numeric[] not null default '{}'` (sql/196: max 3, flat, no null, > 0, and
+  `seller_price_choices_distinct(prices || prices_more)` = no price twice across both). An app opened before the change
+  sends its whole cut-to-6 list on EVERY Settings action (switch, Show Free, ☆, ×, Same price on → setEnabled(false));
+  a PostgREST upsert writes only the sent columns, so `prices_more` is never touched (same reason as `show_free`).
+- **App (`useChoosePrice.ts`):** `MAX_CHOICE_PRICES = 9`, `PRICES_COLUMN_MAX = 6`; read = `joinStoredPrices(prices,
+  prices_more)`; save = `splitForSave(next, prev)` → `prices_more` sent ONLY when next or prev has > 6 (≤ 6 sellers send
+  today's exact request; before sql/196 a 7th = "Couldn't save" + revert). Known: two NEW devices = last writer wins
+  (as today); an old device sees only the first 6 until a full close-open.
+- **Rollback sql/196** locks the table, then REFUSES (nothing changed) while any row has a 7th–9th price.
+- **Guide:** choose-price row "add up to 9 … With 9 prices saved, remove one to add a new price." + 116b; **sql/197** =
+  that one row (rollback = live row, md5 f7c9c81b… checked 2026-11-21).
+- **Proof:** `scripts/sql196-behaviour.mjs` (PGlite, 54) · `choosePriceNine.oldDevice.test.tsx` (main's frozen hook
+  `fixtures/useChoosePrice.main.ts` vs a fake DB with the real checks) · `ChoosePriceSheet.nine.test.tsx` (1–9 × Free) ·
+  `GeneralSettings.chooseNine.test.tsx` · `choosePriceNine.app.test.tsx` (7th–9th / Free at 9 = main's createOrder call)
+  · `choosePriceNine.sticker.test.ts` (20 printer fingerprints taken on main 991c24b2 — retake with SFL_PRINT_GOLDEN if
+  the sticker changes on purpose later) · 18/18 breaks · pictures `docs/design/choose-price-nine/`.
+- ⚠️ If `useChoosePrice.ts` changes on purpose later, the old-device test still plays MAIN's frozen copy (the point: an
+  old app). Only refresh the fixture if the old-app behaviour to guard against changes.
+- **Order:** sql/196 and the web merge in either order → sql/197.

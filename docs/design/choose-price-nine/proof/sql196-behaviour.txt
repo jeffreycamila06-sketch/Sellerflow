@@ -1,0 +1,56 @@
+ok   before 196: the new app's save of 6 prices (no prices_more key) works — same request as today
+ok   before 196: a 7th price (the request carries prices_more) → refused (column "prices_more" of relation "seller_price_choices" does not exist)
+ok   before 196: the row still has its 6 prices
+ok   sql/196 applies
+ok   sql/196 applies a second time (nothing breaks)
+ok   one new column, at the end
+ok   existing row A: prices_more empty, switch / prices / Free kept
+ok   existing row C: prices_more empty, the rest kept
+ok   default empty list, never null
+ok   the 6-check on prices is still there
+ok   the five new checks are there
+ok   9 prices saved: 1–6 in prices, 7–9 in prices_more
+ok   read back as one list, same order
+ok   a 10th price → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_more_max3")
+ok   7 prices in the prices column → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_prices_max6")
+ok   the 9 prices are still there after the refusals
+ok   9 → 7: prices_more holds the 7th only
+ok   7 → 6: prices_more is emptied
+ok   old app, switch OFF: prices 7–9 kept (prices_more {200,250,300}), the change itself saved
+ok   old app, switch ON: prices 7–9 kept (prices_more {200,250,300}), the change itself saved
+ok   old app, Show Free OFF: prices 7–9 kept (prices_more {200,250,300}), the change itself saved
+ok   old app, Show Free ON: prices 7–9 kept (prices_more {200,250,300}), the change itself saved
+ok   old app, ☆ makes 120 the default: prices 7–9 kept (prices_more {200,250,300}), the change itself saved
+ok   old app, × removes 80: prices 7–9 kept (prices_more {200,250,300}), the change itself saved
+ok   old app, Same price ON (Choose price saved as OFF): prices 7–9 kept (prices_more {200,250,300}), the change itself saved
+ok   after all old actions the new app reads 8 prices: the old device's 5 + 7–9
+ok   old app adds 250 — already the 8th price (hidden from it) → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all_distinct")
+ok   the refused add changed nothing
+ok   old app adds a new price 90 → 9 in total, 7–9 still kept
+ok   seller B: 7 prices saved
+ok   the same price in both columns → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all_distinct")
+ok   the same price twice in prices_more → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all_distinct")
+ok   39 and 39.0 in prices_more (the same price) → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all_distinct")
+ok   0 in prices_more → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_more_positive")
+ok   a negative price in prices_more → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_more_positive")
+ok   an empty entry in prices_more → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all_distinct")
+ok   a nested list in prices_more → refused (cannot concatenate incompatible arrays)
+ok   prices_more set to null → refused (null value in column "prices_more" of relation "seller_price_choices" violates not-null constraint)
+ok   after every refusal seller B still has 7 prices
+ok   seller B sees no other seller's row
+ok   seller B saving a row for A → refused (new row violates row-level security policy for table "seller_price_choices")
+ok   seller B's update did not touch A's prices_more
+ok   a visitor reading prices_more → refused (permission denied for table seller_price_choices)
+ok   a visitor writing prices_more → refused (permission denied for table seller_price_choices)
+ok   rollback while sellers have a 7th–9th price → refused (sql/196 rollback refused: 2 seller(s) have a 7th-9th price — nothing was changed)
+ok   the refused rollback changed nothing
+ok   rollback while ONE seller still has a 7th price → refused (sql/196 rollback refused: 1 seller(s) have a 7th-9th price — nothing was changed)
+ok   rollback runs once no seller has a 7th–9th price
+ok   rollback runs a second time
+ok   only the column is gone
+ok   the five new checks are gone, the old ones stay
+ok   seller A's switch, prices and Free are untouched by the rollback
+ok   after the rollback the 6-price save still works
+ok   sql/196 applies again after the rollback (prices_more empty for everyone)
+
+sql/196 behaviour: 54 passed, 0 failed

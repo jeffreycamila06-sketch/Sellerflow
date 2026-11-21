@@ -1,0 +1,48 @@
+Sticker fingerprints (sha256 of what each printer is handed) — taken on main 991c24b2 and on this branch with
+SFL_PRINT_GOLDEN=<file> npx vitest run choosePriceNine.sticker. Same 20 lines both times; the branch run twice gives the same.
+
+== main 991c24b2 ==
+  "today's sticker, NT$300 — d520": "7a12bf1f4f66cf77bfd7d9cb5626c0899c9ce57846fa3af2dea0b39c1015741e",
+  "today's sticker, NT$300 — tspl": "1eadc8b7d0ff4bf7199dd5ee589f83208f33cf3cadb428bd865796f9918f7986",
+  "today's sticker, NT$300 — escpos": "86a92bfb612cdb8fc27b2ae7a7e1974920e60fe1f05f96749621ceddaf55fe2e",
+  "today's sticker, NT$300 — cpcl": "fdb04ed0b8dd328702bb87606a98c57b747b76c2e82d6d8d06a21f40e4e9d580",
+  "today's sticker, NT$300 — niimbot": "803266e17cb7edf048b78c239c60cfbb82fe5d4ab3ac598ee06a9bf816284ba0",
+  "today's sticker, Free — d520": "7d4701731f0b5509179370ec1bf80cd8aadee1af4b77c8a788b9ea0d8e4aae32",
+  "today's sticker, Free — tspl": "4eea03125c12253bfa0c168dac6f171471dbfb5b121c58413aab063984f57cab",
+  "today's sticker, Free — escpos": "ded4ca7af7ade91c85a1e4ff10a5a62d95e05b0c3dd0f7786723f4c6123df1da",
+  "today's sticker, Free — cpcl": "ffc6f985fca5e2fb4b803e2ab53bee9162615e3588e185876da5596334e214af",
+  "today's sticker, Free — niimbot": "6af8eabcec2b9ac329735f9c06b86098f5f957a42ea7275588e2134eea29e835",
+  "new sticker, NT$300 — d520": "85f00060c9c3f15a31496aec603b730e6ebeea57ec44e07191e3412eb8f91ee9",
+  "new sticker, NT$300 — tspl": "cb68d12b14cd73ded44fd8648b20b33be746eb1b0ebbfbf721a1b4af0e9d54a8",
+  "new sticker, NT$300 — escpos": "19b1edbf23c11e2dc9edb5aac08b9b2b1929557ce471466e4e603d49f0b7255b",
+  "new sticker, NT$300 — cpcl": "1314cbc2f11edaf2dc45c1c144a141909c08bf14aedc89d57a283cd43e06f517",
+  "new sticker, NT$300 — niimbot": "336256e3e1fbcf51ff742eaaa6f1d53373756c86a1c06f4e0439bd0820fb45e1",
+  "new sticker, Free — d520": "c1d9e5831756e8ef920cd0f9f4031cb426922444521781239812d7580ec9b20b",
+  "new sticker, Free — tspl": "c0aa89d5d77836fedf05ef4fe93f24ab33c0b1380e8441f92b3d9490d4855281",
+  "new sticker, Free — escpos": "23afa9049323aa9e4d5262057541b1421cc49a64d4576b917f7d0290205b9947",
+  "new sticker, Free — cpcl": "5478740e97980e7909d9ad45dffc98ad821d26623b8e67999e1e534bf0df2a3c",
+  "new sticker, Free — niimbot": "17289650128accfb7b396f5e94acc96ddc1a88f25f9e611d8cfcd0cb24f1d814",
+
+== branch ==
+  "today's sticker, NT$300 — d520": "7a12bf1f4f66cf77bfd7d9cb5626c0899c9ce57846fa3af2dea0b39c1015741e",
+  "today's sticker, NT$300 — tspl": "1eadc8b7d0ff4bf7199dd5ee589f83208f33cf3cadb428bd865796f9918f7986",
+  "today's sticker, NT$300 — escpos": "86a92bfb612cdb8fc27b2ae7a7e1974920e60fe1f05f96749621ceddaf55fe2e",
+  "today's sticker, NT$300 — cpcl": "fdb04ed0b8dd328702bb87606a98c57b747b76c2e82d6d8d06a21f40e4e9d580",
+  "today's sticker, NT$300 — niimbot": "803266e17cb7edf048b78c239c60cfbb82fe5d4ab3ac598ee06a9bf816284ba0",
+  "today's sticker, Free — d520": "7d4701731f0b5509179370ec1bf80cd8aadee1af4b77c8a788b9ea0d8e4aae32",
+  "today's sticker, Free — tspl": "4eea03125c12253bfa0c168dac6f171471dbfb5b121c58413aab063984f57cab",
+  "today's sticker, Free — escpos": "ded4ca7af7ade91c85a1e4ff10a5a62d95e05b0c3dd0f7786723f4c6123df1da",
+  "today's sticker, Free — cpcl": "ffc6f985fca5e2fb4b803e2ab53bee9162615e3588e185876da5596334e214af",
+  "today's sticker, Free — niimbot": "6af8eabcec2b9ac329735f9c06b86098f5f957a42ea7275588e2134eea29e835",
+  "new sticker, NT$300 — d520": "85f00060c9c3f15a31496aec603b730e6ebeea57ec44e07191e3412eb8f91ee9",
+  "new sticker, NT$300 — tspl": "cb68d12b14cd73ded44fd8648b20b33be746eb1b0ebbfbf721a1b4af0e9d54a8",
+  "new sticker, NT$300 — escpos": "19b1edbf23c11e2dc9edb5aac08b9b2b1929557ce471466e4e603d49f0b7255b",
+  "new sticker, NT$300 — cpcl": "1314cbc2f11edaf2dc45c1c144a141909c08bf14aedc89d57a283cd43e06f517",
+  "new sticker, NT$300 — niimbot": "336256e3e1fbcf51ff742eaaa6f1d53373756c86a1c06f4e0439bd0820fb45e1",
+  "new sticker, Free — d520": "c1d9e5831756e8ef920cd0f9f4031cb426922444521781239812d7580ec9b20b",
+  "new sticker, Free — tspl": "c0aa89d5d77836fedf05ef4fe93f24ab33c0b1380e8441f92b3d9490d4855281",
+  "new sticker, Free — escpos": "23afa9049323aa9e4d5262057541b1421cc49a64d4576b917f7d0290205b9947",
+  "new sticker, Free — cpcl": "5478740e97980e7909d9ad45dffc98ad821d26623b8e67999e1e534bf0df2a3c",
+  "new sticker, Free — niimbot": "17289650128accfb7b396f5e94acc96ddc1a88f25f9e611d8cfcd0cb24f1d814",
+
+RESULT: branch == main for all 20 (5 printer paths × today's / new sticker × NT$300 / Free)
