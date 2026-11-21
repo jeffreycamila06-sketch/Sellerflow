@@ -5,7 +5,9 @@
 // reaches the printer with the same bytes as on main — on every bluetooth print path, today's sticker
 // and the new sticker. The fingerprints below were taken by running THIS file on main (991c24b2, before
 // the 9-price change) with SFL_PRINT_GOLDEN=<file>. Fingerprint = sha256 of the bridge argument.
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+// THE CLOCK IS PINNED to AT for the whole file: today's sticker prints the day it is printed, so without
+// the pin the fingerprints only matched on the day they were taken (main CI went red on Nov 22 Taipei).
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { appendFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { printSlip, DEF_SETTINGS, __resetNativePrintQueue, __resetWebPrintQueue, setStickerQrEntitled, setStickerQrOn, type Settings } from "../printing";
@@ -59,7 +61,12 @@ const CASES: [string, number, boolean, boolean][] = [
   ["new sticker, Free", 0, true, true],
 ];
 
-beforeAll(() => { installSans(); installNodeFallbackDrawer(); });
+beforeAll(() => {
+  installSans(); installNodeFallbackDrawer();
+  vi.useFakeTimers({ toFake: ["Date"] });   // only the date — the print queue's timers stay real
+  vi.setSystemTime(AT);                       // "now" = AT: the sticker's date is Nov 21 whatever day the test runs
+});
+afterAll(() => { vi.useRealTimers(); });
 afterEach(() => {
   delete (window as W).SellerFlowPrinter;
   __resetNativePrintQueue(); __resetWebPrintQueue(); __resetSavedPrinter(); __resetOneStickerState();
@@ -68,7 +75,7 @@ afterEach(() => {
 
 describe("the sticker of a price picked from 9 = the sticker main prints for that price", () => {
   for (const [what, price, free, newSticker] of CASES) {
-    it.each(PATHS)(`${what} — %s`, async (path) => {
+    it.each(PATHS)(`${what.replace("NT$", "NT ")} — %s`, async (path) => {
       setStickerQrEntitled(true); setStickerQrOn(true);
       if (newSticker) {
         localStorage.setItem(LS_ONE_STICKER, JSON.stringify({ saved: true, settings: { ...recommendedSettings(path === "niimbot" ? { w: 50, h: 30 } : { w: 60, h: 40 }), qr: true } }));
@@ -85,7 +92,8 @@ describe("the sticker of a price picked from 9 = the sticker main prints for tha
   }
 });
 
-// Taken on main 991c24b2 (before this change): SFL_PRINT_GOLDEN=<file> npx vitest run choosePriceNine.sticker
+// Taken on main 991c24b2 (before this change), clock pinned to AT (re-taken 2026-11-22 = the same 20):
+// SFL_PRINT_GOLDEN=<file> npx vitest run choosePriceNine.sticker
 const MAIN: Record<string, string> = {
   "today's sticker, NT$300 — d520": "7a12bf1f4f66cf77bfd7d9cb5626c0899c9ce57846fa3af2dea0b39c1015741e",
   "today's sticker, NT$300 — tspl": "1eadc8b7d0ff4bf7199dd5ee589f83208f33cf3cadb428bd865796f9918f7986",
