@@ -107,7 +107,7 @@ describe("D2 the counters through the real reader", () => {
     expect(c.content).toEqual({ json: 5, string: 0, object: 0, other: 0 });
     expect(h.emitted.map((e) => (e[2] as { comment: string }).comment)).toEqual(["host 1", "viewer 2", "e2e viewer", "no uid"]); // = what the reader always emitted
     const line = h.diagLines()[0];
-    expect(line).toBe("[SHOPEE-DIAG] seller=seller-1 polls=1 msgs_message=3 msgs_e2e=2 msgs_system=2 types=101:4,7:1 content=json:5,string:0,object:0,other:0 from_host=1 from_others=3 from_nouid=1 kept=4 dropped_notext=1 dropped_dupe=0 dupe_collide=0 keys_unknown=username");
+    expect(line).toBe("[SHOPEE-DIAG] seller=seller-1 polls=1 msgs_message=3 msgs_e2e=2 msgs_system=2 types=101:4,7:1 content=json:5,string:0,object:0,other:0 from_host=1 from_others=3 from_nouid=1 kept=4 dropped_notext=1 dropped_dupe=0 dupe_collide=0 keys_unknown=username kept_100=0 keys_100=-");
   });
   it("only the host's messages arrive (the case seen in production) → from_others stays 0", async () => {
     const h = rig();
@@ -285,7 +285,7 @@ describe("the diagnostic object on its own", () => {
     d.poll();
     expect(d.maybeLog(DIAG_EVERY_MS - 1, (l: string) => lines.push(l), "s")).toBe(false);
     expect(d.maybeLog(DIAG_EVERY_MS, (l: string) => lines.push(l), "s")).toBe(true);
-    expect(lines[0]).toBe("[SHOPEE-DIAG] seller=s polls=1 msgs_message=0 msgs_e2e=0 msgs_system=0 types=- content=json:0,string:0,object:0,other:0 from_host=0 from_others=0 from_nouid=0 kept=0 dropped_notext=0 dropped_dupe=0 dupe_collide=0 keys_unknown=-");
+    expect(lines[0]).toBe("[SHOPEE-DIAG] seller=s polls=1 msgs_message=0 msgs_e2e=0 msgs_system=0 types=- content=json:0,string:0,object:0,other:0 from_host=0 from_others=0 from_nouid=0 kept=0 dropped_notext=0 dropped_dupe=0 dupe_collide=0 keys_unknown=- kept_100=0 keys_100=-");
     const c = d.counts(); c.polls = 99;
     expect(d.counts().polls).toBe(1);
   });

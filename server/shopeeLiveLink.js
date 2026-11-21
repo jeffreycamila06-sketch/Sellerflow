@@ -15,6 +15,10 @@
 // what the reader does with each message, and logs one [SHOPEE-DIAG] line every 60 s (+ the first time a new
 // message shape is seen, + at stop). Counts and field names only. It reads the same objects and never changes a
 // comment, the dedupe, the cursor or the timing; any error inside it is swallowed. deps.diag = false turns it off.
+//
+// VIEWER COMMENTS (2026-11-21): other viewers' comments arrive as content type 100 (the host's own as 101) — the
+// diagnostic showed them dropped as "no text". commentTextOf now reads type 100 the same way as 101, only when the
+// message has a sender uid and a real text; the payload, dedupe, cursor and timing are the ones type 101 always had.
 import { createShopeeDiag } from "./shopeeDiag.js";
 
 export const SHOPEE_UA = "SellerFlowLive/1.0 (+https://www.sellerflowlive.com)"; // honest UA, no browser imitation
@@ -82,14 +86,27 @@ export function parseChatBatches(data) {
   const cursor = typeof d.timestamp === "number" ? d.timestamp : null;
   return { msgs: out, cursor, pollIntervalMs };
 }
-/** The comment text of one chat message: content is a JSON string {"type":101,"content":"…"}; only chat text (type 101) is a comment. */
+// Content types that carry chat text. 101 = the host's own comment (research run 2026-10-27). 100 = another viewer's
+// comment (production [SHOPEE-DIAG], 2026-11-21: a second account's 2 comments arrived as type 100 and were dropped).
+export const SHOPEE_HOST_TEXT_TYPE = 101;
+export const SHOPEE_VIEWER_TEXT_TYPE = 100;
+/** The comment text of one chat message: content is a JSON string {"type":101,"content":"…"}. Type 101 and type 100 are
+ *  comments, read the same way (the string `content`, else the string `text`). A type-100 message counts only with a
+ *  sender uid AND a text that is not empty / spaces only — anything else of type 100 (a notice) stays dropped. Type 101
+ *  is read exactly as before. */
 export function commentTextOf(msg) {
   let c = msg && msg.content;
   if (typeof c === "string" && c.trim().startsWith("{")) { try { c = JSON.parse(c); } catch { /* keep the string */ } }
   if (typeof c === "string") return c;
   if (!c || typeof c !== "object") return "";
-  if (c.type != null && Number(c.type) !== 101) return "";
-  return typeof c.content === "string" ? c.content : typeof c.text === "string" ? c.text : "";
+  const type = c.type == null ? null : Number(c.type);
+  if (type !== null && type !== SHOPEE_HOST_TEXT_TYPE && type !== SHOPEE_VIEWER_TEXT_TYPE) return "";
+  const text = typeof c.content === "string" ? c.content : typeof c.text === "string" ? c.text : "";
+  if (type === SHOPEE_VIEWER_TEXT_TYPE) {
+    const uid = msg.uid == null ? "" : String(msg.uid).trim();
+    if (!uid || !text.trim()) return "";
+  }
+  return text;
 }
 const firstStr = (...v) => { for (const x of v) { if (typeof x === "string" && x.trim()) return x.trim(); if (typeof x === "number" && Number.isFinite(x)) return String(x); } return ""; };
 /** One chat message → the relay payload (same field names as fbToPayload / the TikTok relay). */
