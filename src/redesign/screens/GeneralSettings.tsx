@@ -10,7 +10,7 @@ import { profileToDisplay, planLabel } from "../adapters/useAuthSession";
 import { useLang } from "../i18n/langContext";
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import { normalizeSamePrice, canEnableSamePrice } from "../adapters/useSamePrice";
-import { addChoicePrice, removeChoicePrice, makeDefaultPrice, normalizeChoicePrice, type AddPriceResult } from "../adapters/useChoosePrice";
+import { addChoicePrice, removeChoicePrice, makeDefaultPrice, normalizeChoicePrice, MAX_CHOICE_PRICES, type AddPriceResult } from "../adapters/useChoosePrice";
 import LiveSettingModal from "../components/LiveSettingModal";
 import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
@@ -484,7 +484,7 @@ export default function GeneralSettings({
                     );
                   })}
                 </div>
-                {choosePrices.length < 6 && (
+                {choosePrices.length < MAX_CHOICE_PRICES && (
                   <div style={{ display: "flex", gap: 8 }}>
                     <div className="sfl-lsm-field" style={{ flex: 1, minWidth: 0, marginBottom: 0, padding: "9px 12px" }}>
                       <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)", fontSize: 14 }}>{cur}</span>
@@ -497,7 +497,11 @@ export default function GeneralSettings({
                     <button type="button" onClick={cppAddNow} data-testid="cpp-add-btn" style={{ minWidth: 72, minHeight: 44, border: 0, borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{t.rd_cpp_add}</button>
                   </div>
                 )}
-                {(cppErrText || choosePrices.length >= 6) && <div data-testid="cpp-add-err" style={{ marginTop: 6, fontSize: 12, color: cppErrText ? "var(--danger)" : "var(--text-muted)" }}>{cppErrText || t.rd_cpp_err_max}</div>}
+                {cppErrText && <div data-testid="cpp-add-err" style={{ marginTop: 6, fontSize: 12, color: "var(--danger)" }}>{cppErrText}</div>}
+                {/* All 9 saved: the Price + Add row is gone, one short note says how to add another. */}
+                {!cppErrText && choosePrices.length >= MAX_CHOICE_PRICES && (
+                  <div data-testid="cpp-full" role="status" style={{ borderRadius: 12, padding: "10px 12px", background: "var(--accent-soft)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{t.rd_cpp_full}</div>
+                )}
                 {choosePrices.length === 1 && <div data-testid="cpp-keep-one" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_cpp_keep_one}</div>}
                 {onSetChooseShowFree && (
                   // The whole row is the switch (≥ 48 px tall) — easy to hit on a phone.

@@ -5,7 +5,8 @@
 //   pick  — tap a price → onPick(price). "Type price" → the type view. "Skip" → onSkip.
 //           With `showFree` (the seller's "Show Free button" switch) ONE more cell follows the
 //           prices, always last, green: "Free" → onPick(0, _, true). Never the default. It runs the
-//           same `send` as a price, so every guard below applies to it too.
+//           same `send` as a price, so every guard below applies to it too. With exactly 9 prices
+//           (3 full rows) it takes its own full-width row; with 1–8 it is the next cell.
 //   type  — a price field + "Print" + "Back" (the iPhone number pad has no return key, so the
 //           Print button is the way to send it). Same number rules as the per-comment Type price.
 //   ask   — the code went sold out while the comment waited: "Print anyway" / "Skip".
@@ -21,7 +22,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useT, tpl } from "../i18n";
 import { fmtMoney, hasCents, priceInput } from "../../lib/money";
-import { TAP_GUARD_MS, priceLabelSize, type PickResult, type PriceChoiceItem } from "../adapters/priceChoiceQueue";
+import { FREE_OWN_ROW_AT, TAP_GUARD_MS, priceLabelSize, type PickResult, type PriceChoiceItem } from "../adapters/priceChoiceQueue";
 
 // The clock, read only inside tap handlers and the mount effect (never while rendering).
 const nowMs = (): number => Date.now();
@@ -187,7 +188,8 @@ export default function ChoosePriceSheet({ item, prices, cur, waiting, onPick, o
                 );
               })}
               {showFree && (
-                <button type="button" onClick={() => { if (armed()) send(0, false, true); }} data-testid="cpp-free" aria-label={t.rd_cpp_free} style={freeBtn}>
+                <button type="button" onClick={() => { if (armed()) send(0, false, true); }} data-testid="cpp-free" aria-label={t.rd_cpp_free}
+                  style={prices.length === FREE_OWN_ROW_AT ? { ...freeBtn, gridColumn: "1 / -1" } : freeBtn}>
                   <GiftIcon /><span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.rd_cpp_free}</span>
                 </button>
               )}
