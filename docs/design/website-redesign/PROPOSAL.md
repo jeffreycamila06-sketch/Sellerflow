@@ -8,6 +8,7 @@ today's shop is in the proposal, in today's order.
 - Today's pages: `before/` · The mock: `after/mock.html` · Its pictures: `after-shots/`
 - **Today next to proposed: `compare/`** (36 pictures)
 - How the pictures were made: `harness/`
+- One page with a picture switcher (private link): https://claude.ai/artifact/Rb3iEgQuhAii6eXXUF1Rv4 — its source is `review-page.html`
 
 ---
 
