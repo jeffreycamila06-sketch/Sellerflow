@@ -21,9 +21,10 @@ export interface ShopeeLinkProps {
   connected?: boolean;                  // the Shopee pill is green for this device
   connectedLink?: string;               // the link that connect was made with ("" = none)
   initialLink?: string;                 // the box's starting text ("" = empty)
+  notice?: string | null;               // i18n key of the last stop the server explained (orange line)
 }
 
-export default function ShopeeLinkForm({ error, onConnect, connecting = false, connected = false, connectedLink = "", initialLink = "" }: ShopeeLinkProps) {
+export default function ShopeeLinkForm({ error, onConnect, connecting = false, connected = false, connectedLink = "", initialLink = "", notice = null }: ShopeeLinkProps) {
   const t = useT() as Record<string, string>;
   const [link, setLink] = useState(initialLink);
   const [prevInitial, setPrevInitial] = useState(initialLink);
@@ -43,6 +44,7 @@ export default function ShopeeLinkForm({ error, onConnect, connecting = false, c
         placeholder={t.rd_sh_placeholder} inputMode="url" autoComplete="off" autoCapitalize="off" spellCheck={false}
         style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: 9, border: `1px solid ${error ? "var(--danger)" : "var(--border)"}`, background: "var(--surface)", color: "var(--text)", fontSize: 16 }}
       />
+      {notice && !connecting && !showsConnected && <div data-testid="sh-link-notice" role="status" className="sfl-sh-notice" style={{ fontSize: 12.5, fontWeight: 700, padding: "8px 10px", borderRadius: 8, lineHeight: 1.35 }}>{t[notice] ?? notice}</div>}
       {error && <div data-testid="sh-link-error" role="alert" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "7px 9px", borderRadius: 8 }}>{t[error] ?? error}</div>}
       <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_sh_link_help}</div>
       {showsConnected ? (

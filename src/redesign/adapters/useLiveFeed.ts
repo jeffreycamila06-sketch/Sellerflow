@@ -121,6 +121,9 @@ const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | 
   { name: "Siti Rahayu", handle: "siti.rahayu", text: "+1 gamis biru kak", platform: "TikTok", isBuy: true },
 ];
 
+// A Shopee reader stop the server explained: reason = session_end | unreachable | restart |
+// shutdown | max_session (anything else is kept as sent); at = when this device heard it.
+export interface ShopeeStop { reason: string; at: number }
 // P3 — Shopee is an ADDITIVE 3rd status key (OPTIONAL so every existing
 // { TikTok, Facebook } call site + test stays byte-unchanged; defaults to "" in
 // use). TikTok/Facebook handling is byte-unchanged; the Shopee key rides the SAME
@@ -164,6 +167,9 @@ export interface UseLiveFeed {
   // room so the server's Shopee comment relay reaches it (a Shopee-only seller
   // never taps the TikTok Connect that normally arms the room join).
   shopeeConnected: boolean;
+  // The last Shopee stop the server explained (reason on platform_status Shopee connected:false;
+  // null = none yet). Display data only — RedesignApp turns it into one line on the paste box.
+  shopeeLastStop: ShopeeStop | null;
   ensureJoined: () => void;
   // Instagram (phase 1, admin / preview only): platform_status platform:"Instagram".
   igConnected: boolean;
@@ -192,6 +198,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // (display hides it there; a recovery resumes with ≤30s-stale data refreshed
   // by the server heartbeat). DISPLAY DATA ONLY — never feeds the status machine.
   const [fbLastStop, setFbLastStop] = useState<FbStop | null>(null); // fb_stop_reasons
+  const [shopeeLastStop, setShopeeLastStop] = useState<ShopeeStop | null>(null); // Shopee stop reason (paste box line)
   const [ttViewers, setTtViewers] = useState<number | null>(null);
   // PIN-TO-PRINT — pins ride a CALLBACK seam (the onComment/Auto-Mode pattern:
   // the handler lives behind a ref so its changing identity never re-subscribes
@@ -210,6 +217,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     setInitialFor(email);
     setInitialFeed([]);
     setTtViewers(null); // viewer chip never carries across users either
+    setShopeeLastStop(null); // nor a Shopee stop line
     // (pin seen-set reset for the user switch lives in the effect below)
   }
   // Ref reset for the user switch lives in an EFFECT (the hooks-lint rule bans
@@ -231,6 +239,11 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // from the tt/fb grace machine (Shopee has no reconnect concept): connected:true =
   // poller running, false = stopped. No amber/recovering state.
   const [shopeeConnected, setShopeeConnected] = useState(false);
+  // Shopee socket-loss grace (2026-11-22): the same SOCKET_GRACE_MS fall-to-gray TikTok/Facebook
+  // have. shopeeUpRef = the server says the Shopee reader runs for this device (set in the
+  // handler, synchronously — never a render mirror); one timer, the earliest deadline wins.
+  const shopeeUpRef = useRef(false);
+  const shopeeGrayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [igConnected, setIgConnected] = useState(false); // Instagram (phase 1)
   // F3 — TRUE while a fall-to-gray grace window is armed (server health-cycle
   // reconnect or socket-down grace): the stream's health is IN DOUBT. Display
@@ -396,11 +409,28 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     };
     // A dead socket cannot deliver comments → green must not outlive it (short grace
     // so a 1–2s transport blip never flaps the pill; the join snapshot restores truth).
+    // Shopee — its own grace timer (TikTok/Facebook code above is untouched): a dead socket
+    // grays the Shopee pill after the same SOCKET_GRACE_MS unless the server's status (the
+    // join replay after the socket comes back) says the reader still runs.
+    const cancelShopeeGray = () => {
+      const t = shopeeGrayTimerRef.current;
+      if (t) { clearTimeout(t); shopeeGrayTimerRef.current = null; }
+    };
+    const scheduleShopeeGray = (delayMs: number) => {
+      if (shopeeGrayTimerRef.current) return; // keep the EARLIEST deadline
+      shopeeGrayTimerRef.current = setTimeout(() => {
+        shopeeGrayTimerRef.current = null;
+        shopeeUpRef.current = false;
+        setShopeeConnected(false);
+        setActiveAccounts((a) => ({ ...a, Shopee: "" }));
+      }, delayMs);
+    };
     const onSocketDown = () => {
       setConnected(false);
       (["TikTok", "Facebook"] as Platform[]).forEach((p) => {
         if (serverConnectedRef.current[p]) scheduleGray(p, SOCKET_GRACE_MS);
       });
+      if (shopeeUpRef.current) scheduleShopeeGray(SOCKET_GRACE_MS);
     };
     s.on("connect", () => {
       setConnected(true);
@@ -486,12 +516,16 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       // = poller running (green), anything else = stopped (gray). Drives the
       // Shopee pill + activeAccounts.Shopee (= the live shop id).
       if (p.platform === "Shopee") {
+        cancelShopeeGray(); // the server spoke — no pending socket-loss gray
         if (p.connected && !p.reconnecting) {
+          shopeeUpRef.current = true;
           setShopeeConnected(true);
           setActiveAccounts((a) => ({ ...a, Shopee: p.username || "" }));
         } else {
+          shopeeUpRef.current = false;
           setShopeeConnected(false);
           setActiveAccounts((a) => ({ ...a, Shopee: "" }));
+          if (p.reason) setShopeeLastStop({ reason: String(p.reason), at: Date.now() });
         }
         return;
       }
@@ -610,12 +644,14 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (e.sellerId && e.sellerId !== sellerId) return;
       if (e.sessionId && e.sessionId !== sessionId) return;
       cancelGray("TikTok"); cancelGray("Facebook"); // terminal — no pending grace needed
+      cancelShopeeGray(); shopeeUpRef.current = false;
       setActiveAccounts({ TikTok: "", Facebook: "", Shopee: "" }); setTtConnected(false); setFbConnected(false); setShopeeConnected(false); setFeed([]);
       setInitialFeed([]); // session over — the history block goes with it
       setTtViewers(null); // …and the viewer count with it
     });
     return () => {
       cancelGray("TikTok"); cancelGray("Facebook");
+      cancelShopeeGray();
       joinRoomRef.current = null;
       socketRef.current = null;
       s.disconnect();
@@ -774,5 +810,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — history block mapped with restored:true so the Dashboard's
   // muted zero-action display branch handles it (duplicate-order layer 3).
   const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
-  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, fbLastStop, connect, connectFacebook, shopeeConnected, ensureJoined, igConnected };
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, fbLastStop, connect, connectFacebook, shopeeConnected, shopeeLastStop, ensureJoined, igConnected };
 }

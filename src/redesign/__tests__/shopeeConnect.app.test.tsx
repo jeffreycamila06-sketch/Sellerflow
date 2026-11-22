@@ -18,6 +18,7 @@ const H = vi.hoisted(() => ({
   checkStatus: { n: 0 },
   linkConnect: { fn: null as Mock<(...a: unknown[]) => unknown> | null },
   shopeeConnected: { v: false },
+  lastStop: { v: null as { reason: string; at: number } | null },
   ensureJoined: { fn: null as Mock<() => void> | null },
   startSession: { fn: null as Mock<(...a: unknown[]) => unknown> | null },
 }));
@@ -44,7 +45,7 @@ vi.mock("../adapters/useLiveFeed", async (orig) => ({
     comments: [], initialComments: [], connected: true, canInject: false, injectSynthetic: () => {}, getComment: () => undefined,
     activeAccounts: { TikTok: "", Facebook: "", Shopee: H.shopeeConnected.v ? "777" : "" }, ttConnected: false, fbConnected: false,
     ttRecovering: false, fbRecovering: false, ttViewers: null, fbLastStop: null,
-    shopeeConnected: H.shopeeConnected.v, igConnected: false,
+    shopeeConnected: H.shopeeConnected.v, shopeeLastStop: H.lastStop.v, igConnected: false,
     connect: vi.fn(async () => ({ ok: true, account: "shop1" })), connectFacebook: vi.fn(async () => ({ ok: true })),
     ensureJoined: () => H.ensureJoined.fn!(),
   }),
@@ -78,7 +79,11 @@ import RedesignApp from "../RedesignApp";
 
 const t = buildT("en");
 const LINK = "https://ph.shp.ee/AbCdEf12";
-async function mount() { render(<RedesignApp />); await flush(); }
+let app: ReturnType<typeof render> | null = null;
+async function mount() { app = render(<RedesignApp />); await flush(); }
+const rerender = async () => { app!.rerender(<RedesignApp />); await flush(); };
+const serverStop = async (reason: string) => { H.shopeeConnected.v = false; H.lastStop.v = { reason, at: Date.now() }; await rerender(); };
+const notice = () => screen.queryByTestId("sh-link-notice");
 const openBox = async () => {
   fireEvent.click(screen.getByTestId("lpk-tile-sh"));
   await flush();
@@ -93,6 +98,7 @@ beforeEach(() => {
   H.statusGate.p = null;
   H.checkStatus.n = 0;
   H.shopeeConnected.v = false;
+  H.lastStop.v = null;
   H.ensureJoined.fn = vi.fn();
   H.startSession.fn = vi.fn(async () => "S2");
   H.linkConnect.fn = vi.fn(async () => ({ ok: true, uid: "777", region: "ph" }));
@@ -165,5 +171,83 @@ describe("Item 2 — one connect per tap burst", () => {
     expect(btn().disabled).toBe(false);
     expect(btn().textContent).toBe(t.rd_shp_connect);
     expect((screen.getByTestId("sh-link-input") as HTMLInputElement).value).toBe(LINK);
+  });
+});
+
+describe("Item 3 — the stop line on the box", () => {
+  it.each([
+    ["session_end", "rd_sh_stop_ended"], ["unreachable", "rd_sh_stop_unreachable"], ["restart", "rd_sh_stop_other_device"],
+    ["shutdown", "rd_sh_stop_reset"], ["max_session", "rd_sh_stop_time_limit"],
+  ])("server stop %s → one orange line on the box", async (reason, key) => {
+    H.shopeeConnected.v = true;
+    await mount();
+    await serverStop(reason);
+    await openBox();
+    expect(notice()?.textContent).toBe((t as unknown as Record<string, string>)[key]);
+    expect(notice()?.className).toBe("sfl-sh-notice");
+    expect(screen.getAllByRole("status").filter((e) => e.dataset.testid === "sh-link-notice")).toHaveLength(1);
+  });
+  it("an unknown reason → no line (the pill still turns gray)", async () => {
+    H.shopeeConnected.v = true;
+    await mount();
+    await serverStop("something_new");
+    await openBox();
+    expect(notice()).toBeNull();
+  });
+  it("this device's OWN new connect stops its old reader ('restart') → never 'connected on another device'", async () => {
+    H.shopeeConnected.v = true;
+    const answer = deferred<unknown>();
+    H.linkConnect.fn = vi.fn(() => answer.p);
+    await mount();
+    fireEvent.click(sourceButton());
+    await flush();
+    typeLink("https://ph.shp.ee/NewLive99");
+    fireEvent.click(btn());
+    await flush();                                              // our request is out
+    await serverStop("restart");                                // the server stops our old reader first
+    answer.resolve({ ok: false, error: "unreachable" });        // …and then our connect fails
+    await flush();
+    await openBox();
+    expect(notice()).toBeNull();                                // no "another device" line
+    expect(screen.getByTestId("sh-link-error").textContent).toBe(t.rd_sh_err_unreach);
+  });
+  it("a restart long after our own connect → another device → the line", async () => {
+    H.shopeeConnected.v = true;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-11-22T05:00:00Z"));
+      await mount();
+      fireEvent.click(sourceButton());
+      await flush();
+      typeLink(LINK);
+      fireEvent.click(btn());
+      await flush();
+      vi.setSystemTime(new Date("2026-11-22T05:20:00Z"));      // 20 minutes later
+      await serverStop("restart");
+      await openBox();
+      expect(notice()?.textContent).toBe(t.rd_sh_stop_other_device);
+    } finally { vi.useRealTimers(); }
+  });
+  it("the line goes when Shopee is green again, and at the next Connect tap", async () => {
+    H.shopeeConnected.v = true;
+    await mount();
+    await serverStop("unreachable");
+    await openBox();
+    expect(notice()).not.toBeNull();
+    const gate = deferred<void>();
+    H.statusGate.p = gate.p;
+    fireEvent.click(btn() /* the box still holds nothing */);
+    typeLink(LINK);
+    fireEvent.click(btn());                                     // a new connect → the old line goes
+    gate.resolve();
+    await flush();
+    expect(notice()).toBeNull();
+    await serverStop("shutdown");
+    expect(notice()?.textContent).toBe(t.rd_sh_stop_reset);
+    H.shopeeConnected.v = true;                                 // green again
+    await rerender();
+    fireEvent.click(sourceButton());
+    await flush();
+    expect(notice()).toBeNull();
   });
 });

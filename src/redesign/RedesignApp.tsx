@@ -54,6 +54,7 @@ import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, pa
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo, type LockPlatform } from "./adapters/shopeeBeta";
 import { shopeeLinkConnect, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
+import { shopeeStopNoteKey, type OwnConnect } from "./adapters/shopeeLinkStatus";
 import FbChannels from "./screens/FbChannels";
 import IgChannels from "./screens/IgChannels";
 import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
@@ -98,7 +99,7 @@ import { buildMinerRiskMap } from "./adapters/minerRisk";
 import { useMinersReport } from "./adapters/minersReport";
 import { useSalesTab } from "./adapters/salesTab";
 import { useSessionWindow } from "./adapters/useSessionWindow";
-import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
+import { useLiveFeed, commentKey, type ShopeeStop } from "./adapters/useLiveFeed";
 import { createDeferredAutoQueue } from "./adapters/deferredAuto";
 import { useOrders } from "./adapters/useOrders";
 import { useOutbox, queuedOutboxRows } from "./adapters/outbox";
@@ -1440,6 +1441,10 @@ export default function RedesignApp() {
   const shopeeBusy = shopeeConnecting || shopeeLinkChecking;
   const [shopeeConnectedLink, setShopeeConnectedLink] = useState(""); // the link the green Shopee live was connected with
   const [shopeeBoxLink, setShopeeBoxLink] = useState("");              // the box's starting text: the last link tapped Connect with
+  // This device's last Shopee connect request (start / answer) — so the stop of our OWN old reader
+  // ("restart") never shows "connected on another device" (adapters/shopeeLinkStatus.ts).
+  const [shopeeOwnConnect, setShopeeOwnConnect] = useState<OwnConnect>({ startedAt: null, endedAt: null });
+  const [shopeeNotice, setShopeeNotice] = useState<string | null>(null); // the box's stop line (i18n key)
   const [igConnecting, setIgConnecting] = useState(false); // Instagram (phase 1)
   const [igOff, setIgOff] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -1495,6 +1500,18 @@ export default function RedesignApp() {
   }, [fbLivePageId, fbPages]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
+  // The box's stop line: set when the server explains a Shopee stop, gone when Shopee is green again
+  // (adjust-during-render; the own-restart rule reads state, not a ref).
+  const [seenShopeeStop, setSeenShopeeStop] = useState<ShopeeStop | null>(null);
+  if (liveFeed.shopeeLastStop !== seenShopeeStop) {
+    setSeenShopeeStop(liveFeed.shopeeLastStop);
+    if (liveFeed.shopeeLastStop) setShopeeNotice(shopeeStopNoteKey(liveFeed.shopeeLastStop, shopeeOwnConnect));
+  }
+  const [prevShopeeGreen, setPrevShopeeGreen] = useState(shopeeEff);
+  if (shopeeEff !== prevShopeeGreen) {
+    setPrevShopeeGreen(shopeeEff);
+    if (shopeeEff) setShopeeNotice(null);
+  }
   const igEff = liveFeed.igConnected && !igOff; // false for everyone without Instagram
   const otherLive = fbEff || igEff || shopeeEff;   // cooldown retry: never while another platform is live
   const otherLiveRef = useRef(otherLive);
@@ -1595,6 +1612,7 @@ export default function RedesignApp() {
     if (platformLocks.Shopee) { setShopeeLinkErr(platformLocks.Shopee); return; }
     if (shopeeLinkRequestRef.current) return; // a request is already under way — never a second one
     shopeeLinkRequestRef.current = true;
+    setShopeeOwnConnect({ startedAt: Date.now(), endedAt: null });
     setShopeeLinkErr(null);
     setShopeeConnecting(true);
     track("connect_attempt", { platform: "Shopee" });
@@ -1606,7 +1624,11 @@ export default function RedesignApp() {
       setShopeeConnectedLink(shareLink);
       track("connect_success", { platform: "Shopee" });
       setToast({ msg: tApp.rd_shp_connected_toast, kind: "ok" });
-    } finally { shopeeLinkRequestRef.current = false; setShopeeConnecting(false); }
+    } finally {
+      shopeeLinkRequestRef.current = false;
+      setShopeeOwnConnect((o) => ({ ...o, endedAt: Date.now() }));
+      setShopeeConnecting(false);
+    }
   };
   // The paste box's Connect: busy at once (before the session check), one connect at a time.
   // runSessionAware either starts doShopeeLinkConnect (which keeps the box busy until the
@@ -1615,6 +1637,7 @@ export default function RedesignApp() {
     if (shopeeLinkTapRef.current || shopeeLinkRequestRef.current) return;
     shopeeLinkTapRef.current = true;
     setShopeeBoxLink(shareLink);
+    setShopeeNotice(null); // a new connect: the old stop line goes
     setShopeeLinkChecking(true);
     try { await commitLiveConnect({ platform: "Shopee", shopId: 0, sessionId: "", shareLink }); }
     finally { shopeeLinkTapRef.current = false; setShopeeLinkChecking(false); }
@@ -2911,7 +2934,7 @@ export default function RedesignApp() {
               onConnectShopee={onConnectShopee}
               onManageShopee={() => { setShopeeOpen(false); setScreen("shopeechannels"); }}
               /* Shopee Live BETA — paste-link connect + the beta locks (sql/135). */
-              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, connectedLink: shopeeConnectedLink, initialLink: shopeeBoxLink, onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); } } : undefined}
+              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, connectedLink: shopeeConnectedLink, initialLink: shopeeBoxLink, notice: shopeeNotice, onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); } } : undefined}
               platformLocks={lockTexts}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */

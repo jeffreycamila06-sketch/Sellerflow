@@ -1,0 +1,781 @@
+// FROZEN COPY of main 360ce26c src/redesign/adapters/useLiveFeed.ts (import paths moved one folder up, nothing else).
+// Used by useLiveFeed.mainParity.test.tsx to prove the branch changes nothing for TikTok / Facebook.
+/* eslint-disable -- a frozen copy of main, kept byte-for-byte apart from the import paths; its lint findings are main's, not new code. */
+// Phase 5d — LIVE COMMENT FEED adapter. Reuses the EXACT production socket.io
+// setup (same SERVER URL, same event names, same room-join) and the EXACT
+// commentKey dedup formula. Imports the shared supabase singleton for the auth
+// token. Does NOT touch App.tsx / socket event names / the server / lib/*.
+//
+// Tangled zones handled here:
+//   • #1 commentKey dedup — copied VERBATIM from App.tsx:111-114 and guarded by
+//     a parity test (useLiveFeed.test.ts). If App.tsx ever changes the formula,
+//     the parity test must be updated in lockstep — they can never silently drift.
+//   • #3 feed scroll — the Dashboard owns feedRef + a useLayoutEffect; this hook
+//     only produces the newest-first list.
+//
+// READ-ONLY: receives comments, dedups, caps. NO order writes (that is 5e).
+//
+// ⚠️ PREVIEW (F2): the Vercel preview cannot TikTok-connect (Render
+// CLIENT_ORIGIN=sellerflowlive.com), so a real socket yields no comments there.
+// `injectSynthetic()` pushes a test comment through the SAME dedup pipeline so the
+// feed/dedup/scroll can be verified without a real socket. It is gated to
+// non-production hosts via isPreviewEnv() so real users never see it.
+import { log } from "../../../../lib/log";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
+import { supabase } from "../../../../supabase";
+import type { Comment as ProdComment } from "../../../../lib/orderTypes";
+import type { PinPayload } from "../../pinToPrint";
+import type { Comment as RDComment } from "../../../data";
+import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "../../connect";
+import { fbConnect, type FbConnectResult } from "../../fb";
+import type { FbStop } from "../../fbStopReasons";
+import { isPreviewEnv } from "../../previewEnv";
+// Batch E (#13): server URL + seller/browser identity now come from the ONE
+// shared module (was a local copy identical to connect.ts's — parity-tested;
+// do NOT change names/URLs/storage key).
+import { SERVER, sellerIdOf, browserSessionId } from "../../serverIdentity";
+
+const LIVE_COMMENT_LIMIT = 5000;
+// Approach A (FLive parity) — cap for the DISPLAY-ONLY initial history block
+// (TikTok's pre-connect room buffer is typically ~5–20 chats; 100 is generous).
+const INITIAL_COMMENT_LIMIT = 100;
+// STATUS-TRUTH (connection-status fix, exported for tests) — the green pill is a
+// PROMISE ("I am capturing your orders right now"), so it must track stream truth:
+//   • RECONNECT_GRACE_MS: a server health-cycle reconnect (chat-stale/silent) emits
+//     reconnecting:true then usually recovers in 10–45s. Keep the pill GREEN through
+//     this grace so a SUCCESSFUL self-heal is invisible (zero flapping — symptom A);
+//     if no connected:true lands within the grace, fall to an HONEST gray.
+//   • SOCKET_GRACE_MS: a dead socket cannot deliver comments, so green must not
+//     outlive it (symptom B's stale-green enabler) — but socket.io usually recovers
+//     a transport blip in 1–2s, so a short grace avoids flapping on blips. On
+//     recovery the join_live_room snapshot re-asserts the true state.
+export const RECONNECT_GRACE_MS = 60 * 1000;
+export const SOCKET_GRACE_MS = 8 * 1000;
+
+// commentKey — COPIED VERBATIM from src/App.tsx:111-114 (tangled-zone #1).
+// Parity-guarded by useLiveFeed.test.ts. DO NOT edit independently of App.tsx.
+export const commentKey = (c: ProdComment | null | undefined): string => {
+  if (!c) return "missing-comment";
+  return `${c.platform || "TikTok"}|${c.sourceUsername || ""}|${c.sessionId || ""}|${c.handle || "buyer"}|${c.timestamp || c.time || ""}|${c.comment || ""}`;
+};
+
+// Newest-first + dedup, mirroring App.tsx sortCommentsNewest + cleanComments.
+const commentMs = (c: ProdComment): number => { const t = Date.parse(c?.timestamp || ""); return Number.isFinite(t) ? t : 0; };
+const sortNewest = (list: ProdComment[]): ProdComment[] => [...list].sort((a, b) => commentMs(b) - commentMs(a));
+const dedup = (list: ProdComment[]): ProdComment[] => {
+  const seen = new Set<string>();
+  return list.filter((c) => { const k = commentKey(c); if (seen.has(k)) return false; seen.add(k); return true; });
+};
+
+// Approach A — identity key for the initial history block: TikTok's stable
+// per-message id (msgId, relayed by the server) when present, else a content
+// key. Display-only dedup — completely separate from commentKey (tangled zone
+// #1, untouched).
+export const initialKey = (c: ProdComment & { msgId?: string }): string =>
+  c.msgId ? `m:${c.msgId}` : `c:${c.platform}|${c.sourceUsername || ""}|${c.handle}|${c.comment}`;
+
+// production Comment → redesign Comment (Dashboard shape).
+export const toRedesignComment = (c: ProdComment): RDComment => ({
+  id: commentKey(c),
+  name: c.name || c.handle,
+  handle: c.handle ? (c.handle.startsWith("@") ? c.handle : `@${c.handle}`) : "",
+  text: c.comment,
+  mine: !!c.isBuy,
+  time: c.time || "",
+  platform: c.platform, // additive — basket-count identity (handle+platform)
+  msgId: (c as ProdComment & { msgId?: string }).msgId || "", // additive — ordered-check identity (sql/18)
+  // additive — commenter profile picture (FLive/Chotdon parity). Already in the
+  // relay payload (server.js avatar: profilePictureUrl — 100x100 webp TikTok CDN
+  // thumbnail, signed/expiring). DISPLAY-ONLY: loaded device→CDN by <img>, never
+  // stored anywhere (DB/localStorage) — expiring URLs, zero egress.
+  avatar: c.avatar || "",
+  // additive — miner-risk signals off the comment event (server relay). Both
+  // optional/conditional; carried through for the client-side risk badge.
+  followerCount: (c as ProdComment & { followerCount?: number }).followerCount,
+  accountCreatedAt: (c as ProdComment & { accountCreatedAt?: string | number }).accountCreatedAt,
+});
+
+// Synthetic injector gate — now the SHARED previewEnv rule (re-exported for the
+// existing import sites/tests). Native shells are production unless they are
+// the local-bundle dev APK; browsers keep the hostname rule (Vercel previews).
+export { isPreviewEnv };
+
+// Latin and Traditional-Chinese entries INTERLEAVED (~half/half) so cycling
+// "+ Test comment" exercises BOTH the ASCII and the CJK sticker paths every few
+// taps (Taiwan market; CJK names are the bitmap-atlas / TSS24 test vector).
+const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | "Facebook"; isBuy: boolean }[] = [
+  { name: "Aileen Go", handle: "jojo_tw", text: "mine red lipstick 💄", platform: "TikTok", isBuy: true },
+  { name: "陳小美", handle: "chen.xiaomei", text: "我要紅色口紅", platform: "TikTok", isBuy: true },
+  { name: "Mei Lin", handle: "meidolltw", text: "how much po the tumbler?", platform: "TikTok", isBuy: false },
+  { name: "林志豪", handle: "lin_zhihao", text: "+1 藍色水壺", platform: "TikTok", isBuy: true },
+  { name: "Benny Tan", handle: "bennytw", text: "mine size M white tee", platform: "Facebook", isBuy: true },
+  { name: "黃雅婷", handle: "yating.tw", text: "多少錢?", platform: "TikTok", isBuy: false },
+  { name: "Cara Yu", handle: "caralivetw", text: "claim skincare set", platform: "TikTok", isBuy: true },
+  { name: "張家豪", handle: "chiahao88", text: "這個還有嗎?", platform: "TikTok", isBuy: false },
+  { name: "Don Sy", handle: "donsytw", text: "get the rose gold watch ✨", platform: "Facebook", isBuy: true },
+  { name: "吳佩珊", handle: "peishan_wu", text: "mine 白色T恤 M號", platform: "TikTok", isBuy: true },
+  { name: "Ella Ng", handle: "ella.ng", text: "avail pa ba yung sneakers?", platform: "TikTok", isBuy: false },
+  { name: "劉俊宏", handle: "liu.junhong", text: "+1 黑色外套", platform: "Facebook", isBuy: true },
+  { name: "黃雅婷 Amy", handle: "amy.huang.tw", text: "多少錢? tumbler", platform: "TikTok", isBuy: false },
+  { name: "Kevin 王", handle: "kevinwang_tw", text: "+1 sneakers 藍色", platform: "TikTok", isBuy: true },
+  // Vietnamese + Indonesian sellers' markets (extended-Latin sticker path).
+  { name: "Nguyễn Thị Hằng", handle: "hang.nguyen", text: "chốt đơn son đỏ", platform: "TikTok", isBuy: true },
+  { name: "Siti Rahayu", handle: "siti.rahayu", text: "+1 gamis biru kak", platform: "TikTok", isBuy: true },
+];
+
+// P3 — Shopee is an ADDITIVE 3rd status key (OPTIONAL so every existing
+// { TikTok, Facebook } call site + test stays byte-unchanged; defaults to "" in
+// use). TikTok/Facebook handling is byte-unchanged; the Shopee key rides the SAME
+// platform_status / select_account wire, populated by a dedicated early-return branch.
+export interface ActiveAccounts { TikTok: string; Facebook: string; Shopee?: string; Instagram?: string } // Instagram: phase 1, additive like Shopee
+
+export interface UseLiveFeed {
+  comments: RDComment[];
+  // Approach A — DISPLAY-ONLY history block (TikTok's pre-connect room buffer,
+  // relayed with initial:true). Never enters `feed`/`feedRef` → getComment
+  // can't resolve these ids → order creation structurally impossible; rendered
+  // as muted restored rows with zero action buttons.
+  initialComments: RDComment[];
+  connected: boolean;
+  canInject: boolean;
+  injectSynthetic: (text?: string) => void;
+  getComment: (id: string) => ProdComment | undefined; // 5e — resolve a feed id (commentKey) → raw comment
+  // #6 connect — real platform connect + server-driven active-account switching.
+  activeAccounts: ActiveAccounts;     // which account is live per platform (from platform_status)
+  ttConnected: boolean;               // server says TikTok is connected (not reconnecting)
+  fbConnected: boolean;
+  // F3 — stream health in doubt (grace window armed): display maps this to the
+  // amber "Connecting…" visuals instead of a solid green. Recovering has display
+  // precedence over connected; green returns only on a real connected:true.
+  ttRecovering: boolean;
+  fbRecovering: boolean;
+  // Viewer count (FLive parity) — the tracked TikTok account's live viewer
+  // count from the server's `platform_viewers` relay (roomUser → viewerCount).
+  // null = no data for the CURRENT connection (hidden chip); a real 0 shows.
+  // TikTok-only: our FB pipeline has no viewer events. DISPLAY DATA ONLY —
+  // this never feeds the status machine or the comment pipeline.
+  ttViewers: number | null;
+  connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
+  // fb_connect_v2 — the Facebook Connect through the same in-flight window as connect().
+  connectFacebook: (pageId: string, scopeKey: string) => Promise<FbConnectResult>;
+  // fb_stop_reasons — the last Facebook stop the server explained (null = none yet).
+  fbLastStop: FbStop | null;
+  // P3 (additive) — Shopee live status. shopeeConnected mirrors tt/fbConnected
+  // (server platform_status platform:"Shopee"); ensureJoined lets the Shopee
+  // connect path (RedesignApp → shopee.ts POST) put this socket in the seller
+  // room so the server's Shopee comment relay reaches it (a Shopee-only seller
+  // never taps the TikTok Connect that normally arms the room join).
+  shopeeConnected: boolean;
+  ensureJoined: () => void;
+  // Instagram (phase 1, admin / preview only): platform_status platform:"Instagram".
+  igConnected: boolean;
+}
+
+export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts, onPinned?: (p: PinPayload) => boolean | void): UseLiveFeed {
+  const [feed, setFeed] = useState<ProdComment[]>([]);
+  // Approach A — the display-only initial history block, SEPARATE from `feed`
+  // (never in feedRef, never through the Auto-Mode seam).
+  const [initialFeed, setInitialFeed] = useState<ProdComment[]>([]);
+  // EXIT-RETURN buffering (exitpath fix): when the page is STILL ALIVE from a
+  // previous session (app backgrounded → returned, NOT a refresh), the old feed
+  // is still in memory at the moment the server's initial batch arrives mid-POST
+  // — so the empty-feed guard dropped it, and then the connect-ok feed clear
+  // wiped the old comments too: no history, no old feed (live Test 3). While a
+  // connect WE initiated is in flight, initial arrivals are BUFFERED instead of
+  // dropped; they flush into the history block on r.ok (right after the feed
+  // clears) and are DISCARDED on failure (the old feed keeps showing — showing
+  // the block too would double-display those same comments).
+  const connectInFlightRef = useRef(false);
+  const pendingInitialRef = useRef<ProdComment[]>([]);
+  // Viewer count — null until the first platform_viewers event of the CURRENT
+  // connection. Reset to null at: connect initiation (account switch shows no
+  // stale count for even one frame), honest gray (terminal/grace-expiry/
+  // session-end), and user switch (below). Kept through the amber grace
+  // (display hides it there; a recovery resumes with ≤30s-stale data refreshed
+  // by the server heartbeat). DISPLAY DATA ONLY — never feeds the status machine.
+  const [fbLastStop, setFbLastStop] = useState<FbStop | null>(null); // fb_stop_reasons
+  const [ttViewers, setTtViewers] = useState<number | null>(null);
+  // PIN-TO-PRINT — pins ride a CALLBACK seam (the onComment/Auto-Mode pattern:
+  // the handler lives behind a ref so its changing identity never re-subscribes
+  // the socket; the ref mirror is an EFFECT — no ref writes during render).
+  // Client msgId seen-set keeps repeated relays (server restart mid-live) from
+  // re-firing. A separate lane — never the feed, the Auto seam, or the status
+  // machine.
+  const onPinnedRef = useRef(onPinned);
+  useEffect(() => { onPinnedRef.current = onPinned; });
+  const pinSeenRef = useRef<Set<string>>(new Set());
+  // The history block never carries across users (login/user switch): reset it
+  // when the subscription identity changes — the React-sanctioned
+  // adjust-during-render pattern ("Adjusting some state when a prop changes").
+  const [initialFor, setInitialFor] = useState(email);
+  if (initialFor !== email) {
+    setInitialFor(email);
+    setInitialFeed([]);
+    setTtViewers(null); // viewer chip never carries across users either
+    // (pin seen-set reset for the user switch lives in the effect below)
+  }
+  // Ref reset for the user switch lives in an EFFECT (the hooks-lint rule bans
+  // ref writes during render; the state resets above stay adjust-during-render).
+  useEffect(() => { pinSeenRef.current = new Set(); }, [email]);
+  const [connected, setConnected] = useState(false);
+  // Auto Mode seam — held in a ref so a changing handler identity NEVER re-subscribes
+  // the socket (the effect deps deliberately exclude onComment). Fired per ACCEPTED
+  // comment, after all filters, alongside pushComment. Does NOT touch commentKey/dedup.
+  const onCommentRef = useRef(onComment);
+  onCommentRef.current = onComment;
+  // #6 — active live account per platform + per-platform connected flags. Driven by
+  // the server `platform_status` event (App.tsx 4072-4080). These still drive the
+  // connected-status indicators; they no longer drive the comment filter.
+  const [activeAccounts, setActiveAccounts] = useState<ActiveAccounts>({ TikTok: "", Facebook: "", Shopee: "" });
+  const [ttConnected, setTtConnected] = useState(false);
+  const [fbConnected, setFbConnected] = useState(false);
+  // P3 — Shopee connected flag (server platform_status platform:"Shopee"). Separate
+  // from the tt/fb grace machine (Shopee has no reconnect concept): connected:true =
+  // poller running, false = stopped. No amber/recovering state.
+  const [shopeeConnected, setShopeeConnected] = useState(false);
+  const [igConnected, setIgConnected] = useState(false); // Instagram (phase 1)
+  // F3 — TRUE while a fall-to-gray grace window is armed (server health-cycle
+  // reconnect or socket-down grace): the stream's health is IN DOUBT. Display
+  // layer maps this to the existing amber "Connecting…" visuals instead of
+  // holding a solid green. Cleared the moment the server re-asserts
+  // connected:true, or when the grace expires into an honest gray. DISPLAY
+  // SIGNAL ONLY — the grace timers / honest-gray state machine are unchanged.
+  const [ttRecovering, setTtRecovering] = useState(false);
+  const [fbRecovering, setFbRecovering] = useState(false);
+  const activeRef = useRef<ActiveAccounts>(activeAccounts);
+  activeRef.current = activeAccounts;
+  // H1 (clientfix audit) — the account each pill currently TRACKS (the username
+  // that made it green), updated SYNCHRONOUSLY inside the status handler — NOT
+  // render-mirrored, so a same-batch green→reconnecting sequence (the F2 race)
+  // reads the fresh value. Cleared when the pill honestly grays.
+  const trackedAcctRef = useRef<{ TikTok: string; Facebook: string }>({ TikTok: "", Facebook: "" });
+  // Account-leak fix: the comment filter follows the USER's dropdown selection, NOT
+  // the server-driven activeAccounts (last-platform_status-wins, drifts when multiple
+  // accounts are live). The ref lets the comment handler read the latest selection
+  // without re-subscribing the socket. We ALSO tell the server this selection via
+  // `select_account` so the wrong account's comments never reach this socket.
+  const ttSel = selected?.TikTok || "";
+  const fbSel = selected?.Facebook || "";
+  const shSel = selected?.Shopee || ""; // P3 — selected Shopee shop id (scoping key)
+  const igSel = selected?.Instagram || ""; // Instagram (phase 1) — "" for everyone without IG
+  const selectedRef = useRef<ActiveAccounts>({ TikTok: ttSel, Facebook: fbSel, Shopee: shSel, Instagram: igSel });
+  selectedRef.current = { TikTok: ttSel, Facebook: fbSel, Shopee: shSel, Instagram: igSel };
+  const socketRef = useRef<Socket | null>(null);
+  // MANUAL-CONNECT-ONLY (Jeff decision, 2026-07-12): the Fix B client
+  // auto-reconnect (re-POST /connect after a socket reconnect — the app-open /
+  // return-from-background auto path) is REMOVED. It bypassed the hook's
+  // connect() (direct connectPlatform) so the initial-comments flow broke on
+  // every auto trigger, while the manual Connect tap is the one perfect path.
+  // The seller's tap is now the ONLY way a connection starts. Mid-live
+  // resilience is UNTOUCHED: the SERVER-side health-cycle reconnects (B2,
+  // scheduleTikTokReconnect) keep an established session alive, and the join
+  // snapshot re-asserts true status after any socket blip.
+  //
+  // FIX2 (corrected diagnosis, Jeff 2026-07-12): the true bug was a ZOMBIE
+  // GREEN on fresh open — the server-side connection is genuinely alive (app
+  // close never kills it), and the automatic `join_live_room` + the server's
+  // JOIN SNAPSHOT re-greened the pill with zero user action. But that green
+  // carried NO attach guarantees: the snapshot is a status event only —
+  //   • the history/ring re-emit fires ONLY on the connect POST's B2 reuse
+  //     branch, never on join → earlier comments structurally absent;
+  //   • live comments run a SEPARATE filter chain (server per-socket
+  //     select_account gate + client selection/sessionId filters) that the
+  //     status green never validates → "green but not receiving" was possible,
+  //     and only a manual disconnect→connect (the full attach sequence)
+  //     recovered it. GREEN MUST MEAN RECEIVING — so a state the client
+  //     cannot attach cleanly must render as an honest gray + Connect button.
+  // The join is therefore gated on USER INTENT:
+  //   • hasUserConnectedRef — false on every socket (re)subscription (fresh
+  //     open, login, user switch, account-init). No join happens until the
+  //     seller taps Connect → fresh open/login lands on gray + Connect button.
+  //   • connect() sets it true and joins IMMEDIATELY AT INITIATION (before the
+  //     POST — ordering-critical: the server relays the initial batch WHILE
+  //     processing the POST, and a socket outside the room would miss it).
+  //   • After the tap, every socket reconnect re-joins in the connect handler —
+  //     the mid-live join-snapshot/status resilience is fully intact.
+  const hasUserConnectedRef = useRef(false);
+  // connect() (a stable useCallback outside the socket effect) joins via this
+  // ref — set while the effect's socket is live, nulled on teardown.
+  const joinRoomRef = useRef<(() => void) | null>(null);
+  //   • serverConnectedRef: mirror of tt/fbConnected (server truth) — still
+  //     used by onSocketDown to arm the dead-socket grace only when green.
+  const serverConnectedRef = useRef<{ TikTok: boolean; Facebook: boolean }>({ TikTok: false, Facebook: false });
+  serverConnectedRef.current = { TikTok: ttConnected, Facebook: fbConnected };
+  // STATUS-TRUTH — pending fall-to-gray timers per platform. A timer is armed when
+  // the stream's health is IN DOUBT (server reconnecting / socket dead) and cancelled
+  // the moment the server re-asserts connected:true. "Keep earliest deadline": arming
+  // while armed is a no-op, so repeated reconnecting/connect_error events can never
+  // extend a false green.
+  const grayTimersRef = useRef<{ TikTok: ReturnType<typeof setTimeout> | null; Facebook: ReturnType<typeof setTimeout> | null }>({ TikTok: null, Facebook: null });
+  const synthIdx = useRef(0);
+  // Latest feed readable from a stable getter (for 5e order creation by id).
+  const feedRef = useRef<ProdComment[]>(feed);
+  feedRef.current = feed;
+  // Orderable earlier-comments — DELIBERATE layer-2 unlock (final spec + audit):
+  // getComment now ALSO resolves initial/restored ids so the 1-Click/Enterprise
+  // handlers can order history rows. The Auto-Mode seam is untouched (initial
+  // comments still never reach it — layer 1 structural); the duplicate guard
+  // moves to the DB-backed ordered-check (stronger than the old no-buttons rule).
+  const initialRef = useRef<ProdComment[]>(initialFeed);
+  useEffect(() => { initialRef.current = initialFeed; }, [initialFeed]); // effect mirror — getComment reads at tap time, long after commit
+  const getComment = useCallback((id: string) =>
+    feedRef.current.find((c) => commentKey(c) === id) ?? initialRef.current.find((c) => commentKey(c) === id), []);
+
+  const pushComment = useCallback((c: ProdComment) => {
+    setFeed((prev) => dedup(sortNewest([c, ...prev])).slice(0, LIVE_COMMENT_LIMIT));
+  }, []);
+
+  // Approach A — accept an initial (history) comment into the display-only
+  // block: dedup by msgId/content key (repeated connects on a quiet room must
+  // not double the block), newest-first, capped. Never touches feed/dedup.
+  const pushInitial = useCallback((c: ProdComment & { msgId?: string }) => {
+    setInitialFeed((prev) => {
+      const k = initialKey(c);
+      if (prev.some((p) => initialKey(p) === k)) return prev;
+      return sortNewest([c, ...prev]).slice(0, INITIAL_COMMENT_LIMIT);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !email) return;
+    const em = email; // narrowed to string for the closures below
+    const sellerId = sellerIdOf(em);
+    const sessionId = browserSessionId();
+    // (Manual-connect-only: no per-subscription reconnect tracking — the seller's
+    // tap is the only connect entry point. Effect deps are [enabled, email,
+    // pushComment, pushInitial]; both callbacks are stable.)
+    const s: Socket = io(SERVER, {
+      path: "/socket.io/",
+      transports: ["websocket"],
+      auth: (cb: (d: { token: string }) => void) => {
+        if (!supabase) { cb({ token: "" }); return; }
+        supabase.auth.getSession().then(({ data }) => cb({ token: data.session?.access_token || "" }));
+      },
+    });
+    socketRef.current = s;
+    // FIX2 — fresh subscription (fresh open / login / user switch): no user
+    // intent yet, so no room join. The seller's Connect tap flips this.
+    hasUserConnectedRef.current = false;
+    const joinRoom = () => s.emit("join_live_room", { sellerId, sessionId });
+    // Tell the server which account this socket is viewing (account-leak fix). Re-sent
+    // on every (re)connect so the server's per-socket selection survives reconnects.
+    const emitSelection = () => {
+      s.emit("select_account", { platform: "TikTok", username: selectedRef.current.TikTok });
+      s.emit("select_account", { platform: "Facebook", username: selectedRef.current.Facebook });
+      s.emit("select_account", { platform: "Shopee", username: selectedRef.current.Shopee }); // P3 — per-shop scoping
+      // Instagram: sent ONLY when an IG account is selected — no extra emit for anyone else (an
+      // older server would map an unknown platform onto the TikTok selection).
+      if (selectedRef.current.Instagram) s.emit("select_account", { platform: "Instagram", username: selectedRef.current.Instagram });
+    };
+    // Exposed to connect() (the tap handler) — join at connect INITIATION so
+    // the socket is in the room BEFORE the server relays the initial batch.
+    joinRoomRef.current = () => { joinRoom(); emitSelection(); };
+    // STATUS-TRUTH helpers (status layer ONLY — comment handler/dedup untouched).
+    const setRecovering = (platform: Platform, v: boolean) => {
+      if (platform === "TikTok") setTtRecovering(v); else setFbRecovering(v);
+    };
+    const setPlatformGray = (platform: Platform) => {
+      if (platform === "TikTok") { setTtConnected(false); setTtViewers(null); } // gray = no stale viewer count either
+      else setFbConnected(false);
+      setActiveAccounts((a) => ({ ...a, [platform]: "" }));
+      trackedAcctRef.current[platform] = ""; // H1 — a gray pill tracks no account
+    };
+    const cancelGray = (platform: Platform) => {
+      setRecovering(platform, false);
+      const t = grayTimersRef.current[platform];
+      if (t) { clearTimeout(t); grayTimersRef.current[platform] = null; }
+    };
+    const scheduleGray = (platform: Platform, delayMs: number) => {
+      // F3 — health in doubt from the moment the grace arms (repeated arms while
+      // armed are same-value no-ops → the amber state is STABLE, no flicker).
+      setRecovering(platform, true);
+      if (grayTimersRef.current[platform]) return; // keep the EARLIEST deadline
+      grayTimersRef.current[platform] = setTimeout(() => {
+        grayTimersRef.current[platform] = null;
+        setRecovering(platform, false); // doubt resolved: honestly NOT connected
+        setPlatformGray(platform); // honest gray — health didn't recover within grace
+      }, delayMs);
+    };
+    // A dead socket cannot deliver comments → green must not outlive it (short grace
+    // so a 1–2s transport blip never flaps the pill; the join snapshot restores truth).
+    const onSocketDown = () => {
+      setConnected(false);
+      (["TikTok", "Facebook"] as Platform[]).forEach((p) => {
+        if (serverConnectedRef.current[p]) scheduleGray(p, SOCKET_GRACE_MS);
+      });
+    };
+    s.on("connect", () => {
+      setConnected(true);
+      // FIX2 — join ONLY after the seller has tapped Connect this page session.
+      // Without the gate, the automatic join + the server's join snapshot
+      // re-greened the pill on every fresh open/login (the server-side
+      // connection stays alive via the health machinery). After the tap, this
+      // re-join on every socket reconnect keeps mid-live resilience intact:
+      // the join snapshot re-asserts TRUE status after any blip. No auto
+      // re-POST of /connect — the seller's tap is the only entry point.
+      if (hasUserConnectedRef.current) { joinRoom(); emitSelection(); }
+    });
+    s.on("disconnect", onSocketDown);
+    s.on("connect_error", onSocketDown);
+    s.on("comment", (d: ProdComment) => {
+      if (!d || typeof d !== "object") return;
+      // Light coercion to guarantee commentKey works; FULL normalizeComment parity
+      // is deferred with the real socket (F2 — preview can't connect).
+      const c: ProdComment = {
+        ...d,
+        platform: d.platform === "Facebook" ? "Facebook" : d.platform === "Shopee" ? "Shopee" : d.platform === "Instagram" ? "Instagram" : "TikTok", // P3 — retain Shopee; Instagram (phase 1)
+        handle: String(d.handle || d.name || "").trim(),
+        name: String(d.name || d.handle || "").trim(),
+        comment: String(d.comment || "").trim(),
+        timestamp: d.timestamp || new Date().toISOString(),
+        time: d.time || new Date().toLocaleTimeString(),
+      };
+      if (!c.handle || !c.comment) return;
+      if (c.sellerId && c.sellerId !== sellerId) return;
+      if (c.sessionId && c.sessionId !== sessionId) return;
+      // Account-leak fix — filter to the USER-SELECTED account for this platform
+      // (the dropdown), not the server-driven activeAccounts. Empty selection → show
+      // all (no dropdown choice yet). The server gate (emitCommentScoped) is the
+      // first line of defense; this is the client-side guarantee.
+      if (c.sourceUsername) {
+        // P3 — scope against the platform's OWN selection (Shopee → the selected shop id).
+        const selKey = c.platform === "Facebook" ? "Facebook" : c.platform === "Shopee" ? "Shopee" : c.platform === "Instagram" ? "Instagram" : "TikTok";
+        const sel = cleanLiveAccount(selectedRef.current[selKey]);
+        if (sel && cleanLiveAccount(c.sourceUsername) !== sel) return;
+      }
+      // ⚠️ Approach A — DISPLAY-ONLY early branch (BEFORE the Auto-Mode seam and
+      // pushComment): initial:true = TikTok's pre-connect room buffer, relayed by
+      // the server as history. These must NEVER create orders — they skip the
+      // seam and never enter feed/feedRef (getComment can't resolve them).
+      // EMPTY-FEED GUARD: only a fresh open (empty feed) shows the block — a
+      // health-cycle / forced-fresh reconnect mid-live would otherwise render
+      // recent comments twice (the live copies are already in the feed).
+      if ((c as ProdComment & { initial?: unknown }).initial === true) {
+        // Terse diagnostics (clientfix): lets a live test confirm arrival +
+        // classification from the browser console (≤ring-size lines per connect).
+        if (feedRef.current.length === 0) {
+          pushInitial(c);
+          log.info("[initial] accepted", c.handle, (c as ProdComment & { msgId?: string }).msgId || "");
+        } else if (connectInFlightRef.current) {
+          // exitpath — page-alive reconnect: the OLD feed still occupies memory
+          // while OUR connect's batch arrives mid-POST. Buffer; connect() flushes
+          // on success (after the feed clear) or discards on failure.
+          pendingInitialRef.current.push(c);
+          log.info("[initial] buffered (connect in flight)", c.handle);
+        } else {
+          log.info("[initial] dropped (feed not empty:", feedRef.current.length, ")", c.handle);
+        }
+        return;
+      }
+      // Auto Mode seam — fire on the ACCEPTED comment (after every filter above),
+      // before pushComment. commentKey/dedup below are unchanged (tangled zone #1).
+      try { onCommentRef.current?.(c); } catch (err) { log.warn("onComment handler failed", err); }
+      pushComment(c);
+    });
+    // #6 — server-driven connection status + active account (App.tsx 4072-4082),
+    // upgraded to STATUS-TRUTH three-way handling:
+    //   • connected (visible) → green NOW + cancel any pending gray.
+    //   • reconnecting → TRANSITIONAL: the server health cycle usually self-heals in
+    //     10–45s, so keep the current green through RECONNECT_GRACE_MS instead of
+    //     flapping (symptom A); the armed timer falls to honest gray if it doesn't.
+    //   • terminal not-connected (streamEnd / not_live / manual / rate_limited /
+    //     stale snapshot) → honest gray IMMEDIATELY.
+    s.on("platform_status", (p: { platform?: string; connected?: boolean; reconnecting?: boolean; sellerId?: string; username?: string; sessionId?: string; reason?: string }) => {
+      if (p.sellerId && p.sellerId !== sellerId) return;
+      if (p.sessionId && p.sessionId !== sessionId) return;
+      // P3 — Shopee branch FIRST, returning before any TikTok/FB code (so tt/fb
+      // handling is byte-unchanged). Shopee has no reconnect grace: connected:true
+      // = poller running (green), anything else = stopped (gray). Drives the
+      // Shopee pill + activeAccounts.Shopee (= the live shop id).
+      if (p.platform === "Shopee") {
+        if (p.connected && !p.reconnecting) {
+          setShopeeConnected(true);
+          setActiveAccounts((a) => ({ ...a, Shopee: p.username || "" }));
+        } else {
+          setShopeeConnected(false);
+          setActiveAccounts((a) => ({ ...a, Shopee: "" }));
+        }
+        return;
+      }
+      // Instagram (phase 1) — same shape as Shopee: connected = poller running, else gray.
+      // Returns before the TikTok/Facebook code (unchanged).
+      if (p.platform === "Instagram") {
+        if (p.connected && !p.reconnecting) {
+          setIgConnected(true);
+          setActiveAccounts((a) => ({ ...a, Instagram: p.username || "" }));
+        } else {
+          setIgConnected(false);
+          setActiveAccounts((a) => ({ ...a, Instagram: "" }));
+        }
+        return;
+      }
+      const plat: Platform | "" = p.platform === "TikTok" ? "TikTok" : p.platform === "Facebook" ? "Facebook" : "";
+      if (!plat) return;
+      if (p.connected && !p.reconnecting) {
+        // CONNECT-TRUTH intent guard (the audit's real find): after connect()
+        // honest-falses the pill at initiation, a spontaneous connected:true
+        // for a DIFFERENT account (the OLD account's health-cycle success, or
+        // the join snapshot after a socket blip — its connection stays alive
+        // server-side) must NOT re-green the pill under the newly intended
+        // account's name. Green only for the account this pill tracks/intends
+        // (trackedAcctRef — set synchronously at the Connect tap). Events
+        // without a username still apply (backward compat, mirror of H1).
+        // Side effect (documented): the single-device "last-wins" label flap
+        // when two accounts are live on one platform is fixed by this guard.
+        const okAcct = cleanLiveAccount(p.username || "");
+        const intent = cleanLiveAccount(trackedAcctRef.current[plat] || "");
+        if (okAcct && intent && okAcct !== intent) return;
+        cancelGray(plat);
+        if (plat === "TikTok") setTtConnected(true); else setFbConnected(true);
+        if (p.username) {
+          setActiveAccounts((a) => ({ ...a, [plat]: p.username as string }));
+          trackedAcctRef.current[plat] = p.username; // sync — same-batch-safe (F2 race)
+        }
+        return;
+      }
+      // H1 (clientfix audit) — ACCOUNT SCOPING for the non-connected branches:
+      // the server's reconnect chains are account-keyed, so a stale chain for a
+      // PREVIOUSLY connected account keeps emitting reconnecting / terminal
+      // not_live events that pass the sellerId+sessionId filters. Without this
+      // guard they gray (or amber) a pill that is green on a DIFFERENT, healthy
+      // account — the observed false-gray: comments flowing while gray. Rule:
+      // an event that names an account other than the one this pill currently
+      // tracks (trackedAcctRef — the username that made it green, updated
+      // SYNCHRONOUSLY so the F2 same-batch race can't stale-read it) is
+      // IGNORED; events without a username still apply (backward compat).
+      const evAcct = cleanLiveAccount(p.username || "");
+      if (evAcct && evAcct !== cleanLiveAccount(trackedAcctRef.current[plat] || "")) return;
+      if (p.reconnecting) {
+        // F2 (audit) — ALWAYS arm the grace (no currently-green gate): the gate
+        // read a render-mirrored ref that could be stale when connected:true and
+        // reconnecting:true land in the same batch (fresh connection dying at
+        // birth), silently skipping the arm and delaying the honest gray by a
+        // full retry cycle. Arming while already gray is a harmless no-op (the
+        // timer just re-asserts gray). Green still only returns on connected:true.
+        scheduleGray(plat, RECONNECT_GRACE_MS);
+      } else {
+        cancelGray(plat);
+        setPlatformGray(plat);
+        // fb_stop_reasons — record WHY Facebook stopped (after every filter above; display only).
+        if (plat === "Facebook" && p.reason) setFbLastStop({ reason: String(p.reason), scopeKey: p.username || "", at: Date.now() });
+      }
+    });
+    // Viewer count relay (FLive parity) — DISPLAY DATA ONLY, read-only next to
+    // the status machine (this handler may never touch connected/recovering/
+    // gray timers — pinned by useLiveFeed.viewers.test). Server throttles
+    // (change + interval + heartbeat); we just filter and store:
+    //   • account filter mirrors the comment/status scoping — only the account
+    //     this pill TRACKS (trackedAcctRef, set synchronously at the Connect
+    //     tap) may update the count; no tracked account (gray) → drop;
+    //   • events without a username apply when tracked (H1 backward-compat
+    //     mirror); a different account's count is never shown, even one frame.
+    s.on("platform_viewers", (p: { platform?: string; username?: string; count?: unknown; sellerId?: string } = {}) => {
+      if (p.sellerId && p.sellerId !== sellerId) return;
+      // CONTRACT: the server emits platform:"TikTok" (the existing
+      // platform_status convention — emitTikTokStatus, server.js). Compared
+      // case-insensitively as DEFENSE: a casing drift on either side of this
+      // dormant integration seam would otherwise silently drop every event,
+      // and nothing would catch it before production. Pinned by the
+      // "server-contract casing" tests in useLiveFeed.viewers.test.
+      if (String(p.platform || "").toLowerCase() !== "tiktok") return; // FB has no viewer pipeline
+      const tracked = cleanLiveAccount(trackedAcctRef.current.TikTok || "");
+      if (!tracked) return;
+      const acct = cleanLiveAccount(p.username || "");
+      if (acct && acct !== tracked) return;
+      const n = Number(p.count);
+      if (!Number.isFinite(n) || n < 0) return;
+      setTtViewers(n);
+    });
+    // PIN-TO-PRINT — same scoping ladder as platform_viewers: seller filter,
+    // case-insensitive platform pin (the dormant-seam casing lesson), tracked-
+    // account match on payload.username. msgId seen-set → one event per pin.
+    s.on("platform_pin", (p: PinPayload = {}) => {
+      if (p.sellerId && p.sellerId !== sellerId) return;
+      // Audit F1 — SINGLE CONSUMER: the same sessionId scoping the chat lane
+      // uses (line ~418). The relay stamps relaySessionId (= the latest Connect
+      // tap's session), so exactly ONE device consumes each pin — two
+      // toggled-on devices can never double-order/double-print. The consuming
+      // device = the one showing the live feed = the one that tapped Connect.
+      if (p.sessionId && p.sessionId !== sessionId) return;
+      if (String(p.platform || "").toLowerCase() !== "tiktok") return;
+      const tracked = cleanLiveAccount(trackedAcctRef.current.TikTok || "");
+      if (!tracked) return;
+      const acct = cleanLiveAccount(p.username || "");
+      if (acct && acct !== tracked) return;
+      const msgId = String(p.msgId || "");
+      if (!msgId || pinSeenRef.current.has(msgId)) return;
+      // Audit Oct 22 (2): seen ONLY once the handler is done with it (order created / nothing to
+      // do). A pin held while orders are paused, or ignored by a gate, may come again.
+      try { if (onPinnedRef.current?.(p) === true) pinSeenRef.current.add(msgId); } catch (err) { log.warn("onPinned handler failed", err); }
+    });
+    s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
+      if (e.sellerId && e.sellerId !== sellerId) return;
+      if (e.sessionId && e.sessionId !== sessionId) return;
+      cancelGray("TikTok"); cancelGray("Facebook"); // terminal — no pending grace needed
+      setActiveAccounts({ TikTok: "", Facebook: "", Shopee: "" }); setTtConnected(false); setFbConnected(false); setShopeeConnected(false); setFeed([]);
+      setInitialFeed([]); // session over — the history block goes with it
+      setTtViewers(null); // …and the viewer count with it
+    });
+    return () => {
+      cancelGray("TikTok"); cancelGray("Facebook");
+      joinRoomRef.current = null;
+      socketRef.current = null;
+      s.disconnect();
+    };
+  }, [enabled, email, pushComment, pushInitial]);
+
+  // Account-leak fix — when the user changes the dropdown selection mid-session,
+  // push it to the server so the per-socket gate updates immediately (no reconnect).
+  // The comment filter already reads selectedRef synchronously; this keeps the wire
+  // scoped too. socket.io buffers the emit if briefly disconnected.
+  useEffect(() => {
+    const s = socketRef.current;
+    if (!s) return;
+    s.emit("select_account", { platform: "TikTok", username: ttSel });
+    s.emit("select_account", { platform: "Facebook", username: fbSel });
+    s.emit("select_account", { platform: "Shopee", username: shSel }); // P3 — re-scope on shop switch
+    if (igSel) s.emit("select_account", { platform: "Instagram", username: igSel }); // Instagram users only
+  }, [ttSel, fbSel, shSel, igSel, connected]);
+
+  // #6 — real connect: POST to the live server, then optimistically set the active
+  // account (the authoritative value still arrives via platform_status). Clears the
+  // feed like production's clearLiveCommentMemory.
+  // connectWith — the ONE in-flight window shared by connect() (TikTok, behaviour unchanged)
+  // and connectFacebook() (fb_connect_v2): intent + honest-false + room join at initiation,
+  // the initial batch buffered while the POST runs, flushed on ok, discarded on failure.
+  const connectWith = useCallback(async <R extends { ok: boolean }>(platform: Platform, intent: string, post: () => Promise<R>): Promise<R> => {
+    // Audit F2, ORDERING FIX (clientfix RC1): clear the history block at connect
+    // INITIATION — never on the response. The server relays the initial batch
+    // WHILE it processes the POST, so those socket events land BEFORE r.ok; a
+    // clear on r.ok wiped the batch that had just arrived (live-verified:
+    // Render logged "[INITIAL] relaying N/M" yet no block ever rendered).
+    // Clearing here still covers the F2 account-switch leak — the old
+    // account's block is gone the moment a new connect starts.
+    setInitialFeed([]);
+    // exitpath — open the in-flight buffering window (see the handler's
+    // buffered branch): batches arriving while the OLD feed still occupies
+    // memory are held here instead of dropped.
+    connectInFlightRef.current = true;
+    pendingInitialRef.current = [];
+    // FIX2 — the tap IS the user intent: join the live room NOW, before the
+    // POST (the server relays the initial batch mid-POST; a socket outside
+    // the room would miss it). From here on, socket reconnects re-join
+    // automatically (mid-live resilience). socket.io buffers the emit if the
+    // transport is still handshaking.
+    hasUserConnectedRef.current = true;
+    joinRoomRef.current?.();
+    // CONNECT-TRUTH (post-revert redesign of the off-latch fix; audited):
+    // honest-false the platform at INITIATION. From here, GREEN can return
+    // ONLY via a platform_status connected:true whose username matches this
+    // tap's intent — the one account-attributed server assertion. This is
+    // what makes the POST result irrelevant to the pill (the r.ok=true paths
+    // with no real live — reuse/fail-open — can no longer green it by
+    // themselves), gives RedesignApp's [ttConnected] transition effect a real
+    // false→true edge to clear the local-Disconnect latch on, and kills the
+    // stale-green window while switching accounts. Pending gray timers +
+    // recovering (F3 amber) are cleared too — the old platform state is void;
+    // the pill is amber via the caller's connecting flag for the POST's
+    // lifetime, then gray until the server asserts the new account.
+    trackedAcctRef.current[platform] = intent; // intent — synchronous (H1-safe)
+    if (platform === "TikTok") { setTtConnected(false); setTtRecovering(false); setTtViewers(null); } // no stale count for even one frame across an account switch
+    else { setFbConnected(false); setFbRecovering(false); }
+    setActiveAccounts((a) => ({ ...a, [platform]: "" })); // stale server-truth voided too (same rule as setPlatformGray)
+    const pendingGray = grayTimersRef.current[platform];
+    if (pendingGray) { clearTimeout(pendingGray); grayTimersRef.current[platform] = null; }
+    try {
+      const r = await post();
+      if (r.ok) {
+        setFeed([]);
+        // CONNECT-TRUTH: the optimistic setActiveAccounts + trackedAcctRef
+        // writes that lived here are GONE — r.ok is "the server accepted the
+        // request", not "the new account is live and this client is
+        // receiving" (the reuse/fail-open 200s proved it). activeAccounts is
+        // now purely server-driven (the connected:true handler sets it);
+        // tracked intent moved to INITIATION (synchronous, H1-safe, and it
+        // feeds the connected-branch intent guard).
+        // exitpath — the feed is cleared now: flush the buffered batch into the
+        // history block (this is the page-alive exit-return case; on a fresh
+        // page the batch was accepted directly and this buffer is empty).
+        for (const c of pendingInitialRef.current) pushInitial(c);
+        if (pendingInitialRef.current.length) log.info("[initial] flushed", pendingInitialRef.current.length, "buffered after connect ok");
+      }
+      return r;
+    } finally {
+      // failure/exception → the buffer is discarded: the old feed keeps
+      // showing, and rendering the block too would double-display it.
+      connectInFlightRef.current = false;
+      pendingInitialRef.current = [];
+    }
+  }, [pushInitial]);
+
+  const connect = useCallback(async (platform: Platform, data: Record<string, string>): Promise<ConnectResult> => {
+    if (!email) return { ok: false, error: "Not signed in", account: "" };
+    return connectWith(platform, cleanLiveAccount(data.username || ""), () => connectPlatform(platform, data, email));
+  }, [email, connectWith]);
+
+  // fb_connect_v2 — the Facebook Connect through the same window: a Facebook initial batch
+  // that arrives while POST /fb/connect runs on a NON-empty feed is buffered and flushed on
+  // ok instead of dropped. scopeKey = the page's status key (username || page id).
+  const connectFacebook = useCallback(
+    (pageId: string, scopeKey: string): Promise<FbConnectResult> => connectWith("Facebook", cleanLiveAccount(scopeKey), () => fbConnect(pageId)),
+    [connectWith],
+  );
+
+  // P3 — arm the seller-room join for a Shopee connect (which POSTs to the server
+  // from RedesignApp/shopee.ts, NOT through connect() above). A Shopee-only seller
+  // never taps the TikTok Connect that normally sets hasUserConnectedRef, so the
+  // server's Shopee comment relay (io.in(sellerRoom).fetchSockets) would miss this
+  // socket. Idempotent: flips the intent flag + joins now if connected (the
+  // s.on("connect") handler re-joins on any later reconnect since the flag is set).
+  // Comment handling / dedup untouched — this only joins the room + re-emits selection.
+  const ensureJoined = useCallback(() => {
+    hasUserConnectedRef.current = true;
+    joinRoomRef.current?.();
+  }, []);
+
+  // Preview-only injector. With no arg it cycles the canned SYNTH comments; with a
+  // `text` it injects that EXACT comment from a fresh unique commenter (each call =
+  // a distinct buyer → distinct commentKey → its own auto-order) — this is how Step 7
+  // exercises Auto Mode on preview (the real socket only works in the APK). Routes
+  // through the SAME onComment seam + dedup pipeline a real comment would.
+  const injectSynthetic = useCallback((text?: string) => {
+    const i = synthIdx.current;
+    synthIdx.current += 1;
+    const now = new Date();
+    const base = SYNTH[i % SYNTH.length];
+    const c: ProdComment = {
+      handle: text != null ? `tester${i}` : base.handle,
+      name: text != null ? "Preview Tester" : base.name,
+      comment: text != null ? text : base.text,
+      platform: base.platform,
+      isBuy: text != null ? true : base.isBuy,
+      buyerNum: null,
+      buyerData: null,
+      time: now.toLocaleTimeString(),
+      timestamp: now.toISOString(),
+      sessionId: browserSessionId(),
+    } as ProdComment;
+    try { onCommentRef.current?.(c); } catch (err) { log.warn("onComment handler failed", err); }
+    pushComment(c);
+  }, [pushComment]);
+
+  // Preview convenience: expose the injector on window so a tester can drive Auto
+  // Mode from the console, e.g. __sflInject("D"). Gated to non-production hosts.
+  useEffect(() => {
+    if (!isPreviewEnv() || typeof window === "undefined") return;
+    (window as unknown as { __sflInject?: (t?: string) => void }).__sflInject = injectSynthetic;
+    return () => { try { delete (window as unknown as { __sflInject?: unknown }).__sflInject; } catch { /* ignore */ } };
+  }, [injectSynthetic]);
+
+  // Audit #2a — memoized: the mapping recomputes ONLY when the feed changes.
+  // Un-memoized, EVERY host render (e.g. each Enterprise-price keystroke)
+  // re-mapped up to 5,000 comments and forced a full list reconcile.
+  // Regression: feedComments.memo.test. The feed pipeline itself (commentKey /
+  // dedup / sortNewest — tangled zone #1) is untouched.
+  const comments = useMemo(() => feed.map(toRedesignComment), [feed]);
+  // Approach A — history block mapped with restored:true so the Dashboard's
+  // muted zero-action display branch handles it (duplicate-order layer 3).
+  const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, fbLastStop, connect, connectFacebook, shopeeConnected, ensureJoined, igConnected };
+}
