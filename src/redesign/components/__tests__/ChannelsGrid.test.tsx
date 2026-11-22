@@ -27,8 +27,9 @@ describe("the four boxes", () => {
   });
   it("Shopee follows the Live tile: no beta → Coming soon; beta ended → the lock line; both not tappable", () => {
     expect(channelTiles({ ...base, shopee: { state: "soon", name: null } }, t)[3]).toMatchObject({ disabled: true, line: "Coming soon" });
-    expect(channelTiles({ ...base, shopee: { state: "locked", name: null, lockText: t.rd_sh_lock_ended } }, t)[3]).toMatchObject({ disabled: true, line: "Shopee Beta ended — contact Admin" });
-    expect(channelTiles({ ...base, shopee: { state: "open", name: null } }, t)[3]).toMatchObject({ disabled: false, line: "Not connected", beta: true });
+    expect(channelTiles({ ...base, shopee: { state: "locked", name: null, lockText: t.rd_sh_lock_ended } }, t)[3]).toMatchObject({ disabled: true, line: "Shopee access ended — contact Admin" });
+    expect(channelTiles({ ...base, shopee: { state: "open", name: null } }, t)[3]).toMatchObject({ disabled: false, line: "Not connected" });
+    expect(channelTiles(base, t).some((x) => "beta" in x)).toBe(false); // no Beta chip on any box (2026-11-22)
   });
   it("a name already starting with @ is not doubled; no TikTok name → Not connected", () => {
     expect(channelTiles({ ...base, tiktokNames: ["@shop"] }, t)[0].line).toBe("@shop");
@@ -53,12 +54,13 @@ describe("rendered", () => {
     expect(screen.getByTestId("cg-tiktok-dot").className).toBe("sfl-cg-dot on");
     expect(screen.getByTestId("cg-facebook-dot").className).toBe("sfl-cg-dot");
   });
-  it("the CSS keeps one line with … and 2 columns; the laptop shows the status word + Beta", async () => {
+  it("the CSS keeps one line with … and 2 columns; the laptop shows the status word (no Beta chip)", async () => {
     const { readFileSync } = await import("node:fs");
     const css = readFileSync("src/redesign/redesign.css", "utf8");
     expect(css).toContain(".sfl-cg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }");
     expect(css).toMatch(/\.sfl-cg-line \{[^}]*white-space: nowrap; overflow: hidden; text-overflow: ellipsis;/);
-    expect(css).toMatch(/@media \(min-width: 900px\) \{[\s\S]*\.sfl-cg-beta \{ display: inline-block;[\s\S]*\.sfl-cg-status \{ display: inline-flex;/);
+    expect(css).toMatch(/@media \(min-width: 900px\) \{[\s\S]*\.sfl-cg-status \{ display: inline-flex;/);
+    expect(css).not.toContain("sfl-cg-beta");
   });
   it("every grid / Shopee-shops text exists in all 8 languages", () => {
     for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"]) {

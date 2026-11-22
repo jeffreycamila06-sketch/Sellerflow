@@ -6180,3 +6180,22 @@ Jeff's approved designs: Channels 2×2 claude.ai/artifact/AegK5uxSUv6ajQSbx2YbRu
 - Proof: `scripts/sql199-behaviour.mjs` (PGlite, 126) · `shopeeAccount.server.test.ts` · `planFull.app.test.tsx` ·
   `PlanFullPopup.test.tsx` · `ChannelsGrid.test.tsx` · `ShopeeShops.test.tsx` · `accountLimitsGuideSql.test.ts` ·
   pictures `docs/design/account-limits-v2/` (87, 360/390/430/1280 + dark).
+
+## 2026-11-22 — NO "MANAGE INSTAGRAM ACCOUNTS" ROW · NO SHOPEE "BETA" FOR SELLERS (branch `claude/great-wright-3v8plu` from main `07e10954`, NOT merged; web only; sql/202 NOT applied)
+- **Instagram row removed** from `ManageChannels` (TikTok AND Facebook manage screens — same component; the
+  `onInstagram` prop is gone). Who saw it: logins with Instagram open (`/ig/access`); live 2026-11-22 = the 3 built-in
+  preview logins only (`ig_enabled` 'false', 0 testers). Ways in that stay: the admin's Settings → Channels Instagram
+  box (admins always get the 2×2 grid; opens `igaccounts` when Instagram is open), and the Live screen's Instagram
+  dropdown → Manage (any Instagram-open login). The old Settings rows never had an Instagram entry that opens anything.
+- **Shopee "Beta" gone from what sellers see:** Live tile badge (`lpk-beta`) and the Channels box chip
+  (`sfl-cg-beta`, laptop only) + CSS removed; key `rd_sh_beta` removed; ×8 languages: `rd_sh_days_left` "Shopee access ·
+  {n} days left", `rd_sh_lock_beta_only` "Shopee only on your plan — upgrade to use TikTok/Facebook", `rd_sh_lock_ended`
+  "Shopee access ended — contact Admin" (key NAMES unchanged). Rules unchanged (beta row, 30 days, Admin turns it on).
+  The Admin card keeps `rd_adm_shopee_beta` "Shopee Beta" (Admin screen only).
+- **Guide:** connect-shopee / other-platforms (live) + general-settings (sql/201 text) reworded; 116b regenerated;
+  sql/201 rows kept equal to the guide. **sql/202 = phrase replacements** (right before OR after sql/201; twice = no
+  change); rollback = the exact reverse. If sql/201's rollback is run after sql/202, run sql/202 again. The search
+  keyword "beta" stays in connect-shopee. Proof `scripts/sql202-behaviour.mjs` (PGlite, 28) ·
+  `shopeeNoBetaGuideSql.test.ts` · `shopeeNoBeta.test.tsx` · `planFull.app.test.tsx` Instagram block ·
+  `docs/design/shopee-no-beta/` (pictures, main-vs-branch 360 px ×8 languages, 8/8 breaks).
+- **Order:** merge (Vercel) → sql/202.

@@ -29,18 +29,19 @@ type P = Partial<typeof baseProps> & Record<string, unknown>;
 const renderDash = (over: P = {}) => render(<TProvider lang="en"><Dashboard {...baseProps} {...over} /></TProvider>);
 const tile = (slug: string) => screen.getByTestId(`lpk-tile-${slug}`) as HTMLButtonElement;
 
-describe("Shopee tile (beta)", () => {
-  it("without the beta the Shopee tile stays 'Coming soon' (disabled)", () => {
+describe("Shopee tile (access from Admin; no Beta badge since 2026-11-22)", () => {
+  it("without access the Shopee tile stays 'Coming soon' (disabled)", () => {
     renderDash();
     expect(tile("sh").disabled).toBe(true);
     expect(screen.queryByTestId("lpk-beta")).toBeNull();
   });
-  it("beta → tile active with the BETA pill + days left; tap → the paste form; Connect sends the link", () => {
+  it("access on → tile active, NO Beta badge, days left; tap → the paste form; Connect sends the link", () => {
     const onConnect = vi.fn();
     renderDash({ shopeeLink: { daysLeft: 23, error: null, onConnect } });
     expect(tile("sh").disabled).toBe(false);
-    expect(screen.getByTestId("lpk-beta").textContent).toBe("Beta");
-    expect(screen.getByText("Shopee Beta · 23 days left")).toBeTruthy();
+    expect(screen.queryByTestId("lpk-beta")).toBeNull();
+    expect(tile("sh").textContent).not.toMatch(/beta/i);
+    expect(screen.getByText("Shopee access · 23 days left")).toBeTruthy();
     fireEvent.click(tile("sh"));
     const input = screen.getByTestId("sh-link-input") as HTMLInputElement;
     const btn = screen.getByTestId("sh-link-connect") as HTMLButtonElement;
@@ -56,18 +57,18 @@ describe("Shopee tile (beta)", () => {
     fireEvent.click(tile("sh"));
     expect(screen.getByTestId("sh-link-error").textContent).toBe("Paste the link of YOUR OWN live");
   });
-  it("locked tiles are disabled and show the lock text (beta on a free plan)", () => {
-    const lock = "Shopee Beta only — upgrade to use TikTok/Facebook";
+  it("locked tiles are disabled and show the lock text (Shopee access on a free plan)", () => {
+    const lock = "Shopee only on your plan — upgrade to use TikTok/Facebook";
     renderDash({ shopeeLink: { daysLeft: 5, error: null, onConnect: noop }, platformLocks: { TikTok: lock, Facebook: lock, Instagram: lock } });
     expect(tile("tt").disabled).toBe(true);
     expect(tile("fb").disabled).toBe(true);
     expect(tile("sh").disabled).toBe(false);
     expect(screen.getAllByText(lock).length).toBe(3);
   });
-  it("beta ended → Shopee locked with its own text", () => {
-    renderDash({ platformLocks: { Shopee: "Shopee Beta ended — contact Admin" } });
+  it("access ended → Shopee locked with its own text", () => {
+    renderDash({ platformLocks: { Shopee: "Shopee access ended — contact Admin" } });
     expect(tile("sh").disabled).toBe(true);
-    expect(screen.getByText("Shopee Beta ended — contact Admin")).toBeTruthy();
+    expect(screen.getByText("Shopee access ended — contact Admin")).toBeTruthy();
     expect(tile("tt").disabled).toBe(false);
   });
   it("connected → one source button reading 'Change link' (no Disconnect); open → the paste form", () => {

@@ -16,7 +16,7 @@ insert into public.support_guide (id, title, checked, keywords, body) values
 - **BASIC INFORMATION** — tap **Edit** to change **Shop name**, **Owner name** and **Phone**, then **Save changes**. Your email can''t be changed here.
 - **LIVE SETUP** — tap **Live setup** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**, **Choose price before print**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
 - **APPEARANCE** — Theme (☀ Light / ☾ Dark), Accent color, Language, Currency.
-- **CHANNELS** — four boxes: **TikTok**, **Facebook**, **Instagram** and **Shopee**. A green dot means an account is added. Tap a box to manage its accounts. **Instagram** shows **Coming soon**. **Shopee** opens your Shopee shops (beta).
+- **CHANNELS** — four boxes: **TikTok**, **Facebook**, **Instagram** and **Shopee**. A green dot means an account is added. Tap a box to manage its accounts. **Instagram** shows **Coming soon**. **Shopee** opens your Shopee shops.
 - **Printer Settings** — tap **Printer**, then under **CHOOSE PRINTER** pick the WiFi receipt printer or the Bluetooth sticker printer.
 - **ACCOUNT** — **Subscription** (not shown on iPhone), **Support & user guide**, **Delete account**.'),
   ('account-limit', 'Account limit per plan', '2026-11-22'::date, 'account limit, accounts, multi account, add account, limit reached, plan full, remove account, wait 4 hours, end your live first, ilang account, dagdag account, puno na, 账号上限, 多帳號, 帳號數量, 方案已滿', 'Your plan sets how many live accounts you can have **in total across all live platforms** (TikTok, Facebook, Instagram and Shopee together): Free 1, Basic 1, Plus 2, Pro 3, Master 5. Each Shopee shop counts as one account.
@@ -36,7 +36,7 @@ What to do:
 1. Remove an account you no longer use, or
 2. Upgrade your plan: message Admin on Telegram @SellerFlowLive.
 3. To add an extra TikTok account beyond your plan, tap **Add TikTok — Multi Account** and message Admin on Telegram.'),
-  ('connect-shopee', 'Shopee Live (beta)', '2026-11-22'::date, 'shopee, shopee live, share link, copy link, beta, paste link, connected, reconnect, last link, another device, shopee shop, remove shop, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph', 'Shopee Live is a **beta**. Admin turns it on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
+  ('connect-shopee', 'Shopee Live', '2026-11-22'::date, 'shopee, shopee live, share link, copy link, beta, paste link, connected, reconnect, last link, another device, shopee shop, remove shop, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph', 'Admin turns Shopee Live on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
 
 When Shopee is on for you:
 1. Start your live in the Shopee app.
@@ -58,8 +58,8 @@ Messages:
 - "Live has ended." Start a new live and paste its link.
 - "That doesn''t look like a Shopee live link." Copy the link again from the Shopee app.
 - "Shopee is not responding, try again." Wait a moment, then tap Connect once.
-- "Shopee Beta only — upgrade to use TikTok/Facebook." During the beta, a free plan can use Shopee only. Message Admin to upgrade.
-- "Shopee Beta ended — contact Admin." Your 30 days are over. Message Admin to continue.
+- "Shopee only on your plan — upgrade to use TikTok/Facebook." On a free plan you can use Shopee only. Message Admin to upgrade.
+- "Shopee access ended — contact Admin." Your 30 days are over. Message Admin to continue.
 - "No room for this Shopee shop. Remove an account in Settings to add it." Your plan is full — remove an account or upgrade.
 - "You removed an account. A new Shopee shop can be added 4 hours after the removal." Wait until the time shown, then tap **Connect** again.
 - "This Shopee shop is outside your account limit. Remove an account in Settings to go live with it." Only your oldest accounts within your plan can go live.'),
@@ -74,7 +74,7 @@ Messages:
   ('other-platforms', 'Instagram', '2026-11-22'::date, 'instagram, ig, other platform, coming soon, wala pa, kailan, ig直播, 即将推出', 'On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
 
 - **Instagram** shows **Coming soon** for most sellers and cannot be tapped. There is no date yet. The Instagram box in **Settings → General Settings → CHANNELS** shows **Coming soon** too.
-- **Shopee** is a beta — see "Shopee Live (beta)".')
+- **Shopee** — see "Shopee Live".')
 on conflict (id) do update set
   title = excluded.title, checked = excluded.checked, keywords = excluded.keywords,
   body = excluded.body, updated_at = now()

@@ -102,14 +102,13 @@ describe("picker — the Instagram tile", () => {
 });
 
 describe("Settings entry + accounts screen", () => {
-  it("ManageChannels shows the Instagram entry only when onInstagram is passed", () => {
-    const { unmount } = render(<TProvider lang="en"><ManageChannels platform="tiktok" onBack={noop} /></TProvider>);
-    expect(screen.queryByTestId("ig-entry")).toBeNull();
-    unmount();
-    const go = vi.fn();
-    render(<TProvider lang="en"><ManageChannels platform="tiktok" onBack={noop} onInstagram={go} /></TProvider>);
-    fireEvent.click(screen.getByTestId("ig-entry"));
-    expect(go).toHaveBeenCalled();
+  it("ManageChannels has no Instagram entry (TikTok and Facebook screens) — Instagram is reached from Channels / the Live screen", () => {
+    for (const platform of ["tiktok", "facebook"] as const) {
+      const { unmount } = render(<TProvider lang="en"><ManageChannels platform={platform} onBack={noop} /></TProvider>);
+      expect(screen.queryByTestId("ig-entry")).toBeNull();
+      expect(screen.queryByText(buildT("en").rd_ig_channels_title)).toBeNull();
+      unmount();
+    }
   });
   it("IgChannels lists accounts and renders Authorize as a real <a> to the signed URL", async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ url: "https://www.facebook.com/v25.0/dialog/oauth?x=1" }) }));
