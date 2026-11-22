@@ -1,0 +1,11 @@
+[
+  { "name": "square is kept", "in": { "layout": "brand", "top1": "#151515", "top2": "#151515", "btn": "#151515", "sale": "#c2261c", "dark": false, "font": "modern", "corners": "sharp", "shape": "square" },
+    "out": { "layout": "brand", "top1": "#151515", "top2": "#151515", "btn": "#151515", "sale": "#c2261c", "dark": false, "font": "modern", "corners": "sharp", "shape": "square" } },
+  { "name": "tall = no key", "in": { "layout": "brand", "top1": "#151515", "top2": "#151515", "btn": "#151515", "sale": "#c2261c", "dark": false, "font": "modern", "corners": "sharp", "shape": "tall" },
+    "out": { "layout": "brand", "top1": "#151515", "top2": "#151515", "btn": "#151515", "sale": "#c2261c", "dark": false, "font": "modern", "corners": "sharp" } },
+  { "name": "an odd shape = no key (the look itself stays valid)", "in": { "layout": "market", "top1": "#0b0b0f", "top2": "#4c1d95", "btn": "#d7ff3e", "sale": "#fb7185", "dark": true, "font": "classic", "corners": "round", "shape": "wide", "tiles": ["Tops"] },
+    "out": { "layout": "market", "top1": "#0b0b0f", "top2": "#4c1d95", "btn": "#d7ff3e", "sale": "#fb7185", "dark": true, "font": "classic", "corners": "round", "tiles": ["Tops"] } },
+  { "name": "shape is not text = no key", "in": { "layout": "brand", "top1": "#151515", "top2": "#151515", "btn": "#151515", "sale": "#c2261c", "dark": false, "font": "friendly", "corners": "round", "shape": true },
+    "out": { "layout": "brand", "top1": "#151515", "top2": "#151515", "btn": "#151515", "sale": "#c2261c", "dark": false, "font": "friendly", "corners": "round" } },
+  { "name": "square on an invalid look = no look at all", "in": { "layout": "fancy", "shape": "square" }, "out": null }
+]
