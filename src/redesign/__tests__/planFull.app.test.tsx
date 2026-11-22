@@ -14,6 +14,7 @@ const H = vi.hoisted(() => ({
   list: { v: null as unknown },
   touch: { fn: null as Mock<(...a: unknown[]) => unknown> | null },
   upsert: { fn: null as Mock<(...a: unknown[]) => unknown> | null },
+  ig: { v: false },
 }));
 const flush = async () => { for (let i = 0; i < 10; i++) await act(async () => { await Promise.resolve(); }); };
 
@@ -21,6 +22,13 @@ vi.mock("../adapters/featureAccess", async (orig) => {
   const m = await orig() as Record<string, unknown>;
   return { ...m, hasFeature: (k: string) => (k === "account_limits_v2" ? H.preview.v : (m.hasFeature as (k: string) => boolean)(k)) };
 });
+// Instagram open for this login (the server's /ig/access answer) — off unless a test turns it on.
+vi.mock("../adapters/ig", async (orig) => ({
+  ...(await orig() as object),
+  useIgAccess: () => H.ig.v,
+  listIgAccounts: async () => [],
+  startIgAuth: async () => ({ ok: false }),
+}));
 vi.mock("../adapters/planFull", async (orig) => ({
   ...(await orig() as object),
   loadMyAccountList: async () => H.list.v,
@@ -107,6 +115,7 @@ beforeEach(() => {
   localStorage.clear();
   H.role.v = "seller";
   H.preview.v = false;
+  H.ig.v = false;
   H.list.v = ACCOUNTS;
   H.linkConnect.fn = vi.fn(async () => ({ ok: false, error: "shop_limit", info: { used: 1, limit: 1, nextFreeAt: null, serverNow: null } }));
   H.touch.fn = vi.fn(async () => ({ ok: true }));
@@ -193,6 +202,45 @@ describe("Settings → Channels", () => {
     expect(screenNow()).toBe("shopeeshops");
     expect(screen.getAllByTestId("ss-row-name").map((n) => n.textContent)).toEqual(["Shopee shop ·6667"]);
     expect(screen.getByTestId("ss-lock-note")).toBeTruthy();
+  });
+});
+
+// 2026-11-22: the "Manage Instagram accounts" row left the TikTok / Facebook manage screen. Instagram is
+// reached from the Instagram box (admin) and from the Live screen's Instagram dropdown → Manage.
+describe("Instagram: no row on the manage screen; the admin's Instagram box opens it", () => {
+  it("admin with Instagram open: the Instagram box opens the Instagram accounts screen", async () => {
+    H.role.v = "admin";
+    H.ig.v = true;
+    await openGeneralSettings();
+    expect(screen.getByTestId("cg-instagram-line").textContent).toBe(t.rd_ch_not_connected);
+    expect((screen.getByTestId("cg-instagram") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId("cg-instagram")); await flush();
+    expect(screenNow()).toBe("igaccounts");
+  });
+  it("admin with Instagram open: the TikTok screen (from the TikTok box) has no Instagram row", async () => {
+    H.role.v = "admin";
+    H.ig.v = true;
+    await openGeneralSettings();
+    fireEvent.click(screen.getByTestId("cg-tiktok")); await flush();
+    expect(screenNow()).toBe("ttchannels");
+    expect(screen.queryByTestId("ig-entry")).toBeNull();
+    expect(screen.queryByText(t.rd_ig_channels_title)).toBeNull();
+  });
+  it("a seller on today's rows with Instagram open: no Instagram entry in Settings, none on the TikTok screen", async () => {
+    H.ig.v = true;
+    await openGeneralSettings();
+    expect(screen.queryByTestId("cg-grid")).toBeNull();
+    expect(screen.queryByText(t.rd_ig_channels_title)).toBeNull();
+    fireEvent.click(byText(t.rd_ch_tiktok_live)); await flush();
+    expect(screenNow()).toBe("ttchannels");
+    expect(screen.queryByTestId("ig-entry")).toBeNull();
+    expect(screen.queryByText(t.rd_ig_channels_title)).toBeNull();
+  });
+  it("an admin without Instagram open: the box says Coming soon and cannot be tapped (as before)", async () => {
+    H.role.v = "admin";
+    await openGeneralSettings();
+    expect(screen.getByTestId("cg-instagram-line").textContent).toBe("Coming soon");
+    expect((screen.getByTestId("cg-instagram") as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

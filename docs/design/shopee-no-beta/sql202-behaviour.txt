@@ -1,0 +1,30 @@
+ok   start: the live connect-shopee and other-platforms rows say beta
+ok   start = the production rows (md5 of 2026-11-22)
+ok   202: connect-shopee title + body have no "beta"
+ok   202: other-platforms title + body have no "beta"
+ok   202: general-settings title + body have no "beta"
+ok   202: connect-shopee title = Shopee Live
+ok   202: the two message lines read like the app
+ok   202: the 30-days rule is still said
+ok   202: other-platforms points to the Shopee Live section
+ok   202: keywords unchanged (search word 'beta' kept)
+ok   202: checked = 2026-11-22 on the changed rows
+ok   202: live general-settings (no beta) untouched
+ok   202: a row outside the three ids is never touched
+ok   202: no line added or lost
+ok   202 twice: nothing changes the second time
+ok   202 twice: no row written
+ok   rollback: connect-shopee title + body = the live text again
+ok   rollback: other-platforms title + body = the live text again
+ok   rollback: general-settings title + body = the live text again
+ok   rollback twice: nothing changes the second time
+ok   202 then 201: connect-shopee has no "beta"
+ok   202 then 201: other-platforms has no "beta"
+ok   202 then 201: general-settings has no "beta"
+ok   201 (as now in the repo): connect-shopee has no "beta"
+ok   201 (as now in the repo): other-platforms has no "beta"
+ok   201 (as now in the repo): general-settings has no "beta"
+ok   201 then 202: 202 changes nothing
+ok   an older 201 text applied first: 202 removes '(beta)' from general-settings
+
+28 passed, 0 failed

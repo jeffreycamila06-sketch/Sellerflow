@@ -551,7 +551,7 @@ export default function Dashboard({
                 <span className="sfl-lpk-tag"><span className="sfl-lpk-blink" />LIVE</span>
               </span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-                <span><span className={`sfl-lpk-name sfl-lpk-name--${slug}`} style={{ display: "inline-block", transformOrigin: "left center", fontSize: 23, fontWeight: 800, color: "var(--text)" }}>{p}</span>{p === "Shopee" && shopeeLink && <span data-testid="lpk-beta" style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, letterSpacing: ".08em", padding: "1px 5px", borderRadius: 5, border: "1px solid #ee4d2d", color: "#ee4d2d", verticalAlign: "middle" }}>{t.rd_sh_beta}</span>}</span>
+                <span><span className={`sfl-lpk-name sfl-lpk-name--${slug}`} style={{ display: "inline-block", transformOrigin: "left center", fontSize: 23, fontWeight: 800, color: "var(--text)" }}>{p}</span></span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>
                   {connecting && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#fbbf24", flexShrink: 0 }} />}
                   {sub}

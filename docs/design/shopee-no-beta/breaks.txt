@@ -1,0 +1,43 @@
+# On-purpose breaks — no Instagram row + no Shopee Beta (2026-11-22)
+# one line changed per break, the listed tests run, the file restored from a copy.
+
+CAUGHT 1 Instagram row back on the manage screen
+         Tests  3 failed | 28 passed (31)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > Instagram: no row on the manage screen; the admin's Instagram box opens it > admin with Instagram open: the TikTok screen (from the TikTok box) has no Instagram row
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > Instagram: no row on the manage screen; the admin's Instagram box opens it > a seller on today's rows with Instagram open: no Instagram entry in Settings, none on the TikTok screen
+    FAIL  src/redesign/adapters/__tests__/igClient.test.tsx > Settings entry + accounts screen > ManageChannels has no Instagram entry (TikTok and Facebook screens) — Instagram is
+CAUGHT 2 the admin's Instagram box no longer opens the Instagram screen
+         Tests  1 failed | 15 passed (16)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > Instagram: no row on the manage screen; the admin's Instagram box opens it > admin with Instagram open: the Instagram box opens the Instagram accounts screen
+CAUGHT 3 Beta badge back on the Live tile
+         Tests  2 failed | 14 passed (16)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/shopeeNoBeta.test.tsx > no Beta badge on screen > the Live tile has no badge in the source (lpk-beta) and no rd_sh_beta anywhere in the app
+    FAIL  src/redesign/screens/__tests__/Dashboard.shopeeLink.test.tsx > Shopee tile (access from Admin; no Beta badge since 2026-11-22) > access on → tile active, NO Beta badge, days left; tap → the paste form; Connect sends the link
+CAUGHT 4 Beta chip back in the Channels box
+         Tests  1 failed | 4 passed (5)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/shopeeNoBeta.test.tsx > no Beta badge on screen > Settings → Channels: the Shopee box shows no Beta chip, on a phone or a laptop
+CAUGHT 5 one language keeps the old word (th days-left)
+         Tests  2 failed | 3 passed (5)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/shopeeNoBeta.test.tsx > no Beta in seller-facing Shopee texts (8 languages) > the three reworded lines: same meaning, no Beta, {n} kept
+    FAIL  src/redesign/__tests__/shopeeNoBeta.test.tsx > no Beta in seller-facing Shopee texts (8 languages) > the badge word is gone (rd_sh_beta) and no Shopee / Live picker / Channels text says Beta
+CAUGHT 6 English lock line goes back to Beta
+         Tests  3 failed | 20 passed (23)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/shopeeNoBeta.test.tsx > no Beta in seller-facing Shopee texts (8 languages) > the three reworded lines: same meaning, no Beta, {n} kept
+    FAIL  src/redesign/__tests__/shopeeNoBeta.test.tsx > no Beta in seller-facing Shopee texts (8 languages) > the badge word is gone (rd_sh_beta) and no Shopee / Live picker / Channels text says Beta
+    FAIL  src/redesign/components/__tests__/ChannelsGrid.test.tsx > the four boxes > Shopee follows the Live tile: no beta → Coming soon; beta ended → the lock line; both not tappable
+CAUGHT 7 sql/202 rollback is not the exact reverse
+         Tests  1 failed | 3 passed (4)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/adapters/__tests__/shopeeNoBetaGuideSql.test.ts > sql/202 — Shopee help text without 'beta' > every pair: old → new in sql/202, new → old in the rollback (the exact reverse)
+CAUGHT 8 the guide keeps one beta line
+         Tests  1 failed | 3 passed (4)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/adapters/__tests__/shopeeNoBetaGuideSql.test.ts > sql/202 — Shopee help text without 'beta' > the new words are the guide's words (docs/support/sfl-guide.md = sql/116b), with no 'beta' left to read
+
+8/8 breaks caught

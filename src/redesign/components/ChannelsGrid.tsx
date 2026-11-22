@@ -1,9 +1,9 @@
 // Settings → Channels as 4 boxes, 2 per row (sql/199 preview, Jeff's approved design 2026-11-22:
 // claude.ai/artifact/AegK5uxSUv6ajQSbx2YbRu). Order TikTok, Facebook / Instagram, Shopee.
 // Phone: compact — one row per box, small icon, name + status dot, the account line under it (long names "…").
-// Laptop (≥ 900 px): the same 2×2 with wider rows, the status word, the Beta chip on Shopee and a chevron.
+// Laptop (≥ 900 px): the same 2×2 with wider rows, the status word and a chevron (no Beta chip since 2026-11-22).
 // The dot is green when an account is REGISTERED (not "live now"). Instagram = Coming soon unless open (admin);
-// Shopee follows the Live tile (beta → its shops screen; ended → the lock line; else Coming soon).
+// Shopee follows the Live tile (access on → its shops screen; ended → the lock line; else Coming soon).
 import { useT } from "../i18n";
 import { channelTiles, type GridChan, type GridInput } from "../adapters/channelsGrid";
 
@@ -25,7 +25,6 @@ export default function ChannelsGrid({ input, onOpen }: { input: GridInput; onOp
             <span className="sfl-cg-head">
               <span className="sfl-cg-name">{tile.name}</span>
               <span className={`sfl-cg-dot${tile.registered ? " on" : ""}`} data-testid={`cg-${tile.key}-dot`} aria-hidden="true" />
-              {tile.beta && <span className="sfl-cg-beta">{t.rd_sh_beta}</span>}
             </span>
             <span className={`sfl-cg-line${tile.registered ? " on" : ""}`} data-testid={`cg-${tile.key}-line`}>{tile.line}</span>
           </span>

@@ -3240,8 +3240,7 @@ export default function RedesignApp() {
               shopeeEnabled={shopeeEnabled} onShopee={() => { setScreen("shopeechannels"); }}
               fbPagesEnabled={fbEnabled} onFbPages={() => { setScreen("fbpages"); }}
               fbActivationOnly={featureSw.fbPolishV2 && !fbEnabled}
-              fbSwitchesLoading={!featureSwReady}
-              {...(igEnabled ? { onInstagram: () => { setScreen("igaccounts"); } } : {})} />
+              fbSwitchesLoading={!featureSwReady} />
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
               Shopee chip's Manage row). Back = where it was opened from (backNav). */}
