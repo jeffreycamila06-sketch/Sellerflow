@@ -55,6 +55,7 @@ import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePrevie
 import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo, type LockPlatform } from "./adapters/shopeeBeta";
 import { shopeeLinkConnect, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
 import { shopeeStopNoteKey, type OwnConnect } from "./adapters/shopeeLinkStatus";
+import { useShopeeLastLink } from "./adapters/shopeeLastLink";
 import FbChannels from "./screens/FbChannels";
 import IgChannels from "./screens/IgChannels";
 import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
@@ -1445,6 +1446,9 @@ export default function RedesignApp() {
   // ("restart") never shows "connected on another device" (adapters/shopeeLinkStatus.ts).
   const [shopeeOwnConnect, setShopeeOwnConnect] = useState<OwnConnect>({ startedAt: null, endedAt: null });
   const [shopeeNotice, setShopeeNotice] = useState<string | null>(null); // the box's stop line (i18n key)
+  // The last link this seller connected, remembered on this device (key = this seller's id). Saved on a
+  // connect the server accepted; cleared on "live ended" (stop reason or connect answer) and sign-out.
+  const shopeeLast = useShopeeLastLink(authUserId || "");
   const [igConnecting, setIgConnecting] = useState(false); // Instagram (phase 1)
   const [igOff, setIgOff] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -1506,6 +1510,7 @@ export default function RedesignApp() {
   if (liveFeed.shopeeLastStop !== seenShopeeStop) {
     setSeenShopeeStop(liveFeed.shopeeLastStop);
     if (liveFeed.shopeeLastStop) setShopeeNotice(shopeeStopNoteKey(liveFeed.shopeeLastStop, shopeeOwnConnect));
+    if (liveFeed.shopeeLastStop?.reason === "session_end") { shopeeLast.clear(); setShopeeBoxLink(""); } // the live ended: forget its link
   }
   const [prevShopeeGreen, setPrevShopeeGreen] = useState(shopeeEff);
   if (shopeeEff !== prevShopeeGreen) {
@@ -1619,9 +1624,16 @@ export default function RedesignApp() {
     try {
       liveFeed.ensureJoined();
       const r = await shopeeLinkConnect(shareLink);
-      if (r.ok === false) { const code = r.error; setShopeeLinkErr(SHOPEE_LINK_ERR_KEY[code]); track("connect_failed", { platform: "Shopee", reason: errCodeOf(code) }); return; }
+      if (r.ok === false) {
+        const code = r.error;
+        setShopeeLinkErr(SHOPEE_LINK_ERR_KEY[code]);
+        if (code === "ended") { shopeeLast.clear(); setShopeeBoxLink(""); } // that live is over: the box starts empty
+        track("connect_failed", { platform: "Shopee", reason: errCodeOf(code) });
+        return;
+      }
       setShopeeLinkUid(r.uid);
       setShopeeConnectedLink(shareLink);
+      shopeeLast.save(shareLink);
       track("connect_success", { platform: "Shopee" });
       setToast({ msg: tApp.rd_shp_connected_toast, kind: "ok" });
     } finally {
@@ -2781,6 +2793,7 @@ export default function RedesignApp() {
   const [logoutWarn, setLogoutWarn] = useState<number | null>(null);
   const doLogout = (keepQueued: boolean) => {
     const me = auth.profile?.authUserId;
+    shopeeLast.clear(); // signing out forgets this seller's last Shopee link on this device
     if (!keepQueued) outbox.dropOwner(me);
     clearProductsCacheFor(me);
     resetAnalytics();
@@ -2800,6 +2813,7 @@ export default function RedesignApp() {
     leavingRef.current = true;
     const r = await auth.deleteAccount();
     if (!r.ok) { leavingRef.current = false; return r; }
+    shopeeLast.clear();
     outbox.dropOwner(me); clearProductsCacheFor(me); resetAnalytics();
     appReload.run();
     return r;
@@ -2934,7 +2948,7 @@ export default function RedesignApp() {
               onConnectShopee={onConnectShopee}
               onManageShopee={() => { setShopeeOpen(false); setScreen("shopeechannels"); }}
               /* Shopee Live BETA — paste-link connect + the beta locks (sql/135). */
-              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, connectedLink: shopeeConnectedLink, initialLink: shopeeBoxLink, notice: shopeeNotice, onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); } } : undefined}
+              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, connectedLink: shopeeConnectedLink, initialLink: shopeeBoxLink || shopeeLast.link, savedLink: shopeeLast.link, notice: shopeeNotice, onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); } } : undefined}
               platformLocks={lockTexts}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */

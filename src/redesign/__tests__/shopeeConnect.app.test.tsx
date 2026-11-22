@@ -19,6 +19,8 @@ const H = vi.hoisted(() => ({
   linkConnect: { fn: null as Mock<(...a: unknown[]) => unknown> | null },
   shopeeConnected: { v: false },
   lastStop: { v: null as { reason: string; at: number } | null },
+  uid: { v: "u1" },
+  signOut: { fn: null as Mock<(...a: unknown[]) => unknown> | null },
   ensureJoined: { fn: null as Mock<() => void> | null },
   startSession: { fn: null as Mock<(...a: unknown[]) => unknown> | null },
 }));
@@ -29,11 +31,16 @@ vi.mock("../adapters/useAuthSession", async (orig) => ({
   useAuthSession: () => ({
     status: "authed",
     profile: {
-      authUserId: "u1", email: "g@x.com", plan: "pro", planStatus: "active", planExpiry: "", role: "seller", connectedAccounts: [],
+      authUserId: H.uid.v, email: `${H.uid.v}@x.com`, plan: "pro", planStatus: "active", planExpiry: "", role: "seller", connectedAccounts: [],
       profile: { fullName: "T", storeName: "Shop", phone: "", tiktok: "shop1", facebook: "", adminContactNote: "", country: "PH" },
     },
     reloadProfile: vi.fn(async () => {}),
+    signOut: async () => {},
   }),
+}));
+vi.mock("../adapters/logoutReset", async (orig) => ({
+  ...(await orig() as object),
+  signOutAndReload: (...a: unknown[]) => H.signOut.fn!(...a),
 }));
 vi.mock("../adapters/shopeeBeta", async (orig) => ({
   ...(await orig() as object),
@@ -99,6 +106,8 @@ beforeEach(() => {
   H.checkStatus.n = 0;
   H.shopeeConnected.v = false;
   H.lastStop.v = null;
+  H.uid.v = "u1";
+  H.signOut.fn = vi.fn(async () => {});
   H.ensureJoined.fn = vi.fn();
   H.startSession.fn = vi.fn(async () => "S2");
   H.linkConnect.fn = vi.fn(async () => ({ ok: true, uid: "777", region: "ph" }));
@@ -249,5 +258,89 @@ describe("Item 3 — the stop line on the box", () => {
     fireEvent.click(sourceButton());
     await flush();
     expect(notice()).toBeNull();
+  });
+});
+
+const KEY = (uid: string) => `sfl_rd_shopee_last_link:${uid}`;
+const lastNote = () => screen.queryByTestId("sh-link-last-note");
+const inputValue = () => (screen.getByTestId("sh-link-input") as HTMLInputElement).value;
+const connectOk = async () => {
+  await openBox();
+  typeLink(LINK);
+  fireEvent.click(btn());
+  await flush();
+};
+
+describe("Item 4 — the last link is remembered on this device", () => {
+  it("a connect the server accepted saves the link under THIS seller; the next app open shows it + the note", async () => {
+    await mount();
+    await connectOk();
+    expect(localStorage.getItem(KEY("u1"))).toBe(LINK);
+    app!.unmount();
+    await mount();                                              // the app opened again (gray, like after a restart)
+    await openBox();
+    expect(inputValue()).toBe(LINK);
+    expect(lastNote()?.textContent).toBe(t.rd_sh_last_link_note);
+    expect(btn().textContent).toBe(t.rd_shp_connect);
+    expect(btn().disabled).toBe(false);                         // one tap reconnects
+    typeLink("https://ph.shp.ee/NewLive99");
+    expect(lastNote()).toBeNull();                              // a new link → no "last link" note
+  });
+  it("a refused connect saves nothing", async () => {
+    H.linkConnect.fn = vi.fn(async () => ({ ok: false, error: "not_own" }));
+    await mount();
+    await connectOk();
+    expect(localStorage.getItem(KEY("u1"))).toBeNull();
+  });
+  it("the server says the live ended (session_end) → the saved link is cleared and the box is empty", async () => {
+    localStorage.setItem(KEY("u1"), LINK);
+    H.shopeeConnected.v = true;
+    await mount();
+    await serverStop("session_end");
+    expect(localStorage.getItem(KEY("u1"))).toBeNull();
+    await openBox();
+    expect(inputValue()).toBe("");
+    expect(notice()?.textContent).toBe(t.rd_sh_stop_ended);
+    expect(lastNote()).toBeNull();
+  });
+  it("a connect that answers 'ended' → the saved link is cleared and the box is empty", async () => {
+    localStorage.setItem(KEY("u1"), LINK);
+    H.linkConnect.fn = vi.fn(async () => ({ ok: false, error: "ended" }));
+    await mount();
+    await openBox();
+    expect(inputValue()).toBe(LINK);
+    fireEvent.click(btn());
+    await flush();
+    expect(localStorage.getItem(KEY("u1"))).toBeNull();
+    expect(inputValue()).toBe("");
+    expect(screen.getByTestId("sh-link-error").textContent).toBe(t.rd_sh_err_ended);
+  });
+  it.each(["unreachable", "restart", "shutdown", "max_session"])("every other stop (%s) keeps the link", async (reason) => {
+    localStorage.setItem(KEY("u1"), LINK);
+    H.shopeeConnected.v = true;
+    await mount();
+    await serverStop(reason);
+    expect(localStorage.getItem(KEY("u1"))).toBe(LINK);
+    await openBox();
+    expect(inputValue()).toBe(LINK);
+  });
+  it("signing out clears it", async () => {
+    localStorage.setItem(KEY("u1"), LINK);
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: t.rd_nav_settings }));
+    await flush();
+    fireEvent.click(screen.getByText(t.rd_sh_logout));
+    await flush();
+    expect(H.signOut.fn).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(KEY("u1"))).toBeNull();
+  });
+  it("another seller signed in on the same device sees no saved link", async () => {
+    localStorage.setItem(KEY("u1"), LINK);
+    H.uid.v = "u2";
+    await mount();
+    await openBox();
+    expect(inputValue()).toBe("");
+    expect(lastNote()).toBeNull();
+    expect(localStorage.getItem(KEY("u1"))).toBe(LINK);        // the first seller's link is untouched
   });
 });
