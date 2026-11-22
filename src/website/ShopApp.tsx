@@ -32,20 +32,33 @@ import Product from "./pages/Product";
 import Cart from "./pages/Cart";
 import { CheckoutFlow } from "./checkoutPages";
 import type { OrderApi } from "./orderApi";
+import { V4_CSS } from "./v4/styles";
+import { look4Style, lookFor, ensureFonts4 } from "./v4/look4";
+import { loadNewLook } from "./v4/gate";
+import { NewLookCtx } from "./v4/ctx";
 
-export interface ShopAppProps { host?: string; path?: string; preview?: Shop; nowMs?: number; orderApi?: OrderApi; startRoute?: ShopPage }
+export interface ShopAppProps {
+  host?: string; path?: string; preview?: Shop; nowMs?: number; orderApi?: OrderApi; startRoute?: ShopPage;
+  /** v4: draw the shop in the new look. Given = used as is (the seller editor's preview, tests). Not given = the
+   *  database is asked for a real shop (sql/203, v4/gate.ts); a preview without it shows the look of before. */
+  newLook?: boolean;
+}
 
-export default function ShopApp({ host, path, preview, nowMs, orderApi, startRoute }: ShopAppProps) {
+export default function ShopApp({ host, path, preview, nowMs, orderApi, startRoute, newLook }: ShopAppProps) {
   const start = useMemo(() => parseShopLocation(host ?? (typeof location !== "undefined" ? location.host : ""), path ?? (typeof location !== "undefined" ? location.pathname : "/")), [host, path]);
   const [route, setRoute] = useState<ShopPage>(startRoute ?? (preview ? { page: "home" } : start.route));
   const [result, setResult] = useState<ShopResult | null | "loading">(preview ?? (start.sub ? "loading" : { online: false }));
   const [picked, setPicked] = useState<string | null>(() => (preview ? null : readPickedLang()));
+  // the look is decided ONCE per visit, before the shop shows (never a change of look in front of the buyer)
+  const [asked, setAsked] = useState<boolean | null>(() => (newLook !== undefined || preview || !start.sub ? false : null));
   useEffect(() => {
     if (preview || !start.sub) return;
     let live = true;
     void loadShop(start.sub).then((r) => { if (live) setResult(r ?? { online: false }); });
+    if (newLook === undefined) void loadNewLook(start.sub).then((on) => { if (live) setAsked(on); });
     return () => { live = false; };
-  }, [preview, start.sub]);
+  }, [preview, start.sub, newLook]);
+  const k4 = newLook ?? asked;
   useEffect(() => {
     if (preview) return;
     const onPop = () => setRoute(parseShopLocation(location.host, location.pathname).route);
@@ -64,10 +77,10 @@ export default function ShopApp({ host, path, preview, nowMs, orderApi, startRou
   const res = preview ?? result;
   const shop = res && res !== "loading" && res.online ? res : null;
   const lang = shopLang(shop, picked);
-  if (res === "loading") return <div style={{ minHeight: "100vh", background: "#F5F5F7" }} />;
+  if (res === "loading" || k4 === null) return <div style={{ minHeight: "100vh", background: "#F5F5F7" }} />;
   return (
     <TProvider lang={lang}>
-      {shop ? <ShopBody shop={shop} route={route} go={go} lang={lang} onLang={(l) => { setPicked(l); if (!preview) savePickedLang(l); }} preview={!!preview} nowMs={nowMs} orderApi={orderApi}
+      {shop ? <ShopBody shop={shop} k4={k4 === true} route={route} go={go} lang={lang} onLang={(l) => { setPicked(l); if (!preview) savePickedLang(l); }} preview={!!preview} nowMs={nowMs} orderApi={orderApi}
         linkFor={(r) => (preview || typeof location === "undefined" ? "" : `${location.origin}${pagePath(start.base, r)}`)} /> : <ClosedPage />}
     </TProvider>
   );
@@ -89,7 +102,7 @@ function stockOfIn(shop: Shop, pid: number, vid: number | null) {
   if (!p) return 0;
   return vid === null ? p.stock : p.variants?.find((v) => v.id === vid)?.stock ?? 0;
 }
-function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, linkFor }: { shop: Shop; route: ShopPage; go: (r: ShopPage) => void; lang: string; onLang: (l: string) => void; preview: boolean; nowMs?: number; orderApi?: OrderApi; linkFor: (r: ShopPage) => string }) {
+function ShopBody({ shop, k4, route, go, lang, onLang, preview, nowMs, orderApi, linkFor }: { shop: Shop; k4: boolean; route: ShopPage; go: (r: ShopPage) => void; lang: string; onLang: (l: string) => void; preview: boolean; nowMs?: number; orderApi?: OrderApi; linkFor: (r: ShopPage) => string }) {
   const t = useT() as unknown as Record<string, string>;
   const cur = currencyFor(shop);
   const [lines, setLines] = useState<CartLine[]>(() => (preview ? [] : loadCart(shop.sub)));
@@ -165,10 +178,28 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   const ck = checkoutOf(shop);
   // v3: a shop with a look takes the look's colours / font / corners; without one = Build 1, exactly as before
   const ls = look ? lookStyle(look) : null;
+  // v4: the new look takes the same settings (a shop that never set a look: the mapping of its older theme) and
+  // draws them its own way. Which pages, buttons and steps there are does not depend on it.
+  const l4 = k4 ? look4Style(lookFor(shop.shop)) : null;
+  const font4 = l4 ? lookFor(shop.shop).font : null;
+  useEffect(() => { if (font4) ensureFonts4(font4); }, [font4]);
+  const withFab = route.page === "home" || route.page === "shop" || route.page === "saved" || route.page === "orders";
+  if (l4) return (
+    <NewLookCtx.Provider value={true}>
+    <div className={`sfl-v2 ${l4.className}${withFab ? " k4-fab" : ""} sfl-shop`} data-testid="shop-root" data-theme-key="k4" data-shape={l4.shape} style={l4.vars as CSSProperties}>
+      <style>{V2_CSS + SHOP_CSS + V3_CSS + V4_CSS}</style>
+      {frame()}
+    </div>
+    </NewLookCtx.Provider>
+  );
   return (
     <div className={ls ? `sfl-v2 ${ls.className} sfl-shop` : `sfl-v2 ${themeClass(k)} sfl-shop`} data-testid="shop-root" data-theme-key={ls ? `look-${look!.layout}` : k}
       style={(ls ? ls.vars : accentVars(shop.shop, k)) as CSSProperties}>
       <style>{ls ? V2_CSS + SHOP_CSS + V3_CSS : V2_CSS + SHOP_CSS}</style>
+      {frame()}
+    </div>
+  );
+  function frame() { return (<>
       <Header shop={shop} active={navActive} overBand={brand && route.page === "home"} onBack={onBack} onHome={home} cartCount={count} onCart={openCart}
         query={query} onQuery={(q) => setFilter({ ...filter, q })} onSearch={(q) => toShop({ q })} cats={cats} onCat={(c) => toShop({ cat: c })}
         savedCount={saved.length} onSaved={() => go({ page: "saved" })} onTrack={() => go({ page: "orders" })} />
@@ -178,7 +209,7 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
         [{ label: t.rd_shop_f_how, go: () => setInfo("how") }, { label: t.rd_shop_track, go: () => go({ page: "orders" }) }, { label: t.rd_shop_f_shipping, go: () => setInfo("ship") }, ...(shop.shop.policy ? [{ label: t.rd_shop_returns, go: () => setInfo("returns") }] : [])],
       ]} />}
       {showNav && <BottomNav active={navActive} cartCount={count} onHome={home} onShop={() => toShop()} onCart={openCart} onOrders={() => go({ page: "orders" })} onChat={() => setChat(true)} />}
-      {(route.page === "home" || route.page === "shop" || route.page === "saved" || route.page === "orders") && <Fab onClick={() => setChat(true)} />}
+      {withFab && <Fab onClick={() => setChat(true)} />}
       {chat && <ChatSheet shop={shop} onClose={() => setChat(false)} />}
       {info && (
         <Sheet title={info === "how" ? t.rd_shop_f_how : info === "ship" ? t.rd_shop_f_shipping : t.rd_shop_returns} onClose={() => setInfo(null)}>
@@ -192,6 +223,5 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
       {brand && panel && <CartPanel shop={shop} cur={cur} infos={infos} lines={lines} onQty={(i, q, st) => update(setQty(lines, i, q, st))} onRemove={(i) => update(removeLine(lines, i))}
         onCheckout={() => { setPanel(false); go({ page: "checkout" }); }} onClose={() => setPanel(false)} />}
       {toast && <div role="status" className="v-toast" data-testid="shop-toast">{toast}</div>}
-    </div>
-  );
+  </>); }
 }

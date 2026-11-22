@@ -1,6 +1,7 @@
 // Seller Website v3 — item 4: the Brand store's size sheet (phones: the "+" on a card) and the cart panel that
 // opens after adding (right side on laptop, from the bottom on phones). The panel uses the cart page's own
 // helpers (quantity never above stock, free-shipping progress, subtotal); the full cart page still exists.
+import { useRef } from "react";
 import { useT, tpl } from "../../redesign/i18n";
 import type { Shop } from "../shopApi";
 import { money } from "../shopApi";
@@ -9,17 +10,22 @@ import { type CartLine, type LineInfo, freeShipping, subtotalOf, MAX_QTY } from 
 import { checkoutOf, freeOverOf } from "../shipPay";
 import { cardFacts } from "../v2/cardFacts";
 import { quickPlan } from "./quickAdd";
+import { useAboveKeyboard } from "../v2/useAboveKeyboard";
+import { VIcon } from "../v2/icons";
+import { useNewLook } from "../v4/ctx";
 
 type T = Record<string, string>;
 
 export function SizeSheet({ shop, pid, cur, nowMs, onPick, onClose }: { shop: Shop; pid: number; cur: string; nowMs: number; onPick: (vid: number) => void; onClose: () => void }) {
   const t = useT() as unknown as T;
+  const layer = useRef<HTMLDivElement | null>(null);
+  useAboveKeyboard(layer);
   const p = shop.products.find((x) => x.id === pid);
   if (!p) return null;
   const plan = quickPlan(p);
   if (plan.kind !== "sizes") return null;
   return (
-    <div className="v-sheet" role="dialog" aria-modal="true" aria-label={p.name} data-testid="brand-size-sheet" onClick={onClose}>
+    <div className="v-sheet" role="dialog" aria-modal="true" aria-label={p.name} data-testid="brand-size-sheet" onClick={onClose} ref={layer}>
       <div onClick={(e) => e.stopPropagation()}>
         <h3>{p.name}</h3>
         <p style={{ margin: 0, color: "var(--s-mut)", fontSize: 13 }}>{cardFacts(p, nowMs).from ? `${t.rd_shop_from} ` : ""}{money(cur, cardFacts(p, nowMs).now)} · {t.rd_brand_pick_size}</p>
@@ -39,8 +45,11 @@ export function CartPanel({ shop, cur, infos, lines, onQty, onRemove, onCheckout
   const count = infos.reduce((a, x) => a + x.line.qty, 0);
   const idx = (x: LineInfo) => lines.findIndex((l) => l.pid === x.line.pid && l.vid === x.line.vid);
   const title = tpl(t.rd_brand_bag, { n: String(count) });
+  const k4 = useNewLook();
+  const layer = useRef<HTMLDivElement | null>(null);
+  useAboveKeyboard(layer);
   return (
-    <div className="v-drawer" role="dialog" aria-modal="true" aria-label={title} data-testid="brand-cart-panel" onClick={onClose}>
+    <div className="v-drawer" role="dialog" aria-modal="true" aria-label={title} data-testid="brand-cart-panel" onClick={onClose} ref={layer}>
       <div onClick={(e) => e.stopPropagation()}>
         <h3>{title}<button type="button" aria-label={t.rd_shop_close} data-testid="panel-x" onClick={onClose}>×</button></h3>
         {infos.length === 0 ? (
@@ -73,7 +82,7 @@ export function CartPanel({ shop, cur, infos, lines, onQty, onRemove, onCheckout
             })}
             {free && (
               <div className="v-note" data-testid="panel-free">
-                {free.remaining > 0 ? tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) }) : `🎉 ${t.rd_shop_free_yes}`}
+                {free.remaining > 0 ? tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) }) : k4 ? <><VIcon n="check" size={18} />{t.rd_shop_free_yes}</> : `🎉 ${t.rd_shop_free_yes}`}
                 <div className="v-prog"><i style={{ width: `${Math.round(free.pct * 100)}%` }} /></div>
               </div>
             )}

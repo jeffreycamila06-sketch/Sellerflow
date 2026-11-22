@@ -6199,3 +6199,53 @@ Jeff's approved designs: Channels 2×2 claude.ai/artifact/AegK5uxSUv6ajQSbx2YbRu
   `shopeeNoBetaGuideSql.test.ts` · `shopeeNoBeta.test.tsx` · `planFull.app.test.tsx` Instagram block ·
   `docs/design/shopee-no-beta/` (pictures, main-vs-branch 360 px ×8 languages, 8/8 breaks).
 - **Order:** merge (Vercel) → sql/202.
+
+## 2026-11-22 — SELLER WEBSITE: NEW LOOK "CATALOGUE AND SLIP" (branch `claude/website-catalogue`, NOT merged; sql/203 + sql/204 NOT applied; web only, no Render)
+Jeff approved the direction in `docs/design/website-redesign/PROPOSAL.md`. LOOK ONLY: cart, checkout, payment, order page,
+pricing, shipping and seller data are the same steps, fields, buttons and functions.
+- **How it is built:** an add-on style layer `V4_CSS` (`src/website/v4/styles.ts`, every rule under `.sfl-v2.k4`) + a React
+  flag `useNewLook()` (`v4/ctx.ts`) for the few places that draw an icon instead of an emoji. Same components, same
+  testids, same handlers. The old look's render branch in `ShopApp.tsx` is untouched (`frame()` holds the shared children).
+- **Who sees it — ONE database answer:** `website_new_look(p_sub)` (sql/203) = switch
+  `app_settings.website_new_look_enabled` exactly 'true' (created 'false') OR the shop is on the JSON list
+  `app_settings.website_new_look_shops` (created `["live"]` — the only website that exists; there is no "budgetukay"
+  address in the database) OR the person looking is a signed-in admin. App: `loadNewLook(sub)` (`v4/gate.ts`) — false on
+  an error, a missing function or no answer in 2.5 s. The shop asks ONCE before it shows (never a change of look in front
+  of the buyer). `ShopApp` prop `newLook` (tests, the editor preview) skips the question.
+  **Add a test shop = one UPDATE of `website_new_look_shops` (no deploy). Release = the switch 'true'.**
+- **The seller's settings, drawn the new way (`v4/look4.ts`, pure):** top colour 1 = the flat sign (logo + shop name on
+  every page), top colour 2 = a thin stripe under it (never a blend); button colour; sale colour; light / dark; font
+  (Modern = Archivo · Friendly = Bricolage Grotesque + Figtree · Classic = Newsreader + Archivo — only the picked one is
+  loaded); corners; **photo shape tall / square**. A shop that never set a look (Pop / Boutique / Bold) is drawn from the
+  same mapping the editor shows (`lookFor` = `legacyLook`, test-pinned). Text on a seller colour = white or pure black,
+  whichever reads better (`textOn4`, never under 4.5 : 1); a colour used as text is stepped until it reads (`readable`).
+- **Photo shape needs NO table column:** it is one key in the look JSON (`look.shape: "square"`; tall = no key).
+  sql/203 adds that one key to the whitelist function `website_public_look` (= sql/168's text + one line; a guard
+  refuses to run if the live function is not sql/168's text, md5 checked 2026-11-22). The older looks never read it.
+- **Editor (only when the answer is yes; else exactly the editor of before):** `WebsiteEditor` asks the same function
+  (prop `newLook` for tests) → `WebsiteLookEditor newLook`: **Photo shape** control, sign + stripe previews instead of
+  blend chips, hint `rd_wed_top_hint4`, live preview in the new look. A seller with NO website yet starts on
+  `NEUTRAL_LOOK` (`newWebsiteDraft(true)`) — only if they have not changed anything when the answer arrives. Existing
+  websites are never rewritten. New i18n: `rd_wed_shape`, `_tall`, `_square`, `_hint`, `rd_wed_top_hint4` (8 languages).
+- **Phones, new look:** inner pages show a search ICON (`shop-search-open`) that opens the same search box, so the shop
+  name fits. The round chat button is not drawn on phones (Chat is in the bottom bar and opens the same sheet); on
+  laptops it sits in a lane the page column stays out of. Measured: `harness/fab-check.cjs` (104 page × width cases, 0
+  covered; goes red when the lane rule is removed).
+- **Fixes for EVERYONE (not behind the switch, one commit each):** (a) checkout: a missing / wrong field gets its error
+  next to it, `aria-invalid`, and the page scrolls to the first one (`BAD_FIELD`, `checkoutPages.tsx`); (b) the red LIVE
+  tag's text is white (4.70 : 1); (c) cart panel, size sheet and every bottom sheet stay above the phone keyboard
+  (`v2/useAboveKeyboard.ts`, visualViewport — ⚠️ tested with a simulated keyboard, not on a real phone).
+- **Proof that nothing else changed:** `sameAsMain.pages.test.tsx` (66 pages, switch off = main's fingerprints in
+  `fixtures/pagesOnMain.json`; the only allowed difference is the LIVE tag rule) · `sameAsMain.flow.test.tsx` (a 20-step
+  buyer journey: paths, device storage, every order-service call incl. the whole `place` payload, totals — main = off =
+  on, 6 shop kinds, `fixtures/flowOnMain.json`). ⚠️ When the shop changes ON PURPOSE later, retake both fixtures on main:
+  `SFL_SHOP_DUMP=<file>` / `SFL_FLOW_DUMP=<file>` with the two test files + `fixtures/proofShops.ts` copied to a main checkout.
+  Also `v4.newLook.test.tsx`, `v4.editor.test.tsx`, `v4.sql203.test.ts`, `scripts/sql203-behaviour.mjs` (PGlite, 59).
+- **Pictures of the real build:** `docs/design/website-redesign/built/` (home / product / cart / checkout / order ×
+  390 / 412 / 1280 × clothes + food in the new look, + the clothes shop with the switch off). Stand-in drawings, demo buyer.
+- **Order:** sql/203 (switch stays 'false'; the listed shop + admins see the new look once the web is live) → merge
+  (Vercel) → Jeff tests → switch 'true' → sql/204 (guide line). Web before sql/203 = safe: nobody sees the new look.
+  Rollback: switch 'false' / list '[]' (instant), or `sql/203_website_new_look_rollback.sql`.
+- **Not done / known:** no real-phone test; the first load (517 KB) is unchanged (options in the report); admins see the
+  new look on every shop while signed in (buyers of an unlisted shop still see the old one); the five ready
+  combinations are unchanged (no "Neutral" chip to go back to — pick the colours by hand).

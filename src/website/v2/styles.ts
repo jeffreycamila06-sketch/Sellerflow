@@ -59,6 +59,7 @@ const BASE = `
 .sfl-v2 .v-live .v-tx{flex:1;min-width:150px}
 .sfl-v2 .v-live .v-tx b{font:700 15.5px var(--s-head);display:block;margin-top:3px}
 .sfl-v2 .v-live .v-tx span{color:var(--s-mut);font-size:12.5px}
+.sfl-v2 .v-live .v-tx .v-pill{color:#fff}
 .sfl-v2 .v-flash{background:var(--s-acc2);border-radius:var(--s-r);padding:12px}
 .sfl-v2 .v-cd{display:inline-flex;gap:3px;align-items:center;font:700 12px Inter}
 .sfl-v2 .v-cd i{background:var(--s-fg);color:var(--s-bg);border-radius:4px;padding:2px 5px;font-style:normal}

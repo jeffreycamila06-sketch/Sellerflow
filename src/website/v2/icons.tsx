@@ -12,6 +12,11 @@ const P: Record<string, string> = {
   shield: "M12 3 5 6v6c0 4.4 3 7.5 7 9 4-1.5 7-4.6 7-9V6zM9 12l2 2 4-4",
   bolt: "M13 3 5 13h6l-1 8 8-10h-6z",
   back: "M15 5 8 12l7 7",
+  // v4 (the new look draws these where the older looks have an emoji)
+  check: "m5 12.5 4.5 4.5L19 7.5",
+  clock: "M12 7.5V12l3 2",
+  lock: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
+  pin: "M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z",
 };
 export type IconName = keyof typeof P;
 export function VIcon({ n, size = 22, filled = false }: { n: IconName; size?: number; filled?: boolean }) {
@@ -22,6 +27,8 @@ export function VIcon({ n, size = 22, filled = false }: { n: IconName; size?: nu
       {n === "search" && <circle cx="11" cy="11" r="6.5" />}
       {n === "truck" && <><circle cx="7" cy="18" r="1.8" fill="currentColor" stroke="none" /><circle cx="17" cy="18" r="1.8" fill="currentColor" stroke="none" /></>}
       {n === "cash" && <circle cx="12" cy="12" r="2.6" />}
+      {n === "clock" && <circle cx="12" cy="12" r="9" />}
+      {n === "pin" && <circle cx="12" cy="10.5" r="2.2" />}
     </svg>
   );
 }
