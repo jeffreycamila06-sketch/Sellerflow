@@ -33,10 +33,14 @@ export interface WakeLockStates {
   ttEff: boolean; fbEff: boolean;                 // green (display truth: connected && !off)
   ttConnecting: boolean; fbConnecting: boolean;   // amber — POST in flight
   ttRecovering: boolean; fbRecovering: boolean;   // amber — F3 grace armed
+  // Shopee paste-link live (optional — absent = false, so a caller that passes only the six
+  // fields above gets exactly the old answer). Green = the Shopee reader is running for this
+  // device; connecting = the paste-box connect is under way (session check + request).
+  shEff?: boolean; shConnecting?: boolean;
 }
 export function shouldHoldWakeLock(enabled: boolean, s: WakeLockStates): boolean {
   if (!enabled) return false;
-  return s.ttEff || s.fbEff || s.ttConnecting || s.fbConnecting || s.ttRecovering || s.fbRecovering;
+  return s.ttEff || s.fbEff || s.ttConnecting || s.fbConnecting || s.ttRecovering || s.fbRecovering || s.shEff === true || s.shConnecting === true;
 }
 
 export function useWakeLock(hold: boolean): void {

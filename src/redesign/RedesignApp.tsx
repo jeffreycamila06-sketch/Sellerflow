@@ -1846,6 +1846,7 @@ export default function RedesignApp() {
     ttEff, fbEff: fbEff || igEff, // a live Instagram keeps the screen on too (igEff false without IG)
     ttConnecting, fbConnecting: fbConnecting || igConnecting,
     ttRecovering: liveFeed.ttRecovering, fbRecovering: liveFeed.fbRecovering,
+    shEff: shopeeEff, shConnecting: shopeeConnecting, // a Shopee-only live keeps the screen on too
   }));
   // The actual socket connect (unchanged) — extracted so BOTH the "session already
   // running" path and the "after the seller picks a session length" path can call
