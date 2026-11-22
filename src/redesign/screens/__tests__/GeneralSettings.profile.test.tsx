@@ -34,6 +34,10 @@ it("Profile card 'Save changes' sends name/store/phone only — no tiktok/facebo
       />
     </TProvider>,
   );
+  // nothing changed yet → the button says "Saved" and is not tappable (button feedback, adapters/buttonFeedback.ts)
+  expect(screen.getByTestId("set-profile-save")).toHaveTextContent("Saved");
+  expect(screen.getByTestId("set-profile-save")).toBeDisabled();
+  fireEvent.change(screen.getByDisplayValue("Test Owner"), { target: { value: "Test Owner 2" } });
   fireEvent.click(screen.getByText("Save changes")); // Profile card button
   await waitFor(() => expect(onSaveProfile).toHaveBeenCalledTimes(1));
   const payload = onSaveProfile.mock.calls[0][0];
@@ -63,7 +67,8 @@ function renderSettings(over: { phone?: string } = {}) {
   );
   const phoneInput = () => screen.getByDisplayValue(acct.profile.phone) as HTMLInputElement;
   const save = () => fireEvent.click(screen.getByText("Save changes"));
-  return { onSaveProfile, phoneInput, save };
+  const editName = () => fireEvent.change(screen.getByDisplayValue(acct.profile.fullName), { target: { value: `${acct.profile.fullName} 2` } });
+  return { onSaveProfile, phoneInput, save, editName };
 }
 
 describe("Profile edit — phone validation (single-source, grandfathered)", () => {
@@ -85,6 +90,7 @@ describe("Profile edit — phone validation (single-source, grandfathered)", () 
 
   it("GRANDFATHER: an UNCHANGED malformed stored phone still saves (edit other fields freely)", async () => {
     const s = renderSettings({ phone: "0900" });              // grandfathered bad data
+    s.editName();                                              // another field is edited (an unchanged form has nothing to save)
     s.save();                                                  // phone untouched
     await waitFor(() => expect(s.onSaveProfile).toHaveBeenCalledTimes(1));
     expect(s.onSaveProfile.mock.calls[0][0].phone).toBe("0900"); // kept as-is, not blocked
