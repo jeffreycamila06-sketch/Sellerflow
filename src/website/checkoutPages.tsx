@@ -77,6 +77,17 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   const [remembered, setRemembered] = useState(() => !preview && !!readBuyer());
+  // a missing / wrong field: bring the FIRST one (in page order) into view and put the cursor in it, so the
+  // message next to it is on the screen (on a phone the fields are far above the Place order bar)
+  const page = useRef<HTMLDivElement | null>(null);
+  const [errTick, setErrTick] = useState(0);
+  useEffect(() => {
+    if (!errTick) return;
+    const el = page.current?.querySelector<HTMLElement>(BAD_FIELD);
+    if (!el) return;
+    try { el.scrollIntoView({ block: "center", behavior: "auto" }); } catch { /* an old browser */ }
+    if (el.matches("input,textarea,select")) { try { el.focus({ preventScroll: true }); } catch { /* */ } }
+  }, [errTick]);
   const ck = checkoutOf(shop);
   const dels = deliveriesOf(shop);
   const pays = paymentsOf(shop, draft.delivery);
@@ -111,7 +122,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
     if (preview || busy) return;
     const e = draftErrors(draft, { delivery: dels, payment: pays, options: ck.options, methods: ck.methods, country: shop.country });
     setErrs(e); setFail("");
-    if (e.length) { setFail(t.rd_shop_co_fix); return; }
+    if (e.length) { setFail(t.rd_shop_co_fix); setErrTick((n) => n + 1); return; }
     setBusy(true);
     const meth = ck.methods.find((m) => m.id === draft.payment)!;
     const r: PlaceResult = await api.place(shop.sub, {
@@ -128,11 +139,12 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
     if (r.ok === true) { saveBuyer(draft); onPlaced({ token: r.token, orderNo: r.orderNo, total: r.total }); go({ page: "sent", token: r.token }); return; }
     setFail(placeFailText(t, r, infos));
     if (r.error === "bad_name") setErrs(["name"]); else if (r.error === "bad_phone") setErrs(["phone"]); else if (r.error === "bad_store") setErrs(["store"]); else if (r.error === "bad_address") setErrs(["address"]); else if (r.error === "bad_payment") setErrs(["payment"]); else if (r.error === "bad_delivery") setErrs(["delivery"]);
+    if (r.ok === false && /^bad_(name|phone|store|address|payment|delivery)$/.test(String(r.error))) setErrTick((n) => n + 1);
   };
 
   const field = (on: boolean) => ({ width: "100%", minHeight: 46, borderRadius: 8, border: `1.5px solid ${on ? "#DC2626" : "var(--s-line)"}`, padding: "10px 12px", fontSize: 16, background: "var(--s-bg)", color: "var(--s-fg)", boxSizing: "border-box" as const });
   return (
-    <div data-testid="co-page">
+    <div data-testid="co-page" ref={page}>
     <div className="v-wrap" style={{ paddingBottom: 20 }}>
       <Steps at={2} t={t} />
       <h1 className="v-hide">{t.rd_shop_checkout}</h1>
@@ -140,9 +152,9 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
         <div style={{ display: "grid", gap: 12 }}>
           <Card title={t.rd_shop_co_you} right={remembered ? <button type="button" data-testid="co-not-you" onClick={() => { forgetBuyer(); setRemembered(false); set({ name: "", phone: "", contact: "", address: "", storeId: "", storeName: "" }); }} style={linkBtn}>{t.rd_shop_co_not_you}</button> : null}>
             <div style={{ ...mutedText, fontSize: 12, marginTop: -4, marginBottom: 8 }}>{remembered ? t.rd_shop_co_saved : t.rd_co_no_account}</div>
-            <Label text={t.rd_shop_co_name}><input data-testid="co-name" value={draft.name} maxLength={40} autoComplete="name" onChange={(e) => set({ name: e.target.value })} style={field(bad("name"))} /></Label>
+            <Label text={t.rd_shop_co_name}><input data-testid="co-name" value={draft.name} maxLength={40} autoComplete="name" onChange={(e) => set({ name: e.target.value })} aria-invalid={bad("name") || undefined} style={field(bad("name"))} /></Label>
             {bad("name") && <Err text={t.rd_shop_co_err_name} />}
-            <Label text={t.rd_shop_co_phone}><input data-testid="co-phone" value={draft.phone} inputMode="tel" autoComplete="tel" maxLength={20} placeholder={phoneHintOf(shop.country)} onChange={(e) => set({ phone: e.target.value })} style={field(bad("phone"))} /></Label>
+            <Label text={t.rd_shop_co_phone}><input data-testid="co-phone" value={draft.phone} inputMode="tel" autoComplete="tel" maxLength={20} placeholder={phoneHintOf(shop.country)} onChange={(e) => set({ phone: e.target.value })} aria-invalid={bad("phone") || undefined} style={field(bad("phone"))} /></Label>
             {bad("phone") && <Err text={t.rd_shop_co_err_phone} />}
             <Label text={t.rd_shop_co_contact}><input data-testid="co-contact" value={draft.contact} maxLength={60} onChange={(e) => set({ contact: e.target.value })} style={field(false)} /></Label>
           </Card>
@@ -153,6 +165,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
                 <Choice key={o.id} testid={`co-del-${o.id}`} on={draft.delivery === o.id} onPick={() => pickDelivery(o.id)} title={shipLabel(t, o)} sub={o.note} right={feeOf(o) === 0 ? t.rd_shop_co_free : money(cur, feeOf(o))} bad={bad("delivery")} />
               ))}
             </div>
+            {bad("delivery") && <Err text={t.rd_shop_co_err_delivery} />}
             {opt && (opt.needs === "store711" || opt.needs === "storefm") && (
               <div style={{ marginTop: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>{t.rd_shop_co_store}</div>
@@ -161,36 +174,36 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
                       <span style={{ minWidth: 0 }}><b>{draft.storeName || shipLabel(t, opt)}</b><span style={{ ...mutedText, display: "block" }}>#{draft.storeId}</span></span>
                       <button type="button" style={linkBtn} onClick={() => go({ page: "store" })}>{t.rd_shop_co_change}</button>
                     </div>
-                  : <button type="button" data-testid="co-choose-store" className="v-btn v-o" style={{ width: "100%", borderColor: bad("store") ? "#DC2626" : undefined }} onClick={() => go({ page: "store" })}>{t.rd_shop_co_choose_store}</button>}
+                  : <button type="button" data-testid="co-choose-store" className="v-btn v-o" data-bad={bad("store") || undefined} style={{ width: "100%", borderColor: bad("store") ? "#DC2626" : undefined }} onClick={() => go({ page: "store" })}>{t.rd_shop_co_choose_store}</button>}
                 {bad("store") && <Err text={t.rd_shop_co_err_store} />}
               </div>
             )}
             {opt?.needs === "store" && (
               <div style={{ marginTop: 12 }}>
-                <Label text={t.rd_shop_co_store_typed}><input data-testid="co-store-name" value={draft.storeName} maxLength={40} onChange={(e) => set({ storeName: e.target.value })} style={field(bad("store"))} /></Label>
+                <Label text={t.rd_shop_co_store_typed}><input data-testid="co-store-name" value={draft.storeName} maxLength={40} onChange={(e) => set({ storeName: e.target.value })} aria-invalid={bad("store") || undefined} style={field(bad("store"))} /></Label>
                 {bad("store") && <Err text={t.rd_shop_co_err_store_typed} />}
               </div>
             )}
             {opt?.needs === "address" && form !== "free" && (
               <div data-testid="co-addr-form" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 2 }}>
-                <Label text={t.rd_shop_addr_street}><input data-testid="co-addr-street" value={addr.street} maxLength={100} autoComplete="address-line1" onChange={(e) => setAddr({ street: e.target.value })} style={field(bad("address") && addr.street.trim().length < 3)} /></Label>
+                <Label text={t.rd_shop_addr_street}><input data-testid="co-addr-street" value={addr.street} maxLength={100} autoComplete="address-line1" onChange={(e) => setAddr({ street: e.target.value })} aria-invalid={(bad("address") && addr.street.trim().length < 3) || undefined} style={field(bad("address") && addr.street.trim().length < 3)} /></Label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <div style={{ flex: 1.4, minWidth: 0 }}><Label text={form === "AU" ? t.rd_shop_addr_suburb : t.rd_shop_addr_city}><input data-testid="co-addr-city" value={addr.city} maxLength={50} autoComplete="address-level2" onChange={(e) => setAddr({ city: e.target.value })} style={field(bad("address") && !addr.city.trim())} /></Label></div>
+                  <div style={{ flex: 1.4, minWidth: 0 }}><Label text={form === "AU" ? t.rd_shop_addr_suburb : t.rd_shop_addr_city}><input data-testid="co-addr-city" value={addr.city} maxLength={50} autoComplete="address-level2" onChange={(e) => setAddr({ city: e.target.value })} aria-invalid={(bad("address") && !addr.city.trim()) || undefined} style={field(bad("address") && !addr.city.trim())} /></Label></div>
                   <div style={{ flex: 1, minWidth: 0 }}><Label text={form === "AU" ? t.rd_shop_addr_state : t.rd_shop_addr_province}>
-                    <select data-testid="co-addr-region" value={addr.region} autoComplete="address-level1" onChange={(e) => setAddr({ region: e.target.value })} style={field(bad("address") && !addr.region)}>
+                    <select data-testid="co-addr-region" value={addr.region} autoComplete="address-level1" onChange={(e) => setAddr({ region: e.target.value })} aria-invalid={(bad("address") && !addr.region) || undefined} style={field(bad("address") && !addr.region)}>
                       <option value="">—</option>
                       {(form === "AU" ? AU_STATES : CA_PROVINCES).map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </Label></div>
                 </div>
-                <Label text={form === "AU" ? t.rd_shop_addr_postcode : t.rd_shop_addr_postal}><input data-testid="co-addr-post" value={addr.post} maxLength={8} inputMode={form === "AU" ? "numeric" : "text"} autoComplete="postal-code" placeholder={form === "AU" ? "2000" : "A1A 1A1"} onChange={(e) => setAddr({ post: e.target.value })} onBlur={() => setAddr({ post: cleanPost(form, addr.post) })} style={{ ...field(bad("postal")), maxWidth: 180, textTransform: "uppercase" }} /></Label>
+                <Label text={form === "AU" ? t.rd_shop_addr_postcode : t.rd_shop_addr_postal}><input data-testid="co-addr-post" value={addr.post} maxLength={8} inputMode={form === "AU" ? "numeric" : "text"} autoComplete="postal-code" placeholder={form === "AU" ? "2000" : "A1A 1A1"} onChange={(e) => setAddr({ post: e.target.value })} onBlur={() => setAddr({ post: cleanPost(form, addr.post) })} aria-invalid={bad("postal") || undefined} style={{ ...field(bad("postal")), maxWidth: 180, textTransform: "uppercase" }} /></Label>
                 {bad("address") && <Err text={t.rd_shop_co_err_address_parts} />}
                 {bad("postal") && <Err text={form === "AU" ? t.rd_shop_co_err_postcode : t.rd_shop_co_err_postal} />}
               </div>
             )}
             {opt?.needs === "address" && form === "free" && (
               <div style={{ marginTop: 12 }}>
-                <Label text={t.rd_shop_co_address}><textarea data-testid="co-address" value={draft.address} maxLength={200} rows={2} autoComplete="street-address" onChange={(e) => set({ address: e.target.value })} style={{ ...field(bad("address")), resize: "vertical" }} /></Label>
+                <Label text={t.rd_shop_co_address}><textarea data-testid="co-address" value={draft.address} maxLength={200} rows={2} autoComplete="street-address" onChange={(e) => set({ address: e.target.value })} aria-invalid={bad("address") || undefined} style={{ ...field(bad("address")), resize: "vertical" }} /></Label>
                 {bad("address") && <Err text={t.rd_shop_co_err_address} />}
               </div>
             )}
@@ -420,6 +433,8 @@ function hoursLeftLabel(v: OrderView): number {
 }
 
 // ── small pieces ────────────────────────────────────────────────────────────────
+/** A field the buyer has to fix, in page order: a typed field, the "choose your store" button, a delivery / payment choice. */
+export const BAD_FIELD = '[aria-invalid="true"],[data-bad="true"],.v-radio.v-bad';
 const linkBtn = { border: "none", background: "transparent", color: "var(--s-acc)", fontWeight: 800, fontSize: 13.5, cursor: "pointer", minHeight: 36, padding: "0 4px" } as const;
 function Card({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
   return <section className="v-box"><div className="v-lbl"><span>{title}</span>{right}</div>{children}</section>;
