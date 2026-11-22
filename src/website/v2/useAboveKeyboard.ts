@@ -15,6 +15,9 @@ export function coveredBottom(layoutHeight: number, vv: { height: number; offset
   return px > 0 ? px : 0;
 }
 
+/** Lift (or reset) the bottom of a fixed layer. */
+const lift = (el: HTMLElement, px: number): void => { if (px > 0) el.style.setProperty("padding-bottom", `${px}px`); else el.style.removeProperty("padding-bottom"); };
+
 export function useAboveKeyboard(layer: RefObject<HTMLElement | null>): void {
   useLayoutEffect(() => {
     const el = layer.current;
@@ -25,10 +28,10 @@ export function useAboveKeyboard(layer: RefObject<HTMLElement | null>): void {
     // 2. keep the layer's bottom above whatever still covers the screen
     const vv = window.visualViewport;
     if (!vv) return;
-    const fit = () => { const px = coveredBottom(window.innerHeight, vv); el.style.paddingBottom = px ? `${px}px` : ""; };
+    const fit = () => lift(el, coveredBottom(window.innerHeight, vv));
     fit();
     vv.addEventListener("resize", fit);
     vv.addEventListener("scroll", fit);
-    return () => { vv.removeEventListener("resize", fit); vv.removeEventListener("scroll", fit); el.style.paddingBottom = ""; };
+    return () => { vv.removeEventListener("resize", fit); vv.removeEventListener("scroll", fit); lift(el, 0); };
   }, [layer]);
 }
