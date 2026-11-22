@@ -51,6 +51,7 @@ vendor/
 !/.claude/agents/
 !/.claude/hooks/
 !/.claude/settings.json
+!/.claude/skills/
 /supabase/.temp/
 *.bak
 mobile/www/
