@@ -1431,6 +1431,15 @@ export default function RedesignApp() {
   // Disconnect gesture cleared by server truth). shopeeConnected = liveFeed truth.
   const [shopeeConnecting, setShopeeConnecting] = useState(false);
   const [shopeeOff, setShopeeOff] = useState(false);
+  // Shopee paste box — ONE connect at a time (2026-11-22). The box is busy from the tap through
+  // the session check (runSessionAware) and the request (doShopeeLinkConnect); the two refs are
+  // read synchronously, so a second tap in the same moment never sends a second request.
+  const [shopeeLinkChecking, setShopeeLinkChecking] = useState(false);
+  const shopeeLinkTapRef = useRef(false);      // tap → session check → (request started or a dialog opened)
+  const shopeeLinkRequestRef = useRef(false);  // the /shopee/live/connect request is under way
+  const shopeeBusy = shopeeConnecting || shopeeLinkChecking;
+  const [shopeeConnectedLink, setShopeeConnectedLink] = useState(""); // the link the green Shopee live was connected with
+  const [shopeeBoxLink, setShopeeBoxLink] = useState("");              // the box's starting text: the last link tapped Connect with
   const [igConnecting, setIgConnecting] = useState(false); // Instagram (phase 1)
   const [igOff, setIgOff] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -1584,6 +1593,8 @@ export default function RedesignApp() {
   // commitLiveConnect → runSessionAware (the same session / platform-switch rules as TikTok).
   const doShopeeLinkConnect = async (shareLink: string) => {
     if (platformLocks.Shopee) { setShopeeLinkErr(platformLocks.Shopee); return; }
+    if (shopeeLinkRequestRef.current) return; // a request is already under way — never a second one
+    shopeeLinkRequestRef.current = true;
     setShopeeLinkErr(null);
     setShopeeConnecting(true);
     track("connect_attempt", { platform: "Shopee" });
@@ -1592,9 +1603,21 @@ export default function RedesignApp() {
       const r = await shopeeLinkConnect(shareLink);
       if (r.ok === false) { const code = r.error; setShopeeLinkErr(SHOPEE_LINK_ERR_KEY[code]); track("connect_failed", { platform: "Shopee", reason: errCodeOf(code) }); return; }
       setShopeeLinkUid(r.uid);
+      setShopeeConnectedLink(shareLink);
       track("connect_success", { platform: "Shopee" });
       setToast({ msg: tApp.rd_shp_connected_toast, kind: "ok" });
-    } finally { setShopeeConnecting(false); }
+    } finally { shopeeLinkRequestRef.current = false; setShopeeConnecting(false); }
+  };
+  // The paste box's Connect: busy at once (before the session check), one connect at a time.
+  // runSessionAware either starts doShopeeLinkConnect (which keeps the box busy until the
+  // answer) or opens the length picker / switch dialog (then the box is free again).
+  const connectShopeeLink = async (shareLink: string) => {
+    if (shopeeLinkTapRef.current || shopeeLinkRequestRef.current) return;
+    shopeeLinkTapRef.current = true;
+    setShopeeBoxLink(shareLink);
+    setShopeeLinkChecking(true);
+    try { await commitLiveConnect({ platform: "Shopee", shopId: 0, sessionId: "", shareLink }); }
+    finally { shopeeLinkTapRef.current = false; setShopeeLinkChecking(false); }
   };
   // F-P3 — Facebook connect eligibility (any active plan, free or paid; admin bypass; server
   // also enforces requirePlanActive on /fb/connect). Shaped like shopeeEligible.
@@ -1846,7 +1869,7 @@ export default function RedesignApp() {
     ttEff, fbEff: fbEff || igEff, // a live Instagram keeps the screen on too (igEff false without IG)
     ttConnecting, fbConnecting: fbConnecting || igConnecting,
     ttRecovering: liveFeed.ttRecovering, fbRecovering: liveFeed.fbRecovering,
-    shEff: shopeeEff, shConnecting: shopeeConnecting, // a Shopee-only live keeps the screen on too
+    shEff: shopeeEff, shConnecting: shopeeBusy, // a Shopee-only live keeps the screen on too
   }));
   // The actual socket connect (unchanged) — extracted so BOTH the "session already
   // running" path and the "after the seller picks a session length" path can call
@@ -2884,11 +2907,11 @@ export default function RedesignApp() {
               shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
               shopeeOpen={shopeeOpen} onToggleShopee={() => { setShopeeOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
               shopeeIdx={shopeeIdx} onPickShopee={(i) => setShopeeIdx(i)}
-              shopeeConnected={shopeeEff} shopeeConnecting={shopeeConnecting}
+              shopeeConnected={shopeeEff} shopeeConnecting={shopeeBusy}
               onConnectShopee={onConnectShopee}
               onManageShopee={() => { setShopeeOpen(false); setScreen("shopeechannels"); }}
               /* Shopee Live BETA — paste-link connect + the beta locks (sql/135). */
-              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, onConnect: (shareLink: string) => { void commitLiveConnect({ platform: "Shopee", shopId: 0, sessionId: "", shareLink }); } } : undefined}
+              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, connectedLink: shopeeConnectedLink, initialLink: shopeeBoxLink, onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); } } : undefined}
               platformLocks={lockTexts}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */
@@ -2919,7 +2942,7 @@ export default function RedesignApp() {
               liveSourcePlatform={activeSource}
               liveSourceName={activeSource === "Shopee" ? (selectedShop ? (selectedShop.shopName || tApp.rd_shp_shop_name_fallback) : "") : (ttAccounts[ttIdx] || ttAccounts[0] || "")}
               liveSourceConnected={activeSource === "Shopee" ? shopeeEff : (ttEff && !liveFeed.ttRecovering)}
-              liveSourceConnecting={activeSource === "Shopee" ? shopeeConnecting : (ttConnecting || liveFeed.ttRecovering)}
+              liveSourceConnecting={activeSource === "Shopee" ? shopeeBusy : (ttConnecting || liveFeed.ttRecovering)}
               onOpenSourceSheet={() => setSourceSheetOpen(true)}
               /* Live platform picker — every seller (Build 14; presentation only; same
                  callbacks as the classic chips). platformViewAs is always "all" for a

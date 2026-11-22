@@ -504,7 +504,7 @@ export default function Dashboard({
     setChosen(p);
   };
   const lpkMenu = (p: PickerPlatform) =>
-    p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : p === "Instagram" ? igMenu() : shopeeLink ? <ShopeeLinkForm {...shopeeLink} connecting={shopeeConnecting} /> : shMenu();
+    p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : p === "Instagram" ? igMenu() : shopeeLink ? <ShopeeLinkForm {...shopeeLink} connecting={shopeeConnecting} connected={shopeeConnected} /> : shMenu();
   // Emblems: the chips' own letter marks + brand colours, one shape per platform.
   // Emblems: the chips' own letter marks + brand colours, one shape per platform. All
   // sizes come from redesign.css (.sfl-lpk-shape--*), scaled to the tile height.
@@ -769,7 +769,7 @@ export default function Dashboard({
                 </button>
                 {p === "TikTok" && ttOpen && <div style={dropdown("left")}>{ttMenu()}</div>}
                 {p === "Facebook" && fbOpen && <div style={dropdown("right")}>{fbMenu(onToggleFB)}</div>}
-                {p === "Shopee" && shopeeOpen && <div style={shopeeLink ? { ...dropdown("right"), width: "min(320px, calc(100vw - 32px))" } : dropdown("right")}>{shopeeLink ? <ShopeeLinkForm {...shopeeLink} connecting={shopeeConnecting} /> : shMenu()}</div>}
+                {p === "Shopee" && shopeeOpen && <div style={shopeeLink ? { ...dropdown("right"), width: "min(320px, calc(100vw - 32px))" } : dropdown("right")}>{shopeeLink ? <ShopeeLinkForm {...shopeeLink} connecting={shopeeConnecting} connected={shopeeConnected} /> : shMenu()}</div>}
               </div>
             </div>
           );

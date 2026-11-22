@@ -87,7 +87,10 @@ describe("Shopee tile (beta)", () => {
 describe("RedesignApp wiring (source pins)", () => {
   const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
   it("the paste-link connect rides the session-aware path (commitLiveConnect → runTargetConnect / connectPending)", () => {
-    expect(app).toContain('void commitLiveConnect({ platform: "Shopee", shopId: 0, sessionId: "", shareLink });');
+    // 2026-11-22: the box's Connect goes through connectShopeeLink (busy from the tap, one connect at a time),
+    // which awaits the same session-aware commit.
+    expect(app).toContain('onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); }');
+    expect(app).toContain('try { await commitLiveConnect({ platform: "Shopee", shopId: 0, sessionId: "", shareLink }); }');
     expect(app).toContain('void (target.shareLink ? doShopeeLinkConnect(target.shareLink) : doShopeeConnect(target.shopId, target.sessionId));');
     expect(app).toContain('void (p.shareLink ? doShopeeLinkConnect(p.shareLink) : doShopeeConnect(p.shopId, p.sessionId));');
   });
