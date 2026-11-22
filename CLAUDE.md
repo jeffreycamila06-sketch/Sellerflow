@@ -6115,3 +6115,29 @@ at 9 the Price + Add row hides and `rd_cpp_full` "9 of 9 prices saved. Remove on
   the clock.** Proof the new tests of the 9-price / Shopee / sql/195 work no longer depend on the day:
   `docs/design/choose-price-nine/proof/date-independence.txt` (7 dates, tool `date-shift.mjs`).
 - **Order:** sql/196 and the web merge in either order → sql/197.
+
+## 2026-11-22 — SHOPEE PASTE BOX: SMOOTHER CONNECT (branch `claude/great-wright-3v8plu` from main `360ce26c`, NOT merged; web only; sql/198 = guide row, NOT applied)
+Jeff's approved design (claude.ai/artifact/159XJFhCaSCQahh7FFFb6y). No server, no Render, no schema; extension 0 lines.
+- **Keep-awake:** `shouldHoldWakeLock` takes optional `shEff` / `shConnecting`; RedesignApp passes `shopeeEff` /
+  `shopeeBusy`. TikTok/FB/IG = main's rule (64 combinations tested).
+- **One connect at a time:** `connectShopeeLink` (the box's Connect) sets `shopeeLinkChecking` + `shopeeLinkTapRef`
+  BEFORE the session check; `doShopeeLinkConnect` has its own `shopeeLinkRequestRef` guard (the length picker /
+  switch routes). `shopeeBusy = shopeeConnecting || shopeeLinkChecking` drives the box, the Shopee tile/chip and
+  keep-awake. ⚠️ The Live picker hides the box while a source connects (every platform, main behaviour) — so the
+  app keeps the typed link (`shopeeBoxLink`) and the box reopens with it.
+- **✓ Connected:** `ShopeeLinkForm` `connected` + `connectedLink` → green-outline disabled button (`.sfl-sh-connected`,
+  redesign.css, light + dark); another link in the box → Connect.
+- **Status:** `useLiveFeed` gives Shopee its own 8 s socket-loss grace (`shopeeUpRef` set in the handler, one timer,
+  earliest deadline) and `shopeeLastStop {reason, at}` from platform_status Shopee connected:false. TikTok/FB code
+  untouched — `useLiveFeed.mainParity.test.tsx` runs main's frozen copy (`fixtures/useLiveFeed.main.ts`); ⚠️ when
+  useLiveFeed's TikTok/FB handling changes on purpose later, refresh that fixture from the new main.
+- **Stop line:** `adapters/shopeeLinkStatus.ts` — session_end / unreachable / restart / shutdown / max_session → one
+  orange line (`.sfl-sh-notice`, keys `rd_sh_stop_*`, 8 langs); unknown reason → none. "restart" during this
+  device's own request (start → 15 s after the answer, `OWN_RESTART_GRACE_MS`) → no line. Cleared at green and at
+  the next Connect tap.
+- **Last link:** `adapters/shopeeLastLink.ts` — localStorage `sfl_rd_shopee_last_link:<authUserId>` (wrapped, max
+  500 chars); saved on an accepted connect; cleared on stop reason session_end, connect answer "ended", log-out,
+  account delete. Box note `rd_sh_last_link_note`.
+- **Guide:** connect-shopee section + 116b; `sql/198_guide_shopee_connect.sql` = that one row (rollback = the live
+  row, checked 2026-10-27, md5 checked 2026-11-22). Apply after the web merge.
+- Proof: `docs/design/shopee-connect-smooth/` (pictures 4 states × iPhone/Android/laptop + dark, 20/20 breaks).

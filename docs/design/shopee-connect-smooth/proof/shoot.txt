@@ -1,0 +1,22 @@
+ok      1-connecting_iphone-390x844.png {"sideScroll":0,"btn":"Connecting…","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      1-connecting_iphone-390x844_dark.png {"sideScroll":0,"btn":"Connecting…","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      1-connecting_android-412x915.png {"sideScroll":0,"btn":"Connecting…","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      1-connecting_laptop-1280x800.png {"sideScroll":0,"btn":"Connecting…","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      2-connected_iphone-390x844.png {"sideScroll":0,"btn":"✓ Connected","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      2-connected_iphone-390x844_dark.png {"sideScroll":0,"btn":"✓ Connected","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      2-connected_android-412x915.png {"sideScroll":0,"btn":"✓ Connected","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      2-connected_laptop-1280x800.png {"sideScroll":0,"btn":"✓ Connected","btnDisabled":true,"btnH":44,"notice":null,"note":false,"input":"(link)","onScreen":true}
+ok      3-stopped-ended_iphone-390x844.png {"sideScroll":0,"btn":"Connect","btnDisabled":true,"btnH":44,"notice":"Your Shopee live has ended.","note":false,"input":"","onScreen":true}
+ok      3-stopped-ended_iphone-390x844_dark.png {"sideScroll":0,"btn":"Connect","btnDisabled":true,"btnH":44,"notice":"Your Shopee live has ended.","note":false,"input":"","onScreen":true}
+ok      3-stopped-ended_android-412x915.png {"sideScroll":0,"btn":"Connect","btnDisabled":true,"btnH":44,"notice":"Your Shopee live has ended.","note":false,"input":"","onScreen":true}
+ok      3-stopped-ended_laptop-1280x800.png {"sideScroll":0,"btn":"Connect","btnDisabled":true,"btnH":44,"notice":"Your Shopee live has ended.","note":false,"input":"","onScreen":true}
+ok      3-stopped-other-device_iphone-390x844.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":"Shopee was connected on another device.","note":false,"input":"(link)","onScreen":true}
+ok      3-stopped-other-device_iphone-390x844_dark.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":"Shopee was connected on another device.","note":false,"input":"(link)","onScreen":true}
+ok      3-stopped-other-device_android-412x915.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":"Shopee was connected on another device.","note":false,"input":"(link)","onScreen":true}
+ok      3-stopped-other-device_laptop-1280x800.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":"Shopee was connected on another device.","note":false,"input":"(link)","onScreen":true}
+ok      4-last-link_iphone-390x844.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":null,"note":true,"input":"(link)","onScreen":true}
+ok      4-last-link_iphone-390x844_dark.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":null,"note":true,"input":"(link)","onScreen":true}
+ok      4-last-link_android-412x915.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":null,"note":true,"input":"(link)","onScreen":true}
+ok      4-last-link_laptop-1280x800.png {"sideScroll":0,"btn":"Connect","btnDisabled":false,"btnH":44,"notice":null,"note":true,"input":"(link)","onScreen":true}
+
+all pictures: right button, right line, no sideways scroll, button ≥ 44 px
