@@ -11,6 +11,7 @@ import { SOCIAL_ORDER, socialUrl, chatHref } from "../shopLinks";
 import { BrandIcon, type BrandKey } from "../brandIcons";
 import { VIcon } from "./icons";
 import { useAboveKeyboard } from "./useAboveKeyboard";
+import { useNewLook } from "../v4/ctx";
 
 export type NavKey = "home" | "shop" | "cart" | "orders" | "saved" | "other";
 type T = Record<string, string>;
@@ -40,7 +41,13 @@ export function Header(p: HeaderProps) {
   const ann = d.announcement && d.sections?.announcement !== false ? d.announcement : fo ? tpl(t.rd_shop_free_over, { amount: money(currencyOf(p.shop), fo) }) : "";
   const hdr = useRef<HTMLDivElement | null>(null);
   const [atTop, setAtTop] = useState(true);
-  const over = !!p.overBand;
+  // v4: the header is the shop's sign on every page (never see-through). On a phone's inner pages the search
+  // box is behind a search icon so the shop name fits beside the logo; it is the same box with the same search.
+  const k4 = useNewLook();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const box = useRef<HTMLInputElement | null>(null);
+  const inner = k4 && !!p.onBack;
+  const over = !!p.overBand && !k4;
   // the band slides up under the header by the header's own height (--hh on the shop root)
   useLayoutEffect(() => {
     const el = hdr.current, root = el?.closest(".sfl-v2") as HTMLElement | null;
@@ -60,12 +67,14 @@ export function Header(p: HeaderProps) {
         <div className="v-wrap">
           <div className="v-row">
             {p.onBack && <button type="button" className="v-ib" data-testid="shop-back" aria-label={t.rd_shop_back} onClick={p.onBack}><VIcon n="back" /></button>}
-            <Logo shop={p.shop} onHome={p.onHome} hideName={p.active !== "home"} />
-            <label className="v-srch">
+            <Logo shop={p.shop} onHome={p.onHome} hideName={!k4 && p.active !== "home"} />
+            <label className={k4 ? `v-srch${inner ? " v-in" : ""}${inner && searchOpen ? " v-open" : ""}` : "v-srch"}>
               <VIcon n="search" size={16} />
-              <input data-testid="shop-search" value={p.query} aria-label={t.rd_shop_search} placeholder={`${t.rd_shop_search_in} ${d.name || ""}`.trim()}
+              <input data-testid="shop-search" ref={box} value={p.query} aria-label={t.rd_shop_search} placeholder={`${t.rd_shop_search_in} ${d.name || ""}`.trim()}
                 onChange={(e) => p.onQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") p.onSearch(p.query); }} />
             </label>
+            {inner && <button type="button" className="v-ib v-sbtn" data-testid="shop-search-open" aria-label={t.rd_shop_search} aria-expanded={searchOpen}
+              onClick={() => { const next = !searchOpen; setSearchOpen(next); if (next) setTimeout(() => box.current?.focus(), 0); }}><VIcon n="search" /></button>}
             {p.onSaved && <button type="button" className="v-ib" data-testid="shop-saved-btn" aria-label={t.rd_shop_saved} onClick={p.onSaved}><VIcon n="heart" />{p.savedCount ? <b data-testid="shop-saved-count">{p.savedCount}</b> : null}</button>}
             <button type="button" className="v-ib" data-testid="shop-cart-btn" aria-label={t.rd_shop_cart} onClick={p.onCart}><VIcon n="cart" />{p.cartCount > 0 && <b data-testid="shop-cart-count">{p.cartCount}</b>}</button>
           </div>

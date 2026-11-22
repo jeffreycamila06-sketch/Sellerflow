@@ -17,6 +17,7 @@ import { socialUrl } from "../shopLinks";
 import type { ShopFilter } from "../shopFilter";
 import { homeSlides, homeTrust, homeSteps, categoriesOf, bestSellers, newArrivals, type HomeSlide } from "./homeData";
 
+import { useNewLook } from "../v4/ctx";
 type T = Record<string, string>;
 export interface HomeProps {
   shop: Shop; cur: string; nowMs: number; saved: number[]; onSave: (id: number) => void; onOpen: (id: number) => void; onQuick: (id: number) => void;
@@ -24,6 +25,7 @@ export interface HomeProps {
 }
 export default function Home({ shop, cur, nowMs, saved, onSave, onOpen, onQuick, onShop }: HomeProps) {
   const t = useT() as unknown as T;
+  const k4 = useNewLook(); // v4: no emoji in titles / tags; nothing else differs here
   const d = shop.shop;
   const on = (k: SectionKey) => d.sections?.[k] !== false;
   const ck = checkoutOf(shop);
@@ -67,7 +69,7 @@ export default function Home({ shop, cur, nowMs, saved, onSave, onOpen, onQuick,
       {on("live") && d.live && (
         <div className="v-sec">
           <div className="v-live" data-testid="shop-live">
-            <div className="v-tx"><span className="v-pill">● LIVE</span><b>{tpl(t.rd_home_next_live, { when: d.live })}</b><span>{t.rd_home_live_sub}</span></div>
+            <div className="v-tx"><span className="v-pill">{k4 ? <><i aria-hidden="true" />LIVE</> : "● LIVE"}</span><b>{tpl(t.rd_home_next_live, { when: d.live })}</b><span>{t.rd_home_live_sub}</span></div>
             {liveUrl && <a className="v-btn" href={liveUrl} target="_blank" rel="noreferrer noopener" data-testid="shop-live-go" style={{ textDecoration: "none" }}>{t.rd_home_live_go}</a>}
           </div>
         </div>
@@ -76,7 +78,7 @@ export default function Home({ shop, cur, nowMs, saved, onSave, onOpen, onQuick,
       {on("flash") && flash.length > 0 && (
         <div className="v-sec">
           <div className="v-flash" data-testid="shop-flash">
-            <div className="v-sech"><h3>⚡ {t.rd_home_flash}</h3><Countdown end={soonestFlashEnd(flash, nowMs)} startMs={nowMs} label={t.rd_home_ends_in} /></div>
+            <div className="v-sech"><h3>{k4 ? "" : "⚡ "}{t.rd_home_flash}</h3><Countdown end={soonestFlashEnd(flash, nowMs)} startMs={nowMs} label={t.rd_home_ends_in} /></div>
             <div className="v-hs">{flash.map((p) => card(p))}</div>
           </div>
         </div>
@@ -109,7 +111,7 @@ export default function Home({ shop, cur, nowMs, saved, onSave, onOpen, onQuick,
       {on("about") && (d.about || shop.stats.orders > 0) && (
         <div className="v-sec">
           <div className="v-about" data-testid="shop-about">
-            <h3 style={{ fontSize: 19 }}>{tpl(t.rd_home_about, { shop: d.name || "" })} {shop.verified && <span data-testid="shop-verified" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--s-ok)", fontFamily: "var(--s-font)", whiteSpace: "nowrap" }}>✓ {t.rd_shop_verified}</span>}</h3>
+            <h3 style={{ fontSize: 19 }}>{tpl(t.rd_home_about, { shop: d.name || "" })} {shop.verified && <span data-testid="shop-verified" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--s-ok)", fontFamily: "var(--s-font)", whiteSpace: "nowrap" }}>{k4 ? <VIcon n="check" size={14} /> : "✓"} {t.rd_shop_verified}</span>}</h3>
             {d.about && <p style={{ whiteSpace: "pre-wrap" }}>{d.about}</p>}
             <div className="v-stats" data-testid="shop-stats">
               <div><b>{compact(shop.stats.orders)}</b><span>{t.rd_shop_orders_done}</span></div>

@@ -25,6 +25,8 @@ import { checkoutOf, deliveryOfNeeds, freeOverOf, shipLabel, payLabel, type PayO
 import { addrFormOf, composeAddress, cleanPost, phoneHintOf, CA_PROVINCES, AU_STATES, EMPTY_ADDR, type AddrParts } from "./addressForm";
 import { orderMessage, deliveryLabel, deliveryWhere, paymentLabel, orderTimeline, CHAT_APP_NAME } from "./orderText";
 import { STORE_MAPS, deliveriesOf, paymentsOf, placeFailText, copyText } from "./checkoutLogic";
+import { VIcon } from "./v2/icons";
+import { useNewLook } from "./v4/ctx";
 
 export interface CheckoutFlowProps {
   shop: Shop; cur: string; route: ShopPage; go: (r: ShopPage) => void; infos: LineInfo[]; preview: boolean; onPlaced: (o?: { token: string; orderNo: string; total: number }) => void;
@@ -73,6 +75,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
   shop: Shop; cur: string; infos: LineInfo[]; draft: OrderDraft; setDraft: (f: (d: OrderDraft) => OrderDraft) => void; preview: boolean; api: OrderApi; go: (r: ShopPage) => void; onPlaced: (o?: { token: string; orderNo: string; total: number }) => void;
 }) {
   const t = useT() as unknown as Record<string, string>;
+  const k4 = useNewLook(); // v4: drawn icons where the older looks have an emoji
   const [errs, setErrs] = useState<FieldError[]>([]);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
@@ -247,7 +250,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
             {fail && <div role="alert" data-testid="co-fail" style={{ marginTop: 12, color: "#B91C1C", background: "#FEF2F2", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, fontWeight: 700 }}>{fail}</div>}
             {preview && <div data-testid="co-preview" style={{ marginTop: 12, ...mutedText }}>{t.rd_shop_co_preview}</div>}
             <div className="v-dbuy" style={{ marginTop: 12 }}><button type="button" data-testid="co-place" className="v-btn" disabled={busy || preview} onClick={() => void place()}>{busy ? t.rd_shop_co_placing : `${t.rd_shop_co_place} · ${money(cur, total)}`}</button></div>
-            <p data-testid="co-privacy" style={{ ...mutedText, fontSize: 11.5, marginTop: 10, marginBottom: 0, textAlign: "center" }}>🔒 {tpl(t.rd_shop_co_privacy, { shop: shop.shop.name || "" })}</p>
+            <p data-testid="co-privacy" style={{ ...mutedText, fontSize: 11.5, marginTop: 10, marginBottom: 0, textAlign: k4 ? "left" : "center" }}>{k4 ? <VIcon n="lock" size={15} /> : "🔒"} {tpl(t.rd_shop_co_privacy, { shop: shop.shop.name || "" })}</p>
           </div>
         </div>
       </div>
@@ -262,6 +265,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
 // ── store pick ────────────────────────────────────────────────────────────────
 function StorePick({ draft, setDraft, done }: { draft: OrderDraft; setDraft: (f: (d: OrderDraft) => OrderDraft) => void; done: () => void }) {
   const t = useT() as unknown as Record<string, string>;
+  const k4 = useNewLook();
   const k = draft.delivery === "fm" ? "fm" : "s711";
   const [id, setId] = useState(draft.storeId);
   const [name, setName] = useState(draft.storeName);
@@ -275,7 +279,7 @@ function StorePick({ draft, setDraft, done }: { draft: OrderDraft; setDraft: (f:
       <div className="v-box" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
         <Label text={t.rd_shop_st_number}><input data-testid="st-id" value={id} inputMode="numeric" maxLength={6} onChange={(e) => setId(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...field, letterSpacing: 2, fontWeight: 700 }} /></Label>
         <Label text={t.rd_shop_st_name}><input data-testid="st-name" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={field} /></Label>
-        <a data-testid="st-map" href={STORE_MAPS[k]} target="_blank" rel="noreferrer noopener" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--s-acc)", minHeight: 32, display: "inline-flex", alignItems: "center" }}>🗺 {t.rd_shop_st_find} ↗</a>
+        <a data-testid="st-map" href={STORE_MAPS[k]} target="_blank" rel="noreferrer noopener" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--s-acc)", minHeight: 32, display: "inline-flex", alignItems: "center", ...(k4 ? { gap: 6 } : {}) }}>{k4 ? <VIcon n="pin" size={18} /> : "🗺"} {t.rd_shop_st_find}{k4 ? "" : " ↗"}</a>
         <button type="button" data-testid="st-use" className="v-btn" disabled={!okId} onClick={() => use(id, name)}>{t.rd_shop_st_use}</button>
       </div>
       {recent.length > 0 && (
@@ -295,6 +299,7 @@ function StorePick({ draft, setDraft, done }: { draft: OrderDraft; setDraft: (f:
 // ── order sent + order link ─────────────────────────────────────────────────────
 function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { token: string; fresh: boolean; cur: string; api: OrderApi; link: string; say: (m: string) => void; onShop: () => void }) {
   const t = useT() as unknown as Record<string, string>;
+  const k4 = useNewLook();
   const [view, setView] = useState<OrderView | null | "loading">("loading");
   const [up, setUp] = useState<"" | "busy" | "ok" | "fail" | "big" | "bad">("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -320,7 +325,8 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
       <div className="v-two"><div style={{ display: "grid", gap: 12, alignContent: "start" }}>
       {fresh && (
         <div data-testid="od-sent" style={{ textAlign: "center", padding: "14px 0 6px" }}>
-          <div aria-hidden="true" style={{ width: 58, height: 58, borderRadius: 29, background: "#ECFDF5", color: "#059669", fontSize: 30, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✓</div>
+          {k4 ? <div aria-hidden="true" className="v-oksent"><VIcon n="check" size={28} /></div>
+            : <div aria-hidden="true" style={{ width: 58, height: 58, borderRadius: 29, background: "#ECFDF5", color: "#059669", fontSize: 30, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: "10px 0 2px" }}>{t.rd_shop_od_sent}</h1>
         </div>
       )}
@@ -452,6 +458,9 @@ function Choice({ on, onPick, title, sub, right, testid, bad, disabled }: { on: 
 }
 function Row({ a, b }: { a: string; b: string }) { return <div><span>{a}</span><b>{b}</b></div>; }
 function KV({ k, v, copy, copyLabel }: { k: string; v: ReactNode; copy?: () => void; copyLabel?: string }) {
+  // v4: a row of the slip; something to copy (the account number, the tracking number) is the strong line with a real button
+  const k4 = useNewLook();
+  if (k4) return <div className={`v-kv${copy ? " v-kvc" : ""}`}><span>{k}</span><span>{v}{copy && <button type="button" className="v-btn v-o" onClick={copy}>{copyLabel}</button>}</span></div>;
   return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><span style={{ color: "var(--s-mut)", flexShrink: 0 }}>{k}</span><span style={{ fontWeight: 700, textAlign: "right", overflowWrap: "anywhere", display: "flex", alignItems: "center", gap: 8 }}>{v}{copy && <button type="button" onClick={copy} style={{ ...linkBtn, fontSize: 12.5 }}>{copyLabel}</button>}</span></div>;
 }
 /** A v2 payment method on the order link: its name, bank details, instructions (copy) and QR. */

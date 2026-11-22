@@ -11,6 +11,8 @@ import { checkoutOf, freeOverOf } from "../shipPay";
 import { cardFacts } from "../v2/cardFacts";
 import { quickPlan } from "./quickAdd";
 import { useAboveKeyboard } from "../v2/useAboveKeyboard";
+import { VIcon } from "../v2/icons";
+import { useNewLook } from "../v4/ctx";
 
 type T = Record<string, string>;
 
@@ -43,6 +45,7 @@ export function CartPanel({ shop, cur, infos, lines, onQty, onRemove, onCheckout
   const count = infos.reduce((a, x) => a + x.line.qty, 0);
   const idx = (x: LineInfo) => lines.findIndex((l) => l.pid === x.line.pid && l.vid === x.line.vid);
   const title = tpl(t.rd_brand_bag, { n: String(count) });
+  const k4 = useNewLook();
   const layer = useRef<HTMLDivElement | null>(null);
   useAboveKeyboard(layer);
   return (
@@ -79,7 +82,7 @@ export function CartPanel({ shop, cur, infos, lines, onQty, onRemove, onCheckout
             })}
             {free && (
               <div className="v-note" data-testid="panel-free">
-                {free.remaining > 0 ? tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) }) : `🎉 ${t.rd_shop_free_yes}`}
+                {free.remaining > 0 ? tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) }) : k4 ? <><VIcon n="check" size={18} />{t.rd_shop_free_yes}</> : `🎉 ${t.rd_shop_free_yes}`}
                 <div className="v-prog"><i style={{ width: `${Math.round(free.pct * 100)}%` }} /></div>
               </div>
             )}

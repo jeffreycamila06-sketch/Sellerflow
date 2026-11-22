@@ -1,0 +1,1625 @@
+{
+ "pop": {
+  "log": [
+   {
+    "step": "home",
+    "path": "/s/budgetukay",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "cards": 9
+   },
+   {
+    "step": "product",
+    "path": "/s/budgetukay/p/5",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "name": "Vintage sport tee",
+    "price": "NT$249",
+    "was": "NT$400",
+    "addDisabled": true
+   },
+   {
+    "step": "picked",
+    "path": "/s/budgetukay/p/5",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "qty": "2",
+    "stock": "3 in stock",
+    "total": "Total from NT$558 with 7-11 (NT$60)FamilyMart NT$60 · Home delivery NT$120 · free over NT$1,500",
+    "soldOutOption": false
+   },
+   {
+    "step": "added",
+    "path": "/s/budgetukay/p/5",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     }
+    ],
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "toast": "Added to cart",
+    "panel": false,
+    "count": "2"
+   },
+   {
+    "step": "saved",
+    "path": "/s/budgetukay/p/5",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Saved ♥",
+    "savedCount": "1"
+   },
+   {
+    "step": "quick-add plain",
+    "path": "/s/budgetukay",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Added to cart",
+    "panel": false,
+    "count": "3"
+   },
+   {
+    "step": "quick-add sizes",
+    "path": "/s/budgetukay/p/6",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Pick your size or colour first"
+   },
+   {
+    "step": "cart",
+    "path": "/s/budgetukay/cart",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$778",
+    "free": "Add NT$722 more for free shipping",
+    "lines": 2,
+    "summary": "Order summaryItems (3)NT$778Shippingfrom NT$60SubtotalNT$778Checkout"
+   },
+   {
+    "step": "cart +1",
+    "path": "/s/budgetukay/cart",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$1,027",
+    "qty": [
+     "3",
+     "1"
+    ]
+   },
+   {
+    "step": "cart remove",
+    "path": "/s/budgetukay/cart",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$747",
+    "lines": 1
+   },
+   {
+    "step": "checkout",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$807",
+    "payNote": "After you place the order, the shop's account / QR shows. Pay within 24 hours and upload your receipt.",
+    "choices": [
+     "co-del-s711=true",
+     "co-del-fm=false",
+     "co-del-home=false",
+     "co-pay-bank=true",
+     "co-pay-cod=false"
+    ]
+   },
+   {
+    "step": "place with nothing filled",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "fail": "Please check the fields in red.",
+    "wrong": [
+     "Enter your name.",
+     "Enter a valid mobile number.",
+     "Choose your pickup store.",
+     "Please check the fields in red."
+    ]
+   },
+   {
+    "step": "home delivery",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$867",
+    "choices": [
+     "co-del-s711=false",
+     "co-del-fm=false",
+     "co-del-home=true",
+     "co-pay-bank=true",
+     "co-pay-cod=false (off)"
+    ]
+   },
+   {
+    "step": "FamilyMart + pay at pickup",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$807",
+    "payNote": "You pay NT$807 when you get your order."
+   },
+   {
+    "step": "store page",
+    "path": "/s/budgetukay/store",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "id": "123456",
+    "map": "https://emap.pcsc.com.tw/"
+   },
+   {
+    "step": "ready",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "store": "Test Store#123456Change",
+    "total": "NT$807",
+    "name": "Demo Buyer"
+   },
+   {
+    "step": "order sent",
+    "path": "/s/budgetukay/sent/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 2,
+    "no": "Order W-0012",
+    "status": "Waiting for payment",
+    "total": "NT$1,320",
+    "steps": [
+     "dn:Order placed",
+     "nw:Waiting for payment",
+     "next:The shop is packing your order",
+     "next:Shipped"
+    ],
+    "pay": "Pay NT$1,320BankTest Bank (000)Account nameBudgetUkayAccount number0000-0000-0000CopyAuto-cancels in 23:00:00Upload receiptYou can also upload it later from your order link.Orders not paid within 24 hours are cancelled.",
+    "chats": [
+     "od-chat-messenger https://m.me/budgetukay",
+     "od-chat-line https://line.me/R/oaMessage/%40budgetukay/?Order%20W-0012%20%E2%80%94%20BudgetUkay%0A%E2%80%A2%20Floral%20midi%20dress%2C%20soft%20chiffon%2C%20lined%20(M%20%C2%B7%20Pink)%20%C3%972%20%E2%80%94%20NT%24700%0A%E2%80%A2%20Linen%20button%20shirt%2C%20oversized%20%C3%972%20%E2%80%94%20NT%24560%0AShipping%20(7-11%20Test%20Store%20%23123456)%3A%20NT%2460%0ATotal%3A%20NT%241%2C320%0APayment%3A%20Bank%20transfer%0AName%3A%20Demo%20Buyer%0AOrder%20link%3A%20http%3A%2F%2Flocalhost%3A3000%2Fs%2Fbudgetukay%2Fo%2Fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "od-chat-whatsapp https://wa.me/886912000111?text=Order%20W-0012%20%E2%80%94%20BudgetUkay%0A%E2%80%A2%20Floral%20midi%20dress%2C%20soft%20chiffon%2C%20lined%20(M%20%C2%B7%20Pink)%20%C3%972%20%E2%80%94%20NT%24700%0A%E2%80%A2%20Linen%20button%20shirt%2C%20oversized%20%C3%972%20%E2%80%94%20NT%24560%0AShipping%20(7-11%20Test%20Store%20%23123456)%3A%20NT%2460%0ATotal%3A%20NT%241%2C320%0APayment%3A%20Bank%20transfer%0AName%3A%20Demo%20Buyer%0AOrder%20link%3A%20http%3A%2F%2Flocalhost%3A3000%2Fs%2Fbudgetukay%2Fo%2Fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "od-chat-instagram https://ig.me/m/budgetukay.tw"
+    ],
+    "link": "http://localhost:3000/s/budgetukay/o/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   },
+   {
+    "step": "receipt uploaded",
+    "path": "/s/budgetukay/sent/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 4,
+    "ok": "Receipt sent ✓"
+   },
+   {
+    "step": "my orders",
+    "path": "/s/budgetukay/orders",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 4,
+    "rows": [
+     "W-0012Nov 16, 2026NT$807›"
+    ]
+   },
+   {
+    "step": "order link",
+    "path": "/s/budgetukay/o/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 5,
+    "no": "Order W-0012",
+    "sent": false
+   }
+  ],
+  "calls": [
+   [
+    "place",
+    "budgetukay",
+    {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "ship": "s711",
+     "pay": "bank",
+     "delivery": "s711",
+     "payment": "bank",
+     "storeId": "123456",
+     "storeName": "Test Store",
+     "address": "",
+     "note": "Please pack well",
+     "items": [
+      {
+       "pid": 5,
+       "vid": 52,
+       "qty": 3
+      }
+     ],
+     "shownTotal": 807
+    },
+    "string"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ],
+   [
+    "uploadReceipt",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "receipt.jpg",
+    "image/jpeg"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ]
+  ]
+ },
+ "brandOcean": {
+  "log": [
+   {
+    "step": "home",
+    "path": "/s/budgetukay",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "cards": 9
+   },
+   {
+    "step": "product",
+    "path": "/s/budgetukay/p/5",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "name": "Vintage sport tee",
+    "price": "NT$249",
+    "was": "NT$400",
+    "addDisabled": true
+   },
+   {
+    "step": "picked",
+    "path": "/s/budgetukay/p/5",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "qty": "2",
+    "stock": "3 in stock",
+    "total": "Total from NT$558 with 7-11 (NT$60)FamilyMart NT$60 · Home delivery NT$120 · free over NT$1,500",
+    "soldOutOption": false
+   },
+   {
+    "step": "added",
+    "path": "/s/budgetukay/p/5",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     }
+    ],
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "toast": null,
+    "panel": true,
+    "count": "2"
+   },
+   {
+    "step": "saved",
+    "path": "/s/budgetukay/p/5",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Saved ♥",
+    "savedCount": "1"
+   },
+   {
+    "step": "quick-add plain",
+    "path": "/s/budgetukay",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Saved ♥",
+    "panel": true,
+    "count": "3"
+   },
+   {
+    "step": "quick-add sizes",
+    "path": "/s/budgetukay",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "sheet": true,
+    "sizes": [
+     "S",
+     "M (off)"
+    ]
+   },
+   {
+    "step": "size picked",
+    "path": "/s/budgetukay",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     },
+     {
+      "pid": 6,
+      "vid": 61,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "panel": true,
+    "subtotal": "NT$978",
+    "free": "Add NT$522 more for free shipping"
+   },
+   {
+    "step": "panel +1",
+    "path": "/s/budgetukay",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     },
+     {
+      "pid": 6,
+      "vid": 61,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$1,227",
+    "qty": [
+     "3",
+     "1",
+     "1"
+    ]
+   },
+   {
+    "step": "panel remove",
+    "path": "/s/budgetukay",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$1,027",
+    "lines": 2
+   },
+   {
+    "step": "checkout",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$1,087",
+    "payNote": "After you place the order, the shop's account / QR shows. Pay within 24 hours and upload your receipt.",
+    "choices": [
+     "co-del-s711=true",
+     "co-del-fm=false",
+     "co-del-home=false",
+     "co-pay-bank=true",
+     "co-pay-cod=false"
+    ]
+   },
+   {
+    "step": "place with nothing filled",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "fail": "Please check the fields in red.",
+    "wrong": [
+     "Enter your name.",
+     "Enter a valid mobile number.",
+     "Choose your pickup store.",
+     "Please check the fields in red."
+    ]
+   },
+   {
+    "step": "home delivery",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$1,147",
+    "choices": [
+     "co-del-s711=false",
+     "co-del-fm=false",
+     "co-del-home=true",
+     "co-pay-bank=true",
+     "co-pay-cod=false (off)"
+    ]
+   },
+   {
+    "step": "FamilyMart + pay at pickup",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$1,087",
+    "payNote": "You pay NT$1,087 when you get your order."
+   },
+   {
+    "step": "store page",
+    "path": "/s/budgetukay/store",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "id": "123456",
+    "map": "https://emap.pcsc.com.tw/"
+   },
+   {
+    "step": "ready",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "store": "Test Store#123456Change",
+    "total": "NT$1,087",
+    "name": "Demo Buyer"
+   },
+   {
+    "step": "order sent",
+    "path": "/s/budgetukay/sent/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 1087
+     }
+    ],
+    "calls": 2,
+    "no": "Order W-0012",
+    "status": "Waiting for payment",
+    "total": "NT$1,320",
+    "steps": [
+     "dn:Order placed",
+     "nw:Waiting for payment",
+     "next:The shop is packing your order",
+     "next:Shipped"
+    ],
+    "pay": "Pay NT$1,320BankTest Bank (000)Account nameBudgetUkayAccount number0000-0000-0000CopyAuto-cancels in 23:00:00Upload receiptYou can also upload it later from your order link.Orders not paid within 24 hours are cancelled.",
+    "chats": [
+     "od-chat-messenger https://m.me/budgetukay",
+     "od-chat-line https://line.me/R/oaMessage/%40budgetukay/?Order%20W-0012%20%E2%80%94%20BudgetUkay%0A%E2%80%A2%20Floral%20midi%20dress%2C%20soft%20chiffon%2C%20lined%20(M%20%C2%B7%20Pink)%20%C3%972%20%E2%80%94%20NT%24700%0A%E2%80%A2%20Linen%20button%20shirt%2C%20oversized%20%C3%972%20%E2%80%94%20NT%24560%0AShipping%20(7-11%20Test%20Store%20%23123456)%3A%20NT%2460%0ATotal%3A%20NT%241%2C320%0APayment%3A%20Bank%20transfer%0AName%3A%20Demo%20Buyer%0AOrder%20link%3A%20http%3A%2F%2Flocalhost%3A3000%2Fs%2Fbudgetukay%2Fo%2Fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "od-chat-whatsapp https://wa.me/886912000111?text=Order%20W-0012%20%E2%80%94%20BudgetUkay%0A%E2%80%A2%20Floral%20midi%20dress%2C%20soft%20chiffon%2C%20lined%20(M%20%C2%B7%20Pink)%20%C3%972%20%E2%80%94%20NT%24700%0A%E2%80%A2%20Linen%20button%20shirt%2C%20oversized%20%C3%972%20%E2%80%94%20NT%24560%0AShipping%20(7-11%20Test%20Store%20%23123456)%3A%20NT%2460%0ATotal%3A%20NT%241%2C320%0APayment%3A%20Bank%20transfer%0AName%3A%20Demo%20Buyer%0AOrder%20link%3A%20http%3A%2F%2Flocalhost%3A3000%2Fs%2Fbudgetukay%2Fo%2Fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "od-chat-instagram https://ig.me/m/budgetukay.tw"
+    ],
+    "link": "http://localhost:3000/s/budgetukay/o/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   },
+   {
+    "step": "receipt uploaded",
+    "path": "/s/budgetukay/sent/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 1087
+     }
+    ],
+    "calls": 4,
+    "ok": "Receipt sent ✓"
+   },
+   {
+    "step": "my orders",
+    "path": "/s/budgetukay/orders",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 1087
+     }
+    ],
+    "calls": 4,
+    "rows": [
+     "W-0012Nov 16, 2026NT$1,087›"
+    ]
+   },
+   {
+    "step": "order link",
+    "path": "/s/budgetukay/o/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 1087
+     }
+    ],
+    "calls": 5,
+    "no": "Order W-0012",
+    "sent": false
+   }
+  ],
+  "calls": [
+   [
+    "place",
+    "budgetukay",
+    {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "ship": "s711",
+     "pay": "bank",
+     "delivery": "s711",
+     "payment": "bank",
+     "storeId": "123456",
+     "storeName": "Test Store",
+     "address": "",
+     "note": "Please pack well",
+     "items": [
+      {
+       "pid": 5,
+       "vid": 52,
+       "qty": 3
+      },
+      {
+       "pid": 2,
+       "vid": null,
+       "qty": 1
+      }
+     ],
+     "shownTotal": 1087
+    },
+    "string"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ],
+   [
+    "uploadReceipt",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "receipt.jpg",
+    "image/jpeg"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ]
+  ]
+ },
+ "marketDark": {
+  "log": [
+   {
+    "step": "home",
+    "path": "/s/budgetukay",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "cards": 9
+   },
+   {
+    "step": "product",
+    "path": "/s/budgetukay/p/5",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "name": "Vintage sport tee",
+    "price": "NT$249",
+    "was": "NT$400",
+    "addDisabled": true
+   },
+   {
+    "step": "picked",
+    "path": "/s/budgetukay/p/5",
+    "cart": null,
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "qty": "2",
+    "stock": "3 in stock",
+    "total": "Total from NT$558 with 7-11 (NT$60)FamilyMart NT$60 · Home delivery NT$120 · free over NT$1,500",
+    "soldOutOption": false
+   },
+   {
+    "step": "added",
+    "path": "/s/budgetukay/p/5",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     }
+    ],
+    "buyer": null,
+    "saved": null,
+    "orders": null,
+    "calls": 0,
+    "toast": "Added to cart",
+    "panel": false,
+    "count": "2"
+   },
+   {
+    "step": "saved",
+    "path": "/s/budgetukay/p/5",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Saved ♥",
+    "savedCount": "1"
+   },
+   {
+    "step": "quick-add plain",
+    "path": "/s/budgetukay",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Added to cart",
+    "panel": false,
+    "count": "3"
+   },
+   {
+    "step": "quick-add sizes",
+    "path": "/s/budgetukay/p/6",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "toast": "Pick your size or colour first"
+   },
+   {
+    "step": "cart",
+    "path": "/s/budgetukay/cart",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 2
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$778",
+    "free": "Add NT$722 more for free shipping",
+    "lines": 2,
+    "summary": "Order summaryItems (3)NT$778Shippingfrom NT$60SubtotalNT$778Checkout"
+   },
+   {
+    "step": "cart +1",
+    "path": "/s/budgetukay/cart",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     },
+     {
+      "pid": 2,
+      "vid": null,
+      "qty": 1
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$1,027",
+    "qty": [
+     "3",
+     "1"
+    ]
+   },
+   {
+    "step": "cart remove",
+    "path": "/s/budgetukay/cart",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "subtotal": "NT$747",
+    "lines": 1
+   },
+   {
+    "step": "checkout",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$807",
+    "payNote": "After you place the order, the shop's account / QR shows. Pay within 24 hours and upload your receipt.",
+    "choices": [
+     "co-del-s711=true",
+     "co-del-fm=false",
+     "co-del-home=false",
+     "co-pay-bank=true",
+     "co-pay-cod=false"
+    ]
+   },
+   {
+    "step": "place with nothing filled",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "fail": "Please check the fields in red.",
+    "wrong": [
+     "Enter your name.",
+     "Enter a valid mobile number.",
+     "Choose your pickup store.",
+     "Please check the fields in red."
+    ]
+   },
+   {
+    "step": "home delivery",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$867",
+    "choices": [
+     "co-del-s711=false",
+     "co-del-fm=false",
+     "co-del-home=true",
+     "co-pay-bank=true",
+     "co-pay-cod=false (off)"
+    ]
+   },
+   {
+    "step": "FamilyMart + pay at pickup",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "total": "NT$807",
+    "payNote": "You pay NT$807 when you get your order."
+   },
+   {
+    "step": "store page",
+    "path": "/s/budgetukay/store",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "id": "123456",
+    "map": "https://emap.pcsc.com.tw/"
+   },
+   {
+    "step": "ready",
+    "path": "/s/budgetukay/checkout",
+    "cart": [
+     {
+      "pid": 5,
+      "vid": 52,
+      "qty": 3
+     }
+    ],
+    "buyer": null,
+    "saved": [
+     5
+    ],
+    "orders": null,
+    "calls": 0,
+    "store": "Test Store#123456Change",
+    "total": "NT$807",
+    "name": "Demo Buyer"
+   },
+   {
+    "step": "order sent",
+    "path": "/s/budgetukay/sent/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 2,
+    "no": "Order W-0012",
+    "status": "Waiting for payment",
+    "total": "NT$1,320",
+    "steps": [
+     "dn:Order placed",
+     "nw:Waiting for payment",
+     "next:The shop is packing your order",
+     "next:Shipped"
+    ],
+    "pay": "Pay NT$1,320BankTest Bank (000)Account nameBudgetUkayAccount number0000-0000-0000CopyAuto-cancels in 23:00:00Upload receiptYou can also upload it later from your order link.Orders not paid within 24 hours are cancelled.",
+    "chats": [
+     "od-chat-messenger https://m.me/budgetukay",
+     "od-chat-line https://line.me/R/oaMessage/%40budgetukay/?Order%20W-0012%20%E2%80%94%20BudgetUkay%0A%E2%80%A2%20Floral%20midi%20dress%2C%20soft%20chiffon%2C%20lined%20(M%20%C2%B7%20Pink)%20%C3%972%20%E2%80%94%20NT%24700%0A%E2%80%A2%20Linen%20button%20shirt%2C%20oversized%20%C3%972%20%E2%80%94%20NT%24560%0AShipping%20(7-11%20Test%20Store%20%23123456)%3A%20NT%2460%0ATotal%3A%20NT%241%2C320%0APayment%3A%20Bank%20transfer%0AName%3A%20Demo%20Buyer%0AOrder%20link%3A%20http%3A%2F%2Flocalhost%3A3000%2Fs%2Fbudgetukay%2Fo%2Fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "od-chat-whatsapp https://wa.me/886912000111?text=Order%20W-0012%20%E2%80%94%20BudgetUkay%0A%E2%80%A2%20Floral%20midi%20dress%2C%20soft%20chiffon%2C%20lined%20(M%20%C2%B7%20Pink)%20%C3%972%20%E2%80%94%20NT%24700%0A%E2%80%A2%20Linen%20button%20shirt%2C%20oversized%20%C3%972%20%E2%80%94%20NT%24560%0AShipping%20(7-11%20Test%20Store%20%23123456)%3A%20NT%2460%0ATotal%3A%20NT%241%2C320%0APayment%3A%20Bank%20transfer%0AName%3A%20Demo%20Buyer%0AOrder%20link%3A%20http%3A%2F%2Flocalhost%3A3000%2Fs%2Fbudgetukay%2Fo%2Fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "od-chat-instagram https://ig.me/m/budgetukay.tw"
+    ],
+    "link": "http://localhost:3000/s/budgetukay/o/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   },
+   {
+    "step": "receipt uploaded",
+    "path": "/s/budgetukay/sent/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 4,
+    "ok": "Receipt sent ✓"
+   },
+   {
+    "step": "my orders",
+    "path": "/s/budgetukay/orders",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 4,
+    "rows": [
+     "W-0012Nov 16, 2026NT$807›"
+    ]
+   },
+   {
+    "step": "order link",
+    "path": "/s/budgetukay/o/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "cart": [],
+    "buyer": {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "address": "",
+     "stores": {
+      "s711": [
+       {
+        "id": "123456",
+        "name": "Test Store"
+       }
+      ]
+     }
+    },
+    "saved": [
+     5
+    ],
+    "orders": [
+     {
+      "token": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "no": "W-0012",
+      "at": "2026-11-16T08:00:00.000Z",
+      "total": 807
+     }
+    ],
+    "calls": 5,
+    "no": "Order W-0012",
+    "sent": false
+   }
+  ],
+  "calls": [
+   [
+    "place",
+    "budgetukay",
+    {
+     "name": "Demo Buyer",
+     "phone": "0900 000 000",
+     "contact": "demo.buyer",
+     "ship": "s711",
+     "pay": "bank",
+     "delivery": "s711",
+     "payment": "bank",
+     "storeId": "123456",
+     "storeName": "Test Store",
+     "address": "",
+     "note": "Please pack well",
+     "items": [
+      {
+       "pid": 5,
+       "vid": 52,
+       "qty": 3
+      }
+     ],
+     "shownTotal": 807
+    },
+    "string"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ],
+   [
+    "uploadReceipt",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "receipt.jpg",
+    "image/jpeg"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ],
+   [
+    "load",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   ]
+  ]
+ }
+}

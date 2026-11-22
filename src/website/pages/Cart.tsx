@@ -11,6 +11,8 @@ import { checkoutOf, freeOverOf } from "../shipPay";
 import { cheapestDelivery } from "./productData";
 import { Card } from "../v2/Card";
 import { Steps } from "../checkoutPages";
+import { VIcon } from "../v2/icons";
+import { useNewLook } from "../v4/ctx";
 
 type T = Record<string, string>;
 export default function Cart({ shop, cur, nowMs, infos, lines, onQty, onRemove, onCheckout, onShop, saved, onSave, onOpen, onQuick }: {
@@ -18,6 +20,7 @@ export default function Cart({ shop, cur, nowMs, infos, lines, onQty, onRemove, 
   saved: number[]; onSave: (id: number) => void; onOpen: (id: number) => void; onQuick: (id: number) => void;
 }) {
   const t = useT() as unknown as T;
+  const k4 = useNewLook();
   const sub = subtotalOf(infos);
   const ck = checkoutOf(shop);
   const fo = freeOverOf(ck);
@@ -42,7 +45,7 @@ export default function Cart({ shop, cur, nowMs, infos, lines, onQty, onRemove, 
           <div>
             {free && (
               <div className="v-note" data-testid="cart-free" style={{ marginBottom: 10 }}>
-                {free.remaining > 0 ? tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) }) : `🎉 ${t.rd_shop_free_yes}`}
+                {free.remaining > 0 ? tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) }) : k4 ? <><VIcon n="check" size={18} />{t.rd_shop_free_yes}</> : `🎉 ${t.rd_shop_free_yes}`}
                 <div className="v-prog"><i style={{ width: `${Math.round(free.pct * 100)}%` }} /></div>
               </div>
             )}
