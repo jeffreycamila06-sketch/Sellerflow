@@ -1,0 +1,14 @@
+360  opened        copy=59x44    save=332x46   "Saved"  refused-note=-  sideways=1
+360  copied        copy=85x44    save=332x46   "Saved"  refused-note=-  sideways=0
+360  copy-refused  copy=59x44    save=332x46   "Saved"  refused-note=300x99  sideways=0
+360  changed       copy=59x44    save=332x46   "Save"  refused-note=-  sideways=0
+360  saving        copy=59x44    save=332x46   "Saving…"  refused-note=-  sideways=0
+360  saved         copy=59x44    save=332x46   "✓ Saved"  refused-note=-  sideways=0
+360  save-failed   copy=59x44    save=332x46   "Couldn't save — tap to try again"  refused-note=-  sideways=0
+430  opened        copy=59x44    save=402x46   "Saved"  refused-note=-  sideways=7
+430  copied        copy=85x44    save=402x46   "Saved"  refused-note=-  sideways=2
+430  copy-refused  copy=59x44    save=402x46   "Saved"  refused-note=370x92  sideways=0
+430  changed       copy=59x44    save=402x46   "Save"  refused-note=-  sideways=1
+430  saving        copy=59x44    save=402x46   "Saving…"  refused-note=-  sideways=0
+430  saved         copy=59x44    save=402x46   "✓ Saved"  refused-note=-  sideways=0
+430  save-failed   copy=59x44    save=402x46   "Couldn't save — tap to try again"  refused-note=-  sideways=0
