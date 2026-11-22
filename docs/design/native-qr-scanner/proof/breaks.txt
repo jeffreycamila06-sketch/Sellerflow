@@ -1,0 +1,19 @@
+RED  ParcelScan always uses the photo picker
+RED  Blacklist native read skips the strict parser
+RED  Orders scan triggers the 7-day load
+RED  Orders matches case-sensitively
+GREEN (missed) Orders matches Facebook buyers too   ← first run; a test was added (Orders.scan "a Facebook buyer whose name IS the scanned username…")
+RED  Orders shows 'no orders' while the past session loads
+RED  Web rule margin 0.1
+RED  Web rule reads after 1 frame
+RED  Java margin drifts
+RED  Swift frames drift
+RED  switch accepts any truthy value
+RED  photo answer skips readQrFromFile
+RED  a second scanner registration line
+RED  VIBRATE permission added
+RED  sql/204 changes the Blacklist step to other words than the guide
+RED  Orders scan toast timer is a bare setTimeout
+15/16 on the first run
+RED  Orders matches Facebook buyers too   ← re-run after the new test
+16/16 breaks caught

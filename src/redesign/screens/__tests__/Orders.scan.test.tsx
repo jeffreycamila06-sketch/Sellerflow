@@ -100,6 +100,12 @@ describe("Orders Scan — photo flow (laptop / older app)", () => {
     await scanPhoto(r, "@Ana");
     expect(r.getByTestId("ord-scan-none")).toBeTruthy();
   });
+  it("a Facebook buyer whose name IS the scanned username still never matches", async () => {
+    const r = view({ buyers: [...BUYERS, buyer(11, "anareyes", "Ana Reyes", [["300", 300]], "Facebook")] });
+    await scanPhoto(r, "https://tiktok.com/@AnaReyes");
+    expect(r.getByTestId("ord-scan-none").textContent).toBe("No orders for @AnaReyes in this session");
+    expect(r.queryByTestId("buyer-receipt")).toBeNull();
+  });
   it("strict parser: a QR that is not a TikTok link or @name → 'This QR has no buyer', box unchanged", async () => {
     const r = view();
     fireEvent.change(search(r.container), { target: { value: "dress" } });
