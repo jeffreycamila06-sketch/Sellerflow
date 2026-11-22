@@ -6284,3 +6284,35 @@ Jeff: in Settings → Website, Copy changed nothing and Save went back to "Save"
   table has no website row yet, so there is no separate SQL file).
 - Seen while measuring, old, not changed: the Website screen's title pulse (`sfl-anim-beat` on a full-width div)
   makes the page a few px wider for a split second (up to ~60 px at 1280).
+
+## 2026-11-22 — ACCOUNT LIMITS v2: THE 4-HOUR RULE = "THE FIRST SWAP IS FREE" (branch `claude/account-swap-rule`, NOT merged; sql/205 NOT applied; web only, no Render)
+Jeff's decision (replaces rule (b) of the block above): with (b) even the FIRST swap waited 4 hours — a seller who
+must move platform right now (TikTok restricted → Shopee / Facebook) could not go live.
+- **Rule (v2 sellers, every platform):** remove an account + add a DIFFERENT one = immediate. The account that
+  took the place is locked 4 hours (`account_seats.lock_until`, set by sql/84's `account_total_guard` — NOT changed).
+  Removed inside the 4 hours → its place stays used until they end (a different new one is refused: `account_limit`
+  / Shopee `locked`). Same account back = immediate. A removal never starts a wait (an admin's neither). Admins /
+  exempt sellers: no limit, no lock. = the rule every seller already has since sql/84.
+- **Found first (read-only, production 2026-11-22):** sql/199 IS applied (switch `shopee_account_enforce` 'false');
+  sql/201 (guide) is NOT. Production's `shopee_link_register` = the repo's statements without its two trailing
+  `--` comments (md5 602ee3c9… ≠ the repo file's) — not touched here.
+- **sql/205 (+ rollback), two functions, md5 guard like sql/199:** `account_seat_vacate` = sql/84's text word for
+  word (md5 c7df6579…; for a seller not in v2 the live function already did exactly this). `my_account_list` =
+  sql/199's + ONE key per account `'lock_until'` (own registered account, `lock_until > now()`; null for an
+  admin / exempt seller). Rollback = sql/199's two texts. Either order with the web is safe: old app + new SQL =
+  the extra key is ignored; new app + old SQL = no `lock_until` → Remove asks as before and rule (b) still waits.
+- **App:** `adapters/planFull.ts` `AccountRow.lockUntil` + `lockMs(a, list, deviceNow)` (server clock, null when
+  unlimited). `PlanFullPopup` + `ShopeeShops`: Remove on a locked account → the existing "Wait a little" sheet with
+  `rd_pf_wait_locked` + the countdown; nothing is removed. After a normal removal: "Removed. You can add the new
+  account now." Texts (8 languages): `rd_pf_rm_body` (Jeff's words), `rd_pf_lock_note`, `rd_pf_wait_*` ×5,
+  `rd_sh_err_shop_locked`, new `rd_pf_wait_locked`. `server/` = 0 lines.
+- ⚠️ The DATABASE does not refuse removing a locked account (as before sql/199) — it keeps the place used; the two
+  v2 screens are what stop the tap. Facebook / Instagram Remove on their own Settings screens is unchanged.
+- ⚠️ An account removed and added back while NOT locked takes its own old place and gets the 4-hour lock
+  (sql/84's step (c), unchanged).
+- **Guide:** account-limit + connect-shopee lines, 116b regenerated, sql/201 (not applied) kept equal — no new guide SQL.
+- **Proof:** `scripts/sql205-behaviour.mjs` (PGlite, 74: not-in-preview story 67/67 identical to production, first
+  swap on TikTok / Facebook / Instagram / Shopee / TikTok→Shopee, second refused, same back, admin, guard, rollback) ·
+  `accountSwapRuleSql.test.ts` (CI) · `PlanFullPopup.test.tsx` · `ShopeeShops.test.tsx` · `planFull.test.ts` ·
+  `planFull.app.test.tsx` · `docs/design/account-swap-rule/` (README, same-as-main, breaks, 76 pictures).
+- **Order:** sql/205 → merge (Vercel). To release v2 later: sql/200 → switch 'true' → sql/201 (unchanged order).
