@@ -243,7 +243,7 @@ let db2;
   const seat = await one(db, `select removed_at is not null as removed, lock_until > now() + interval '3 hours 59 minutes' as four_h from public.account_seats where user_id = '${R}' and account_key = 'ph:222222'`);
   ok(seat.removed && seat.four_h, "removed shop: its place is held for 4 hours");
   r = await reg(R, "ph", "333333");
-  const wait = await one(db, `select ('${r.next_free_at}'::timestamptz - now()) > interval '3 hours 59 minutes' as ok`);
+  const wait = r.next_free_at ? await one(db, `select ('${r.next_free_at}'::timestamptz - now()) > interval '3 hours 59 minutes' as ok`) : { ok: false };
   ok(r.result === "locked" && r.used === 3 && r.locked === 1 && wait.ok && r.now, "a DIFFERENT shop within the 4 hours → locked (next_free_at ≈ now + 4 h, with the server's now)");
   r = await reg(R, "ph", "222222");
   ok(r.result === "added" && (await val(db, `select public.account_total_used('${R}')`)) === 3, "the SAME shop back within the 4 hours → immediate (3 used)");

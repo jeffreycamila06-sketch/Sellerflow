@@ -124,4 +124,5 @@ ok   rollback: the new functions are gone
 ok   rollback: no paste-link shop place left
 ok   rollback: the switch row and the preview logins are gone
 ok   sql/199 applies again after the rollback
+
 126 passed, 0 failed

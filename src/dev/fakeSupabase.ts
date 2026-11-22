@@ -104,7 +104,15 @@ const tables: Record<string, Row[]> = {
 const Q = typeof location !== "undefined" ? location.search : "";
 const INV = (/[?&]inv=(\w+)/.exec(Q) || [])[1] || "";
 const monthStart = (add: number) => { const d = new Date(now + 8 * 3_600_000); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + add, 1)).toISOString().slice(0, 10); };
+// ?quota=used,limit,locked → the "Accounts used: x of y" line (docs/design/account-limits-v2); absent = no line.
+const QUOTA = typeof location !== "undefined" ? new URLSearchParams(location.search).get("quota") : null;
+const quotaAnswer = (): unknown => {
+  if (!QUOTA) return null;
+  const [used, limit, locked] = QUOTA.split(",").map(Number);
+  return { used, limit, unlimited: false, locked: locked || 0, next_free_at: null };
+};
 const RPC: Record<string, unknown> = {
+  account_quota: quotaAnswer(),
   my_referral_summary: INV === "choose"
     ? { code: null, month_days: 10, eligible: true, has_inviter: false, can_enter_code: true, invites: [] }
     : { code: "BUDGETUKAY", month_days: 10, eligible: INV !== "free", has_inviter: false, can_enter_code: INV === "free",
