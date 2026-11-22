@@ -55,7 +55,8 @@ import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePrevie
 import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo, type LockPlatform } from "./adapters/shopeeBeta";
 import { shopeeLinkConnect, shopeeLinkRemove, isShopeeLimitFail, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
 import PlanFullPopup, { type RemoveResult } from "./components/PlanFullPopup";
-import { accountLimitsV2Visible, tiktokKey, type PlanFullTarget, type AccountRow } from "./adapters/planFull";
+import { accountLimitsV2Visible, tiktokKey, loadMyAccountList, accountName as planAccountName, type PlanFullTarget, type AccountRow, type AccountList, type LiveAccounts } from "./adapters/planFull";
+import ShopeeShops from "./screens/ShopeeShops";
 import { touchSlot } from "./adapters/tiktokCooldown";
 import { shopeeStopNoteKey, type OwnConnect } from "./adapters/shopeeLinkStatus";
 import { useShopeeLastLink } from "./adapters/shopeeLastLink";
@@ -193,11 +194,11 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts"
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts" | "shopeeshops"
   | "website" | "websitepay" | "invite" | "blacklist";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite", "blacklist"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite", "blacklist", "shopeeshops"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -413,6 +414,9 @@ export default function RedesignApp() {
   const [upsellOpen, setUpsellOpen] = useState(false);
   // sql/199 — the "Plan full" popup (preview / admin / switch only — accountLimitsV2 below).
   const [planFull, setPlanFull] = useState<PlanFullTarget | null>(null);
+  // the seller's own accounts (my_account_list) for Channels 2×2 + the Shopee shops screen — read on open, zero poll
+  const [myAccounts, setMyAccounts] = useState<AccountList | null>(null);
+  const [myAccountsKey, setMyAccountsKey] = useState(0);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
@@ -2895,6 +2899,35 @@ export default function RedesignApp() {
   // Nav item = .sfl-navbtn (+ .is-active). All visual styling lives in redesign.css
   // (mobile baseline byte-equal to the old inline navBtn; desktop sidebar via @media).
   const navCls = (on: boolean) => "sfl-navbtn" + (on ? " is-active" : "");
+  // sql/199 — the accounts live right now (the popup / Shopee shops say "End your live first" for them)
+  const planLive: LiveAccounts = {
+    tiktok: ttEff ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null,
+    facebook: fbEff ? (fbChip.action.kind === "disconnect" ? fbChip.action.pageId : selectedPage?.pageId ?? null) : null,
+    instagram: igEff ? selectedIg?.igUserId ?? null : null,
+    shopeeUid: shopeeEff ? (shopeeLinkUid || null) : null,
+    shopeeShopId: shopeeEff && selectedShop ? String(selectedShop.shopId) : null,
+  };
+  const myAccountsOpen = accountLimitsV2 && (screen === "settings" || screen === "shopeeshops");
+  useEffect(() => {
+    if (!myAccountsOpen) return;
+    let alive = true;
+    void loadMyAccountList().then((l) => { if (alive) setMyAccounts(l); });
+    return () => { alive = false; };
+  }, [myAccountsOpen, myAccountsKey, auth.profile?.profile.tiktok]);
+  const firstLinkShop = (myAccounts?.accounts || []).find((a) => a.platform === "shopee" && a.link) || null;
+  const channelsGrid = accountLimitsV2 ? {
+    input: {
+      tiktokNames: accountList(auth.profile?.profile.tiktok || ""),
+      facebookName: fbPages[0]?.name || accountList(auth.profile?.profile.facebook || "")[0] || null,
+      instagram: { open: isAdmin && igEnabled, name: igAccounts[0]?.username || null },
+      shopee: { state: shopeeLinkOn ? "open" as const : platformLocks.Shopee ? "locked" as const : "soon" as const, name: firstLinkShop ? planAccountName(firstLinkShop, tApp) : null, lockText: lockText("Shopee") },
+    },
+    // TikTok / Facebook open exactly what they open today; Instagram (admin) its accounts; Shopee its shops
+    onOpen: (c: "tiktok" | "facebook" | "instagram" | "shopee") => {
+      if (c === "tiktok" || c === "facebook") { if (liveSourceMode) openLiveConnect(c === "tiktok" ? "TikTok" : "Facebook", "manage"); else setScreen(settingsChannelScreen(c, fbEnabled)); return; }
+      setScreen(c === "instagram" ? "igaccounts" : "shopeeshops");
+    },
+  } : undefined;
   const settingsActive = SETTINGS_GROUP.includes(screen);
 
   return (
@@ -3167,6 +3200,7 @@ export default function RedesignApp() {
               channelsV2={liveSourceMode}
               onOpenChannel={(p) => openLiveConnect(p === "tiktok" ? "TikTok" : p === "facebook" ? "Facebook" : "Shopee", "manage")}
               channelsInfo={{ ttLive: ttEff && !liveFeed.ttRecovering ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null, showShopee: showShopeeRow, shopeeName: selectedShop ? (selectedShop.shopName || tApp.rd_shp_shop_name_fallback) : "", shopeeConnected: shopeeEff }}
+              channelsGrid={channelsGrid}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen} printerFocus={printerFocus}
@@ -3218,6 +3252,12 @@ export default function RedesignApp() {
               Live FB chip's Manage row / no-page authorize). Back = where it was opened from (backNav). */}
           {screen === "fbpages" && (
             <FbChannels account={auth.profile} pages={fbPages} needsReconnectIds={fbReconnectIds} polish={featureSw.fbPolishV2} onReload={reloadFbPages} onBack={() => goBack()} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+          )}
+          {screen === "shopeeshops" && accountLimitsV2 && (
+            <ShopeeShops list={myAccounts} live={planLive}
+              onRemove={async (a) => { const r = await removeFromPlanFull(a); return r; }}
+              onReload={() => setMyAccountsKey((k) => k + 1)}
+              onBack={() => goBack()} />
           )}
           {screen === "igaccounts" && igEnabled && (
             <IgChannels account={auth.profile} accounts={igAccounts} onReload={reloadIgAccounts} onBack={() => goBack()} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
@@ -3521,14 +3561,8 @@ export default function RedesignApp() {
             target={planFull}
             ios={ios}
             planName={planLabel(auth.profile?.plan)}
-            live={{
-              tiktok: ttEff ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null,
-              facebook: fbEff ? (fbChip.action.kind === "disconnect" ? fbChip.action.pageId : selectedPage?.pageId ?? null) : null,
-              instagram: igEff ? selectedIg?.igUserId ?? null : null,
-              shopeeUid: shopeeEff ? (shopeeLinkUid || null) : null,
-              shopeeShopId: shopeeEff && selectedShop ? String(selectedShop.shopId) : null,
-            }}
-            onRemove={removeFromPlanFull}
+            live={planLive}
+            onRemove={async (a) => { const r = await removeFromPlanFull(a); if (r.ok) setMyAccountsKey((k) => k + 1); return r; }}
             onUpgrade={() => { setPlanFull(null); setScreen("subscription"); }}
             onClose={() => setPlanFull(null)}
           />

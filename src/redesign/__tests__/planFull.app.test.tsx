@@ -155,6 +155,47 @@ describe("the preview gate", () => {
   });
 });
 
+const byText = (label: string) => screen.getAllByText(label).map((el) => el.closest("button")).find(Boolean)!;
+const screenNow = () => document.querySelector("[data-screen]")?.getAttribute("data-screen");
+async function openGeneralSettings() {
+  render(<RedesignApp />);
+  await flush();
+  fireEvent.click(byText(t.rd_nav_settings)); await flush();
+  fireEvent.click(byText(t.rd_sh_general)); await flush();
+  expect(screenNow()).toBe("settings");
+}
+const LINKED = { ...ACCOUNTS, limit: 3, accounts: [...ACCOUNTS.accounts, { platform: "shopee", key: "ph:555566667", id: "row", name: null, link: true, rank: 2, covered: true, addedAt: null }] };
+
+describe("Settings → Channels", () => {
+  it("a seller NOT in the preview: today's rows, no grid", async () => {
+    await openGeneralSettings();
+    expect(screen.queryByTestId("cg-grid")).toBeNull();
+    expect(screen.getAllByText(t.rd_ch_tiktok_live).length).toBeGreaterThan(0);
+  });
+  it("the preview login: 4 boxes — TikTok @name (green), Facebook, Instagram Coming soon, Shopee shop ·tail", async () => {
+    H.preview.v = true;
+    H.list.v = LINKED;
+    await openGeneralSettings();
+    expect(screen.getByTestId("cg-grid").children).toHaveLength(4);
+    expect(screen.getByTestId("cg-tiktok-line").textContent).toBe("@shop1");
+    expect(screen.getByTestId("cg-tiktok").getAttribute("data-registered")).toBe("1");
+    expect(screen.getByTestId("cg-instagram-line").textContent).toBe("Coming soon");
+    expect(screen.getByTestId("cg-shopee-line").textContent).toBe("Shopee shop ·6667");
+  });
+  it("TikTok opens today's TikTok screen; Shopee opens Shopee shops (list, Remove, the 4-hour note)", async () => {
+    H.preview.v = true;
+    H.list.v = LINKED;
+    await openGeneralSettings();
+    fireEvent.click(screen.getByTestId("cg-tiktok")); await flush();
+    expect(screenNow()).toBe("ttchannels");
+    fireEvent.click(screen.getAllByTestId("back-btn")[0]); await flush();
+    fireEvent.click(screen.getByTestId("cg-shopee")); await flush();
+    expect(screenNow()).toBe("shopeeshops");
+    expect(screen.getAllByTestId("ss-row-name").map((n) => n.textContent)).toEqual(["Shopee shop ·6667"]);
+    expect(screen.getByTestId("ss-lock-note")).toBeTruthy();
+  });
+});
+
 describe("Remove inside the popup = the same remove as Settings", () => {
   it("a TikTok name: the 4-hour slot check first (slot 0), then the same save without the name", async () => {
     H.preview.v = true;
