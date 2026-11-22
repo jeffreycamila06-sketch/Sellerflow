@@ -38,10 +38,11 @@ export const FEATURE_SWITCH_KEYS = {
   websiteTeaserSales: "website_teaser_sales_enabled", // Seller Website teaser: the Sales "Website orders" row with "Soon" (sql/169, seeded 'false')
   websiteTeaserOrders: "website_teaser_orders_enabled", // Seller Website teaser: the Orders "Website" tab with "Soon" (sql/170, seeded 'false')
   blacklist: "blacklist_enabled", // Blacklist for every seller OUTSIDE Taiwan, all plans (sql/190, seeded 'false'); admins + feature "blacklist" before
+  accountLimitsV2: "shopee_account_enforce", // Shopee shop = one account + the "Plan full" popup + Channels 2×2 for every seller (sql/199, seeded 'false'); admins + feature "account_limits_v2" before
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false, scanQrLookup: false, fmStoreCheck: false, printerScanWebFilter: false, sellerWebsite: false, websiteSubdomainReady: false, websiteTeaser: false, websiteTeaserSales: false, websiteTeaserOrders: false, blacklist: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false, scanQrLookup: false, fmStoreCheck: false, printerScanWebFilter: false, sellerWebsite: false, websiteSubdomainReady: false, websiteTeaser: false, websiteTeaserSales: false, websiteTeaserOrders: false, blacklist: false, accountLimitsV2: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {

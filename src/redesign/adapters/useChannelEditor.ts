@@ -30,7 +30,7 @@ import { useAccountCoverage, overLimitView, isCovered } from "./accountLive";
 // show a "Change" button when canChange (≥4h / never changed, cooldown loaded), else a
 // bare 🔒 (admin-bypassed OR fail-closed); "unlocked" = editable input now.
 export type SavedSlotView = { editable: boolean; note: "cooling" | "locked" | "unlocked"; unlockMs: number; canChange: boolean };
-export type ChannelSaveFn = (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string; accountLimit?: boolean }>;
+export type ChannelSaveFn = (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string; accountLimit?: boolean; planFull?: boolean }>;
 
 export function useChannelEditor(account: AccountUser | null | undefined, platform: "tiktok" | "facebook", onSaveChannels?: ChannelSaveFn) {
   const t = useT();
@@ -141,6 +141,8 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
     const unlocked = isTT ? { tiktok: changed } : { facebook: changed };
     const r = await onSaveChannels(lists, { unlocked });
     if (r.ok) { setState("saved"); return; }
+    // sql/199: the "Plan full" popup already answers this refusal (preview / admin / switch) → no second message here
+    if (r.planFull) { setState("idle"); return; }
     // Combined account limit (sql/84): the database refused a NEW username. Show the
     // localized reason; `slots` is untouched, so the typed value stays.
     const msg = r.accountLimit ? await accountLimitMessage(t, { ios: isIOS(), planName: planLabel(account?.plan), lang }) : r.error;

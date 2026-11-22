@@ -55,3 +55,21 @@ export async function shopeeLinkConnect(
     return { ok: false, error: "unreachable" };
   }
 }
+
+// sql/199 — Remove a registered Shopee shop ('<region>:<uid>'): the server stops this seller's read of it, then
+// removes it (POST /shopee/live/remove). Its place waits 4 hours like every removed account.
+export async function shopeeLinkRemove(key: string, deps: { fetchImpl?: typeof fetch } = {}): Promise<{ ok: boolean }> {
+  const f = deps.fetchImpl ?? fetch;
+  const token: string = supabase ? await supabase.auth.getSession().then((s) => s.data.session?.access_token || "", () => "") : "";
+  try {
+    const r = await f(`${SERVER}/shopee/live/remove`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ key: String(key || "") }),
+    });
+    const body = (await r.json().catch(() => ({}))) as { ok?: boolean };
+    return { ok: r.ok && body.ok === true };
+  } catch {
+    return { ok: false };
+  }
+}

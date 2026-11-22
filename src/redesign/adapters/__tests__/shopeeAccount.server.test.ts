@@ -159,7 +159,7 @@ describe("the account step (server/shopeeAccount.js)", () => {
     const lines: string[] = [];
     const register = vi.fn(async () => { if (opts.throws) throw new Error("x"); return { data, error: opts.error ?? null }; });
     const liveCheck = vi.fn(async () => opts.live ?? { allow: true });
-    return { gate: createShopeeAccountGate({ register, liveCheck, log: (l: string) => lines.push(l) }), register, liveCheck, lines };
+    return { gate: createShopeeAccountGate({ register, liveCheck, log: ((l: string) => { lines.push(l); }) as () => void }), register, liveCheck, lines };
   };
   it("off → go on, no live check (today's connect)", async () => {
     const g = gateWith({ result: "off" });

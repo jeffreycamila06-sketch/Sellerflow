@@ -824,3 +824,13 @@ html.pt-dragbar::-webkit-scrollbar, html.pt-dragbar body::-webkit-scrollbar { di
 [data-redesign][data-theme="dark"] .sfl-sh-connected { border-color: #34d399; background: rgba(52,211,153,.12); color: #34d399; }
 [data-redesign] .sfl-sh-notice { color: #9a3412; background: #ffedd5; }
 [data-redesign][data-theme="dark"] .sfl-sh-notice { color: #fdba74; background: rgba(251,146,60,.16); }
+
+/* "Plan full" popup (sql/199): a bottom sheet on a phone, a centred card on a wide screen. */
+.sfl-pf-overlay { position: fixed; inset: 0; z-index: 1300; background: rgba(9, 7, 24, 0.5); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.sfl-pf-sheet { width: 100%; max-width: 520px; box-sizing: border-box; background: var(--surface); color: var(--text); border-radius: 22px 22px 0 0; padding: 12px 18px calc(22px + env(safe-area-inset-bottom)); max-height: 88vh; overflow-y: auto; box-shadow: 0 -10px 40px rgba(20, 22, 40, 0.22); display: flex; flex-direction: column; gap: 12px; font-family: var(--font-ui); }
+.sfl-pf-grab { width: 40px; height: 5px; border-radius: 999px; background: var(--border-strong); align-self: center; flex-shrink: 0; }
+@media (min-width: 900px) {
+  .sfl-pf-overlay { justify-content: center; }
+  .sfl-pf-sheet { max-width: 390px; border-radius: 22px; padding-bottom: 22px; }
+  .sfl-pf-grab { display: none; }
+}

@@ -50,16 +50,19 @@ import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, stepScaleLevel, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
-import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
+import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, removeShopeeShop, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo, type LockPlatform } from "./adapters/shopeeBeta";
-import { shopeeLinkConnect, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
+import { shopeeLinkConnect, shopeeLinkRemove, isShopeeLimitFail, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
+import PlanFullPopup, { type RemoveResult } from "./components/PlanFullPopup";
+import { accountLimitsV2Visible, tiktokKey, type PlanFullTarget, type AccountRow } from "./adapters/planFull";
+import { touchSlot } from "./adapters/tiktokCooldown";
 import { shopeeStopNoteKey, type OwnConnect } from "./adapters/shopeeLinkStatus";
 import { useShopeeLastLink } from "./adapters/shopeeLastLink";
 import FbChannels from "./screens/FbChannels";
 import IgChannels from "./screens/IgChannels";
-import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
-import { loadFbEnabled, listFbPages, fbConnect, fbLiveCheck, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, FB_RETURN_PARAMS, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
+import { useIgAccess, listIgAccounts, igConnect, igDisconnect, removeIgAccount, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
+import { loadFbEnabled, listFbPages, fbConnect, fbLiveCheck, fbDisconnect, removeFbPage, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, FB_RETURN_PARAMS, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import { useFbAccess, fbUiGates } from "./adapters/fbAccess";
 import LiveSourceSheet from "./components/LiveSourceSheet";
@@ -152,7 +155,7 @@ import { adminSampleBuyer } from "./adapters/adminLangSamples";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
 import { savedBtPrinter, savedIsNiimbot } from "./adapters/savedPrinter";
 import { V2_SAMPLE_LATIN, V2_SAMPLE_CJK } from "./screens/PrintPattern";
-import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, cooldownRetryDelayMs, type Platform, ttDisconnect } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, accountList, accountSlots, accountText, composeChannelSave, connectFailText, cooldownRetryDelayMs, type Platform, ttDisconnect } from "./adapters/connect";
 import { createCooldownRetry, retryAllowed } from "./adapters/cooldownRetry";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
@@ -408,6 +411,8 @@ export default function RedesignApp() {
   // price/plan wording (Apple 2.1b-safe), same on iOS and Android/web. It never
   // grants access; the screen render below stays gated on parcelAllowed ONLY.
   const [upsellOpen, setUpsellOpen] = useState(false);
+  // sql/199 — the "Plan full" popup (preview / admin / switch only — accountLimitsV2 below).
+  const [planFull, setPlanFull] = useState<PlanFullTarget | null>(null);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
@@ -452,9 +457,54 @@ export default function RedesignApp() {
     } catch (e) {
       // The database refused a NEW username (combined account limit, sql/84): the editor
       // shows the localized reason and keeps the typed value.
-      if (isAccountLimitError(e)) return { ok: false, accountLimit: true };
+      if (isAccountLimitError(e)) {
+        // sql/199: preview / admin / switch → the "Plan full" popup instead of the editor's line
+        if (openPlanFull({ kind: "tiktok" })) return { ok: false, accountLimit: true, planFull: true };
+        return { ok: false, accountLimit: true };
+      }
       log.warn("accounts save failed", e);
       return { ok: false, error: "" };
+    }
+  };
+  // sql/199 — Remove from the "Plan full" popup = the SAME remove as Settings for each platform (the same server
+  // checks: a TikTok name keeps its 4-hour slot check; the database starts the 4-hour wait for every removal).
+  const removeFromPlanFull = async (a: AccountRow): Promise<RemoveResult> => {
+    try {
+      if (a.platform === "tiktok") {
+        const cur = auth.profile;
+        if (!cur) return { ok: false, error: "failed" };
+        const slots = accountSlots(cur.profile.tiktok || "", Math.max(maxAcc(cur.plan), accountList(cur.profile.tiktok || "").length));
+        const i = slots.findIndex((n) => n && tiktokKey(n) === a.key);
+        if (i < 0) return { ok: false, error: "failed" };
+        if (!isAdmin) { const tr = await touchSlot("tiktok", i); if (!tr.ok) return { ok: false, error: tr.cooldown ? "cooldown" : "failed" }; }
+        const next = slots.map((n, j) => (j === i ? "" : n));
+        const r = await saveChannels({ tiktok: accountText(next), facebook: cur.profile.facebook || "" }, { unlocked: { tiktok: [i] } });
+        return r.ok ? { ok: true } : { ok: false, error: "failed" };
+      }
+      if (a.platform === "facebook") {
+        if (!a.id) return { ok: false, error: "failed" };
+        await fbDisconnect(a.key).catch(() => null);              // stop its live first — best effort (FbChannels' order)
+        const r = await removeFbPage(a.id);
+        if (r.ok) void reloadFbPages();
+        return r.ok ? { ok: true } : { ok: false, error: "failed" };
+      }
+      if (a.platform === "instagram") {
+        if (!a.id) return { ok: false, error: "failed" };
+        await igDisconnect(a.key).catch(() => null);
+        const r = await removeIgAccount(a.id);
+        if (r.ok) void reloadIgAccounts();
+        return r.ok ? { ok: true } : { ok: false, error: "failed" };
+      }
+      if (a.link) {
+        const r = await shopeeLinkRemove(a.key);                  // the server stops its read, then removes it
+        return r.ok ? { ok: true } : { ok: false, error: "failed" };
+      }
+      if (!a.id) return { ok: false, error: "failed" };
+      const r = await removeShopeeShop(a.id);
+      if (r.ok) void reloadShopeeShops();
+      return r.ok ? { ok: true } : { ok: false, error: "failed" };
+    } catch {
+      return { ok: false, error: "failed" };
     }
   };
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
@@ -940,6 +990,11 @@ export default function RedesignApp() {
   // Parcel Scan FamilyMart: store # check (sql/155). Switch OR this login on the list; off = the screen as before.
   const fmStoreCheckOn = fmStoreCheckVisible({ switchOn: featureSw.fmStoreCheck, previewKey: hasFeature("fm_store_check") });
   // BLACKLIST (sql/190): never Taiwan; outside Taiwan = the switch (every plan) OR an admin OR a tester login.
+  // sql/199 — Shopee shop = one account + the "Plan full" popup + Channels 2×2: admins, the preview key
+  // (account_limits_v2) or everyone once shopee_account_enforce is 'true'. Everyone else: today's screens.
+  const accountLimitsV2 = accountLimitsV2Visible({ isAdmin, previewKey: hasFeature("account_limits_v2"), switchOn: featureSw.accountLimitsV2 });
+  // Open the popup instead of today's message (true) — or false = the caller shows today's message.
+  const openPlanFull = useCallback((t: PlanFullTarget): boolean => { if (!accountLimitsV2) return false; setPlanFull(t); return true; }, [accountLimitsV2, setPlanFull]);
   const blacklistOn = blacklistVisible({ country: market.market.country, adminUnion: market.adminUnion, switchOn: featureSw.blacklist, isAdmin, hasKey: hasFeature("blacklist") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
@@ -1074,7 +1129,8 @@ export default function RedesignApp() {
     if (!featureSwReady) return;
     if (ret.status === "error" && ret.code === "cap" && fbReturnPlan === null) return;
     const msg = fbReturnText(ret, tApp, maxAcc(fbReturnPlan || "free"), featureSw.fbPolishV2);
-    if (ret.status === "error" && ret.code === "account_limit") void accountLimitMessage(tApp, { ios, planName: planLabel(fbReturnPlan), lang }).then((m) => setToast({ msg: m, kind: "err" }));
+    if (ret.status === "error" && (ret.code === "account_limit" || ret.code === "cap") && openPlanFull({ kind: "facebook" })) { /* sql/199: the "Plan full" popup instead of the toast */ }
+    else if (ret.status === "error" && ret.code === "account_limit") void accountLimitMessage(tApp, { ios, planName: planLabel(fbReturnPlan), lang }).then((m) => setToast({ msg: m, kind: "err" }));
     else if (ret.status === "connected") { if (msg) setToast({ msg, kind: "ok" }); void reloadFbPages(); }
     else if (msg) setToast({ msg, kind: "err" }); // null = cancelled on purpose → no toast
     try {
@@ -1082,7 +1138,7 @@ export default function RedesignApp() {
       for (const k of FB_RETURN_PARAMS) url.searchParams.delete(k); // fb, code + the partial-save details
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
-  }, [reloadFbPages, tApp, fbReturnPlan, ios, lang, featureSw.fbPolishV2, featureSwReady]);
+  }, [reloadFbPages, tApp, fbReturnPlan, ios, lang, featureSw.fbPolishV2, featureSwReady, openPlanFull]);
 
   // Instagram (phase 1) OAuth return (?ig=connected|error&code=…): toast + strip the query.
   useEffect(() => {
@@ -1090,14 +1146,15 @@ export default function RedesignApp() {
     const ret = parseIgReturn(window.location.search);
     if (!ret) return;
     const msg = igReturnText(ret, tApp, maxAcc(auth.profile?.plan || "free"));
-    if (msg) setToast({ msg, kind: ret.status === "connected" ? "ok" : "err" });
+    const igFull = ret.status === "error" && (ret.code === "account_limit" || ret.code === "cap") && openPlanFull({ kind: "instagram" }); // sql/199
+    if (msg && !igFull) setToast({ msg, kind: ret.status === "connected" ? "ok" : "err" });
     if (ret.status === "connected") void reloadIgAccounts();
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("ig"); url.searchParams.delete("code");
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
-  }, [reloadIgAccounts, tApp, auth.profile?.plan]);
+  }, [reloadIgAccounts, tApp, auth.profile?.plan, openPlanFull]);
 
   // "No printer connected" modal — an order printed but the native bridge said no
   // printer is set up yet (BT_NOT_SET / PRINTER_NOT_SET). The order is ALREADY
@@ -1627,6 +1684,11 @@ export default function RedesignApp() {
       if (r.ok === false) {
         const code = r.error;
         setShopeeLinkErr(SHOPEE_LINK_ERR_KEY[code]);
+        // sql/199: the "Plan full" popup (the server sends these codes only for the preview / after the switch)
+        if (isShopeeLimitFail(code)) {
+          if (code === "not_covered") openPlanFull({ kind: "live", name: tApp.rd_pf_plat_shopee });
+          else openPlanFull({ kind: "shopee", ...(code === "shop_locked" ? { wait: { nextFreeAt: r.info?.nextFreeAt ?? null, serverNow: r.info?.serverNow ?? null, receivedAt: Date.now() } } : {}) });
+        }
         if (code === "ended") { shopeeLast.clear(); setShopeeBoxLink(""); } // that live is over: the box starts empty
         track("connect_failed", { platform: "Shopee", reason: errCodeOf(code) });
         return;
@@ -1708,7 +1770,8 @@ export default function RedesignApp() {
       else {
         track("connect_failed", { platform: "Facebook", reason: errCodeOf(r.reason || r.error) });
         if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
-        else setToast({ msg: fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }, featureSw.fbPolishV2), kind: "err" }); // never a raw server code
+        else if (!(r.error === ACCOUNT_NOT_COVERED && openPlanFull({ kind: "live", name: fbPages.find((p) => p.pageId === pageId)?.name || tApp.rd_pf_plat_facebook }))) // sql/199
+          setToast({ msg: fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }, featureSw.fbPolishV2), kind: "err" }); // never a raw server code
       }
       return r;
     } finally { setFbConnecting(false); }
@@ -1734,7 +1797,8 @@ export default function RedesignApp() {
       else {
         track("connect_failed", { platform: "Instagram", reason: errCodeOf(r.reason || r.error) });
         if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
-        else setToast({ msg: igConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" });
+        else if (!(r.error === ACCOUNT_NOT_COVERED && openPlanFull({ kind: "live", name: igAccounts.find((a) => a.igUserId === igUserId)?.username || tApp.rd_pf_plat_instagram }))) // sql/199
+          setToast({ msg: igConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" });
       }
       return r;
     } finally { setIgConnecting(false); }
@@ -1940,7 +2004,14 @@ export default function RedesignApp() {
       if (!r.ok && r.unreachable) { setToast({ msg: tApp.rd_cm_cant_reach, kind: "err" }); return; }
       // Account total, Build 2: this account is outside the plan (oldest-N rule, enforcing),
       // or TikTok's registered-account check refused it (account_limit) → the same readable text.
-      if (!r.ok && (r.error === ACCOUNT_NOT_COVERED || (platform === "TikTok" && r.error === "account_limit"))) { setToast({ msg: liveRefusedText(tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" }); return; }
+      if (!r.ok && (r.error === ACCOUNT_NOT_COVERED || (platform === "TikTok" && r.error === "account_limit"))) {
+        // sql/199: the "Plan full" popup (preview / admin / switch); everyone else keeps today's toast
+        const opened = r.error === ACCOUNT_NOT_COVERED
+          ? openPlanFull({ kind: "live", name: platform === "TikTok" ? `@${tiktokKey(acct)}` : acct })
+          : openPlanFull({ kind: "tiktok" });
+        if (!opened) setToast({ msg: liveRefusedText(tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" });
+        return;
+      }
       // CONNECT-TRUTH Item A: the old r.ok "Connected!" toast is GONE (the same
       // POST-ok-as-truth lie the branch removes) — success now toasts via the
       // gated ttConnected rise above. Failures keep the honest r-based toast.
@@ -3442,6 +3513,24 @@ export default function RedesignApp() {
             title={tApp.rd_ios_expired_title}
             message={tApp.rd_ios_expired_msg}
             onClose={() => setIosExpired(false)}
+          />
+        )}
+        {/* sql/199 — the "Plan full" popup (preview / admin / switch only). */}
+        {planFull && (
+          <PlanFullPopup
+            target={planFull}
+            ios={ios}
+            planName={planLabel(auth.profile?.plan)}
+            live={{
+              tiktok: ttEff ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null,
+              facebook: fbEff ? (fbChip.action.kind === "disconnect" ? fbChip.action.pageId : selectedPage?.pageId ?? null) : null,
+              instagram: igEff ? selectedIg?.igUserId ?? null : null,
+              shopeeUid: shopeeEff ? (shopeeLinkUid || null) : null,
+              shopeeShopId: shopeeEff && selectedShop ? String(selectedShop.shopId) : null,
+            }}
+            onRemove={removeFromPlanFull}
+            onUpgrade={() => { setPlanFull(null); setScreen("subscription"); }}
+            onClose={() => setPlanFull(null)}
           />
         )}
         {/* Locked-tile upsell (Parcel Scan / Customer Details for basic/free).
