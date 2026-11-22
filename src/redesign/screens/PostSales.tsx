@@ -314,7 +314,16 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
   const selling = withStatus.filter((x) => x.st !== "ended");
   const ended = withStatus.filter((x) => x.st === "ended");
 
-  const saveItem = async (id: number) => { setBusy(true); const ok = await u.onUpdateItem(id, draft.price, draft.stock); setBusy(false); if (ok) setEditing(null); };
+  // the item whose Save did not go through (the row keeps what was typed and says so — it used to stay silent)
+  const [saveFailed, setSaveFailed] = useState<number | null>(null);
+  const [savingItem, setSavingItem] = useState<number | null>(null);
+  const saveItem = async (id: number) => {
+    if (busy) return;
+    setBusy(true); setSavingItem(id); setSaveFailed(null);
+    const ok = await u.onUpdateItem(id, draft.price, draft.stock);
+    setBusy(false); setSavingItem(null);
+    if (ok) setEditing(null); else setSaveFailed(id);
+  };
   const end = async (id: number) => { setBusy(true); await u.onEnd(id); setBusy(false); setConfirmEnd(null); };
   const count = (n: number, label: string) => <span key={label} style={{ fontSize: 14, color: "var(--text-dim)" }}><b style={{ color: "var(--text)", fontWeight: 800 }}>{n}</b> {label}</span>;
 
@@ -344,12 +353,14 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
               <div key={it.id} data-testid="my-post-item" style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", fontSize: 14, flexWrap: "wrap" }}>
                 <span style={{ fontFamily: mono, fontWeight: 800, color: "var(--accent-fg)", minWidth: 30 }}>{s.mode === "plus_one" ? "+1" : it.code}</span>
                 <span style={{ flex: 1, minWidth: 80, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
-                {editing === it.id ? (
+                {editing === it.id ? (<>
                   <span style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}>
                     <input type="text" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={draft.priceText} onChange={(e) => { const s = priceInput(e.target.value, cur); setDraft((d) => ({ ...d, priceText: s, price: Math.max(0, Number(s) || 0) })); }} data-testid="my-post-edit-price" style={{ ...cell, flex: 1 }} />
                     <input type="number" inputMode="numeric" placeholder="∞" value={draft.stock ?? ""} onChange={(e) => setDraft((d) => ({ ...d, stock: e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} data-testid="my-post-edit-stock" style={{ ...cell, flex: 1 }} />
-                    <button type="button" disabled={busy || draft.price <= 0} data-testid="my-post-save" onClick={() => void saveItem(it.id)} style={{ ...btnPrimary, minHeight: 42, padding: "0 12px", fontSize: 13.5 }}>{t.rd_fps_save}</button>
+                    <button type="button" disabled={busy || draft.price <= 0} data-testid="my-post-save" onClick={() => void saveItem(it.id)} style={{ ...btnPrimary, minHeight: 42, padding: "0 12px", fontSize: 13.5 }}>{savingItem === it.id ? t.rd_fb_saving : t.rd_fps_save}</button>
                   </span>
+                  {saveFailed === it.id && <span role="alert" data-testid="my-post-save-failed" style={{ width: "100%", fontSize: 12.5, fontWeight: 700, color: "var(--danger)" }}>{t.rd_fb_save_failed}</span>}
+                </>
                 ) : (
                   <>
                     <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-dim)" }}>{cur}{fmt(it.price)}</span>

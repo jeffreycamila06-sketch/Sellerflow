@@ -511,7 +511,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, legacyKey, wind
                       </div>
                       {sNote && <div style={errTxt}>{sNote}</div>}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => void saveSplit(g)} disabled={sBusy} style={{ flex: 1, padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: sBusy ? 0.6 : 1 }}>{sBusy ? "…" : tpl(t.rd_shp_split_save, { n: nBags })}</button>
+                        <button onClick={() => void saveSplit(g)} disabled={sBusy} style={{ flex: 1, padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: sBusy ? 0.6 : 1 }}>{sBusy ? t.rd_fb_saving : tpl(t.rd_shp_split_save, { n: nBags })}</button>
                         {isSplit && !mustSplit(g.total) && (
                           <button onClick={() => void removeSplit(g)} disabled={sBusy} style={{ padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t.rd_shp_split_remove}</button>
                         )}
@@ -572,7 +572,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, legacyKey, wind
                     <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{tpl(t.rd_shp_cod, { amt: `${cur}${codTotal(form.orderAmount, form.shippingFee).toLocaleString()}` })}</div>
                     {note && <div style={errTxt}>{note}</div>}
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => void save()} disabled={busy} style={{ flex: 1, padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "…" : t.rd_shp_save}</button>
+                      <button onClick={() => void save()} disabled={busy} style={{ flex: 1, padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? t.rd_fb_saving : t.rd_shp_save}</button>
                       <button onClick={closeForm} style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{t.rd_shp_cancel}</button>
                     </div>
                   </div>
