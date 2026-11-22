@@ -21,7 +21,7 @@ P b[style*="color: var(--s-acc)"]{color:var(--s-fg)!important}
 P .v-ann{background:var(--top1);color:var(--on-top1);text-align:left;font-size:12.5px;font-weight:500;line-height:1.3;padding:7px 16px;border-bottom:1px solid color-mix(in srgb,var(--on-top1) 22%,transparent)}
 P .v-hdr,P.l-brand .v-hdr,P.l-brand .v-hdr.v-top{background:var(--top1);color:var(--on-top1);border-bottom:3px solid var(--top2);transition:none}
 P .v-hdr .v-row{gap:4px;padding:6px 0;min-height:56px;flex-wrap:wrap}
-P .v-logo{gap:10px;flex:1;min-width:0;text-align:left;font:760 19px/1.1 var(--s-head);font-stretch:var(--k-sst);letter-spacing:-.012em}
+P .v-logo{gap:10px;flex:1;min-width:0;min-height:44px;text-align:left;font:760 19px/1.1 var(--s-head);font-stretch:var(--k-sst);letter-spacing:-.012em}
 P .v-logo i,P.l-brand .v-hdr.v-top .v-logo i{width:34px;height:34px;flex:none;border-radius:var(--k-rs);background:var(--on-top1);color:var(--top1);font:700 17px/1 var(--s-head)}
 P .v-logo img{width:34px!important;height:34px!important;flex:none;border-radius:var(--k-rs)!important;background:var(--on-top1)}
 P .v-logo span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

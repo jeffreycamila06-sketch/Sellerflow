@@ -6,7 +6,8 @@
 import WebsiteHomeEditor from "../components/WebsiteHomeEditor";
 import WebsiteLookEditor from "../components/WebsiteLookEditor";
 import { newWebsiteDraft } from "../adapters/websiteLook";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { loadNewLook } from "../../website/v4/gate";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
@@ -26,11 +27,14 @@ const SOCIAL_NAME: Record<SocialKey, string> = { facebook: "Facebook", instagram
 const CHATS: ChatKey[] = ["messenger", "line", "whatsapp", "instagram"];
 const CHAT_NAME: Record<ChatKey, string> = { messenger: "Messenger", line: "LINE", whatsapp: "WhatsApp", instagram: "Instagram DM" };
 
-export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan, planStatus, planExpiry, country = "TW", onToast, api = realEditorApi, nowMs, subdomainReady = false }: {
+export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan, planStatus, planExpiry, country = "TW", onToast, api = realEditorApi, nowMs, subdomainReady = false, newLook }: {
   onBack?: () => void; onPayShip: () => void; onUpgrade?: () => void; ios: boolean;
   plan?: string; planStatus?: string; planExpiry?: string | null; country?: string; onToast: (m: string) => void; api?: EditorApi; nowMs?: number;
   /** app_settings website_subdomain_ready (sql/164): show / copy <sub>.sellerflowlive.com only when true */
   subdomainReady?: boolean;
+  /** the shop is drawn in the new look (tests set it). Not given = the database is asked (sql/203): true only for
+   *  the switch, a listed shop or an admin; no answer = the editor of before. */
+  newLook?: boolean;
 }) {
   const t = useT() as unknown as Record<string, string>;
   const [site, setSite] = useState<MyWebsite | null | "loading" | "error">("loading");
@@ -48,15 +52,25 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     const id = setTimeout(() => setPub(""), PUBLISHED_FLASH_MS);
     return () => clearTimeout(id);
   }, [pub]);
+  const [asked4, setAsked4] = useState(false);
+  const k4 = newLook ?? asked4;
+  const fresh = useRef<ShopDesign | null>(null); // the untouched start of a seller with no website yet
   useEffect(() => {
     let live = true;
     void api.load().then((w) => {
       if (!live) return;
       setSite(w === "error" ? "error" : w);
-      if (w && w !== "error") { setDraft(w.draft); setSub(w.subdomain); } else if (w === null) setDraft(newWebsiteDraft()); // no website yet → Brand store + Ocean
+      if (w && w !== "error") { setDraft(w.draft); setSub(w.subdomain); } else if (w === null) { fresh.current = newWebsiteDraft(newLook === true); setDraft(fresh.current); } // no website yet → Brand store + Ocean
+      if (w === "error" || newLook !== undefined) return;
+      void loadNewLook(w ? w.subdomain : "", true).then((on) => {
+        if (!live || !on) return;
+        setAsked4(true);
+        // new look + no website yet + nothing changed so far → start neutral instead of Ocean
+        setDraft((d) => { if (d !== fresh.current || fresh.current === null) return d; fresh.current = newWebsiteDraft(true); return fresh.current; });
+      });
     });
     return () => { live = false; };
-  }, [api]);
+  }, [api, newLook]);
   const exists = !!site && site !== "loading" && site !== "error";
   const published = exists ? (site as MyWebsite).published : null;
   const canPublish = planCanPublish(plan, planStatus, planExpiry, nowMs);
@@ -192,8 +206,8 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
         </button>
 
         <Section title={t.rd_wed_look}>
-          <WebsiteLookEditor draft={draft} set={set} t={t} cats={cats}
-            preview={<Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, prods, country, plan || "")} /></Suspense>} />
+          <WebsiteLookEditor draft={draft} set={set} t={t} cats={cats} newLook={k4}
+            preview={<Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, prods, country, plan || "")} newLook={k4} /></Suspense>} />
           <div style={{ height: 6 }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <PicField label={t.rd_wed_logo} path={draft.logo} round busy={busy === "logo"} onFile={(f) => void pic("logo", f)} t={t} testid="wed-logo" />
@@ -227,7 +241,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
         </div>
       </div>
       {preview && <PreviewSheet title={t.rd_wed_preview} closeLabel={t.rd_wed_preview_close} onClose={closePreview}>
-        <Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, preview, country, plan || "")} /></Suspense>
+        <Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, preview, country, plan || "")} newLook={k4} /></Suspense>
       </PreviewSheet>}
     </Frame>
   );

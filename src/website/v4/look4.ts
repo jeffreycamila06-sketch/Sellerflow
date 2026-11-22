@@ -10,7 +10,7 @@
 //   photo shape    tall (4:5) or square, the same frame for every product photo of the shop
 // The saved settings, their checks and the colour guard's rules (v3/look.ts) are not changed.
 import type { ShopDesign } from "../shopApi";
-import { contrast, mixHex, textOn, type LookFont, type LookShape, type ShopLook } from "../v3/look";
+import { contrast, mixHex, type LookFont, type LookShape, type ShopLook } from "../v3/look";
 import { themeOf, type ThemeKey } from "../v2/theme";
 
 /** What a website started under the new look begins with: a neutral sign and button, so the seller's logo and
@@ -45,6 +45,9 @@ export const FONTS4: Record<LookFont, FontSet> = {
     url: "https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..700&family=Archivo:wdth,wght@62..125,400..800&display=swap" },
 };
 
+/** Text on a seller's colour (sign, button, sale tag): white or black, whichever reads better. The better of the
+ *  two is never under 4.58 : 1, whatever the colour (a softer black would dip under 4.5 on mid violets). */
+export const textOn4 = (c: string): string => (contrast(c, "#ffffff") >= contrast(c, "#000000") ? "#ffffff" : "#000000");
 export const PAPER = { light: "#fdfdfc", dark: "#111112" } as const;
 export const INK = { light: "#151515", dark: "#f1f0ed" } as const;
 const READ_TEXT = 4.5;
@@ -54,6 +57,8 @@ export function readable(c: string, paper: string, ink: string): string {
   for (let k = 1; contrast(o, paper) < READ_TEXT && k <= 10; k++) o = mixHex(c, ink, k / 10);
   return o;
 }
+/** True when the button colour can't be told from the page, so buyers get the text colour instead (the editor says so). */
+export const btnSwapped = (look: Pick<ShopLook, "btn" | "dark">): boolean => contrast(look.btn, look.dark ? PAPER.dark : PAPER.light) < 1.6;
 export interface Look4 { className: string; vars: Record<string, string>; font: FontSet; shape: LookShape }
 /** The shop root's class + CSS variables in the new look. Pure. */
 export function look4Style(look: ShopLook): Look4 {
@@ -61,7 +66,7 @@ export function look4Style(look: ShopLook): Look4 {
   const paper = d ? PAPER.dark : PAPER.light, ink = d ? INK.dark : INK.light;
   const f = FONTS4[look.font];
   // a button colour that can't be told from the page → the ink (the rule the guard has always had)
-  const btn = contrast(look.btn, paper) < 1.6 ? ink : look.btn;
+  const btn = btnSwapped(look) ? ink : look.btn;
   const round = look.corners === "round";
   const shape = shapeOf(look);
   return {
@@ -70,10 +75,10 @@ export function look4Style(look: ShopLook): Look4 {
     vars: {
       "--s-bg": paper, "--s-fg": ink, "--s-card": paper, "--s-mut": d ? "#aaa9a4" : "#5b5b58", "--s-line": d ? "rgba(241,240,237,.17)" : "rgba(21,21,21,.14)",
       "--k-ink3": d ? "#7f7e7a" : "#8d8d89", "--k-back": d ? "#1c1c1d" : "#f0efec", "--k-field": d ? "#17171a" : "#ffffff", "--k-err": d ? "#f87171" : "#c81e1e",
-      "--s-acc": btn, "--s-on": textOn(btn), "--s-acct": readable(btn, paper, ink), "--s-acc2": d ? "#1c1c1d" : "#f0efec", "--sc": btn,
+      "--s-acc": btn, "--s-on": textOn4(btn), "--s-acct": readable(btn, paper, ink), "--s-acc2": d ? "#1c1c1d" : "#f0efec", "--sc": btn,
       "--s-ok": d ? "#5fd08f" : "#17794a", "--s-okt": d ? "#5fd08f" : "#17794a",
-      "--s-sale": look.sale, "--k-onsale": textOn(look.sale), "--k-salet": readable(look.sale, paper, ink),
-      "--top1": look.top1, "--top2": look.top2, "--on-top1": textOn(look.top1), "--on-top": textOn(look.top1), "--top-ink": look.top1, "--s-hero": look.top1,
+      "--s-sale": look.sale, "--k-onsale": textOn4(look.sale), "--k-salet": readable(look.sale, paper, ink),
+      "--top1": look.top1, "--top2": look.top2, "--on-top1": textOn4(look.top1), "--on-top": textOn4(look.top1), "--top-ink": look.top1, "--s-hero": look.top1,
       "--s-head": f.head, "--s-font": f.body, "--k-sst": f.sign, "--k-pst": f.price, "--k-hw": String(f.headWeight), "--k-pw": String(f.priceWeight),
       "--s-r": round ? "12px" : "0px", "--k-rs": round ? "8px" : "0px", "--k-ar": shape === "square" ? "1 / 1" : "4 / 5",
     },

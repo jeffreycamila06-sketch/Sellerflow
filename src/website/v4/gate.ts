@@ -9,11 +9,15 @@ export const NEW_LOOK_WAIT_MS = 2500;
 /** Pure: only a real `true` turns the new look on. */
 export const isNewLookAnswer = (data: unknown, error: unknown): boolean => !error && data === true;
 
-export async function loadNewLook(sub: string): Promise<boolean> {
-  if (!isSupabaseConfigured || !supabase || !sub) return false;
+/** `anyShop`: the seller's editor also asks before the seller has a shop address (then only the switch or an
+ *  admin answers true). The shop page never asks without an address. */
+export async function loadNewLook(sub: string, anyShop = false): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase || (!sub && !anyShop)) return false;
+  const db = supabase;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const ask = (async () => {
-    try { const { data, error } = await supabase.rpc("website_new_look", { p_sub: sub }); return isNewLookAnswer(data, error); } catch { return false; }
+    try { const { data, error } = await db.rpc("website_new_look", { p_sub: sub }); return isNewLookAnswer(data, error); } catch { return false; }
   })();
-  const late = new Promise<boolean>((done) => { setTimeout(() => done(false), NEW_LOOK_WAIT_MS); });
-  return Promise.race([ask, late]);
+  const late = new Promise<boolean>((done) => { timer = setTimeout(() => done(false), NEW_LOOK_WAIT_MS); });
+  try { return await Promise.race([ask, late]); } finally { if (timer) clearTimeout(timer); }
 }
