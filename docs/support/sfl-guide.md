@@ -843,7 +843,7 @@ Paid plans (Basic, Plus, Pro, Master) also have a **help chat**: a round chat bu
 When you message, include your account email, your TikTok username, what you were doing, and the exact message you saw. A screenshot helps.
 
 ## website — Your shop website (preview)
-Last checked: 2026-11-16
+Last checked: 2026-11-22
 Keywords: website, shop page, online shop, publish, website orders, checkout, store link, theme, layout, brand store, marketplace, colours, font, banner, flash sale, shipping options, payment methods, tracking number, 網站, 商店網頁, 网站
 
 Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
@@ -853,6 +853,7 @@ Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
   - **Shop layout**: **Brand store** (a colour band at the top, big category tiles, product rows that scroll sideways) or **Marketplace**.
   - **Ready combinations** (Ocean, Midnight, Blush, Forest, Sunset) fill in the settings below; you can still change each one.
   - Pick **Top colours** (two colours blend), **Buttons**, **Sale / old price** (Brand store only), a **Light** or **Dark** page, the **Font** (Modern, Friendly, Classic) and **Corners** (Sharp or Round).
+  - If you see **Photo shape** in the editor, your shop has the new look: top colour 1 is the bar with your logo and shop name, top colour 2 is a thin line under it, and **Photo shape** (Tall or Square) sets the shape of every product photo.
   - In the Brand store, tap up to 2 categories for the **Big tiles at the top**, or keep **Automatic**.
   - If a colour would be hard to read, buyers see a clearer one and a line under the preview tells you.
   - Add your logo and cover photo.
