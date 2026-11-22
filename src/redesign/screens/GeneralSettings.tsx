@@ -18,6 +18,7 @@ import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
 import { accountList } from "../adapters/connect";
 import ChannelsList, { type ManageChan } from "../components/ChannelsList";
+import ChannelsGrid, { type GridInput, type GridChan } from "../components/ChannelsGrid";
 
 // Motion toggle is INTENTIONALLY HIDDEN for now (Jeff — pending a phone
 // heat/jank report). The whole motion machinery stays live (defaults ON); this
@@ -64,7 +65,7 @@ export default function GeneralSettings({
   printerIdx, printerOpen, printerFocus = 0, onPrinterFocused, onTogglePrinter, onPickPrinter, onPrintPattern, printPatternNew = false,
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel,
-  channelsV2 = false, onOpenChannel, channelsInfo,
+  channelsV2 = false, onOpenChannel, channelsInfo, channelsGrid,
   keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, deductOneClick = false, onToggleDeductOneClick,
   liveSessionOpen, onToggleLiveSession,
   cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
@@ -92,6 +93,8 @@ export default function GeneralSettings({
   channelsV2?: boolean;
   onOpenChannel?: (platform: ManageChan) => void;
   channelsInfo?: { ttLive: string | null; showShopee: boolean; shopeeName?: string; shopeeConnected?: boolean };
+  // sql/199 preview (admin / account_limits_v2 / switch): Channels as 4 boxes, 2 per row. Absent → today's rows.
+  channelsGrid?: { input: GridInput; onOpen: (c: GridChan) => void };
   // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
   // the lock lifecycle lives in RedesignApp (useWakeLock on green/amber).
   keepAwake?: boolean; onToggleKeepAwake?: () => void;
@@ -654,11 +657,12 @@ export default function GeneralSettings({
         {/* CHANNELS — clean display card (A); each row → Manage screen (C) */}
         <div>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_channels}</div>
+          {channelsGrid ? <ChannelsGrid input={channelsGrid.input} onOpen={channelsGrid.onOpen} /> : (
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             {channelsV2 && onOpenChannel
               ? <ChannelsList account={account} ttLive={channelsInfo?.ttLive ?? null} showShopee={!!channelsInfo?.showShopee} shopeeName={channelsInfo?.shopeeName} shopeeConnected={channelsInfo?.shopeeConnected} onOpen={onOpenChannel} />
               : <>{channelRow("tiktok")}{channelRow("facebook")}</>}
-          </div>
+          </div>)}
         </div>
 
         {/* PRINTER & DISPLAY */}

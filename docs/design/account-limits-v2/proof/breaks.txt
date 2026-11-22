@@ -1,0 +1,51 @@
+# On-purpose breaks — account limits v2 (2026-11-22)
+# script: one line changed per break, the listed tests run, the file restored from a copy.
+
+CAUGHT 1 gate always open (every seller gets the new screens)
+         Tests  3 failed | 19 passed (22)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > the preview gate > a seller NOT in the preview: the box's one line only — no popup
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > Settings → Channels > a seller NOT in the preview: today's rows, no grid
+    FAIL  src/redesign/adapters/__tests__/planFull.test.ts > who sees it > admins, the preview key, or everyone once the switch is on; nobody else
+CAUGHT 2 gate ignores the preview key (the preview login sees nothing)
+         Tests  9 failed | 13 passed (22)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > the preview gate > the preview login: the Plan full popup with the seller's accounts
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > the preview gate > shop_locked → straight to the 4-hour countdown (the server's numbers)
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > the preview gate > not_covered → the live-start popup
+    FAIL  src/redesign/__tests__/planFull.app.test.tsx > the preview gate > Upgrade plan closes the popup and opens Subscription
+    FAIL  src/red
+CAUGHT 3 countdown on the device clock, not the server's
+         Tests  2 failed | 27 passed (29)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/components/__tests__/PlanFullPopup.test.tsx > state 4 — the 4-hour wait > opened from the server's refusal: live countdown on the server's clock, ticking every second
+    FAIL  src/redesign/adapters/__tests__/planFull.test.ts > the 4-hour wait > only when the real accounts leave room and a held place fills the plan; measured on the server's clock
+CAUGHT 4 iPhone gets the plan words
+         Tests  2 failed | 21 passed (23)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/adapters/__tests__/planFull.test.ts > texts (the approved design) > iPhone: no plan or upgrade words (App Store rule)
+    FAIL  src/redesign/components/__tests__/PlanFullPopup.test.tsx > state 1 — plan full, one account (Basic → Shopee) > iPhone: Contact Admin is a real link to Telegram; no plan / upgrade / price words anywhere
+CAUGHT 5 server: a full plan lets the shop in
+         Tests  1 failed | 24 passed (25)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/adapters/__tests__/shopeeAccount.server.test.ts > the account step (server/shopeeAccount.js) > full → 409 shop_limit; locked → 409 shop_locked with the wait end and the server's now
+CAUGHT 6 Settings dot green for every box
+         Tests  1 failed | 6 passed (7)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/components/__tests__/ChannelsGrid.test.tsx > the four boxes > a name already starting with @ is not doubled; no TikTok name → Not connected
+CAUGHT 7 Shopee shops: Remove offered on the live shop
+         Tests  1 failed | 5 passed (6)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/screens/__tests__/ShopeeShops.test.tsx > Shopee shops > the shop live right now → End your live first, no Remove
+CAUGHT 8 popup: Remove offered on the live account
+         Tests  1 failed | 12 passed (13)
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+    FAIL  src/redesign/components/__tests__/PlanFullPopup.test.tsx > state 5 — an account live right now > shows "TikTok · live now" and "End your live first" instead of Remove; the others keep Remove
+CAUGHT 9 SQL: a removal starts no 4-hour wait for preview users
+   (scripts/sql199-behaviour.mjs: 102 passed, 24 failed — among them)
+   FAIL removed shop: its place is held for 4 hours
+   FAIL a DIFFERENT shop within the 4 hours → locked (next_free_at ≈ now + 4 h, with the server's now)
+   FAIL a different TikTok name within the 4 hours → refused
+   FAIL sql/199 + rollback name account_seat_vacate's new md5 (a04b42ec) in their guards
+
+9/9 breaks caught (each break changes ONE line, runs the tests that should catch it, then puts the file back).

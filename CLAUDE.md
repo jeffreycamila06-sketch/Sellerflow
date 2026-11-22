@@ -6141,3 +6141,42 @@ Jeff's approved design (claude.ai/artifact/159XJFhCaSCQahh7FFFb6y). No server, n
 - **Guide:** connect-shopee section + 116b; `sql/198_guide_shopee_connect.sql` = that one row (rollback = the live
   row, checked 2026-10-27, md5 checked 2026-11-22). Apply after the web merge.
 - Proof: `docs/design/shopee-connect-smooth/` (pictures 4 states × iPhone/Android/laptop + dark, 20/20 breaks).
+
+## 2026-11-22 — ACCOUNT LIMITS v2: SHOPEE SHOP = ONE ACCOUNT · ONE "PLAN FULL" POPUP · CHANNELS 2×2 (branch `claude/great-wright-3v8plu` from main `d07cb94d`, NOT merged; sql/199 + sql/200 + sql/201 NOT applied; server half needs a Render deploy)
+Jeff's approved designs: Channels 2×2 claude.ai/artifact/AegK5uxSUv6ajQSbx2YbRu · Plan full claude.ai/artifact/Cq7XpuK1ApT4EN9QS5AkRT.
+- **PREVIEW GATE — one rule everywhere = `account_limits_v2_on(user)`** (sql/199): `app_settings.shopee_account_enforce` =
+  exactly 'true' (created 'false') OR feature key `account_limits_v2` (sql/199 adds ONE preview login) OR role admin.
+  App: `accountLimitsV2Visible({ isAdmin, previewKey: hasFeature("account_limits_v2"), switchOn: featureSw.accountLimitsV2 })`
+  (switch key `shopee_account_enforce` = the SAME switch). Not v2 → today's screens and today's server/DB answers
+  (PGlite 62/62 identical; server = frozen main copy `fixtures/shopeeLiveLink.main199.js`). ⚠️ When `shopeeLiveLink.js`
+  changes on purpose later, refresh that fixture from the new main.
+- **Shopee paste-link shop = one account:** table `shopee_link_shops` (user_id, region tw|ph, shopee_uid, account_key
+  '<region>:<uid>' generated; RLS select own). A connect runs `shopee_link_register(user, region, uid)` (service role)
+  after the host check (`server/shopeeAccount.js` gate in `shopeeLiveLink.connect`): off/existing/added → the live check
+  (`account_live_check`, not covered → 409 `not_covered`); full → 409 `shop_limit`; locked → 409 `shop_locked`
+  (+ next_free_at, server now); DB error → 503 `try_again`; function missing → today's connect. Registered by another
+  seller = allowed (uses a seat). Seats/locks = the sql/84 `account_total_guard` (insert trigger; skipped by sql/200's
+  copy marker `sfl.account_copy`). Remove: POST `/shopee/live/remove` (stops that shop's read, deletes the row).
+- **4-hour rule (b), v2 users only, every platform:** after ANY removal a DIFFERENT new account waits 4 h; the same one
+  back is immediate (`account_seat_vacate`: lock_until = greatest(existing, now()+4h); admin removal → no wait).
+  ⚠️ A TikTok A→B swap on a FULL plan now waits 4 h for v2 users (with room it doesn't).
+- **ONE "Plan full" popup (`components/PlanFullPopup.tsx`, `adapters/planFull.ts`):** TikTok add (saveChannels →
+  `planFull: true`), Facebook / Instagram connect return (account_limit / cap), Shopee new shop, and live start with an
+  account "Not covered". Lists `my_account_list()` (sql/199) with Remove → confirm ("Remove X? Your orders and stickers
+  stay. You can add a new account after 4 hours." [Remove] [Keep it]); the live account → "End your live first";
+  wait → live countdown on the SERVER's clock (`waitMs`: server now at receipt + device time since). Button: Upgrade
+  plan (Subscription) on Android/web; iPhone = "No room for another account" + **Contact Admin** = a real `<a href>`
+  (no plan / price words — test-pinned). Remove = the SAME paths as Settings (TikTok slot touch + saveChannels,
+  fbDisconnect + removeFbPage, igDisconnect + removeIgAccount, shopeeLinkRemove, removeShopeeShop). Not v2 →
+  `openPlanFull` returns false → today's toast.
+- **Settings → Channels 2×2 (`components/ChannelsGrid.tsx`, `adapters/channelsGrid.ts`):** TikTok, Facebook / Instagram,
+  Shopee; dot green = an account is REGISTERED (not "live now"); Instagram Coming soon unless open (admin); Shopee
+  follows the Live tile (beta → `screens/ShopeeShops.tsx`; ended → lock line; else Coming soon). TikTok/Facebook open
+  what they open today. GeneralSettings `channelsGrid` prop absent = today's card byte-unchanged.
+- **sql/200** (one-time, run while the switch is OFF): copies Shopee beta shops into `shopee_link_shops` + seats dated
+  now() → an over-plan seller keeps TikTok covered, Shopee "Not covered". **sql/201** = 5 guide rows (rollback = live rows).
+- **Order:** sql/199 → Render deploy (quiet window) → web merge (Vercel) → test with the preview login + admin → to
+  release: sql/200 (switch still off) → `shopee_account_enforce` = 'true' → sql/201.
+- Proof: `scripts/sql199-behaviour.mjs` (PGlite, 126) · `shopeeAccount.server.test.ts` · `planFull.app.test.tsx` ·
+  `PlanFullPopup.test.tsx` · `ChannelsGrid.test.tsx` · `ShopeeShops.test.tsx` · `accountLimitsGuideSql.test.ts` ·
+  pictures `docs/design/account-limits-v2/` (87, 360/390/430/1280 + dark).

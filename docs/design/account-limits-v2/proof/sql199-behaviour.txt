@@ -1,0 +1,128 @@
+ok   baseline account_seat_vacate = the live text (md5 c7df6579)
+ok   baseline account_total_used = the live text (md5 abe80539)
+ok   baseline account_quota = the live text (md5 c4f71074)
+ok   baseline account_live_ranking = the live text (md5 39191595)
+ok   baseline admin_connected_accounts = the live text (md5 e2ff12e5)
+ok   baseline admin_seller_accounts = the live text (md5 4bb4e57c)
+ok   baseline admin_downgrade_remove = the live text (md5 991c83d8)
+ok   baseline my_feature_access = the live text (md5 56fddcea)
+ok   baseline account_total_guard = the live text (md5 2651114c)
+ok   baseline account_total_run = the live text (md5 0f5511cb)
+ok   baseline account_live_check = the live text (md5 ad5e2cf3)
+ok   baseline account_live_coverage = the live text (md5 5a66295b)
+ok   baseline account_total_tiktok_trg = the live text (md5 20abebb4)
+ok   baseline account_total_fb_ins_trg = the live text (md5 85325282)
+ok   baseline account_total_del_trg = the live text (md5 17b7f0fe)
+ok   baseline account_locked_seats = the live text (md5 e61fe2ed)
+ok   baseline account_limit_for = the live text (md5 27f4e217)
+ok   baseline account_tiktok_keys = the live text (md5 97f6a6f3)
+ok   baseline account_switch_on = the live text (md5 fc5aa799)
+ok   baseline account_total_enforced = the live text (md5 b7b139cf)
+ok   baseline account_total_ig_ins_trg = the live text (md5 72cb34c3)
+ok   baseline account_total_shop_ins_trg = the live text (md5 4d025626)
+ok   sql/199 applies
+ok   sql/199 applies a second time
+ok   sql/199 + rollback name account_seat_vacate's new md5 (b0f29842) in their guards
+ok   sql/199 + rollback name account_total_used's new md5 (6ed04c28) in their guards
+ok   sql/199 + rollback name account_quota's new md5 (408aca29) in their guards
+ok   sql/199 + rollback name account_live_ranking's new md5 (829fdf3c) in their guards
+ok   sql/199 + rollback name admin_connected_accounts's new md5 (a7282134) in their guards
+ok   sql/199 + rollback name admin_seller_accounts's new md5 (ec587300) in their guards
+ok   sql/199 + rollback name admin_downgrade_remove's new md5 (f92c42ad) in their guards
+ok   sql/199 + rollback name my_feature_access's new md5 (053c1dbd) in their guards
+ok   unchanged: account_total_guard
+ok   unchanged: account_total_run
+ok   unchanged: account_live_check
+ok   unchanged: account_live_coverage
+ok   unchanged: account_total_tiktok_trg
+ok   unchanged: account_total_fb_ins_trg
+ok   unchanged: account_total_del_trg
+ok   unchanged: account_locked_seats
+ok   unchanged: account_limit_for
+ok   unchanged: account_tiktok_keys
+ok   unchanged: account_switch_on
+ok   unchanged: account_total_enforced
+ok   unchanged: account_total_ig_ins_trg
+ok   unchanged: account_total_shop_ins_trg
+ok   parity story has 62 answers on both databases
+ok   switch off: every answer for sellers not in the preview is identical (62/62)
+ok   my_feature_access = 26 live keys + account_limits_v2 (false for seller A)
+ok   my_feature_access: account_limits_v2 = true for the preview login
+ok   shopee_account_enforce created 'false'
+ok   v2 on for the preview login
+ok   v2 off for seller A (no key, switch off)
+ok   v2 on for an admin
+ok   v2 on for a prefix-listed login
+ok   v2 off for no user
+ok   seller A (not preview): register → off, nothing written
+ok   preview Pro (1 TikTok): a new shop → added
+ok   the shop counts: 2 used
+ok   the same shop again (a new link) → existing, still 2 (not counted again)
+ok   a second shop → added, 3 of 3
+ok   a third shop on a full Pro plan → full (used 3, limit 3), nothing written
+ok   still 2 shops in the table
+ok   the same uid in another region is another shop (tw:111111 → full)
+ok   a 2nd TikTok name with 2 shops on Pro → refused (the shops count for TikTok too)
+ok   account_quota: used 3, shopee 2
+ok   ranking: the TikTok name first, then the shops oldest first
+ok   removed shop: its place is held for 4 hours
+ok   a DIFFERENT shop within the 4 hours → locked (next_free_at ≈ now + 4 h, with the server's now)
+ok   the SAME shop back within the 4 hours → immediate (3 used)
+ok   after the 4 hours → a different shop is added
+ok   the preview login removes its TikTok name
+ok   a different TikTok name within the 4 hours → refused
+ok   the same TikTok name back → immediate
+ok   preview login connects a Page into a free place
+ok   removed Page → a different Page within 4 hours → refused
+ok   the same Page back → immediate
+ok   my_account_list: v2, limit 3, used 3, now, 3 accounts
+ok   my_account_list: the shop row (link, id, no name, covered)
+ok   my_account_list: the Page row with its name and id
+ok   my_account_list for seller A: v2 false, no shops
+ok   a visitor cannot call my_account_list
+ok   a seller reads only their own shops
+ok   another seller sees none of them
+ok   a seller cannot add a shop row
+ok   a seller cannot delete a shop row (the server does)
+ok   a seller cannot change a shop row
+ok   a seller cannot call the server's register function
+ok   a visitor has no access
+ok   the server (service role) can call it
+ok   bad region / uid / user → bad_request
+ok   admin: 7 shops, never refused
+ok   free plan (1) with a TikTok name → a shop is refused (remove the TikTok name first)
+ok   admin_seller_accounts: the shop as 'Shopee shop ·1111'
+ok   admin_connected_accounts lists the shop
+ok   admin downgrade to Basic removes the shop + the Page
+ok   the shop row is gone
+ok   removed by an admin → no 4-hour wait for the shop
+ok   the Page's wait from the seller's own earlier removal is kept as it was (an admin removal never makes it longer)
+ok   sql/200 runs while the switch is off
+ok   sql/200 a second time adds nothing (2 shops)
+ok   each copied shop has an active place
+ok   switch still off → seller A's numbers unchanged
+ok   sql/200 refuses once the switch is on
+ok   switch on: seller A = 2 of 1
+ok   seller A: TikTok first (older), the shop second (dated at the copy)
+ok   seller A: Shopee live → not covered; TikTok live → allowed
+ok   seller B (Pro): TikTok + Page + shop = 3 of 3
+ok   seller A's next connect of the same shop → existing (no refusal)
+ok   seller A: a different shop → full
+ok   guard: a changed live text → sql/199 refused, nothing changed
+ok   rollback runs
+ok   rollback a second time
+ok   rollback: account_seat_vacate = the live text again
+ok   rollback: account_total_used = the live text again
+ok   rollback: account_quota = the live text again
+ok   rollback: account_live_ranking = the live text again
+ok   rollback: admin_connected_accounts = the live text again
+ok   rollback: admin_seller_accounts = the live text again
+ok   rollback: admin_downgrade_remove = the live text again
+ok   rollback: my_feature_access = the live text again
+ok   rollback: the table is gone
+ok   rollback: the new functions are gone
+ok   rollback: no paste-link shop place left
+ok   rollback: the switch row and the preview logins are gone
+ok   sql/199 applies again after the rollback
+
+126 passed, 0 failed

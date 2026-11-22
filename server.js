@@ -47,6 +47,7 @@ import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbDiagHandler, FB_DIAG_PATH } from "./server/fbDiag.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
+import { createShopeeAccountGate } from "./server/shopeeAccount.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
 import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
 import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
@@ -2923,6 +2924,12 @@ try {
         const { error } = await serviceSb.from("shopee_beta").update({ shopee_uid: String(shopeeUid), shopee_region: region, last_connect_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_id", String(userId || ""));
         if (error) throw new Error("shopee_beta_update_failed");
       },
+      // sql/199 — Remove a registered Shopee shop (the seller's own row only); its 4-hour wait is the database's.
+      removeShop: async (userId, key) => {
+        const { data, error } = await serviceSb.from("shopee_link_shops").delete().eq("user_id", String(userId || "")).eq("account_key", String(key || "")).select("id");
+        if (error) throw new Error("shopee_link_remove_failed");
+        return Array.isArray(data) && data.length > 0;
+      },
       liveKey,
       emitComment: (sellerId, scopeKey, payload) => { void emitCommentScoped(sellerId, "Shopee", scopeKey, { ...payload, sellerId: emailIdOf(sellerId) }); },
       statusEmit: (sellerId, { connected, scopeKey, sessionId, reason }) => {
@@ -2930,7 +2937,13 @@ try {
       },
       log: (line) => console.log(line),
     });
-    shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate });
+    // sql/199 — the shop becomes one of the seller's accounts (preview / switch only; "off" = today's connect).
+    const accountGate = createShopeeAccountGate({
+      register: (userId, region, uid) => serviceSb.rpc("shopee_link_register", { p_user: String(userId || ""), p_region: region, p_uid: String(uid || "") }),
+      liveCheck: accountLiveCheck,
+      log: (line) => console.log(line),
+    });
+    shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate, accountGate });
     console.log("[SHOPEE-LINK] routes registered (switch: app_settings.shopee_live_enabled)");
   }
 } catch (e) {
@@ -3047,7 +3060,11 @@ app.post("/admin/accounts/stop-removed", requireAuth, requireAdmin, async (req, 
   const runtimes = {
     ...(fbRuntime ? { facebook: { stillConnected: gone("fb_pages", "page_id", String), stop: (uid, key) => fbRuntime.stopPoller(liveKey(uid, "Facebook", key), "removed") } } : {}),
     ...(igRuntime ? { instagram: { stillConnected: gone("ig_accounts", "ig_user_id", String), stop: (uid, key) => igRuntime.stopPoller(liveKey(uid, IG_PLATFORM, key), "removed") } } : {}),
-    ...(shopeeRuntime ? { shopee: { stillConnected: gone("shopee_shops", "shop_id", Number), stop: (uid, key) => shopeeRuntime.stopPoller(liveKey(uid, "Shopee", key), "removed") } } : {}),
+    // A Shopee key with ':' is a paste-link shop (sql/199, shopee_link_shops); without it an official-API shop.
+    ...(shopeeRuntime || shopeeLinkRuntime ? { shopee: {
+      stillConnected: (uid, key) => (String(key).includes(":") ? gone("shopee_link_shops", "account_key", String)(uid, key) : shopeeRuntime ? gone("shopee_shops", "shop_id", Number)(uid, key) : Promise.resolve(true)),
+      stop: (uid, key) => (String(key).includes(":") ? !!shopeeLinkRuntime && shopeeLinkRuntime.stopShop(uid, key, "removed") : !!shopeeRuntime && shopeeRuntime.stopPoller(liveKey(uid, "Shopee", key), "removed")),
+    } } : {}),
   };
   const out = await stopRemovedAccounts({ userId, items, runtimes });
   console.log(`[ADMIN] stop-removed admin=${req.sellerId} user=${userId} asked=${items.length} stopped=${out.stopped}`);

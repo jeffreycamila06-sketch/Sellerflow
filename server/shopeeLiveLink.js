@@ -19,6 +19,12 @@
 // VIEWER COMMENTS (2026-11-21): other viewers' comments arrive as content type 100 (the host's own as 101) — the
 // diagnostic showed them dropped as "no text". commentTextOf now reads type 100 the same way as 101, only when the
 // message has a sender uid and a real text; the payload, dedupe, cursor and timing are the ones type 101 always had.
+//
+// ACCOUNT STEP (2026-11-22, sql/199): after the host check, the route's `gate` (server.js) registers the shop as
+// one of the seller's accounts and asks the live rule. It answers {ok:true} to go on, or {ok:false, status,
+// code} to refuse (409 shop_limit / shop_locked / not_covered, 503 try_again). No gate, or a gate that answers
+// {ok:true} for a seller outside the preview ("off"), = exactly today's connect. POST /shopee/live/remove (only
+// when deps.removeShop is given) stops this seller's read of that shop, then removes the shop.
 import { createShopeeDiag } from "./shopeeDiag.js";
 
 export const SHOPEE_UA = "SellerFlowLive/1.0 (+https://www.sellerflowlive.com)"; // honest UA, no browser imitation
@@ -28,6 +34,7 @@ export const POLL_BACKOFF_MAX_MS = 60 * 1000;     // non-200 / code≠0 → 2×,
 export const MAX_CONSECUTIVE_FAILS = 10;          // then stop(unreachable)
 export const STATUS_RECHECK_MS = 60 * 1000;       // host_session status re-read cadence (live end)
 export const IDLE_STOP_MS = 10 * 60 * 1000;       // no comment for this long → check the live, stop if not live
+export const SHOP_KEY_RE = /^(tw|ph):[A-Za-z0-9_-]{1,64}$/; // a registered Shopee shop: '<region>:<host uid>' (sql/199)
 export const MAX_SESSION_MS = 12 * 60 * 60 * 1000;
 export const DEDUPE_CAP = 5000;
 export const MAX_REDIRECTS = 6;
@@ -146,6 +153,7 @@ export function createShopeeLinkRuntime(deps) {
     enabled = async () => false, // app_settings.shopee_live_enabled — fail-closed
     betaAllowed = async () => false, // (userId, email) → admin OR shopee_beta row not expired
     rememberAccount = async () => {},  // (userId, region, uid) → the Shopee account key (account seats)
+    removeShop = null,                 // (userId, key) → Promise<boolean removed>; null = no /shopee/live/remove route
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
     setLoop = (fn, ms) => setTimeout(fn, ms), clearLoop = (h) => clearTimeout(h),
     diag: diagOn = true,
@@ -285,10 +293,16 @@ export function createShopeeLinkRuntime(deps) {
     return true;
   }
   function stopAll() { for (const k of [...pollers.keys()]) stopPoller(k, "shutdown"); }
+  /** Stop this seller's read of one shop ('<region>:<uid>'); true when one was running. */
+  function stopShop(sellerId, key, reason = "removed") {
+    let did = false;
+    for (const [k, e] of [...pollers]) if (e.sellerId === sellerId && `${e.region}:${e.uid}` === key) did = stopPoller(k, reason) || did;
+    return did;
+  }
   function listPollers() { return [...pollers.values()].map((e) => ({ sellerId: e.sellerId, region: e.region, liveSessionId: e.liveSessionId, scopeKey: e.scopeKey })); }
 
   /** The whole connect decision, HTTP-free (so it is testable): returns { status, json }. */
-  async function connect({ sellerId, userId, email, shareLink, sessionId }) {
+  async function connect({ sellerId, userId, email, shareLink, sessionId, gate = null }) {
     if (!(await enabled().catch(() => false))) return { status: 503, json: { ok: false, error: "shopee_off" } };
     if (!(await betaAllowed(userId, email).catch(() => false))) return { status: 403, json: { ok: false, error: "no_beta" } };
     const link = await resolveLink(shareLink);
@@ -298,18 +312,38 @@ export function createShopeeLinkRuntime(deps) {
     if (!hs.ok) return { status: hs.error === "blocked" ? 503 : 502, json: { ok: false, error: hs.error } };
     const v = verifyHost(link, hs.body);
     if (!v.ok) return { status: v.error === "ended" ? 410 : 403, json: { ok: false, error: v.error } };
+    if (gate) {
+      let g;
+      try { g = await gate({ region: link.region, uid: v.uid }); } catch { g = { ok: false, status: 503, code: "try_again" }; }
+      if (!g || g.ok !== true) {
+        const code = String((g && g.code) || "try_again");
+        log(`[SHOPEE-ACCT] refuse seller=${sellerId} code=${code}`);
+        return { status: Number(g && g.status) || 503, json: { ok: false, error: code, ...((g && g.info) || {}) } };
+      }
+    }
     try { await rememberAccount(userId, link.region, v.uid); } catch (e) { log(`[SHOPEE-LINK] account remember failed seller=${sellerId}: ${e && e.message}`); }
     startPoller({ sellerId, userId, region: link.region, uid: v.uid, liveSessionId: v.sessionId, chatroomId: v.chatroomId, sessionId });
     return { status: 200, json: { ok: true, region: link.region, session_id: v.sessionId, uid: v.uid } };
   }
   function registerRoutes(app, requireAuth, extra = {}) {
-    const { requireConnectRate = (_req, _res, next) => next() } = extra;
+    const { requireConnectRate = (_req, _res, next) => next(), accountGate = null } = extra;
     app.post("/shopee/live/connect", requireAuth, requireConnectRate, async (req, res) => {
       const body = req.body || {};
-      const r = await connect({ sellerId: req.sellerId, userId: req.authUserId, email: req.userEmail || "", shareLink: String(body.shareLink || ""), sessionId: String(body.sessionId || "") });
+      const r = await connect({ sellerId: req.sellerId, userId: req.authUserId, email: req.userEmail || "", shareLink: String(body.shareLink || ""), sessionId: String(body.sessionId || ""), gate: accountGate ? (a) => accountGate(req, a) : null });
       return res.status(r.status).json(r.json);
     });
+    if (removeShop) {
+      app.post("/shopee/live/remove", requireAuth, async (req, res) => {
+        const key = String((req.body || {}).key || "").trim();
+        if (!SHOP_KEY_RE.test(key)) return res.status(400).json({ ok: false, error: "bad_request" });
+        const stopped = stopShop(req.sellerId, key, "removed");
+        let removed = false;
+        try { removed = (await removeShop(req.authUserId, key)) === true; } catch { return res.status(503).json({ ok: false, error: "try_again" }); }
+        log(`[SHOPEE-ACCT] remove seller=${req.sellerId} stopped=${stopped ? 1 : 0} removed=${removed ? 1 : 0}`);
+        return removed ? res.json({ ok: true, stopped }) : res.status(404).json({ ok: false, error: "not_found" });
+      });
+    }
   }
-  return { registerRoutes, connect, startPoller, stopPoller, stopAll, listPollers, pollOnce, resolveLink, hostSession, _pollers: pollers };
+  return { registerRoutes, connect, startPoller, stopPoller, stopShop, stopAll, listPollers, pollOnce, resolveLink, hostSession, _pollers: pollers };
 }
 function cryptoUuid() { try { return globalThis.crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; } }

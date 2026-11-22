@@ -47,7 +47,7 @@ Tap **Settings** in the bottom bar. You will see tiles:
 - **Log out** — logs out this device only.
 
 ## general-settings — General Settings
-Last checked: 2026-11-19
+Last checked: 2026-11-22
 Keywords: general settings, profile, shop name, phone, live setup, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料
 
 **Settings → General Settings** has these parts:
@@ -55,7 +55,7 @@ Keywords: general settings, profile, shop name, phone, live setup, live session,
 - **BASIC INFORMATION** — tap **Edit** to change **Shop name**, **Owner name** and **Phone**, then **Save changes**. Your email can't be changed here.
 - **LIVE SETUP** — tap **Live setup** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**, **Choose price before print**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
 - **APPEARANCE** — Theme (☀ Light / ☾ Dark), Accent color, Language, Currency.
-- **CHANNELS** — TikTok Live and Facebook Live rows. Tap one to manage your accounts.
+- **CHANNELS** — four boxes: **TikTok**, **Facebook**, **Instagram** and **Shopee**. A green dot means an account is added. Tap a box to manage its accounts. **Instagram** shows **Coming soon**. **Shopee** opens your Shopee shops (beta).
 - **Printer Settings** — tap **Printer**, then under **CHOOSE PRINTER** pick the WiFi receipt printer or the Bluetooth sticker printer.
 - **ACCOUNT** — **Subscription** (not shown on iPhone), **Support & user guide**, **Delete account**.
 
@@ -81,10 +81,16 @@ There are five plans. What the app shows per plan:
 - This guide does not quote prices. For prices, message Admin.
 
 ## account-limit — Account limit per plan
-Last checked: 2026-10-28
-Keywords: account limit, accounts, multi account, add account, limit reached, ilang account, dagdag account, 账号上限, 多帳號, 帳號數量
+Last checked: 2026-11-22
+Keywords: account limit, accounts, multi account, add account, limit reached, plan full, remove account, wait 4 hours, end your live first, ilang account, dagdag account, puno na, 账号上限, 多帳號, 帳號數量, 方案已滿
 
-Your plan sets how many live accounts you can have **in total across all live platforms**: Free 1, Basic 1, Plus 2, Pro 3, Master 5.
+Your plan sets how many live accounts you can have **in total across all live platforms** (TikTok, Facebook, Instagram and Shopee together): Free 1, Basic 1, Plus 2, Pro 3, Master 5. Each Shopee shop counts as one account.
+
+When your plan is full, a **Plan full** window shows your accounts:
+- Tap **Remove** next to one, then **Remove** again to confirm. Your orders and stickers stay.
+- An account that is live right now shows **End your live first** — end that live, then remove it.
+- Or tap **Upgrade plan** (on iPhone: **Contact Admin**).
+- After you remove an account, a **different** new account can be added only **4 hours** later ("Wait a little" shows the time left). Adding the same account back works right away.
 
 Messages you may see:
 - "Accounts used: 2 of 3" — your count.
@@ -215,7 +221,7 @@ Post orders are not in **Sales**, exports or **Send to TikTok**, and they do not
 
 ## connect-shopee — Shopee Live (beta)
 Last checked: 2026-11-22
-Keywords: shopee, shopee live, share link, copy link, beta, paste link, connected, reconnect, last link, another device, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph
+Keywords: shopee, shopee live, share link, copy link, beta, paste link, connected, reconnect, last link, another device, shopee shop, remove shop, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph
 
 Shopee Live is a **beta**. Admin turns it on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
 
@@ -226,6 +232,8 @@ When Shopee is on for you:
 4. Comments show within a few seconds. 1-Click, Enterprise, buyer numbers and stickers work the same as TikTok. While you are connected, the button says **✓ Connected**.
 5. When your live ends, the app stops by itself. For a new live, tap **Change link** and paste the new link.
 6. The box remembers the last link you connected on this phone ("Last link used. Paste a new one for a new live."). If the app was closed or the connection stopped during your live, open the Shopee tile and tap **Connect** once to continue. When your live ends, or when you log out, the box starts empty.
+
+Each Shopee shop counts as one account of your plan (see "Account limit per plan"). A new link from the same shop does not count again. To see or remove your shops: **Settings → General Settings → Shopee** → **Shopee shops** → **Remove**.
 
 Messages:
 - "Your Shopee live has ended." Start a new live and paste its link.
@@ -239,14 +247,17 @@ Messages:
 - "Shopee is not responding, try again." Wait a moment, then tap Connect once.
 - "Shopee Beta only — upgrade to use TikTok/Facebook." During the beta, a free plan can use Shopee only. Message Admin to upgrade.
 - "Shopee Beta ended — contact Admin." Your 30 days are over. Message Admin to continue.
+- "No room for this Shopee shop. Remove an account in Settings to add it." Your plan is full — remove an account or upgrade.
+- "You removed an account. A new Shopee shop can be added 4 hours after the removal." Wait until the time shown, then tap **Connect** again.
+- "This Shopee shop is outside your account limit. Remove an account in Settings to go live with it." Only your oldest accounts within your plan can go live.
 
 ## other-platforms — Instagram
-Last checked: 2026-10-27
+Last checked: 2026-11-22
 Keywords: instagram, ig, other platform, coming soon, wala pa, kailan, ig直播, 即将推出
 
 On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
 
-- **Instagram** shows **Coming soon** for most sellers and cannot be tapped. There is no date yet.
+- **Instagram** shows **Coming soon** for most sellers and cannot be tapped. There is no date yet. The Instagram box in **Settings → General Settings → CHANNELS** shows **Coming soon** too.
 - **Shopee** is a beta — see "Shopee Live (beta)".
 
 ## session-length — Choosing the session length
@@ -684,7 +695,7 @@ The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming
 There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.
 
 ## manage-accounts — Manage TikTok accounts (4-hour lock)
-Last checked: 2026-10-11
+Last checked: 2026-11-22
 Keywords: manage accounts, change username, tiktok username, locked, unlock, 4 hours, palitan account, naka-lock, 更改账号, 換帳號, 锁定
 
 Go to **Settings → General Settings → TikTok Live** (or **Manage / add accounts** on the Live screen). This opens **Manage TikTok channels**.
@@ -694,6 +705,7 @@ Go to **Settings → General Settings → TikTok Live** (or **Manage / add accou
 - When it unlocks you see **Change**. Tap it, and you have a short time to edit ("You can change this now — … left"). After saving, it locks again for 4 hours.
 - "This username was changed recently. Please try again later." means the 4 hours are not over.
 - Empty rows only go up to your plan's limit. For more, tap **Add TikTok — Multi Account** and message Admin on Telegram @SellerFlowLive.
+- When your plan is full, the **Plan full** window opens instead (see "Account limit per plan").
 
 ## password-reset — Forgot password
 Last checked: 2026-10-11
