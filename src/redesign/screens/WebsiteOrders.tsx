@@ -11,6 +11,9 @@ import { productImageUrl } from "../adapters/productImages";
 import { actionsFor, matchesFilter, wNo, type OrderAction, type OrderFilter, type WebsiteOrder } from "../adapters/websiteSeller";
 import { realOrdersApi, type OrdersApi } from "../adapters/websiteEditorApi";
 import { shareUrl } from "../../website/route";
+import CopyButton from "../components/CopyButton";
+import CopyFailNote from "../components/CopyFailNote";
+import { useCopyFeedback } from "../adapters/buttonFeedback";
 
 const FILTERS: OrderFilter[] = ["new", "check", "unpaid", "ship", "done", "cancelled", "all"];
 
@@ -122,10 +125,11 @@ function StatusPill({ o, t }: { o: WebsiteOrder; t: Record<string, string> }) {
   return <span data-testid="wor-status" style={{ fontSize: 11, fontWeight: 800, background: tone[0], color: tone[1], borderRadius: 999, padding: "2px 8px" }}>{o.status === "cancelled" && o.cancelReason === "auto" ? t.rd_wor_cancel_auto : t[`rd_wor_st_${o.status}`]}</span>;
 }
 
-function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onToast }: {
+function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip }: {
   o: WebsiteOrder; t: Record<string, string>; cur: string; blocked: boolean; link: string; api: OrdersApi; onClose: () => void; onAction: (a: OrderAction) => Promise<boolean>;
   onShip?: (courier: string, tracking: string) => Promise<boolean>; onToast: (m: string) => void;
 }) {
+  const copyFb = useCopyFeedback();
   const [shipForm, setShipForm] = useState(false);
   const [courier, setCourier] = useState(o.courier || "");
   const [tracking, setTracking] = useState(o.tracking || "");
@@ -227,7 +231,8 @@ function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onTo
         )}
 
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-          {link && <button type="button" data-testid="wor-link" onClick={() => { void navigator.clipboard?.writeText(link).catch(() => {}); onToast(t.rd_shop_od_copied); }} style={secBtn}>🔗 {t.rd_wor_link} · {t.rd_shop_od_copy}</button>}
+          {link && <CopyButton fb={copyFb} text={link} t={t} testid="wor-link" style={secBtn} label={<>🔗 {t.rd_wor_link} · {t.rd_shop_od_copy}</>} />}
+          <CopyFailNote fb={copyFb} t={t} what="link" testid="wor-copy-fail" style={{ marginTop: 0 }} />
           {blocked && <div data-testid="wor-blocked" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--danger)", textAlign: "center" }}>{t.rd_wor_blocked}</div>}
           <button type="button" data-testid={blocked ? "wor-unblock" : "wor-block"} onClick={() => void onAction(blocked ? "unblock" : "block")} style={{ ...secBtn, color: blocked ? "var(--text)" : "var(--danger)" }}>{blocked ? t.rd_wor_unblock : t.rd_wor_block}</button>
         </div>
