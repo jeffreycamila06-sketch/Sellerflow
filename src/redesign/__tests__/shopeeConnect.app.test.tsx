@@ -168,6 +168,18 @@ describe("Item 2 — one connect per tap burst", () => {
     expect(btn().textContent).toBe(t.rd_shp_connect);
     expect(btn().disabled).toBe(false);
   });
+  it("a same-moment double tap on the length picker → still ONE connect request", async () => {
+    H.status.v = { running: false, platform: null };
+    await mount();
+    await openBox();
+    typeLink(LINK);
+    fireEvent.click(btn());
+    await flush();
+    const oneDay = screen.getByTestId("session-pick-1");
+    act(() => { oneDay.click(); oneDay.click(); });
+    await flush();
+    expect(H.linkConnect.fn).toHaveBeenCalledTimes(1);
+  });
   it("no session running → the length picker opens; the box is back with the typed link and Connect is free", async () => {
     H.status.v = { running: false, platform: null };
     await mount();
@@ -257,6 +269,8 @@ describe("Item 3 — the stop line on the box", () => {
     await rerender();
     fireEvent.click(sourceButton());
     await flush();
+    expect(notice()).toBeNull();
+    typeLink("https://ph.shp.ee/NewLive99");                    // even with another link in the box (no ✓ Connected)
     expect(notice()).toBeNull();
   });
 });
