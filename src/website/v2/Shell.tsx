@@ -10,6 +10,7 @@ import { checkoutOf, freeOverOf, shipLabel, payLabel } from "../shipPay";
 import { SOCIAL_ORDER, socialUrl, chatHref } from "../shopLinks";
 import { BrandIcon, type BrandKey } from "../brandIcons";
 import { VIcon } from "./icons";
+import { useAboveKeyboard } from "./useAboveKeyboard";
 
 export type NavKey = "home" | "shop" | "cart" | "orders" | "saved" | "other";
 type T = Record<string, string>;
@@ -161,8 +162,10 @@ export function ChatSheet({ shop, onClose, text }: { shop: Shop; onClose: () => 
 }
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const t = useT() as unknown as T;
+  const layer = useRef<HTMLDivElement | null>(null);
+  useAboveKeyboard(layer);
   return (
-    <div className="v-sheet" role="dialog" aria-modal="true" aria-label={title} data-testid="shop-sheet" onClick={onClose}>
+    <div className="v-sheet" role="dialog" aria-modal="true" aria-label={title} data-testid="shop-sheet" onClick={onClose} ref={layer}>
       <div onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         {children}
