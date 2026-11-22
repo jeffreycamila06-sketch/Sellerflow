@@ -1,0 +1,22 @@
+CAUGHT keep-awake ignores Shopee
+CAUGHT app passes no Shopee to keep-awake
+CAUGHT no tap guard (same-moment double tap)
+CAUGHT busy only from the request (main's timing)
+CAUGHT no request guard
+CAUGHT ✓ Connected never shown
+CAUGHT ✓ Connected still tappable
+CAUGHT no Shopee socket-loss grace
+CAUGHT Shopee grace pushed later on every drop
+CAUGHT TikTok grace changed (must break the main comparison)
+CAUGHT stop reason not kept
+CAUGHT own restart shows 'another device'
+CAUGHT stop line not cleared at green
+CAUGHT link not saved after a good connect
+CAUGHT session_end does not clear the link
+CAUGHT 'ended' answer does not clear the link
+CAUGHT sign-out keeps the link
+CAUGHT one key for every seller
+CAUGHT storage error not caught
+CAUGHT 'Last link used' note never shown
+
+20/20 breaks caught

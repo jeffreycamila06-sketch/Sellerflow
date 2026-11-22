@@ -817,3 +817,10 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
    browser's page scrollbar is hidden; the class is removed when the screen closes. */
 html.pt-dragbar { scrollbar-width: none; }
 html.pt-dragbar::-webkit-scrollbar, html.pt-dragbar body::-webkit-scrollbar { display: none; }
+
+/* Shopee paste box (components/ShopeeLinkForm.tsx): the "✓ Connected" button (green outline) and the
+   orange stop line. Colours from the approved design; dark theme keeps the same contrast. */
+[data-redesign] .sfl-sh-connected { border: 1.5px solid #15803d; background: #e7f5ec; color: #15803d; cursor: default; }
+[data-redesign][data-theme="dark"] .sfl-sh-connected { border-color: #34d399; background: rgba(52,211,153,.12); color: #34d399; }
+[data-redesign] .sfl-sh-notice { color: #9a3412; background: #ffedd5; }
+[data-redesign][data-theme="dark"] .sfl-sh-notice { color: #fdba74; background: rgba(251,146,60,.16); }

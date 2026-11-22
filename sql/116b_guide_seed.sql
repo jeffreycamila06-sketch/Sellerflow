@@ -157,16 +157,22 @@ Post orders are not in **Sales**, exports or **Send to TikTok**, and they do not
 - Tap **Print new** to print stickers for the new buyers. Post stickers have **no buyer number** and show "Post" on each item line. Nothing prints by itself.
 - **My posts** shows each post as **Selling**, **Sold out** or **Ended**. There you can **End now** or **Edit** an item''s price and stock.
 - **If your plan ends**, your posts take no new orders and Posts is **view-only**: you can still see your post orders and **My posts**, but you cannot sell on a post, **Print new**, **Give** to a waiting buyer, **Edit** or **End now**. Renew before a post''s end date and it takes orders again, including comments buyers wrote in between.'),
-  ('connect-shopee', 'Shopee Live (beta)', '2026-10-28'::date, 'shopee, shopee live, share link, copy link, beta, paste link, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph', 'Shopee Live is a **beta**. Admin turns it on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
+  ('connect-shopee', 'Shopee Live (beta)', '2026-11-22'::date, 'shopee, shopee live, share link, copy link, beta, paste link, connected, reconnect, last link, another device, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph', 'Shopee Live is a **beta**. Admin turns it on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
 
 When Shopee is on for you:
 1. Start your live in the Shopee app.
 2. In the Shopee app open your live, tap **Share**, then **Copy link**.
-3. In SellerFlowLive tap **Live**, tap the **Shopee** tile, paste the link, then tap **Connect**.
-4. Comments show within a few seconds. 1-Click, Enterprise, buyer numbers and stickers work the same as TikTok.
+3. In SellerFlowLive tap **Live**, tap the **Shopee** tile, paste the link, then tap **Connect** once. It says **Connecting…** until it is done.
+4. Comments show within a few seconds. 1-Click, Enterprise, buyer numbers and stickers work the same as TikTok. While you are connected, the button says **✓ Connected**.
 5. When your live ends, the app stops by itself. For a new live, tap **Change link** and paste the new link.
+6. The box remembers the last link you connected on this phone ("Last link used. Paste a new one for a new live."). If the app was closed or the connection stopped during your live, open the Shopee tile and tap **Connect** once to continue. When your live ends, or when you log out, the box starts empty.
 
 Messages:
+- "Your Shopee live has ended." Start a new live and paste its link.
+- "Shopee stopped answering. Tap Connect to try again." Tap **Connect** once.
+- "Shopee was connected on another device." Your Shopee live now shows on another phone or computer. Only one can show it at a time. To use this one, tap **Connect** here.
+- "Connection was reset. Tap Connect to continue." Tap **Connect** once.
+- "Shopee live reached the time limit. Tap Connect to continue." Tap **Connect** once.
 - "Paste the link of YOUR OWN live." Only the link you copied from your own live works.
 - "Live has ended." Start a new live and paste its link.
 - "That doesn''t look like a Shopee live link." Copy the link again from the Shopee app.
