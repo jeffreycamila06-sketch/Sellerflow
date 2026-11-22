@@ -1,0 +1,302 @@
+{
+ "pairs": [
+  {
+   "what": "grey small text #6c7080 on white",
+   "fg": "#6c7080",
+   "bg": "#ffffff",
+   "ratio": 4.92
+  },
+  {
+   "what": "grey small text #6c7080 on the Marketplace page grey #f5f5f7",
+   "fg": "#6c7080",
+   "bg": "#f5f5f7",
+   "ratio": 4.52
+  },
+  {
+   "what": "grey small text #6c7080 on the grey note box #e7e7e7 (Ocean)",
+   "fg": "#6c7080",
+   "bg": "#e7e7e7",
+   "ratio": 3.98
+  },
+  {
+   "what": "white on Ocean band, left end #1f4fa8",
+   "fg": "#ffffff",
+   "bg": "#1f4fa8",
+   "ratio": 7.66
+  },
+  {
+   "what": "white on Ocean band, middle",
+   "fg": "#ffffff",
+   "bg": "#5556cf",
+   "ratio": 5.8
+  },
+  {
+   "what": "white on Ocean band, right end #8b5cf6",
+   "fg": "#ffffff",
+   "bg": "#8b5cf6",
+   "ratio": 4.23
+  },
+  {
+   "what": "old price red #dc2626 on white",
+   "fg": "#dc2626",
+   "bg": "#ffffff",
+   "ratio": 4.83
+  },
+  {
+   "what": "error red #dc2626 on white",
+   "fg": "#dc2626",
+   "bg": "#ffffff",
+   "ratio": 4.83
+  },
+  {
+   "what": "error red #dc2626 on dark page #0e0f12",
+   "fg": "#dc2626",
+   "bg": "#0e0f12",
+   "ratio": 3.97
+  },
+  {
+   "what": "green 'Verified seller' #16a34a on white",
+   "fg": "#16a34a",
+   "bg": "#ffffff",
+   "ratio": 3.3
+  },
+  {
+   "what": "green 'Free' / progress #16a34a on white",
+   "fg": "#16a34a",
+   "bg": "#ffffff",
+   "ratio": 3.3
+  },
+  {
+   "what": "amber 'Only N left' #d97706 on white",
+   "fg": "#d97706",
+   "bg": "#ffffff",
+   "ratio": 3.19
+  },
+  {
+   "what": "status pill orange #C2410C on #FFF7ED",
+   "fg": "#c2410c",
+   "bg": "#fff7ed",
+   "ratio": 4.88
+  },
+  {
+   "what": "status pill green #047857 on #ECFDF5",
+   "fg": "#047857",
+   "bg": "#ecfdf5",
+   "ratio": 5.21
+  },
+  {
+   "what": "Marketplace orange #ee4d2d on white (prices, links)",
+   "fg": "#ee4d2d",
+   "bg": "#ffffff",
+   "ratio": 3.66
+  },
+  {
+   "what": "white on Marketplace orange #ee4d2d (buttons, badges)",
+   "fg": "#ffffff",
+   "bg": "#ee4d2d",
+   "ratio": 3.66
+  },
+  {
+   "what": "LIVE pill: grey #6c7080 on red #e11d48 (what shows today)",
+   "fg": "#6c7080",
+   "bg": "#e11d48",
+   "ratio": 1.05
+  },
+  {
+   "what": "LIVE pill: white on red #e11d48 (what was meant)",
+   "fg": "#ffffff",
+   "bg": "#e11d48",
+   "ratio": 4.7
+  },
+  {
+   "what": "input border #e6e7ec against white (can you see the box?)",
+   "fg": "#e6e7ec",
+   "bg": "#ffffff",
+   "ratio": 1.23
+  },
+  {
+   "what": "order link text #374151 on Bold theme page #0e0f12",
+   "fg": "#374151",
+   "bg": "#0e0f12",
+   "ratio": 1.86
+  },
+  {
+   "what": "chat button white on LINE green #06c755",
+   "fg": "#ffffff",
+   "bg": "#06c755",
+   "ratio": 2.26
+  }
+ ],
+ "livePill": {
+  "color": "rgb(108, 112, 128)",
+  "background": "rgb(225, 29, 72)",
+  "fontSize": "12.5px"
+ },
+ "shopCss": {
+  "chars": 38625,
+  "classesInCss": 139,
+  "unusedClasses": [
+   ".v-scr",
+   ".v-hd",
+   ".v-vch",
+   ".v-vc",
+   ".v-rev",
+   ".v-rv",
+   ".v-stars",
+   ".v-dn",
+   ".v-nw",
+   ".v-bank"
+  ],
+  "unusedCount": 10
+ },
+ "search@320": {
+  "pill": "56x38",
+  "typingArea": "8x20",
+  "placeholder": "Search in Budgetukay"
+ },
+ "search@360": {
+  "pill": "96x38",
+  "typingArea": "48x20",
+  "placeholder": "Search in Budgetukay"
+ },
+ "search@390": {
+  "pill": "126x38",
+  "typingArea": "78x20",
+  "placeholder": "Search in Budgetukay"
+ },
+ "fabOverlap": {
+  "fab": "50x50 right 14px bottom 74px",
+  "controlsThatPassUnderIt": [
+   "brand-tile",
+   "brand-best-all",
+   "card-heart",
+   "card-quick",
+   "brand-sale-all",
+   "brand-cat",
+   "shop-live-go",
+   "brand-new-all"
+  ],
+  "count": 14
+ },
+ "checkoutError": {
+  "errorMessagesOnPage": 2,
+  "errorMessagesOnScreen": 0,
+  "markedFieldOnScreen": false,
+  "focusMovedTo": "co-place-phone",
+  "scrollYAfterTap": 420,
+  "ariaInvalidSet": false,
+  "describedBy": false
+ },
+ "tabStopsBrandHome": {
+  "stops": 119,
+  "unnamed": 18,
+  "top": [
+   [
+    "button",
+    18
+   ],
+   [
+    "shop-item",
+    18
+   ],
+   [
+    "card-heart",
+    18
+   ],
+   [
+    "card-photos",
+    18
+   ],
+   [
+    "card-quick",
+    14
+   ],
+   [
+    "brand-cat",
+    7
+   ],
+   [
+    "a",
+    5
+   ],
+   [
+    "summary",
+    3
+   ]
+  ]
+ },
+ "seePolicyKeyboard": {
+  "opensWithEnter": false,
+  "opensWithSpace": false
+ },
+ "dark:midnight-look:home": [
+  {
+   "pair": "#9a9eaa on #e11d48",
+   "ratio": 1.75,
+   "count": 1,
+   "eg": [
+    "v-pill \"● LIVE\""
+   ]
+  }
+ ],
+ "dark:midnight-look:product": [],
+ "dark:midnight-look:checkout": [
+  {
+   "pair": "#6b7280 on #191b21",
+   "ratio": 3.56,
+   "count": 8,
+   "eg": [
+    "DIV \"Filled in from this devi\"",
+    "SPAN \"#\"",
+    "SPAN \"123456\""
+   ]
+  }
+ ],
+ "dark:midnight-look:order": [
+  {
+   "pair": "#6b7280 on #191b21",
+   "ratio": 3.56,
+   "count": 8,
+   "eg": [
+    "od-countdown \"Auto-cancels in\"",
+    "SPAN \":\"",
+    "SPAN \":\""
+   ]
+  }
+ ],
+ "dark:bold-theme:home": [
+  {
+   "pair": "#9a9eaa on #e11d48",
+   "ratio": 1.75,
+   "count": 1,
+   "eg": [
+    "v-pill \"● LIVE\""
+   ]
+  }
+ ],
+ "dark:bold-theme:product": [],
+ "dark:bold-theme:checkout": [
+  {
+   "pair": "#6b7280 on #191b21",
+   "ratio": 3.56,
+   "count": 8,
+   "eg": [
+    "DIV \"Filled in from this devi\"",
+    "SPAN \"#\"",
+    "SPAN \"123456\""
+   ]
+  }
+ ],
+ "dark:bold-theme:order": [
+  {
+   "pair": "#6b7280 on #191b21",
+   "ratio": 3.56,
+   "count": 8,
+   "eg": [
+    "od-countdown \"Auto-cancels in\"",
+    "SPAN \":\"",
+    "SPAN \":\""
+   ]
+  }
+ ]
+}

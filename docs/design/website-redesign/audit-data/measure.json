@@ -1,0 +1,5007 @@
+{
+ "brand-home@w320": {
+  "viewport": {
+   "w": 320,
+   "h": 640
+  },
+  "scroll": {
+   "docW": 320,
+   "docH": 4318,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 95,
+   "under44": 62,
+   "under24": 9,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 7,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-va[brand-best-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "button.v-va[brand-sale-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "button.v-va[brand-new-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 16,
+     "label": "Language"
+    },
+    {
+     "n": "summary",
+     "count": 3,
+     "w": 266,
+     "h": 19,
+     "label": "How long is shipping?"
+    },
+    {
+     "n": "button",
+     "count": 8,
+     "w": 71,
+     "h": 24,
+     "label": "All products"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 139,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 18,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 14,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-qplus[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-btn.v-w",
+     "count": 1,
+     "w": 102,
+     "h": 38,
+     "label": "Shop tops"
+    },
+    {
+     "n": "a.v-btn[shop-live-go]",
+     "count": 1,
+     "w": 130,
+     "h": 41,
+     "label": "Follow the live"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 207,
+   "onPictureOrGradient": 2,
+   "sizes": [
+    "10.5px×5",
+    "11px×9",
+    "11.5px×23",
+    "12px×26",
+    "12.5px×31",
+    "13px×33",
+    "13.5px×29",
+    "14.5px×18",
+    "15px×1",
+    "15.5px×1",
+    "17px×1",
+    "18px×3",
+    "19px×7",
+    "20px×1",
+    "21px×18",
+    "31px×1"
+   ],
+   "under12": 37,
+   "distinctSizes": 16
+  },
+  "contrastFails": [
+   {
+    "pair": "#ffffff on #ffffff",
+    "ratio": 1,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     17
+    ],
+    "eg": [
+     "span[shop-name] \"Budgetukay\""
+    ]
+   },
+   {
+    "pair": "#6c7080 on #e11d48",
+    "ratio": 1.05,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     12.5
+    ],
+    "eg": [
+     "span.v-pill \"● LIVE\""
+    ]
+   },
+   {
+    "pair": "#16a34a on #ffffff",
+    "ratio": 3.3,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.5
+    ],
+    "eg": [
+     "span[shop-verified] \"✓\"",
+     "span[shop-verified] \"Verified seller\""
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Friday Drop: 60 new pieces",
+   "H3 Best sellers",
+   "H3 On sale",
+   "H3 Bundle any 3 tops — save NT$",
+   "H3 Shop by category",
+   "H3 New arrivals",
+   "H3 About Budgetukay ✓ Verified ",
+   "H3 How to order",
+   "H3 Good to know"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:1 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 63,
+   "lazy": 63,
+   "noAlt": 0,
+   "emptyAlt": 63,
+   "withAlt": [],
+   "noSize": 63,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 611,
+   "styleTags": 4,
+   "inlineStyled": 97,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-home@iphone390": {
+  "viewport": {
+   "w": 390,
+   "h": 664
+  },
+  "scroll": {
+   "docW": 390,
+   "docH": 4460,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 95,
+   "under44": 62,
+   "under24": 9,
+   "small": [
+    {
+     "n": "button.v-va[brand-best-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "button.v-va[brand-sale-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "button.v-va[brand-new-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 16,
+     "label": "Language"
+    },
+    {
+     "n": "summary",
+     "count": 3,
+     "w": 336,
+     "h": 19,
+     "label": "How long is shipping?"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 77,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button",
+     "count": 8,
+     "w": 71,
+     "h": 24,
+     "label": "All products"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 139,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 18,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 14,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-qplus[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-btn.v-w",
+     "count": 1,
+     "w": 102,
+     "h": 38,
+     "label": "Shop tops"
+    },
+    {
+     "n": "a.v-btn[shop-live-go]",
+     "count": 1,
+     "w": 130,
+     "h": 41,
+     "label": "Follow the live"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 207,
+   "onPictureOrGradient": 2,
+   "sizes": [
+    "10.5px×5",
+    "11px×9",
+    "11.5px×23",
+    "12px×26",
+    "12.5px×31",
+    "13px×33",
+    "13.5px×29",
+    "14.5px×18",
+    "15px×1",
+    "15.5px×1",
+    "17px×1",
+    "18px×3",
+    "19px×7",
+    "20px×1",
+    "21px×18",
+    "31px×1"
+   ],
+   "under12": 37,
+   "distinctSizes": 16
+  },
+  "contrastFails": [
+   {
+    "pair": "#ffffff on #ffffff",
+    "ratio": 1,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     17
+    ],
+    "eg": [
+     "span[shop-name] \"Budgetukay\""
+    ]
+   },
+   {
+    "pair": "#6c7080 on #e11d48",
+    "ratio": 1.05,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     12.5
+    ],
+    "eg": [
+     "span.v-pill \"● LIVE\""
+    ]
+   },
+   {
+    "pair": "#16a34a on #ffffff",
+    "ratio": 3.3,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.5
+    ],
+    "eg": [
+     "span[shop-verified] \"✓\"",
+     "span[shop-verified] \"Verified seller\""
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Friday Drop: 60 new pieces",
+   "H3 Best sellers",
+   "H3 On sale",
+   "H3 Bundle any 3 tops — save NT$",
+   "H3 Shop by category",
+   "H3 New arrivals",
+   "H3 About Budgetukay ✓ Verified ",
+   "H3 How to order",
+   "H3 Good to know"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:1 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 63,
+   "lazy": 63,
+   "noAlt": 0,
+   "emptyAlt": 63,
+   "withAlt": [],
+   "noSize": 63,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 611,
+   "styleTags": 4,
+   "inlineStyled": 97,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-home@laptop1280": {
+  "viewport": {
+   "w": 1280,
+   "h": 860
+  },
+  "scroll": {
+   "docW": 1280,
+   "docH": 4063,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 101,
+   "under44": 73,
+   "under24": 18,
+   "small": [
+    {
+     "n": "button.v-va[brand-best-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "button.v-va[brand-sale-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "button.v-va[brand-new-all]",
+     "count": 1,
+     "w": 41,
+     "h": 16,
+     "label": "See all"
+    },
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 16,
+     "label": "Language"
+    },
+    {
+     "n": "button",
+     "count": 17,
+     "w": 79,
+     "h": 19,
+     "label": "All products"
+    },
+    {
+     "n": "summary",
+     "count": 3,
+     "w": 1094,
+     "h": 19,
+     "label": "How long is shipping?"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 472,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 18,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button[brand-best-prev]",
+     "count": 1,
+     "w": 32,
+     "h": 32,
+     "label": "Back"
+    },
+    {
+     "n": "button[brand-best-next]",
+     "count": 1,
+     "w": 32,
+     "h": 32,
+     "label": "Next"
+    },
+    {
+     "n": "button[brand-sale-prev]",
+     "count": 1,
+     "w": 32,
+     "h": 32,
+     "label": "Back"
+    },
+    {
+     "n": "button[brand-sale-next]",
+     "count": 1,
+     "w": 32,
+     "h": 32,
+     "label": "Next"
+    },
+    {
+     "n": "button[brand-new-prev]",
+     "count": 1,
+     "w": 32,
+     "h": 32,
+     "label": "Back"
+    },
+    {
+     "n": "button[brand-new-next]",
+     "count": 1,
+     "w": 32,
+     "h": 32,
+     "label": "Next"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 14,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 168,
+     "h": 36,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-btn.v-w",
+     "count": 1,
+     "w": 102,
+     "h": 38,
+     "label": "Shop tops"
+    },
+    {
+     "n": "a.v-btn[shop-live-go]",
+     "count": 1,
+     "w": 130,
+     "h": 41,
+     "label": "Follow the live"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 213,
+   "onPictureOrGradient": 2,
+   "sizes": [
+    "11px×9",
+    "11.5px×23",
+    "12px×18",
+    "12.5px×31",
+    "13px×41",
+    "13.5px×35",
+    "14.5px×18",
+    "15px×3",
+    "15.5px×1",
+    "16px×1",
+    "18px×3",
+    "19px×1",
+    "21px×15",
+    "24px×6",
+    "25px×6",
+    "28px×1",
+    "54px×1"
+   ],
+   "under12": 32,
+   "distinctSizes": 17
+  },
+  "contrastFails": [
+   {
+    "pair": "#ffffff on #ffffff",
+    "ratio": 1,
+    "need": 3,
+    "count": 10,
+    "px": [
+     21,
+     13.5
+    ],
+    "eg": [
+     "span[shop-name] \"Budgetukay\"",
+     "button \"All products\"",
+     "button \"Tops\"",
+     "button \"Jackets\""
+    ]
+   },
+   {
+    "pair": "#6c7080 on #e11d48",
+    "ratio": 1.05,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     12.5
+    ],
+    "eg": [
+     "span.v-pill \"● LIVE\""
+    ]
+   },
+   {
+    "pair": "#16a34a on #ffffff",
+    "ratio": 3.3,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.5
+    ],
+    "eg": [
+     "span[shop-verified] \"✓\"",
+     "span[shop-verified] \"Verified seller\""
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Friday Drop: 60 new pieces",
+   "H3 Best sellers",
+   "H3 On sale",
+   "H3 Bundle any 3 tops — save NT$",
+   "H3 Shop by category",
+   "H3 New arrivals",
+   "H3 About Budgetukay ✓ Verified ",
+   "H3 How to order",
+   "H3 Good to know"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:1 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 63,
+   "lazy": 63,
+   "noAlt": 0,
+   "emptyAlt": 63,
+   "withAlt": [],
+   "noSize": 63,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 611,
+   "styleTags": 4,
+   "inlineStyled": 97,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ],
+  "keyboard": [
+   {
+    "n": "button[shop-logo]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Budgetukay"
+   },
+   {
+    "n": "input[shop-search]",
+    "ring": false,
+    "outline": "none 0px rgb(255, 255, 255)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Search"
+   },
+   {
+    "n": "button[shop-saved-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Saved"
+   },
+   {
+    "n": "button[shop-cart-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Cart"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "All products"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bottoms"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Hoodies"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Dresses"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bags & Caps"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Shoes"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Track my order"
+   },
+   {
+    "n": "button[brand-tile]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button[brand-tile]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button[brand-best-all]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "See all"
+   },
+   {
+    "n": "button[brand-best-prev]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Back"
+   },
+   {
+    "n": "button[brand-best-next]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Next"
+   },
+   {
+    "n": "div[shop-item]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Korean Oversized Hoo"
+   },
+   {
+    "n": "button[card-heart]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Save"
+   },
+   {
+    "n": "div[card-photos]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "button[card-quick]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Add to cart"
+   },
+   {
+    "n": "div[shop-item]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Washed Dad Cap"
+   },
+   {
+    "n": "button[card-heart]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Save"
+   },
+   {
+    "n": "div[card-photos]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "button[card-quick]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Add to cart"
+   },
+   {
+    "n": "div[shop-item]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Vintage Sport Tee — "
+   },
+   {
+    "n": "button[card-heart]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Save"
+   },
+   {
+    "n": "div[card-photos]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "button[card-quick]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Add to cart"
+   }
+  ]
+ },
+ "brand-product@w320": {
+  "viewport": {
+   "w": 320,
+   "h": 640
+  },
+  "scroll": {
+   "docW": 320,
+   "docH": 2375,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 56,
+   "under44": 46,
+   "under24": 6,
+   "small": [
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 16,
+     "label": "Language"
+    },
+    {
+     "n": "button",
+     "count": 11,
+     "w": 34,
+     "h": 17,
+     "label": "Home"
+    },
+    {
+     "n": "button[pd-size-guide]",
+     "count": 1,
+     "w": 161,
+     "h": 18,
+     "label": "Size guide & measurement"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 70,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 6,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-chip[pd-save]",
+     "count": 1,
+     "w": 74,
+     "h": 32,
+     "label": "♡ Save"
+    },
+    {
+     "n": "u",
+     "count": 1,
+     "w": 238,
+     "h": 32,
+     "label": "see policy"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-qplus[card-quick]",
+     "count": 2,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-opt[pd-opt]",
+     "count": 6,
+     "w": 87,
+     "h": 36,
+     "label": "Purple"
+    },
+    {
+     "n": "button[pd-plus]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "+"
+    },
+    {
+     "n": "button.v-ib[pd-chat]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Chat"
+    },
+    {
+     "n": "button.v-btn[pd-buy]",
+     "count": 1,
+     "w": 109,
+     "h": 42,
+     "label": "Buy now"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 120,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "11px×12",
+    "11.5px×12",
+    "12px×23",
+    "12.5px×17",
+    "13px×32",
+    "13.5px×4",
+    "14px×1",
+    "14.5px×6",
+    "15px×2",
+    "18px×2",
+    "19px×1",
+    "21px×7",
+    "24px×1"
+   ],
+   "under12": 24,
+   "distinctSizes": 13
+  },
+  "contrastFails": [
+   {
+    "pair": "#a2a3a4 on #ffffff",
+    "ratio": 2.53,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     13
+    ],
+    "eg": [
+     "button.v-opt[pd-opt] \"XL\" (disabled)"
+    ]
+   },
+   {
+    "pair": "#979799 on #ffffff",
+    "ratio": 2.92,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     13.5
+    ],
+    "eg": [
+     "button.v-btn.v-o[pd-add] \"Add to cart\" (disabled)"
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Vintage Sport Tee — Japan pi",
+   "H3 You may also like"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 24,
+   "lazy": 18,
+   "noAlt": 0,
+   "emptyAlt": 23,
+   "withAlt": [
+    "Vintage Sport Tee — Japan pick"
+   ],
+   "noSize": 24,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "54px box ← p1.jpg",
+    "54px box ← p1b.jpg",
+    "54px box ← p1c.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [
+   "button.v-on \"1\"",
+   "button \"2\"",
+   "button \"3\"",
+   "button \"−\"",
+   "button[pd-plus] \"+\""
+  ],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 329,
+   "styleTags": 4,
+   "inlineStyled": 52,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-product@iphone390": {
+  "viewport": {
+   "w": 390,
+   "h": 664
+  },
+  "scroll": {
+   "docW": 390,
+   "docH": 2359,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 56,
+   "under44": 46,
+   "under24": 7,
+   "small": [
+    {
+     "n": "u",
+     "count": 1,
+     "w": 57,
+     "h": 15,
+     "label": "see policy"
+    },
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 16,
+     "label": "Language"
+    },
+    {
+     "n": "button",
+     "count": 11,
+     "w": 34,
+     "h": 17,
+     "label": "Home"
+    },
+    {
+     "n": "button[pd-size-guide]",
+     "count": 1,
+     "w": 161,
+     "h": 18,
+     "label": "Size guide & measurement"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 140,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 6,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-chip[pd-save]",
+     "count": 1,
+     "w": 74,
+     "h": 32,
+     "label": "♡ Save"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-qplus[card-quick]",
+     "count": 2,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-opt[pd-opt]",
+     "count": 6,
+     "w": 87,
+     "h": 36,
+     "label": "Purple"
+    },
+    {
+     "n": "button[pd-plus]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "+"
+    },
+    {
+     "n": "button.v-ib[pd-chat]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Chat"
+    },
+    {
+     "n": "button.v-btn[pd-buy]",
+     "count": 1,
+     "w": 144,
+     "h": 42,
+     "label": "Buy now"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 120,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "11px×12",
+    "11.5px×12",
+    "12px×23",
+    "12.5px×17",
+    "13px×32",
+    "13.5px×4",
+    "14px×1",
+    "14.5px×6",
+    "15px×2",
+    "18px×2",
+    "19px×1",
+    "21px×7",
+    "24px×1"
+   ],
+   "under12": 24,
+   "distinctSizes": 13
+  },
+  "contrastFails": [
+   {
+    "pair": "#a2a3a4 on #ffffff",
+    "ratio": 2.53,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     13
+    ],
+    "eg": [
+     "button.v-opt[pd-opt] \"XL\" (disabled)"
+    ]
+   },
+   {
+    "pair": "#979799 on #ffffff",
+    "ratio": 2.92,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     13.5
+    ],
+    "eg": [
+     "button.v-btn.v-o[pd-add] \"Add to cart\" (disabled)"
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Vintage Sport Tee — Japan pi",
+   "H3 You may also like"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 24,
+   "lazy": 18,
+   "noAlt": 0,
+   "emptyAlt": 23,
+   "withAlt": [
+    "Vintage Sport Tee — Japan pick"
+   ],
+   "noSize": 24,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "54px box ← p1.jpg",
+    "54px box ← p1b.jpg",
+    "54px box ← p1c.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [
+   "button.v-on \"1\"",
+   "button \"2\"",
+   "button \"3\"",
+   "button \"−\"",
+   "button[pd-plus] \"+\""
+  ],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 329,
+   "styleTags": 4,
+   "inlineStyled": 52,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-product@laptop1280": {
+  "viewport": {
+   "w": 1280,
+   "h": 860
+  },
+  "scroll": {
+   "docW": 1280,
+   "docH": 1657,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 62,
+   "under44": 51,
+   "under24": 15,
+   "small": [
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 16,
+     "label": "Language"
+    },
+    {
+     "n": "button[pd-size-guide]",
+     "count": 1,
+     "w": 161,
+     "h": 18,
+     "label": "Size guide & measurement"
+    },
+    {
+     "n": "button",
+     "count": 20,
+     "w": 79,
+     "h": 19,
+     "label": "All products"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 472,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 6,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-chip[pd-save]",
+     "count": 1,
+     "w": 74,
+     "h": 31,
+     "label": "♡ Save"
+    },
+    {
+     "n": "u",
+     "count": 1,
+     "w": 471,
+     "h": 32,
+     "label": "see policy"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 168,
+     "h": 36,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-opt[pd-opt]",
+     "count": 6,
+     "w": 87,
+     "h": 36,
+     "label": "Purple"
+    },
+    {
+     "n": "button[pd-plus]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "+"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 128,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "11px×12",
+    "11.5px×12",
+    "12px×23",
+    "12.5px×17",
+    "13px×32",
+    "13.5px×13",
+    "14px×1",
+    "14.5px×6",
+    "15px×2",
+    "18px×2",
+    "21px×5",
+    "24px×1",
+    "25px×1",
+    "29px×1"
+   ],
+   "under12": 24,
+   "distinctSizes": 14
+  },
+  "contrastFails": [
+   {
+    "pair": "#a2a3a4 on #ffffff",
+    "ratio": 2.53,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     13
+    ],
+    "eg": [
+     "button.v-opt[pd-opt] \"XL\" (disabled)"
+    ]
+   },
+   {
+    "pair": "#979799 on #ffffff",
+    "ratio": 2.92,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     13.5
+    ],
+    "eg": [
+     "button.v-btn.v-o[pd-add-wide] \"Add to cart\" (disabled)"
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Vintage Sport Tee — Japan pi",
+   "H3 You may also like"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 24,
+   "lazy": 18,
+   "noAlt": 0,
+   "emptyAlt": 23,
+   "withAlt": [
+    "Vintage Sport Tee — Japan pick"
+   ],
+   "noSize": 24,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "54px box ← p1.jpg",
+    "54px box ← p1b.jpg",
+    "54px box ← p1c.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [
+   "button.v-on \"1\"",
+   "button \"2\"",
+   "button \"3\"",
+   "button \"−\"",
+   "button[pd-plus] \"+\""
+  ],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 329,
+   "styleTags": 4,
+   "inlineStyled": 52,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ],
+  "keyboard": [
+   {
+    "n": "button[shop-back]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Back"
+   },
+   {
+    "n": "button[shop-logo]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Budgetukay"
+   },
+   {
+    "n": "input[shop-search]",
+    "ring": false,
+    "outline": "none 0px rgb(23, 24, 28)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Search"
+   },
+   {
+    "n": "button[shop-saved-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Saved"
+   },
+   {
+    "n": "button[shop-cart-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Cart"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "All products"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bottoms"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Hoodies"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Dresses"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bags & Caps"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Shoes"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Track my order"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Home"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "div",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "1"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "2"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "3"
+   },
+   {
+    "n": "button[pd-opt]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Purple"
+   },
+   {
+    "n": "button[pd-opt]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Black"
+   }
+  ]
+ },
+ "brand-cart@w320": {
+  "viewport": {
+   "w": 320,
+   "h": 640
+  },
+  "scroll": {
+   "docW": 320,
+   "docH": 1018,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 30,
+   "under44": 24,
+   "under24": 1,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 70,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-x[cart-remove]",
+     "count": 2,
+     "w": 46,
+     "h": 28,
+     "label": "Remove"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 6,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-qplus[card-quick]",
+     "count": 2,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button",
+     "count": 2,
+     "w": 36,
+     "h": 36,
+     "label": "−"
+    },
+    {
+     "n": "button[cart-plus]",
+     "count": 2,
+     "w": 36,
+     "h": 36,
+     "label": "+"
+    },
+    {
+     "n": "button.v-btn[cart-checkout-phone]",
+     "count": 1,
+     "w": 152,
+     "h": 42,
+     "label": "Checkout (2)"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 70,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "10px×1",
+    "11.5px×4",
+    "11.7px×1",
+    "12px×18",
+    "12.5px×3",
+    "13px×8",
+    "13.5px×12",
+    "14px×2",
+    "14.5px×6",
+    "15px×1",
+    "16px×1",
+    "17px×3",
+    "18px×4",
+    "21px×6"
+   ],
+   "under12": 6,
+   "distinctSizes": 14
+  },
+  "contrastFails": [],
+  "headings": [
+   "H3 Goes well with"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 20,
+   "lazy": 18,
+   "noAlt": 0,
+   "emptyAlt": 20,
+   "withAlt": [],
+   "noSize": 20,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "74px box ← p4.jpg",
+    "74px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [
+   "button \"−\"",
+   "button[cart-plus] \"+\"",
+   "button \"−\"",
+   "button[cart-plus] \"+\""
+  ],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 228,
+   "styleTags": 4,
+   "inlineStyled": 35,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-cart@iphone390": {
+  "viewport": {
+   "w": 390,
+   "h": 664
+  },
+  "scroll": {
+   "docW": 390,
+   "docH": 1019,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 30,
+   "under44": 24,
+   "under24": 1,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 140,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-x[cart-remove]",
+     "count": 2,
+     "w": 46,
+     "h": 28,
+     "label": "Remove"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 6,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-qplus[card-quick]",
+     "count": 2,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button",
+     "count": 2,
+     "w": 36,
+     "h": 36,
+     "label": "−"
+    },
+    {
+     "n": "button[cart-plus]",
+     "count": 2,
+     "w": 36,
+     "h": 36,
+     "label": "+"
+    },
+    {
+     "n": "button.v-btn[cart-checkout-phone]",
+     "count": 1,
+     "w": 187,
+     "h": 42,
+     "label": "Checkout (2)"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 70,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "10px×1",
+    "11.5px×4",
+    "11.7px×1",
+    "12px×18",
+    "12.5px×3",
+    "13px×8",
+    "13.5px×12",
+    "14px×2",
+    "14.5px×6",
+    "15px×1",
+    "16px×1",
+    "17px×3",
+    "18px×4",
+    "21px×6"
+   ],
+   "under12": 6,
+   "distinctSizes": 14
+  },
+  "contrastFails": [],
+  "headings": [
+   "H3 Goes well with"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 20,
+   "lazy": 18,
+   "noAlt": 0,
+   "emptyAlt": 20,
+   "withAlt": [],
+   "noSize": 20,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "74px box ← p4.jpg",
+    "74px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [
+   "button \"−\"",
+   "button[cart-plus] \"+\"",
+   "button \"−\"",
+   "button[cart-plus] \"+\""
+  ],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 228,
+   "styleTags": 4,
+   "inlineStyled": 35,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-cart@laptop1280": {
+  "viewport": {
+   "w": 1280,
+   "h": 860
+  },
+  "scroll": {
+   "docW": 1280,
+   "docH": 860,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 37,
+   "under44": 30,
+   "under24": 10,
+   "small": [
+    {
+     "n": "button",
+     "count": 11,
+     "w": 79,
+     "h": 19,
+     "label": "All products"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 472,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-x[cart-remove]",
+     "count": 2,
+     "w": 46,
+     "h": 28,
+     "label": "Remove"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 6,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qplus.v-qany[card-quick]",
+     "count": 4,
+     "w": 34,
+     "h": 34,
+     "label": "Add to cart"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 168,
+     "h": 36,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button[cart-plus]",
+     "count": 2,
+     "w": 36,
+     "h": 36,
+     "label": "+"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 76,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "10px×1",
+    "11.5px×4",
+    "11.7px×1",
+    "12px×17",
+    "12.5px×3",
+    "13px×8",
+    "13.5px×21",
+    "14px×2",
+    "14.5px×6",
+    "15px×1",
+    "16px×1",
+    "17px×2",
+    "18px×4",
+    "21px×5"
+   ],
+   "under12": 6,
+   "distinctSizes": 14
+  },
+  "contrastFails": [],
+  "headings": [
+   "H3 Goes well with"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 20,
+   "lazy": 18,
+   "noAlt": 0,
+   "emptyAlt": 20,
+   "withAlt": [],
+   "noSize": 20,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "74px box ← p4.jpg",
+    "74px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [
+   "button \"−\"",
+   "button[cart-plus] \"+\"",
+   "button \"−\"",
+   "button[cart-plus] \"+\""
+  ],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 228,
+   "styleTags": 4,
+   "inlineStyled": 35,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ],
+  "keyboard": [
+   {
+    "n": "button[shop-back]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Back"
+   },
+   {
+    "n": "button[shop-logo]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Budgetukay"
+   },
+   {
+    "n": "input[shop-search]",
+    "ring": false,
+    "outline": "none 0px rgb(23, 24, 28)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Search"
+   },
+   {
+    "n": "button[shop-saved-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Saved"
+   },
+   {
+    "n": "button[shop-cart-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Cart"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "All products"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bottoms"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Hoodies"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Dresses"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bags & Caps"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Shoes"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Track my order"
+   },
+   {
+    "n": "button[cart-plus]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "+"
+   },
+   {
+    "n": "button[cart-remove]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Remove"
+   },
+   {
+    "n": "button[cart-remove]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Remove"
+   },
+   {
+    "n": "div[shop-item]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Vintage Sport Tee — "
+   },
+   {
+    "n": "button[card-heart]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Save"
+   },
+   {
+    "n": "div[card-photos]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "button[card-quick]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Add to cart"
+   },
+   {
+    "n": "div[shop-item]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Straight-leg Denim, "
+   }
+  ]
+ },
+ "brand-checkout@w320": {
+  "viewport": {
+   "w": 320,
+   "h": 640
+  },
+  "scroll": {
+   "docW": 320,
+   "docH": 1797,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 18,
+   "under44": 8,
+   "under24": 1,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 70,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button[co-not-you]",
+     "count": 1,
+     "w": 67,
+     "h": 36,
+     "label": "Not you?"
+    },
+    {
+     "n": "button",
+     "count": 1,
+     "w": 59,
+     "h": 36,
+     "label": "Change"
+    },
+    {
+     "n": "button.v-btn[co-place-phone]",
+     "count": 1,
+     "w": 152,
+     "h": 42,
+     "label": "Place order"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 61,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "10px×1",
+    "11.3px×6",
+    "11.5px×2",
+    "12px×11",
+    "12.5px×8",
+    "13px×7",
+    "13.5px×21",
+    "14px×1",
+    "15px×1",
+    "17px×3"
+   ],
+   "under12": 9,
+   "distinctSizes": 10
+  },
+  "contrastFails": [
+   {
+    "pair": "#6c7080 on #e7e7e7",
+    "ratio": 3.98,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.3
+    ],
+    "eg": [
+     "small \"Pick up at any 7-11 · 2–3 \"",
+     "small \"Pay first, then send your \""
+    ]
+   }
+  ],
+  "headings": [],
+  "hiddenH1": 1,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 2,
+   "lazy": 0,
+   "noAlt": 0,
+   "emptyAlt": 2,
+   "withAlt": [],
+   "noSize": 2,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "44px box ← p4.jpg",
+    "44px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 2
+  },
+  "noName": [
+   "textarea[co-note]"
+  ],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "input[co-name]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": "name"
+   },
+   {
+    "n": "input[co-phone]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": "tel"
+   },
+   {
+    "n": "input[co-contact]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "textarea[co-note]",
+    "label": false,
+    "required": false,
+    "invalidAttr": false,
+    "type": "textarea",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 162,
+   "styleTags": 4,
+   "inlineStyled": 42,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-checkout@iphone390": {
+  "viewport": {
+   "w": 390,
+   "h": 664
+  },
+  "scroll": {
+   "docW": 390,
+   "docH": 1732,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 18,
+   "under44": 8,
+   "under24": 1,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 140,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button[co-not-you]",
+     "count": 1,
+     "w": 67,
+     "h": 36,
+     "label": "Not you?"
+    },
+    {
+     "n": "button",
+     "count": 1,
+     "w": 59,
+     "h": 36,
+     "label": "Change"
+    },
+    {
+     "n": "button.v-btn[co-place-phone]",
+     "count": 1,
+     "w": 187,
+     "h": 42,
+     "label": "Place order"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 61,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "10px×1",
+    "11.3px×6",
+    "11.5px×2",
+    "12px×11",
+    "12.5px×8",
+    "13px×7",
+    "13.5px×21",
+    "14px×1",
+    "15px×1",
+    "17px×3"
+   ],
+   "under12": 9,
+   "distinctSizes": 10
+  },
+  "contrastFails": [
+   {
+    "pair": "#6c7080 on #e7e7e7",
+    "ratio": 3.98,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.3
+    ],
+    "eg": [
+     "small \"Pick up at any 7-11 · 2–3 \"",
+     "small \"Pay first, then send your \""
+    ]
+   }
+  ],
+  "headings": [],
+  "hiddenH1": 1,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 2,
+   "lazy": 0,
+   "noAlt": 0,
+   "emptyAlt": 2,
+   "withAlt": [],
+   "noSize": 2,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "44px box ← p4.jpg",
+    "44px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 2
+  },
+  "noName": [
+   "textarea[co-note]"
+  ],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "input[co-name]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": "name"
+   },
+   {
+    "n": "input[co-phone]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": "tel"
+   },
+   {
+    "n": "input[co-contact]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "textarea[co-note]",
+    "label": false,
+    "required": false,
+    "invalidAttr": false,
+    "type": "textarea",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 162,
+   "styleTags": 4,
+   "inlineStyled": 42,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-checkout@laptop1280": {
+  "viewport": {
+   "w": 1280,
+   "h": 860
+  },
+  "scroll": {
+   "docW": 1280,
+   "docH": 1350,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 27,
+   "under44": 16,
+   "under24": 10,
+   "small": [
+    {
+     "n": "button",
+     "count": 10,
+     "w": 79,
+     "h": 19,
+     "label": "All products"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 472,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 168,
+     "h": 36,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button[co-not-you]",
+     "count": 1,
+     "w": 67,
+     "h": 36,
+     "label": "Not you?"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 69,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "10px×1",
+    "11.3px×6",
+    "11.5px×2",
+    "12px×10",
+    "12.5px×8",
+    "13px×7",
+    "13.5px×30",
+    "14px×1",
+    "15px×1",
+    "17px×2",
+    "21px×1"
+   ],
+   "under12": 9,
+   "distinctSizes": 11
+  },
+  "contrastFails": [
+   {
+    "pair": "#6c7080 on #e7e7e7",
+    "ratio": 3.98,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.3
+    ],
+    "eg": [
+     "small \"Pick up at any 7-11 · 2–3 \"",
+     "small \"Pay first, then send your \""
+    ]
+   }
+  ],
+  "headings": [],
+  "hiddenH1": 1,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 2,
+   "lazy": 0,
+   "noAlt": 0,
+   "emptyAlt": 2,
+   "withAlt": [],
+   "noSize": 2,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "44px box ← p4.jpg",
+    "44px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [
+   "textarea[co-note]"
+  ],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "input[co-name]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": "name"
+   },
+   {
+    "n": "input[co-phone]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": "tel"
+   },
+   {
+    "n": "input[co-contact]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "textarea[co-note]",
+    "label": false,
+    "required": false,
+    "invalidAttr": false,
+    "type": "textarea",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 162,
+   "styleTags": 4,
+   "inlineStyled": 42,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ],
+  "keyboard": [
+   {
+    "n": "button[shop-back]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Back"
+   },
+   {
+    "n": "button[shop-logo]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Budgetukay"
+   },
+   {
+    "n": "input[shop-search]",
+    "ring": false,
+    "outline": "none 0px rgb(23, 24, 28)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Search"
+   },
+   {
+    "n": "button[shop-saved-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Saved"
+   },
+   {
+    "n": "button[shop-cart-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Cart"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "All products"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bottoms"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Hoodies"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Dresses"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bags & Caps"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Shoes"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Track my order"
+   },
+   {
+    "n": "button[co-not-you]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Not you?"
+   },
+   {
+    "n": "input[co-name]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "input[co-phone]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "input[co-contact]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": ""
+   },
+   {
+    "n": "button[co-del-s711]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "7-11Pick up at any 7"
+   },
+   {
+    "n": "button[co-del-fm]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "FamilyMartPick up at"
+   },
+   {
+    "n": "button[co-del-home]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Home deliveryDeliver"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Change"
+   }
+  ]
+ },
+ "brand-order@w320": {
+  "viewport": {
+   "w": 320,
+   "h": 640
+  },
+  "scroll": {
+   "docW": 320,
+   "docH": 1674,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 14,
+   "under44": 8,
+   "under24": 1,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 70,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Copy"
+    },
+    {
+     "n": "button.v-btn[od-upload]",
+     "count": 1,
+     "w": 266,
+     "h": 38,
+     "label": "Upload receipt"
+    },
+    {
+     "n": "button.v-btn.v-o",
+     "count": 1,
+     "w": 127,
+     "h": 40,
+     "label": "Back to shop"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 62,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "12px×15",
+    "12.5px×7",
+    "13px×5",
+    "13.5px×21",
+    "14px×8",
+    "15px×2",
+    "16px×1",
+    "17px×2",
+    "18px×1"
+   ],
+   "under12": 0,
+   "distinctSizes": 9
+  },
+  "contrastFails": [],
+  "headings": [
+   "H2 Order W-1042"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 2,
+   "lazy": 0,
+   "noAlt": 0,
+   "emptyAlt": 2,
+   "withAlt": [],
+   "noSize": 2,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "44px box ← p4.jpg",
+    "44px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 2
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "input[od-link]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 152,
+   "styleTags": 4,
+   "inlineStyled": 68,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-order@iphone390": {
+  "viewport": {
+   "w": 390,
+   "h": 664
+  },
+  "scroll": {
+   "docW": 390,
+   "docH": 1457,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 14,
+   "under44": 8,
+   "under24": 1,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 140,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 30,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button",
+     "count": 1,
+     "w": 40,
+     "h": 36,
+     "label": "Copy"
+    },
+    {
+     "n": "button.v-btn[od-upload]",
+     "count": 1,
+     "w": 336,
+     "h": 38,
+     "label": "Upload receipt"
+    },
+    {
+     "n": "button.v-btn.v-o",
+     "count": 1,
+     "w": 127,
+     "h": 40,
+     "label": "Back to shop"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 62,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "12px×15",
+    "12.5px×7",
+    "13px×5",
+    "13.5px×21",
+    "14px×8",
+    "15px×2",
+    "16px×1",
+    "17px×2",
+    "18px×1"
+   ],
+   "under12": 0,
+   "distinctSizes": 9
+  },
+  "contrastFails": [],
+  "headings": [
+   "H2 Order W-1042"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 2,
+   "lazy": 0,
+   "noAlt": 0,
+   "emptyAlt": 2,
+   "withAlt": [],
+   "noSize": 2,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "44px box ← p4.jpg",
+    "44px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 2
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "input[od-link]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 152,
+   "styleTags": 4,
+   "inlineStyled": 68,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ]
+ },
+ "brand-order@laptop1280": {
+  "viewport": {
+   "w": 1280,
+   "h": 860
+  },
+  "scroll": {
+   "docW": 1280,
+   "docH": 868,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 23,
+   "under44": 17,
+   "under24": 10,
+   "small": [
+    {
+     "n": "button",
+     "count": 10,
+     "w": 79,
+     "h": 19,
+     "label": "All products"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 472,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-ib[shop-back]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Back"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 168,
+     "h": 36,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-btn[od-upload]",
+     "count": 1,
+     "w": 628,
+     "h": 38,
+     "label": "Upload receipt"
+    },
+    {
+     "n": "button.v-btn.v-o",
+     "count": 1,
+     "w": 127,
+     "h": 40,
+     "label": "Back to shop"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 72,
+   "onPictureOrGradient": 0,
+   "sizes": [
+    "12px×15",
+    "12.5px×7",
+    "13px×5",
+    "13.5px×30",
+    "14px×8",
+    "15px×2",
+    "16px×1",
+    "17px×2",
+    "18px×1",
+    "21px×1"
+   ],
+   "under12": 0,
+   "distinctSizes": 10
+  },
+  "contrastFails": [],
+  "headings": [
+   "H2 Order W-1042"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:0 main:1 footer:0 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 2,
+   "lazy": 0,
+   "noAlt": 0,
+   "emptyAlt": 2,
+   "withAlt": [],
+   "noSize": 2,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "44px box ← p4.jpg",
+    "44px box ← p2.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "input[od-link]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 152,
+   "styleTags": 4,
+   "inlineStyled": 68,
+   "styleChars": 104148
+  },
+  "fontFiles": [
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+   "V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  ],
+  "keyboard": [
+   {
+    "n": "button[shop-back]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Back"
+   },
+   {
+    "n": "button[shop-logo]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Budgetukay"
+   },
+   {
+    "n": "input[shop-search]",
+    "ring": false,
+    "outline": "none 0px rgb(23, 24, 28)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Search"
+   },
+   {
+    "n": "button[shop-saved-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Saved"
+   },
+   {
+    "n": "button[shop-cart-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Cart"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "All products"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bottoms"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Hoodies"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Dresses"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bags & Caps"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Shoes"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Track my order"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Copy"
+   },
+   {
+    "n": "button[od-upload]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Upload receipt"
+   },
+   {
+    "n": "a[od-chat-line]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "LINE"
+   },
+   {
+    "n": "a[od-chat-messenger]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Messenger"
+   },
+   {
+    "n": "a[od-chat-whatsapp]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "WhatsApp"
+   },
+   {
+    "n": "a[od-chat-instagram]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Instagram"
+   },
+   {
+    "n": "input[od-link]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Your order link"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Copy"
+   }
+  ]
+ },
+ "market-home@w320": {
+  "viewport": {
+   "w": 320,
+   "h": 640
+  },
+  "scroll": {
+   "docW": 320,
+   "docH": 4782,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 98,
+   "under44": 66,
+   "under24": 8,
+   "small": [
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 7,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button",
+     "count": 10,
+     "w": 48,
+     "h": 16,
+     "label": "See all ›"
+    },
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 17,
+     "label": "Language"
+    },
+    {
+     "n": "summary",
+     "count": 3,
+     "w": 266,
+     "h": 19,
+     "label": "How long is shipping?"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 139,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 19,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qa[card-quick]",
+     "count": 19,
+     "w": 30,
+     "h": 30,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-btn.v-w",
+     "count": 4,
+     "w": 129,
+     "h": 39,
+     "label": "Shop the drop"
+    },
+    {
+     "n": "a.v-btn[shop-live-go]",
+     "count": 1,
+     "w": 129,
+     "h": 41,
+     "label": "Follow the live"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 239,
+   "onPictureOrGradient": 6,
+   "sizes": [
+    "10.5px×39",
+    "11px×32",
+    "11.5px×25",
+    "12px×23",
+    "12.5px×14",
+    "13px×38",
+    "13.5px×12",
+    "15px×1",
+    "15.5px×20",
+    "17px×1",
+    "18px×22",
+    "19px×8",
+    "20px×1",
+    "25px×3"
+   ],
+   "under12": 96,
+   "distinctSizes": 14
+  },
+  "contrastFails": [
+   {
+    "pair": "#6c7080 on #e11d48",
+    "ratio": 1.05,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     12.5
+    ],
+    "eg": [
+     "span.v-pill \"● LIVE\""
+    ]
+   },
+   {
+    "pair": "#16a34a on #ffffff",
+    "ratio": 3.3,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.5
+    ],
+    "eg": [
+     "span[shop-verified] \"✓\"",
+     "span[shop-verified] \"Verified seller\""
+    ]
+   },
+   {
+    "pair": "#ee4d2d on #f5f5f7",
+    "ratio": 3.36,
+    "need": 4.5,
+    "count": 4,
+    "px": [
+     13
+    ],
+    "eg": [
+     "button \"See all\"",
+     "button \"›\"",
+     "button \"See all\"",
+     "button \"›\""
+    ]
+   },
+   {
+    "pair": "#ffffff on #ee4d2d",
+    "ratio": 3.66,
+    "need": 4.5,
+    "count": 42,
+    "px": [
+     15,
+     13.5,
+     10.5,
+     18,
+     13
+    ],
+    "eg": [
+     "i \"B\"",
+     "a.v-btn[shop-live-go] \"Follow the live\"",
+     "span[badge-off] \"-\"",
+     "span[badge-off] \"38\""
+    ]
+   },
+   {
+    "pair": "#ee4d2d on #ffffff",
+    "ratio": 3.66,
+    "need": 4.5,
+    "count": 20,
+    "px": [
+     15.5,
+     10.5
+    ],
+    "eg": [
+     "b[card-price] \"NT$249\"",
+     "b[card-price] \"NT$590\"",
+     "b[card-price] \"NT$499\"",
+     "b[card-price] \"NT$480\""
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Friday Drop: 60 new pieces",
+   "H2 Hoodie season",
+   "H2 New arrivals every week",
+   "H3 Shop by category",
+   "H3 ⚡ Flash sale",
+   "H3 Best sellers",
+   "H3 Bundle any 3 tops — save NT$",
+   "H3 New arrivals",
+   "H3 About Budgetukay ✓ Verified ",
+   "H3 How to order",
+   "H3 Good to know"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:1 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 64,
+   "lazy": 64,
+   "noAlt": 0,
+   "emptyAlt": 64,
+   "withAlt": [],
+   "noSize": 64,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "68px box ← p1.jpg",
+    "68px box ← p2.jpg",
+    "68px box ← p3.jpg",
+    "68px box ← p4.jpg",
+    "68px box ← p5.jpg",
+    "68px box ← p7.jpg",
+    "68px box ← p9.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 730,
+   "styleTags": 4,
+   "inlineStyled": 99,
+   "styleChars": 95351
+  },
+  "fontFiles": [
+   "LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko20yw.woff2",
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2"
+  ]
+ },
+ "market-home@iphone390": {
+  "viewport": {
+   "w": 390,
+   "h": 664
+  },
+  "scroll": {
+   "docW": 390,
+   "docH": 4784,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 98,
+   "under44": 66,
+   "under24": 8,
+   "small": [
+    {
+     "n": "button",
+     "count": 10,
+     "w": 48,
+     "h": 16,
+     "label": "See all ›"
+    },
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 17,
+     "label": "Language"
+    },
+    {
+     "n": "summary",
+     "count": 3,
+     "w": 336,
+     "h": 19,
+     "label": "How long is shipping?"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 77,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 139,
+     "h": 30,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 19,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qa[card-quick]",
+     "count": 19,
+     "w": 30,
+     "h": 30,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-btn.v-w",
+     "count": 4,
+     "w": 129,
+     "h": 39,
+     "label": "Shop the drop"
+    },
+    {
+     "n": "a.v-btn[shop-live-go]",
+     "count": 1,
+     "w": 129,
+     "h": 41,
+     "label": "Follow the live"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 239,
+   "onPictureOrGradient": 6,
+   "sizes": [
+    "10.5px×39",
+    "11px×32",
+    "11.5px×25",
+    "12px×23",
+    "12.5px×14",
+    "13px×38",
+    "13.5px×12",
+    "15px×1",
+    "15.5px×20",
+    "17px×1",
+    "18px×22",
+    "19px×8",
+    "20px×1",
+    "25px×3"
+   ],
+   "under12": 96,
+   "distinctSizes": 14
+  },
+  "contrastFails": [
+   {
+    "pair": "#6c7080 on #e11d48",
+    "ratio": 1.05,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     12.5
+    ],
+    "eg": [
+     "span.v-pill \"● LIVE\""
+    ]
+   },
+   {
+    "pair": "#16a34a on #ffffff",
+    "ratio": 3.3,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.5
+    ],
+    "eg": [
+     "span[shop-verified] \"✓\"",
+     "span[shop-verified] \"Verified seller\""
+    ]
+   },
+   {
+    "pair": "#ee4d2d on #f5f5f7",
+    "ratio": 3.36,
+    "need": 4.5,
+    "count": 4,
+    "px": [
+     13
+    ],
+    "eg": [
+     "button \"See all\"",
+     "button \"›\"",
+     "button \"See all\"",
+     "button \"›\""
+    ]
+   },
+   {
+    "pair": "#ffffff on #ee4d2d",
+    "ratio": 3.66,
+    "need": 4.5,
+    "count": 42,
+    "px": [
+     15,
+     13.5,
+     10.5,
+     18,
+     13
+    ],
+    "eg": [
+     "i \"B\"",
+     "a.v-btn[shop-live-go] \"Follow the live\"",
+     "span[badge-off] \"-\"",
+     "span[badge-off] \"38\""
+    ]
+   },
+   {
+    "pair": "#ee4d2d on #ffffff",
+    "ratio": 3.66,
+    "need": 4.5,
+    "count": 20,
+    "px": [
+     15.5,
+     10.5
+    ],
+    "eg": [
+     "b[card-price] \"NT$249\"",
+     "b[card-price] \"NT$590\"",
+     "b[card-price] \"NT$499\"",
+     "b[card-price] \"NT$480\""
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Friday Drop: 60 new pieces",
+   "H2 Hoodie season",
+   "H2 New arrivals every week",
+   "H3 Shop by category",
+   "H3 ⚡ Flash sale",
+   "H3 Best sellers",
+   "H3 Bundle any 3 tops — save NT$",
+   "H3 New arrivals",
+   "H3 About Budgetukay ✓ Verified ",
+   "H3 How to order",
+   "H3 Good to know"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:1 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 64,
+   "lazy": 64,
+   "noAlt": 0,
+   "emptyAlt": 64,
+   "withAlt": [],
+   "noSize": 64,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "68px box ← p1.jpg",
+    "68px box ← p2.jpg",
+    "68px box ← p3.jpg",
+    "68px box ← p4.jpg",
+    "68px box ← p5.jpg",
+    "68px box ← p7.jpg",
+    "68px box ← p9.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 730,
+   "styleTags": 4,
+   "inlineStyled": 99,
+   "styleChars": 95351
+  },
+  "fontFiles": [
+   "LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko20yw.woff2",
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2"
+  ]
+ },
+ "market-home@laptop1280": {
+  "viewport": {
+   "w": 1280,
+   "h": 860
+  },
+  "scroll": {
+   "docW": 1280,
+   "docH": 3616,
+   "sideways": false
+  },
+  "sticksOut": [],
+  "targets": {
+   "total": 102,
+   "under44": 75,
+   "under24": 17,
+   "small": [
+    {
+     "n": "select[shop-lang]",
+     "count": 1,
+     "w": 116,
+     "h": 17,
+     "label": "Language"
+    },
+    {
+     "n": "button",
+     "count": 19,
+     "w": 79,
+     "h": 19,
+     "label": "All products"
+    },
+    {
+     "n": "summary",
+     "count": 3,
+     "w": 1094,
+     "h": 19,
+     "label": "How long is shipping?"
+    },
+    {
+     "n": "input[shop-search]",
+     "count": 1,
+     "w": 472,
+     "h": 20,
+     "label": "Search"
+    },
+    {
+     "n": "button.v-hrt[card-heart]",
+     "count": 19,
+     "w": 30,
+     "h": 30,
+     "label": "Save"
+    },
+    {
+     "n": "button.v-qa[card-quick]",
+     "count": 19,
+     "w": 30,
+     "h": 30,
+     "label": "Add to cart"
+    },
+    {
+     "n": "a",
+     "count": 5,
+     "w": 34,
+     "h": 34,
+     "label": "facebook"
+    },
+    {
+     "n": "button.v-logo[shop-logo]",
+     "count": 1,
+     "w": 169,
+     "h": 36,
+     "label": "Budgetukay"
+    },
+    {
+     "n": "button.v-ib[shop-saved-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Saved"
+    },
+    {
+     "n": "button.v-ib[shop-cart-btn]",
+     "count": 1,
+     "w": 36,
+     "h": 36,
+     "label": "Cart"
+    },
+    {
+     "n": "button.v-btn.v-w",
+     "count": 4,
+     "w": 129,
+     "h": 39,
+     "label": "Shop the drop"
+    },
+    {
+     "n": "a.v-btn[shop-live-go]",
+     "count": 1,
+     "w": 129,
+     "h": 41,
+     "label": "Follow the live"
+    }
+   ]
+  },
+  "text": {
+   "nodes": 243,
+   "onPictureOrGradient": 6,
+   "sizes": [
+    "10.5px×34",
+    "11px×32",
+    "11.5px×18",
+    "12px×19",
+    "12.5px×14",
+    "13px×46",
+    "13.5px×21",
+    "15px×1",
+    "15.5px×20",
+    "16px×3",
+    "18px×22",
+    "19px×1",
+    "21px×1",
+    "25px×7",
+    "28px×1",
+    "48px×3"
+   ],
+   "under12": 84,
+   "distinctSizes": 16
+  },
+  "contrastFails": [
+   {
+    "pair": "#6c7080 on #e11d48",
+    "ratio": 1.05,
+    "need": 4.5,
+    "count": 1,
+    "px": [
+     12.5
+    ],
+    "eg": [
+     "span.v-pill \"● LIVE\""
+    ]
+   },
+   {
+    "pair": "#16a34a on #ffffff",
+    "ratio": 3.3,
+    "need": 4.5,
+    "count": 2,
+    "px": [
+     11.5
+    ],
+    "eg": [
+     "span[shop-verified] \"✓\"",
+     "span[shop-verified] \"Verified seller\""
+    ]
+   },
+   {
+    "pair": "#ee4d2d on #f5f5f7",
+    "ratio": 3.36,
+    "need": 4.5,
+    "count": 4,
+    "px": [
+     13
+    ],
+    "eg": [
+     "button \"See all\"",
+     "button \"›\"",
+     "button \"See all\"",
+     "button \"›\""
+    ]
+   },
+   {
+    "pair": "#ffffff on #ee4d2d",
+    "ratio": 3.66,
+    "need": 4.5,
+    "count": 42,
+    "px": [
+     15,
+     13.5,
+     10.5,
+     18,
+     13
+    ],
+    "eg": [
+     "i \"B\"",
+     "a.v-btn[shop-live-go] \"Follow the live\"",
+     "span[badge-off] \"-\"",
+     "span[badge-off] \"38\""
+    ]
+   },
+   {
+    "pair": "#ee4d2d on #ffffff",
+    "ratio": 3.66,
+    "need": 4.5,
+    "count": 19,
+    "px": [
+     15.5
+    ],
+    "eg": [
+     "b[card-price] \"NT$249\"",
+     "b[card-price] \"NT$590\"",
+     "b[card-price] \"NT$499\"",
+     "b[card-price] \"NT$480\""
+    ]
+   }
+  ],
+  "headings": [
+   "H2 Friday Drop: 60 new pieces",
+   "H2 Hoodie season",
+   "H2 New arrivals every week",
+   "H3 Shop by category",
+   "H3 ⚡ Flash sale",
+   "H3 Best sellers",
+   "H3 Bundle any 3 tops — save NT$",
+   "H3 New arrivals",
+   "H3 About Budgetukay ✓ Verified ",
+   "H3 How to order",
+   "H3 Good to know"
+  ],
+  "hiddenH1": 0,
+  "landmarks": "header:0 nav:1 main:1 footer:1 aside:0 [role=banner]:0 [role=navigation]:0 [role=main]:0 [role=contentinfo]:0 [role=search]:0 form:0",
+  "lang": "en",
+  "title": "Budgetukay",
+  "skipLink": false,
+  "images": {
+   "total": 64,
+   "lazy": 64,
+   "noAlt": 0,
+   "emptyAlt": 64,
+   "withAlt": [],
+   "noSize": 64,
+   "srcset": 0,
+   "asyncDecode": 0,
+   "fullPhotoInSmallBox": [
+    "104px box ← p1.jpg",
+    "104px box ← p2.jpg",
+    "104px box ← p3.jpg",
+    "104px box ← p4.jpg",
+    "104px box ← p5.jpg",
+    "104px box ← p7.jpg",
+    "104px box ← p9.jpg"
+   ],
+   "eagerBelowFold": 0
+  },
+  "noName": [],
+  "weakNames": [],
+  "inputs": [
+   {
+    "n": "input[shop-search]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "text",
+    "autocomplete": ""
+   },
+   {
+    "n": "select[shop-lang]",
+    "label": true,
+    "required": false,
+    "invalidAttr": false,
+    "type": "select-one",
+    "autocomplete": ""
+   }
+  ],
+  "dom": {
+   "nodes": 730,
+   "styleTags": 4,
+   "inlineStyled": 99,
+   "styleChars": 95351
+  },
+  "fontFiles": [
+   "LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko20yw.woff2",
+   "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2"
+  ],
+  "keyboard": [
+   {
+    "n": "button[shop-logo]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Budgetukay"
+   },
+   {
+    "n": "input[shop-search]",
+    "ring": false,
+    "outline": "none 0px rgb(23, 24, 28)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Search"
+   },
+   {
+    "n": "button[shop-saved-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Saved"
+   },
+   {
+    "n": "button[shop-cart-btn]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Cart"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "All products"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bottoms"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Hoodies"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Dresses"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bags & Caps"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Shoes"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Track my order"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Shop the drop"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "See hoodies"
+   },
+   {
+    "n": "button",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "See what's new"
+   },
+   {
+    "n": "button[shop-cat]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Tops"
+   },
+   {
+    "n": "button[shop-cat]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Jackets"
+   },
+   {
+    "n": "button[shop-cat]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bottoms"
+   },
+   {
+    "n": "button[shop-cat]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Hoodies"
+   },
+   {
+    "n": "button[shop-cat]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Dresses"
+   },
+   {
+    "n": "button[shop-cat]",
+    "ring": true,
+    "outline": "auto 1px rgb(16, 16, 16)",
+    "parentRing": false,
+    "onScreen": true,
+    "label": "Bags & Caps"
+   }
+  ]
+ },
+ "dialog": {
+  "panelOpen": 1,
+  "focusAfterOpen": {
+   "tag": "BUTTON",
+   "testid": "shop-cart-btn",
+   "insideDialog": false
+  },
+  "tabStopsInsideDialog": 0,
+  "tabStopsOutsideDialog": 14,
+  "escapeCloses": false,
+  "pageScrollLockedBehind": false
+ },
+ "motion": {
+  "reducedMotionMatches": true,
+  "elementsStillAnimatingOrTransitioning": 1,
+  "eg": [
+   "v-hdr v-top"
+  ]
+ }
+}

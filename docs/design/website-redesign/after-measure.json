@@ -1,0 +1,172 @@
+[
+ {
+  "shop": "budgetukay",
+  "page": "home",
+  "taps": 76,
+  "under44": 1,
+  "under44_inlineTextLinks": 1,
+  "under44_names": [],
+  "texts": 171,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 12.6 13 13.5 14 14.5 15 17 18 19 20 22 24 33",
+  "sideways": 0,
+  "contrast": {
+   "text": 17.94,
+   "helper": 6.69,
+   "onSign": 7.66,
+   "onButton": 18.88,
+   "salePrice": 4.74,
+   "onSaleTag": 4.83
+  }
+ },
+ {
+  "shop": "budgetukay",
+  "page": "product",
+  "taps": 47,
+  "under44": 4,
+  "under44_inlineTextLinks": 3,
+  "under44_names": [
+   "Size guide & measu 167x20"
+  ],
+  "texts": 97,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 12.6 13 13.5 14 14.5 15 16 17 18 19 20 22.4 25 32",
+  "sideways": 0,
+  "contrast": {
+   "text": 17.94,
+   "helper": 6.69,
+   "onSign": 7.66,
+   "onButton": 18.88,
+   "salePrice": 4.74,
+   "onSaleTag": 4.83
+  }
+ },
+ {
+  "shop": "budgetukay",
+  "page": "cart",
+  "taps": 23,
+  "under44": 0,
+  "under44_inlineTextLinks": 0,
+  "under44_names": [],
+  "texts": 62,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 12.6 13 14 14.5 15 17 18 19 20 21 24",
+  "sideways": 0,
+  "contrast": {
+   "text": 17.94,
+   "helper": 6.69,
+   "onSign": 7.66,
+   "onButton": 18.88,
+   "salePrice": 4.74,
+   "onSaleTag": 4.83
+  }
+ },
+ {
+  "shop": "budgetukay",
+  "page": "checkout",
+  "taps": 13,
+  "under44": 0,
+  "under44_inlineTextLinks": 0,
+  "under44_names": [],
+  "texts": 65,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 13 13.5 14 14.5 15 16 17 19 21 24",
+  "sideways": 0,
+  "contrast": {
+   "text": 17.94,
+   "helper": 6.69,
+   "onSign": 7.66,
+   "onButton": 18.88,
+   "salePrice": 4.74,
+   "onSaleTag": 4.83
+  }
+ },
+ {
+  "shop": "budgetukay",
+  "page": "order",
+  "taps": 12,
+  "under44": 0,
+  "under44_inlineTextLinks": 0,
+  "under44_names": [],
+  "texts": 66,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 13 13.5 14 14.5 15 16 17 19 22.5 23 24 26 32",
+  "sideways": 0,
+  "contrast": {
+   "text": 17.94,
+   "helper": 6.69,
+   "onSign": 7.66,
+   "onButton": 18.88,
+   "salePrice": 4.74,
+   "onSaleTag": 4.83
+  }
+ },
+ {
+  "shop": "voltline",
+  "page": "home",
+  "taps": 63,
+  "under44": 1,
+  "under44_inlineTextLinks": 1,
+  "under44_names": [],
+  "texts": 142,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 12.6 13 13.5 14 14.5 15 17 18 19 20 22 24 33",
+  "sideways": 0,
+  "contrast": {
+   "text": 16.56,
+   "helper": 8.02,
+   "onSign": 19.16,
+   "onButton": 14.25,
+   "salePrice": 6.73,
+   "onSaleTag": 6.52
+  }
+ },
+ {
+  "shop": "dewroom",
+  "page": "home",
+  "taps": 58,
+  "under44": 1,
+  "under44_inlineTextLinks": 1,
+  "under44_names": [],
+  "texts": 128,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 12.6 13 13.5 14 14.5 15 17 18 19 20 22 24 33",
+  "sideways": 0,
+  "contrast": {
+   "text": 17.94,
+   "helper": 6.69,
+   "onSign": 14.5,
+   "onButton": 9.21,
+   "salePrice": 6.36,
+   "onSaleTag": 6.47
+  }
+ },
+ {
+  "shop": "sundayoven",
+  "page": "home",
+  "taps": 59,
+  "under44": 1,
+  "under44_inlineTextLinks": 1,
+  "under44_names": [],
+  "texts": 131,
+  "under12": 0,
+  "smallest": 12,
+  "sizes": "12 12.5 12.6 13 13.5 14 14.5 15 17 18 19 20 22 24 33",
+  "sideways": 0,
+  "contrast": {
+   "text": 17.94,
+   "helper": 6.69,
+   "onSign": 6.96,
+   "onButton": 6.96,
+   "salePrice": 6.45,
+   "onSaleTag": 6.57
+  }
+ }
+]
