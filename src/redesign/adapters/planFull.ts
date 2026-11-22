@@ -3,8 +3,13 @@
 // with an account outside the plan. Shown ONLY to the preview (feature key account_limits_v2), admins, or everyone
 // once shopee_account_enforce is 'true' — accountLimitsV2Visible. Everyone else keeps today's toast / message.
 //
-// my_account_list() = the seller's own accounts (oldest first, the live rule's order) + the 4-hour wait + the
+// my_account_list() = the seller's own accounts (oldest first, the live rule's order) + the 4-hour lock + the
 // server's clock; one small read each time the popup opens. Pure helpers below are unit-tested.
+//
+// THE 4-HOUR RULE (sql/205, Jeff 2026-11-22 — replaces "every removal waits"): removing an account and adding a
+// different one is immediate. The account that took the place is locked for 4 hours (lockUntil): Remove on it
+// shows "Wait a little" with the time left instead of removing it. If it is removed another way, its place stays
+// used until the 4 hours end (locked / nextFreeAt). The same account back is immediate.
 import { supabase } from "../../supabase";
 import { tpl, type RedesignT } from "../i18n";
 import { unlockInHM } from "./tiktokCooldown";
@@ -16,7 +21,7 @@ export interface PlanFullTarget {
   name?: string;                                    // live: the account that could not go live
   wait?: { nextFreeAt: string | null; serverNow: string | null; receivedAt: number }; // the server already said "wait" (receivedAt = this device's ms when the answer came)
 }
-export interface AccountRow { platform: AccountPlatform; key: string; id: string | null; name: string | null; link: boolean; rank: number; covered: boolean; addedAt: string | null }
+export interface AccountRow { platform: AccountPlatform; key: string; id: string | null; name: string | null; link: boolean; rank: number; covered: boolean; addedAt: string | null; lockUntil: string | null }
 export interface AccountList { v2: boolean; plan: string; limit: number; unlimited: boolean; used: number; locked: number; nextFreeAt: string | null; serverNow: string | null; loadedAt: number; accounts: AccountRow[] }
 export interface LiveAccounts { tiktok: string | null; facebook: string | null; instagram: string | null; shopeeUid: string | null; shopeeShopId: string | null }
 
@@ -39,7 +44,7 @@ export function parseAccountList(data: unknown, loadedAt: number = Date.now()): 
     const platform = String(a?.platform || "") as AccountPlatform;
     const key = String(a?.key ?? "").trim();
     if (!PLATFORMS.has(platform) || !key) continue;
-    accounts.push({ platform, key, id: str(a.id), name: str(a.name), link: a.link === true, rank: num(a.rank), covered: a.covered !== false, addedAt: iso(a.added_at) });
+    accounts.push({ platform, key, id: str(a.id), name: str(a.name), link: a.link === true, rank: num(a.rank), covered: a.covered !== false, addedAt: iso(a.added_at), lockUntil: iso(a.lock_until) });
   }
   return {
     v2: d.v2 === true, plan: String(d.plan || ""), limit: num(d.limit, 1), unlimited: d.unlimited === true,
@@ -83,7 +88,7 @@ export function isAccountLive(a: AccountRow, live: LiveAccounts): boolean {
   return !!live.shopeeShopId && live.shopeeShopId === a.key;
 }
 
-/** Milliseconds until a removed account's place is free again, or null when the refusal is not that wait.
+/** Milliseconds until a held place is free again (a locked account was removed), or null when the refusal is not that wait.
  *  The wait applies when the seller's REAL accounts leave room and only held places fill the plan.
  *  Counted on the SERVER's clock: its time when the answer came + the time this device has counted since. */
 export function waitMs(list: AccountList | null, target: PlanFullTarget, deviceNow: number): number | null {
@@ -94,6 +99,16 @@ export function waitMs(list: AccountList | null, target: PlanFullTarget, deviceN
   const receivedAt = fromTarget ? target.wait!.receivedAt : list?.loadedAt ?? deviceNow;
   const serverNowMs = serverNow ? Date.parse(serverNow) + (deviceNow - receivedAt) : deviceNow;
   const ms = Date.parse(nextFree) - serverNowMs;
+  return ms > 0 ? ms : null;
+}
+
+/** Milliseconds until this account's own 4 hours end (it took a removed account's place), or null when it is not
+ *  locked. Same clock as waitMs: the server's time when the list came + what this device has counted since.
+ *  Never for a seller without a limit (an admin). */
+export function lockMs(a: AccountRow, list: AccountList | null, deviceNow: number): number | null {
+  if (!a.lockUntil || !list || list.unlimited) return null;
+  const serverNowMs = list.serverNow ? Date.parse(list.serverNow) + (deviceNow - list.loadedAt) : deviceNow;
+  const ms = Date.parse(a.lockUntil) - serverNowMs;
   return ms > 0 ? ms : null;
 }
 

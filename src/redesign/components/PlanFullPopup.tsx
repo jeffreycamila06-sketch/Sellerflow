@@ -1,7 +1,8 @@
 // "Plan full" popup (sql/199, Jeff's approved design 2026-11-22: claude.ai/artifact/Cq7XpuK1ApT4EN9QS5AkRT).
 // ONE popup for TikTok add, Facebook Page connect, Shopee new shop, Instagram, and live start with an account
 // outside the plan. States: list (Remove on each account; "End your live first" for the one live now) →
-// confirm ("Remove X?") → wait (live countdown to the end of the 4 hours) / removed. The button under the list
+// confirm ("Remove X?") → removed. Remove on an account that took a removed account's place less than 4 hours
+// ago → wait ("Wait a little" + live countdown) instead of the confirm (sql/205). The button under the list
 // is "Upgrade plan" (Android / web → Subscription) or "Contact Admin" on iPhone (a real link, App Store rule).
 // A phone gets a bottom sheet; a wide screen (≥ 900 px) a centred card. Drawn in a portal into
 // [data-redesign] so it sits above the bottom nav and keeps the theme tokens.
@@ -10,7 +11,7 @@ import { createPortal } from "react-dom";
 import { useT, tpl } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import {
-  loadMyAccountList, accountName, platformName, isAccountLive, waitMs, countdownText, planFullTexts, waitLead,
+  loadMyAccountList, accountName, platformName, isAccountLive, waitMs, lockMs, countdownText, planFullTexts, waitLead,
   type AccountList, type AccountRow, type PlanFullTarget, type LiveAccounts,
 } from "../adapters/planFull";
 
@@ -43,6 +44,7 @@ export default function PlanFullPopup({ target, ios, planName, live, onRemove, o
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [waitFor, setWaitFor] = useState<PlanFullTarget>(target);
+  const [lockedPick, setLockedPick] = useState<AccountRow | null>(null);   // Remove was tapped on a locked account
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -119,10 +121,10 @@ export default function PlanFullPopup({ target, ios, planName, live, onRemove, o
       </div>
     </>);
   } else if (phase === "wait") {
-    const ms = waitMs(list, waitFor, now());
+    const ms = lockedPick ? lockMs(lockedPick, list, now()) : waitMs(list, waitFor, now());
     body = (<>
       {title(t.rd_pf_wait_title)}
-      {lead(waitLead(waitFor, t))}
+      {lockedPick ? lead(tpl(t.rd_pf_wait_locked, { name: accountName(lockedPick, t) }), "pf-lead-locked") : lead(waitLead(waitFor, t))}
       <div data-testid="pf-countdown" role="timer" aria-live="off" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--accent-softer)", borderRadius: 14, padding: 14, color: "var(--accent-fg)" }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
         <span style={{ fontSize: 22, fontWeight: 800 }}>{countdownText(ms ?? 0, t)}</span>
@@ -130,7 +132,7 @@ export default function PlanFullPopup({ target, ios, planName, live, onRemove, o
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <button type="button" onClick={onClose} data-testid="pf-ok" style={primary("var(--accent)")}>{t.rd_pf_ok}</button>
         {list && list.accounts.length > 0
-          ? <button type="button" onClick={() => setPhase("list")} data-testid="pf-back" style={secondary}>{t.rd_pf_back}</button>
+          ? <button type="button" onClick={() => { setLockedPick(null); setPhase("list"); }} data-testid="pf-back" style={secondary}>{t.rd_pf_back}</button>
           : closeButton(t.rd_pf_back, "pf-back")}
       </div>
     </>);
@@ -162,7 +164,7 @@ export default function PlanFullPopup({ target, ios, planName, live, onRemove, o
               </span>
               {isLive
                 ? <span data-testid="pf-end-live" style={{ fontSize: 12, fontWeight: 800, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 9, padding: "8px 10px", whiteSpace: "nowrap", flexShrink: 0 }}>{t.rd_pf_end_live_first}</span>
-                : <button type="button" onClick={() => { setErr(null); setPick(a); setPhase("confirm"); }} data-testid="pf-remove" style={{ minHeight: 44, borderRadius: 10, border: "1.5px solid var(--danger)", background: "var(--surface)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, padding: "0 14px", cursor: "pointer", flexShrink: 0 }}>{t.rd_pf_remove}</button>}
+                : <button type="button" onClick={() => { setErr(null); if (lockMs(a, list, now()) !== null) { setLockedPick(a); setPhase("wait"); return; } setPick(a); setPhase("confirm"); }} data-testid="pf-remove" style={{ minHeight: 44, borderRadius: 10, border: "1.5px solid var(--danger)", background: "var(--surface)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, padding: "0 14px", cursor: "pointer", flexShrink: 0 }}>{t.rd_pf_remove}</button>}
             </div>
           );
         })}
