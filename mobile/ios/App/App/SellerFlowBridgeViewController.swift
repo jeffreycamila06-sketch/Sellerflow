@@ -17,5 +17,6 @@ public class SellerFlowBridgeViewController: CAPBridgeViewController {
     override public func capacitorDidLoad() {
         bridge?.registerPluginInstance(printerPlugin)
         bridge?.registerPluginInstance(authPlugin) // in-app Facebook sign-in sheet (SellerFlowAuthPlugin.swift)
+        bridge?.registerPluginInstance(SellerFlowScannerPlugin()) // live "Scan sticker QR" (SellerFlowScannerPlugin.swift)
     }
 }

@@ -27,7 +27,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>SellerFlowLive uses the camera to scan your parcel slips (para ma-scan ang parcel slips).</string>
+	<string>SellerFlowLive uses the camera to scan the QR code on your order stickers and to scan your parcel slips.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>SellerFlowLive connects to your Bluetooth label printer to print order stickers.</string>
 	<key>NSLocalNetworkUsageDescription</key>

@@ -6199,3 +6199,56 @@ Jeff's approved designs: Channels 2×2 claude.ai/artifact/AegK5uxSUv6ajQSbx2YbRu
   `shopeeNoBetaGuideSql.test.ts` · `shopeeNoBeta.test.tsx` · `planFull.app.test.tsx` Instagram block ·
   `docs/design/shopee-no-beta/` (pictures, main-vs-branch 360 px ×8 languages, 8/8 breaks).
 - **Order:** merge (Vercel) → sql/202.
+
+## 2026-11-22 — NATIVE "SCAN STICKER QR" (branch `claude/native-qr-scanner`, NOT merged; sql/203 + sql/204 NOT applied; needs NEW app builds: iOS 2.0 build 15, Android 2.0 versionCode 11)
+A live camera scanner in the phone app for every Scan button: 7-11 Parcel Scan, FamilyMart Parcel Scan,
+Blacklist and a NEW **Scan** button next to the Orders search box. Not Pickup Status. Printing untouched.
+- **Web (`adapters/nativeQrScanner.ts`):** `nativeQrScanner()` = the kill switch (`setNativeQrScannerOn`,
+  set by RedesignApp from `featureSw.nativeQrScanner` = `app_settings.native_qr_scanner_enabled`, exact
+  'true') AND `window.Capacitor.Plugins.SellerFlowScanner.scanStickerQr` exists. Otherwise (laptop, older
+  app build, switch off, not read yet) every Scan = today's photo picker, unchanged (the tap still calls
+  `warmQrReader(); input.click()` synchronously). `runStickerScan` → `read` (text VERBATIM) / `photo`
+  (base64 → File → the SAME `readQrFromFile`) / `cancelled` / `failed` (toast `rd_qrs_failed`). Each screen's
+  old photo handler was split into `apply…Read(read)` + the file wrapper — the photo path is byte-equal.
+  Event `qr_native` {result, ms} (never the text). Texts `rd_qrs_*` (14, passed to the native screen) ×8.
+- **Orders Scan:** STRICT parser `blacklistHandleFromQr`; "@username" goes into the box with `setQuery`
+  (NOT `onQuery` → no 7-day history load); `scanned` state is active only while the box still holds
+  exactly that text (typing = normal search). Buyer = `buyerReceiptsByHandle(receiptBuyers, handle)`
+  (useReadData; TikTok only, capitals and one "@" ignored; the open session or the picked past session).
+  2+ hits → the usual chooser (`rd_ord_scan_dup` texts). None → `ord-scan-none` "No orders for @{u} in
+  this session"; past session still loading / this session loading → `ord-scan-wait`. No rows or history
+  rows in scan mode. Button `ord-scan` (`.sfl-tap44`) + hidden `ord-scan-file`.
+- **Centre pick (ONE rule, `src/lib/qrCentrePick.ts`, mirrored in Swift `QrCentrePick` and Java
+  `QrCentrePick.java`):** only QRs whose centre is inside the frame; same text = one; nearest wins only
+  when ≥ 0.15 × frame side nearer than the next different QR, else tie → "Point at one QR"; same winner
+  2 frames in a row. Shared examples `src/lib/__tests__/fixtures/qrCentrePick.examples.json` →
+  `node scripts/gen-qr-pick-cases.mjs` writes `QrCentrePickCases.swift` / `.java`; the CI test fails when
+  they are stale or the constants differ. ⚠️ Change the rule = change the JSON + all three + regenerate.
+- **iOS (`SellerFlowScannerPlugin.swift`, own plugin, one line in SellerFlowBridgeViewController):**
+  AVFoundation metadata reader (.qr), presented `.overFullScreen` (the web keeps running under it);
+  flashlight (bolt icons) only when the device has a torch; denied → "Camera is off" + native Open
+  Settings; Split View → "Use SellerFlowLive full screen to scan" (multitasking camera enabled where
+  supported); background pauses / resumes with the light restored; front-only camera used; no camera →
+  the photo choice. Beep = a 0.12 s WAV made at run time as a system sound (follows the silent switch, no
+  audio-session change) + `UINotificationFeedbackGenerator`. Photo = action sheet Take photo / Choose
+  from photos (`UIImagePickerController` / `PHPickerViewController`, no photo permission), ≤ 4032 px JPEG.
+  Info.plist camera text reworded. Tests `AppTests/QrCentrePickTests.swift` (+ generated cases) in the
+  existing xcodebuild gate. ⚠️ No Swift compiler in the cloud session — first compile = Jeff's Mac.
+- **Android (`SellerFlowScannerPlugin.java` + `QrScannerDialog.java` + `QrCentrePick.java`, one line in
+  MainActivity):** CameraX 1.5.2 + ML Kit `barcode-scanning:17.3.0` (BUNDLED, no Play services) in a
+  full-screen Dialog over MainActivity (no 2nd Activity → the WebView is never paused); CameraX bound to
+  MainActivity's lifecycle; torch restored on resume; Capacitor permission alias "camera" (CAMERA was
+  already declared; no VIBRATE — haptic via `performHapticFeedback`, beep via `ToneGenerator` on
+  notification volume). Photo = Take photo (FileProvider cache path) / Choose from photos
+  (`ACTION_GET_CONTENT`), re-encoded JPEG ≤ 4032 px. `QrCentrePickTest` (JUnit) passes on plain Java here;
+  the plugin/dialog were NOT compiled in the cloud (no Android SDK / Google Maven).
+  **Gate before upload:** `bash mobile/android/qr-scanner-gate.sh` (builds main + this checkout; PASS/FAIL
+  for size ≤ 6 MB per phone, 16 KB alignment of every new 64-bit .so, no new permission / required
+  feature, same minSdk). FAIL → stop, ZXing is the fallback.
+- **SQL:** sql/203 = the switch row 'true' (rollback deletes it → photo flow). sql/204 = help-guide phrase
+  swaps (parcel-scan, blacklist, orders-search; anchors checked on the live rows 2026-11-22) — apply after
+  the store builds are live. Proof `scripts/sql203-behaviour.mjs` (PGlite, 20).
+- **native-version.json NOT raised** — raise `ios.latest` → 15 and `android.latest` → 11 only after each
+  store version is LIVE (Android already has `getBuildNumber` since versionCode 6).
+- Tests: `qrCentrePick.test.ts`, `nativeQrScanner.test.ts`, `nativeScan.screens.test.tsx` (new build vs
+  laptop/old build/switch off per screen), `Orders.scan.test.tsx`, `nativeScanner.fence.test.ts`.

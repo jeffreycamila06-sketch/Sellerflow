@@ -41,6 +41,7 @@ import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
 import { parcelTrackingVisible, parcelTrackingLocked, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
 import { buyerContactVisible } from "./adapters/buyerContact";
 import { scanQrLookupVisible } from "./adapters/scanQrLookup";
+import { setNativeQrScannerOn } from "./adapters/nativeQrScanner";
 import { fmStoreCheckVisible } from "./adapters/fmStoreCheck";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -952,6 +953,9 @@ export default function RedesignApp() {
   const salesTab = useSalesTab(authed);
   // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
   const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  // Native QR scanner (phone app builds with the SellerFlowScanner plugin): the kill switch
+  // native_qr_scanner_enabled. Off / not read / laptop / older build → every Scan opens today's photo flow.
+  useEffect(() => { setNativeQrScannerOn(featureSw.nativeQrScanner); }, [featureSw.nativeQrScanner]);
   useApprovedPrinters(authed); // Admin-approved printers join the scan whitelist (sql/160) — one read per session
   // Printer setup v2 (admin / test_printers / the printer_flow_v2 switch) — also decides whether the Classic text
   // card is on screen; the router honors the stored Classic flag only while that card is shown (printing.ts

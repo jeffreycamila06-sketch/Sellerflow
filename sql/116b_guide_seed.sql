@@ -282,12 +282,13 @@ Some accounts also have **Restock** ("How many pieces arrived?"), **History** of
 - On **Orders**: find the order (use search) and tap **↻ Reprint**. Tapping an order opens **Print**, with **🖨 Print** for each buyer and **🖨 Print all**.
 
 If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint on those rows", fix the printer first (see "Printer not printing"), then tap **Reprint** on those rows.'),
-  ('orders-search', 'Orders screen and search', '2026-11-19'::date, 'orders, order list, search, find order, buyer, history, last 7 days, hanapin order, listahan, 订单, 訂單, 搜索, 查詢', 'Open **Orders** in the bottom bar.
+  ('orders-search', 'Orders screen and search', '2026-11-22'::date, 'orders, order list, search, find order, buyer, history, last 7 days, hanapin order, listahan, 订单, 訂單, 搜索, 查詢', 'Open **Orders** in the bottom bar.
 
 - Choose a range: **Today**, **This session**, **Last 7 days**, or **Custom** (From / To).
 - The top shows Orders, Total, Buyers and Avg order.
 - **Search buyer #, name, item…** finds orders.
 - Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
+- **Scan** (next to the search box) reads the QR on a buyer''s sticker and opens that buyer''s card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.
 - Each order has **↻ Reprint**. Tapping an order opens **Print** (**🖨 Print** / **🖨 Print all**).
 - An order made with the **Free** button shows **Free** instead of an amount, here and in the export. It counts as an order and adds nothing to the total. See "Choose price before print".
 - **⬇ Export** downloads Excel or PDF of what you see (also a past session). In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
@@ -312,11 +313,11 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - **⬇ Export** gives Excel or PDF. In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.'),
   ('miners-customers', 'Miners and Customers', '2026-10-14'::date, 'miners, top buyers, customers, loyal, repeat buyer, suki, mamimili, 买家, 客户, 顧客, 常客', '- **Miners** (Orders → Miners tab) shows top buyers for a range (This session, Today, 7 days, This month, Custom): total buyers, orders, money spent.
 - **Customers** (Settings → Customers) lists buyers you''ve had. Use **Search loaded customers (name or @handle)** and **Load more**.'),
-  ('blacklist', 'Blacklist (sellers outside Taiwan)', '2026-11-20'::date, 'blacklist, bad buyer, bogus buyer, joy reserver, not checked out, return, returned, block buyer, hindi nag-check out, nag-return, bogus, 黑名单, 黑名單, 退货, 退貨, 未结账', 'Blacklist is for sellers outside Taiwan. Open **Settings → Blacklist**. Only you can see your list.
+  ('blacklist', 'Blacklist (sellers outside Taiwan)', '2026-11-22'::date, 'blacklist, bad buyer, bogus buyer, joy reserver, not checked out, return, returned, block buyer, hindi nag-check out, nag-return, bogus, 黑名单, 黑名單, 退货, 退貨, 未结账', 'Blacklist is for sellers outside Taiwan. Open **Settings → Blacklist**. Only you can see your list.
 
 **Add a buyer**
 1. Pick a reason: **Not checked out** or **Return item**.
-2. Tap **Scan sticker QR** and take a photo of the QR on the buyer''s sticker (on a laptop: **Upload sticker photo**). Or tap **TikTok** or **Facebook**, type the TikTok @username or the Facebook name, and tap **Add**.
+2. Tap **Scan sticker QR** and point the camera at the QR on the buyer''s sticker, or use a photo of it (on a laptop: **Upload sticker photo**). Or tap **TikTok** or **Facebook**, type the TikTok @username or the Facebook name, and tap **Add**.
 
 - The sticker has a QR only when **Print QR on sticker** is on and the sticker is taller than 40 mm. Otherwise type the name.
 - Facebook buyers have no QR: type their Facebook name exactly as it shows.
@@ -417,7 +418,7 @@ Rows that failed show **Not printed**. Tap **Reprint** on each one after the pri
 **Printer used by another app or phone:** a Bluetooth printer connects to one app at a time. Close the printer''s own app (or other label apps), disconnect it from other phones, turn the printer off and on, then in **Printer settings** tap **Scan** and pick it again. Use **Test Print** to check.
 
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.'),
-  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-11-20'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家, buyer contact, whatsapp, line, messenger, instagram, contact ng buyer, 買家聯絡方式, 买家联系方式, liên hệ người mua, ช่องทางติดต่อผู้ซื้อ, kontak pembeli', '**Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
+  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-11-22'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家, buyer contact, whatsapp, line, messenger, instagram, contact ng buyer, 買家聯絡方式, 买家联系方式, liên hệ người mua, ช่องทางติดต่อผู้ซื้อ, kontak pembeli', '**Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
 
 Who sees what:
 - If the tile opens, you can use it.
@@ -427,7 +428,7 @@ Who sees what:
 
 **Parcel Scan 7-11**
 1. Tap **✏️ Manual add parcel** and type the customer name (2 to 10 letters — a Chinese character counts as 2, so 1 to 5 Chinese characters; no numbers or symbols), phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
-2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo. Show only one sticker in the photo: with 2 or more, nothing is filled in and the app asks you to show only one. If this is open for your account and that @username is already in your **Customers**, the name, phone and store # are filled in too — check them, then type the amount. If nothing is filled in, type the details as usual. If you already typed a name, phone or store #, nothing is filled in. Scanning another sticker clears the details the last scan filled in (what you typed yourself stays). If you change the @username by hand to another one after a scan filled in the details, those details are cleared too (what you typed yourself stays) — scan the sticker again to fill them in again. Adding a note after the username, like (U) or #3, keeps them. An Import from Customers also clears an entry that a scan filled in. While you edit a saved parcel, Scan QR fills only the @username.
+2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker. In the latest phone app the camera opens: point it at the QR on the sticker and it is read by itself. If it says **Point at one QR**, move closer to just one sticker. Tap **Take a photo instead** to use a photo, or **Open Settings** if the camera is off for SellerFlowLive. On a computer, pick a photo of the sticker. Show only one sticker in a photo: with 2 or more, nothing is filled in and the app asks you to show only one. If this is open for your account and that @username is already in your **Customers**, the name, phone and store # are filled in too — check them, then type the amount. If nothing is filled in, type the details as usual. If you already typed a name, phone or store #, nothing is filled in. Scanning another sticker clears the details the last scan filled in (what you typed yourself stays). If you change the @username by hand to another one after a scan filled in the details, those details are cleared too (what you typed yourself stays) — scan the sticker again to fill them in again. Adding a note after the username, like (U) or #3, keeps them. An Import from Customers also clears an entry that a scan filled in. While you edit a saved parcel, Scan QR fills only the @username.
 3. **Buyer contact** (Plus / Pro / Master): under the amount, tap the buyer''s app — TikTok, LINE, WhatsApp, Facebook, Instagram or Other — then type the contact: TikTok or Instagram @username, LINE ID (not the phone number), WhatsApp number (Taiwan 09… works; other countries with the country code), Facebook name or profile link. The app you picked stays selected for the next parcel. Tick **Buyer has no contact** if there is none. A WhatsApp number that is not 8–15 digits shows a short message and cannot be saved. Scan QR still fills the TikTok @username.
 4. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel (the buyer''s app and contact come back with them; you can change them before Import or with ✏️ Edit).
 5. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.
