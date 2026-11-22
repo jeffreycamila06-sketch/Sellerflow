@@ -3,7 +3,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 
-const seed = readFileSync("sql/116b_guide_seed.sql", "utf8");
+// sql/201 (2026-11-22) supersedes this row in sql/116b; its ROLLBACK keeps the row sql/198 wrote (= live now).
+const seed = readFileSync("sql/201_guide_account_limits_v2_rollback.sql", "utf8");
 const a = seed.indexOf("  ('connect-shopee',");
 const row = seed.slice(a, seed.indexOf("),\n  ('", a) + 1);
 const up = readFileSync("sql/198_guide_shopee_connect.sql", "utf8");
