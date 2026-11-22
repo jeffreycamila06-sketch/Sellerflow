@@ -849,6 +849,7 @@ Keywords: website, shop page, online shop, publish, website orders, checkout, st
 Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
 
 - **Website address** — type your address, then **Save**. Tap **Copy** to share it.
+- **Save** shows **Saved** when there is nothing new to save. If it says **Couldn't save — tap to try again**, tap it again; what you typed is still there.
 - **Look** — the live preview at the top shows your shop as you change it.
   - **Shop layout**: **Brand store** (a colour band at the top, big category tiles, product rows that scroll sideways) or **Marketplace**.
   - **Ready combinations** (Ocean, Midnight, Blush, Forest, Sunset) fill in the settings below; you can still change each one.

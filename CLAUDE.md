@@ -6249,3 +6249,38 @@ pricing, shipping and seller data are the same steps, fields, buttons and functi
 - **Not done / known:** no real-phone test; the first load (517 KB) is unchanged (options in the report); admins see the
   new look on every shop while signed in (buyers of an unlisted shop still see the old one); the five ready
   combinations are unchanged (no "Neutral" chip to go back to — pick the colours by hand).
+
+## 2026-11-22 — BUTTON FEEDBACK: ONE COPY / SAVE PATTERN (branch `claude/button-feedback`, NOT merged; web only — no SQL to apply, no Render)
+Jeff: in Settings → Website, Copy changed nothing and Save went back to "Save" → he tapped many times.
+- **The pattern (`adapters/buttonFeedback.ts`, `components/CopyButton.tsx`, `CopyFailNote.tsx`, `SaveButton.tsx`):**
+  - **Copy** → "✓ Copied" (green) 2 s → Copy. Clipboard refused → the button stays "Copy" and `CopyFailNote` shows
+    "Couldn't copy — press and hold the link to copy" + the text itself in a box, already selected (stays until ×).
+    `floating` = drawn above the bottom bar (a portal into `[data-redesign]`) for Copy buttons inside a list.
+  - **Save** → "Saving…" (off) → "✓ Saved" (green) 2 s → Save. `dirty={false}` (nothing changed since the last
+    save) → "Saved", off. Failed → "Couldn't save — tap to try again" (red, stays, tappable); the form is not touched.
+    `onSave` answers `true` | `false` | `"blocked"` (nothing was sent — the screen shows its own message and brings
+    it into view; the button goes back to Save, not red). An edit while "✓ Saved" shows brings Save back at once.
+    One request for a double tap (the button is off + `flying` ref in `useSaveFeedback`).
+  - Colours `FB_GREEN #047857` / `FB_RED #be123c` (white text ≥ 4.5 : 1 in both themes). Timers = `useScreenTimers`.
+  - Texts `rd_fb_copied`, `rd_fb_copy_failed_link`, `rd_fb_copy_failed_text`, `rd_fb_saving`, `rd_fb_saved`,
+    `rd_fb_save_failed` (8 languages). 🔑 **A new Copy or Save button in the seller app uses these components.**
+- **Where it is applied:** Settings → Website (`wed-copy`, `wed-save`), Website → Payment & shipping (`wps-save`),
+  Orders → Website order link (`wor-link`), Settings profile (`set-profile-save`), laptop auto-print command
+  (`kiosk-copy`), Pickup Status copies (toast only when it really copied + the floating note when refused).
+  "Saving…" word on forms that close or clear after a save: Shipping ×2, Parcel Scan, FamilyMart Parcel Scan,
+  Customers edit ×2, Posts price edit (+ a line when that save fails — it used to stay silent).
+- **`dirty` per form:** Website = no website yet, or address / draft differ from the saved ones (JSON); Payment &
+  shipping = differs from `savedKey` OR something still needs fixing (so the tap can say what is missing); profile =
+  differs from the stored profile and from what the last Save sent (`savedForm`).
+- **Only `components/inviteShare.ts` `copyText` writes to the clipboard** (test-pinned); it answers true / false.
+  Website and Website orders used to call `navigator.clipboard?.writeText(...).catch(() => {})` and toast "Copied"
+  whatever happened.
+- **NOT changed (listed in the report):** printing files (0-lines rule — Receipt format ×3 already says
+  Saving… / Saved / failed; "Save settings" and "Save size" answer with a toast), Admin-only screens, Manage
+  channels (the button exists only while something changed + "✓ Saved" line), invite code, password reset, Products.
+- Tests: `adapters/__tests__/buttonFeedback.test.tsx` · `screens/__tests__/buttonFeedback.screens.test.tsx` ·
+  18/18 on-purpose breaks (`docs/design/button-feedback/proof/`). Pictures: `docs/design/button-feedback/shots/`
+  (7 states × 390 / 412 / 1280 + dark). Guide: one line in the website section + 116b regenerated (the live guide
+  table has no website row yet, so there is no separate SQL file).
+- Seen while measuring, old, not changed: the Website screen's title pulse (`sfl-anim-beat` on a full-width div)
+  makes the page a few px wider for a split second (up to ~60 px at 1280).

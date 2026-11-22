@@ -8,6 +8,11 @@ import WebsiteLookEditor from "../components/WebsiteLookEditor";
 import { newWebsiteDraft } from "../adapters/websiteLook";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { loadNewLook } from "../../website/v4/gate";
+import CopyButton from "../components/CopyButton";
+import CopyFailNote from "../components/CopyFailNote";
+import SaveButton from "../components/SaveButton";
+import { useCopyFeedback, type SaveOutcome } from "../adapters/buttonFeedback";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
@@ -78,16 +83,30 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
   const set = (p: Partial<ShopDesign>) => setDraft((d) => ({ ...d, ...p }));
   const settings: WebsiteSettings = exists ? (site as MyWebsite).settings : DEFAULT_SETTINGS;
   const changes = hasUnpublished(draft, published);
+  // nothing to save: the website exists and the address + everything in the form are what was last saved
+  const dirty = !exists || sub !== (site as MyWebsite).subdomain || JSON.stringify(draft) !== JSON.stringify((site as MyWebsite).draft);
+  const copyFb = useCopyFeedback();
+  const msgAt = useRef<HTMLDivElement | null>(null);
+  const later = useScreenTimers();
+  const showMsg = () => later(() => { try { msgAt.current?.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* no scrolling here */ } }, 0);
   const upToDate = !!published && !changes && exists && sub === (site as MyWebsite).subdomain;
 
-  const save = async (o: { quiet?: boolean } = {}): Promise<boolean> => {
+  // The Save button's answer (components/SaveButton.tsx): true = saved, false = it did not go through (the
+  // button offers the retry), "blocked" = nothing was sent — the message says what to fix and is brought into view.
+  const blocked = (text: string): SaveOutcome => { setMsg({ text, tone: "bad" }); showMsg(); return "blocked"; };
+  const save = async (o: { quiet?: boolean } = {}): Promise<SaveOutcome> => {
     setMsg(null);
-    if (!(draft.name || "").trim()) { setMsg({ text: t.rd_wed_need_name, tone: "bad" }); return false; }
-    if (subProblem) { setMsg({ text: subText(t, subProblem), tone: "bad" }); return false; }
+    if (!(draft.name || "").trim()) return blocked(t.rd_wed_need_name);
+    if (subProblem) return blocked(subText(t, subProblem));
     setBusy("save");
     const r = await api.save({ subdomain: sub, draft }, exists);
     setBusy("");
-    if (r.ok === false) { setMsg({ text: r.reason === "taken" ? t.rd_wed_addr_taken : r.reason === "bad_address" ? t.rd_wed_addr_chars : t.rd_wed_save_failed, tone: "bad" }); if (r.reason === "taken") setSubState("taken"); return false; }
+    if (r.ok === false) {
+      if (r.reason === "taken") { setSubState("taken"); return blocked(t.rd_wed_addr_taken); }
+      if (r.reason === "bad_address") return blocked(t.rd_wed_addr_chars);
+      setMsg({ text: t.rd_wed_save_failed, tone: "bad" });
+      return false;
+    }
     setSite((s) => (s && s !== "loading" && s !== "error" ? { ...s, subdomain: sub, draft } : { subdomain: sub, draft, published: null, publishedAt: null, settings: DEFAULT_SETTINGS, customDomain: null }));
     if (!o.quiet) setMsg({ text: t.rd_wed_saved, tone: "ok" });
     return true;
@@ -96,7 +115,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     if (!canPublish || pub === "running") return;
     setPubUpgrade(false);
     setPub("running");
-    if (!(await save({ quiet: true }))) { setPub(""); return; }
+    if ((await save({ quiet: true })) !== true) { setPub(""); return; }
     setBusy("publish");
     const r = await api.publish();
     setBusy("");
@@ -160,9 +179,10 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           {address && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
               <div data-testid="wed-url" style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "var(--accent-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{address}</div>
-              <button type="button" data-testid="wed-copy" style={smallBtn} onClick={() => { void navigator.clipboard?.writeText(link).catch(() => {}); onToast(t.rd_shop_od_copied); }}>{t.rd_shop_od_copy}</button>
+              <CopyButton fb={copyFb} text={link} label={t.rd_shop_od_copy} t={t} testid="wed-copy" style={{ ...smallBtn, minHeight: 44 }} />
             </div>
           )}
+          <CopyFailNote fb={copyFb} t={t} what="link" testid="wed-copy-fail" />
           {fallback && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2, overflowWrap: "anywhere" }}>{fallback.replace(/^https:\/\//, "")}</div>}
           <div data-testid="wed-state" style={{ marginTop: 12, fontSize: 13, fontWeight: 700, color: published ? "var(--ok)" : "var(--text-muted)" }}>
             {published && !canPublish
@@ -185,7 +205,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           {!canPublish && (ios
             ? <div data-testid="wed-locked-note" style={noteStyle}>{t.rd_wed_locked}</div>
             : <button type="button" data-testid="wed-upgrade" onClick={onUpgrade} disabled={!onUpgrade} style={{ ...noteStyle, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: onUpgrade ? "pointer" : "default", color: "var(--accent-fg)", fontWeight: 800 }}>{t.rd_wed_upgrade} {onUpgrade ? "›" : ""}</button>)}
-          {msg && <div role="status" data-testid="wed-msg" style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: msg.tone === "ok" ? "var(--ok)" : "var(--danger)" }}>{msg.text}</div>}
+          {msg && <div role="status" data-testid="wed-msg" ref={msgAt} style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: msg.tone === "ok" ? "var(--ok)" : "var(--danger)" }}>{msg.text}</div>}
           {pubUpgrade && <button type="button" data-testid="wed-pub-upgrade" onClick={onUpgrade} style={{ ...noteStyle, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: "var(--accent-fg)", fontWeight: 800 }}>{t.rd_wed_upgrade_short} ›</button>}
         </section>
 
@@ -237,7 +257,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
       </div>
       <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, padding: "10px 14px calc(10px + env(safe-area-inset-bottom))", background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", gap: 8 }}>
-          <button type="button" data-testid="wed-save" style={{ ...btn, flex: 1 }} disabled={!!busy} onClick={() => void save()}>{busy === "save" ? t.rd_wed_saving : t.rd_wed_save}</button>
+          <SaveButton testid="wed-save" label={t.rd_wed_save} t={t} dirty={dirty} disabled={!!busy} onSave={() => save()} style={{ ...btn, flex: 1 }} />
         </div>
       </div>
       {preview && <PreviewSheet title={t.rd_wed_preview} closeLabel={t.rd_wed_preview_close} onClose={closePreview}>

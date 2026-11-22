@@ -26,7 +26,10 @@ import ChannelsGrid, { type GridInput, type GridChan } from "../components/Chann
 const SHOW_MOTION_TOGGLE = false;
 import { isIOS } from "../adapters/platform";
 import { canSeeKioskLauncher, KIOSK_COMMAND_WINDOWS, KIOSK_COMMAND_MAC } from "../adapters/kioskLauncher";
-import { copyText } from "../components/inviteShare";
+import CopyButton from "../components/CopyButton";
+import CopyFailNote from "../components/CopyFailNote";
+import SaveButton from "../components/SaveButton";
+import { useCopyFeedback, type SaveOutcome } from "../adapters/buttonFeedback";
 import { usePrinterStatus, type PrinterConnState } from "../adapters/usePrinterStatus";
 import { fmtMoney, priceInput } from "../../lib/money";
 
@@ -127,8 +130,7 @@ export default function GeneralSettings({
 }) {
   const t = useT();
   const uiLang = useLang(); // normalized language for date formatting
-  const [kioskCopied, setKioskCopied] = useState(false); // "Copy kiosk command" feedback (web-only card)
-  const copyKioskCommand = async () => { setKioskCopied(await copyText(KIOSK_COMMAND_WINDOWS)); };
+  const kioskCopy = useCopyFeedback(); // "Copy kiosk command" feedback (web-only card)
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
@@ -226,6 +228,8 @@ export default function GeneralSettings({
   const [phoneCountry, setPhoneCountry] = useState(() => { try { return localStorage.getItem("sfl_rd_phone_country") || DEFAULT_COUNTRY; } catch { return DEFAULT_COUNTRY; } });
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveErr, setSaveErr] = useState("");
+  // what the last successful Save sent — with the stored profile it tells the Save button "nothing changed"
+  const [savedForm, setSavedForm] = useState("");
   useEffect(() => {
     setForm({
       fullName: account?.profile.fullName || "",
@@ -239,9 +243,13 @@ export default function GeneralSettings({
   // Inline hint only when the phone was CHANGED to an invalid value (grandfathered
   // pre-filled values are never flagged — validate-on-change).
   const phoneChangedInvalid = form.phone.trim() !== (account?.profile.phone || "").trim() && form.phone.trim().length > 0 && !validatePhone(form.phone, phoneCountry).valid;
-  const handleSaveProfile = async () => {
-    if (!onSaveProfile || saveState === "saving") return;
-    if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr(t.rd_set_err_required); return; }
+  const formKey = (f: { fullName: string; storeName: string; phone: string }) => JSON.stringify([f.fullName.trim(), f.storeName.trim(), f.phone.trim()]);
+  const profileDirty = !!account && formKey(form) !== formKey({ fullName: account.profile.fullName || "", storeName: account.profile.storeName || "", phone: account.profile.phone || "" }) && formKey(form) !== savedForm;
+  // The Save button's answer (components/SaveButton.tsx): true = saved, false = it did not go through (the button
+  // offers the retry), "blocked" = nothing was sent, the line above the button says what to fix.
+  const handleSaveProfile = async (): Promise<SaveOutcome> => {
+    if (!onSaveProfile || saveState === "saving") return "blocked";
+    if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr(t.rd_set_err_required); return "blocked"; }
     // Phone: SAME single-source validatePhone(number, country) as signup. GRANDFATHER
     // — only validate when the phone was CHANGED, so an existing seller with an empty
     // OR malformed stored phone can still edit their other fields (their pre-filled
@@ -250,7 +258,7 @@ export default function GeneralSettings({
     const ph = form.phone.trim();
     const originalPh = (account?.profile.phone || "").trim();
     const phChanged = ph !== originalPh;
-    if (phChanged && ph && !validatePhone(ph, phoneCountry).valid) { setSaveState("error"); setSaveErr(t.rd_su_err_phone); return; }
+    if (phChanged && ph && !validatePhone(ph, phoneCountry).valid) { setSaveState("error"); setSaveErr(t.rd_su_err_phone); return "blocked"; }
     setSaveState("saving"); setSaveErr("");
     // ⚠️ name/store/phone ONLY — never tiktok/facebook (Channels editor owns accounts).
     const r = await onSaveProfile({
@@ -258,8 +266,9 @@ export default function GeneralSettings({
       storeName: form.storeName.trim(),
       phone: phChanged && ph ? validatePhone(ph, phoneCountry).national : ph, // clean national on a valid change; else keep as-is (grandfather)
     });
-    if (r.ok) { setSaveState("saved"); }
-    else { setSaveState("error"); setSaveErr(t.rd_set_profile_save_failed); } // never the raw database text
+    if (r.ok) { setSaveState("saved"); setSavedForm(formKey(form)); return true; }
+    setSaveState("error"); setSaveErr(t.rd_set_profile_save_failed); // never the raw database text
+    return false;
   };
 
   // Phase 5a — real profile (falls back to the demo strings when signed out / no row).
@@ -372,8 +381,7 @@ export default function GeneralSettings({
                 <div><label style={label}>{t.rd_set_email}</label><input value={pEmail} disabled style={{ ...input, opacity: 0.6 }} /></div>
               </div>
               {saveState === "error" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginTop: 10 }}>{saveErr}</div>}
-              {saveState === "saved" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)", marginTop: 10 }}>{t.rd_set_saved}</div>}
-              <button onClick={handleSaveProfile} disabled={saveState === "saving"} style={{ width: "100%", marginTop: 12, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: saveState === "saving" ? "default" : "pointer", opacity: saveState === "saving" ? 0.7 : 1, boxShadow: "0 4px 14px var(--accent-soft)" }}>{saveState === "saving" ? t.rd_set_saving : t.rd_set_save_changes}</button>
+              <SaveButton testid="set-profile-save" label={t.rd_set_save_changes} t={t} dirty={profileDirty} onSave={handleSaveProfile} style={{ width: "100%", marginTop: 12, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px var(--accent-soft)" }} />
             </div>
           )}
         </div>
@@ -404,7 +412,8 @@ export default function GeneralSettings({
                   aria-label={t.rd_wp_cmd_label}
                   style={{ width: "100%", boxSizing: "border-box", fontFamily: "var(--font-mono)", fontSize: 11, padding: "8px 10px", border: "1px solid var(--border-strong)", borderRadius: 8, background: "var(--surface-2)", color: "var(--text)", marginBottom: 8 }}
                 />
-                <button onClick={copyKioskCommand} style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{kioskCopied ? t.rd_wp_cmd_copied : t.rd_wp_cmd_btn}</button>
+                <CopyButton fb={kioskCopy} text={KIOSK_COMMAND_WINDOWS} label={t.rd_wp_cmd_btn} t={t} testid="kiosk-copy" style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }} />
+                <CopyFailNote fb={kioskCopy} t={t} what="text" testid="kiosk-copy-fail" />
                 <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 10, whiteSpace: "pre-line", wordBreak: "break-word" }}>{tpl(t.rd_wp_cmd_mac, { cmd: KIOSK_COMMAND_MAC })}</div>
               </div>
             </div>

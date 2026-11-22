@@ -1,0 +1,25 @@
+1-opened_copy_and_saved            iphone390   copy="Copy [idle] 59x44"  save="Saved [clean, off] 362x46"  note=false  sideways=0
+1-opened_copy_and_saved            android412  copy="Copy [idle] 59x44"  save="Saved [clean, off] 384x46"  note=false  sideways=0
+1-opened_copy_and_saved            laptop1280  copy="Copy [idle] 59x44"  save="Saved [clean, off] 720x46"  note=false  sideways=0
+2-copied                           iphone390   copy="✓ Copied [copied] 85x44"  save="Saved [clean, off] 362x46"  note=false  sideways=0
+2-copied                           android412  copy="✓ Copied [copied] 85x44"  save="Saved [clean, off] 384x46"  note=false  sideways=0
+2-copied                           laptop1280  copy="✓ Copied [copied] 85x44"  save="Saved [clean, off] 720x46"  note=false  sideways=0
+3-copy-refused                     iphone390   copy="Copy [failed] 59x44"  save="Saved [clean, off] 362x46"  note=true  sideways=0
+3-copy-refused                     android412  copy="Copy [failed] 59x44"  save="Saved [clean, off] 384x46"  note=true  sideways=0
+3-copy-refused                     laptop1280  copy="Copy [failed] 59x44"  save="Saved [clean, off] 720x46"  note=true  sideways=0
+4-changed_save                     iphone390   copy="Copy [idle] 59x44"  save="Save [ready] 362x46"  note=false  sideways=0
+4-changed_save                     android412  copy="Copy [idle] 59x44"  save="Save [ready] 384x46"  note=false  sideways=0
+4-changed_save                     laptop1280  copy="Copy [idle] 59x44"  save="Save [ready] 720x46"  note=false  sideways=0
+5-saving                           iphone390   copy="Copy [idle] 59x44"  save="Saving… [saving, off] 362x46"  note=false  sideways=0
+5-saving                           android412  copy="Copy [idle] 59x44"  save="Saving… [saving, off] 384x46"  note=false  sideways=0
+5-saving                           laptop1280  copy="Copy [idle] 59x44"  save="Saving… [saving, off] 720x46"  note=false  sideways=0
+6-saved                            iphone390   copy="Copy [idle] 59x44"  save="✓ Saved [done, off] 362x46"  note=false  sideways=1
+6-saved                            android412  copy="Copy [idle] 59x44"  save="✓ Saved [done, off] 384x46"  note=false  sideways=5
+6-saved                            laptop1280  copy="Copy [idle] 59x44"  save="✓ Saved [done, off] 720x46"  note=false  sideways=64
+7-save-failed                      iphone390   copy="Copy [idle] 59x44"  save="Couldn't save — tap to try again [failed] 362x46"  note=false  sideways=3
+7-save-failed                      android412  copy="Copy [idle] 59x44"  save="Couldn't save — tap to try again [failed] 384x46"  note=false  sideways=5
+7-save-failed                      laptop1280  copy="Copy [idle] 59x44"  save="Couldn't save — tap to try again [failed] 720x46"  note=false  sideways=63
+2-copied (dark)                    iphone390   copy="✓ Copied [copied] 85x44"  save="Saved [clean, off] 362x46"  note=false  sideways=0
+3-copy-refused (dark)              iphone390   copy="Copy [failed] 59x44"  save="Saved [clean, off] 362x46"  note=true  sideways=0
+6-saved (dark)                     iphone390   copy="Copy [idle] 59x44"  save="✓ Saved [done, off] 362x46"  note=false  sideways=2
+7-save-failed (dark)               iphone390   copy="Copy [idle] 59x44"  save="Couldn't save — tap to try again [failed] 362x46"  note=false  sideways=4

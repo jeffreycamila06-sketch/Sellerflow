@@ -589,6 +589,7 @@ When you message, include your account email, your TikTok username, what you wer
   ('website', 'Your shop website (preview)', '2026-11-22'::date, 'website, shop page, online shop, publish, website orders, checkout, store link, theme, layout, brand store, marketplace, colours, font, banner, flash sale, shipping options, payment methods, tracking number, 網站, 商店網頁, 网站', 'Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
 
 - **Website address** — type your address, then **Save**. Tap **Copy** to share it.
+- **Save** shows **Saved** when there is nothing new to save. If it says **Couldn''t save — tap to try again**, tap it again; what you typed is still there.
 - **Look** — the live preview at the top shows your shop as you change it.
   - **Shop layout**: **Brand store** (a colour band at the top, big category tiles, product rows that scroll sideways) or **Marketplace**.
   - **Ready combinations** (Ocean, Midnight, Blush, Forest, Sunset) fill in the settings below; you can still change each one.

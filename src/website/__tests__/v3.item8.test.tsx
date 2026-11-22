@@ -73,6 +73,8 @@ describe("the editor", () => {
   });
   it("saved before but never published: still today's look (no look added)", async () => {
     const { save } = setup(site(BUDGETUKAY, null));
+    // a text edit (an unchanged form has nothing to save — the button says "Saved")
+    fireEvent.change(await screen.findByDisplayValue("Budgetukay"), { target: { value: "Budgetukay 2" } });
     fireEvent.click(await screen.findByTestId("wed-save"));
     await act(async () => {});
     expect("look" in savedDraft(save)).toBe(false);
