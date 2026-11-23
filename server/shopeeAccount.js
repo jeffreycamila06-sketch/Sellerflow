@@ -17,6 +17,16 @@ export function isMissingFunctionError(err) {
   return code === "PGRST202" || code === "42883" || /could not find the function/i.test(msg);
 }
 
+// The database's refusal of a NEW live account, by its name ("" = another error):
+//   account_limit       the plan's account total (sql/84)
+//   free_account_used   a free login adding an account whose free orders are all used (sql/208)
+export function accountSaveRefusal(err) {
+  const msg = String((err && err.message) || "");
+  if (/free_account_used/.test(msg)) return "free_account_used";
+  if (/account_limit/.test(msg)) return "account_limit";
+  return "";
+}
+
 export function createShopeeAccountGate({ register, liveCheck, log = () => {} }) {
   return async function gate(req, { region, uid }) {
     let r;
@@ -24,6 +34,7 @@ export function createShopeeAccountGate({ register, liveCheck, log = () => {} })
     catch { log("[SHOPEE-ACCT] register failed → try_again"); return { ok: false, status: 503, code: "try_again" }; }
     if (r && r.error) {
       if (isMissingFunctionError(r.error)) return { ok: true };
+      if (accountSaveRefusal(r.error) === "free_account_used") { log("[SHOPEE-ACCT] free orders used → refused"); return { ok: false, status: 409, code: "free_account_used" }; }
       log("[SHOPEE-ACCT] register error → try_again");
       return { ok: false, status: 503, code: "try_again" };
     }

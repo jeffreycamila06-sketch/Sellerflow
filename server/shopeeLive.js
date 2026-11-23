@@ -226,6 +226,7 @@ export function createShopeeRuntime(deps) {
     } catch (e) {
       // The database's combined account limit (sql/84) refused this NEW shop.
       if (e && e.message === "account_limit") return { redirect: `${appUrl}/?shopee=error&code=account_limit` };
+      if (e && e.message === "free_account_used") return { redirect: `${appUrl}/?shopee=error&code=free_account_used` }; // sql/208
       log(`[SHOPEE] callback error: ${e && e.message}`);
       return { redirect: `${appUrl}/?shopee=error&code=exception` };
     }

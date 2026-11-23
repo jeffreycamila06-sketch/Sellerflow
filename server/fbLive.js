@@ -774,7 +774,7 @@ export function createFbRuntime(deps) {
       const max = plan ? maxAccountsForPlan(plan) : Infinity;
       // ~60d reminder from the long-lived user-token window (see the deviation note).
       const expiresAtIso = new Date(now() + longTok.expireInSec * 1000).toISOString();
-      let upserted = 0, capped = 0, failed = 0, limited = 0;
+      let upserted = 0, capped = 0, failed = 0, limited = 0, freeUsed = 0;
       const keptNames = [], droppedNames = []; // for the partial-save answer
       for (const p of pages) {
         let existing = null;
@@ -792,6 +792,7 @@ export function createFbRuntime(deps) {
         } catch (e) {
           // The database's combined account limit (sql/84) refused this NEW page.
           if (e && e.message === "account_limit") { limited++; droppedNames.push(p.name || p.id); }
+          else if (e && e.message === "free_account_used") freeUsed++; // sql/208
           else failed++;
           continue;
         }
@@ -803,6 +804,7 @@ export function createFbRuntime(deps) {
         if (!existing) count++;
       }
       if (upserted === 0 && limited > 0) return { redirect: back("fb=error&code=account_limit") };
+      if (upserted === 0 && freeUsed > 0) return { redirect: back("fb=error&code=free_account_used") };
       if (upserted === 0 && failed > 0) {
         log(`[FB] callback save_failed user=${userId} failed=${failed}`);
         return { redirect: back("fb=error&code=save_failed") };

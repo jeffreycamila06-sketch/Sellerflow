@@ -1,0 +1,16 @@
+refused_save_360.png: sideways scroll=false · line shown=true · Save button 46px
+refused_save_390.png: sideways scroll=false · line shown=true · Save button 46px
+refused_save_430.png: sideways scroll=false · line shown=true · Save button 46px
+refused_save_1280.png: sideways scroll=false · line shown=true · Save button 46px
+refused_save_iphone_360.png: sideways scroll=false · line shown=true · Save button 46px
+refused_save_iphone_390.png: sideways scroll=false · line shown=true · Save button 46px
+refused_save_iphone_430.png: sideways scroll=false · line shown=true · Save button 46px
+refused_save_iphone_1280.png: sideways scroll=false · line shown=true · Save button 46px
+admin_list_360.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px
+admin_list_390.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px
+admin_list_430.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px
+admin_list_1280.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px
+admin_reset_ask_360.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px
+admin_reset_ask_390.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px
+admin_reset_ask_430.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px
+admin_reset_ask_1280.png: sideways scroll=false · accounts=3 devices=1 · button heights 44px

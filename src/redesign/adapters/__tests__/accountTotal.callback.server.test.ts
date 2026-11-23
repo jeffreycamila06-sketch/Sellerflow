@@ -78,6 +78,11 @@ describe("Facebook callback", () => {
     const { out } = await fbCallback({ saveErr: "account_limit" });
     expect(out.redirect).toBe("https://app.test/?fb=error&code=account_limit");
   });
+  it("a free login's used-up Page (sql/208) → code=free_account_used, nothing saved", async () => {
+    const { out, store } = await fbCallback({ saveErr: "free_account_used" });
+    expect(out.redirect).toBe("https://app.test/?fb=error&code=free_account_used");
+    expect(store.upserts).toBe(0);
+  });
   it("other save error stays save_failed", async () => {
     const { out } = await fbCallback({ saveErr: "fb_page_save_failed" });
     expect(out.redirect).toBe("https://app.test/?fb=error&code=save_failed");
@@ -102,6 +107,10 @@ describe("Shopee callback", () => {
     const { out } = await shCallback({ saveErr: "account_limit" });
     expect(out.redirect).toBe("https://app.test/?shopee=error&code=account_limit");
   });
+  it("a free login's used-up shop (sql/208) → code=free_account_used", async () => {
+    const { out } = await shCallback({ saveErr: "free_account_used" });
+    expect(out.redirect).toBe("https://app.test/?shopee=error&code=free_account_used");
+  });
   it("healthy reads → connected", async () => {
     expect((await shCallback({})).out.redirect).toBe("https://app.test/?shopee=connected");
   });
@@ -116,6 +125,7 @@ describe("server.js stores never hide a read or save error", () => {
     expect(src.match(/if \(error\) throw new Error\("count_read_failed"\)/g)?.length).toBe(3);
   });
   it("upsertShop / upsertPage / upsertAccount carry account_limit", () => {
-    expect(src.match(/\/account_limit\/\.test\(String\(error\.message/g)?.length).toBe(3);
+    // sql/208: the three stores name the database's refusal through one helper (account_limit or free_account_used)
+    expect(src.match(/throw new Error\(accountSaveRefusal\(error\) \|\| "/g)?.length).toBe(3);
   });
 });
