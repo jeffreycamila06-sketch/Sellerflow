@@ -14,9 +14,10 @@ describe("currency options", () => {
     expect(curSymbol("EUR")).toBe("€");
   });
 
-  it("EUR is appended LAST — existing order unchanged", () => {
-    expect(CURRENCY_ORDER).toEqual(["USD", "PHP", "IDR", "VND", "CNY", "TWD", "THB", "AUD", "MYR", "EUR"]);
-    expect(CURRENCY_ORDER[CURRENCY_ORDER.length - 1]).toBe("EUR");
+  it("KRW (added 2026-11-23) is appended LAST, right after EUR — existing order unchanged", () => {
+    expect(CURRENCY_ORDER).toEqual(["USD", "PHP", "IDR", "VND", "CNY", "TWD", "THB", "AUD", "MYR", "EUR", "KRW"]);
+    expect(CURRENCY_ORDER[CURRENCY_ORDER.length - 1]).toBe("KRW");
+    expect(CURRENCIES.KRW).toBe("₩");
   });
 
   it("existing currencies + symbols are untouched", () => {
