@@ -1,0 +1,30 @@
+files of the app that differ from main:
+    src/redesign/RedesignApp.tsx
+    src/redesign/adapters/planFull.ts
+    src/redesign/components/PlanFullPopup.tsx
+    src/redesign/i18n/index.tsx
+    src/redesign/screens/ShopeeShops.tsx
+ok    only these five app files changed
+ok    0 files in the server, the Chrome extension, the phone apps, the packages
+ok    0 printing files
+ok    RedesignApp.tsx: the code is identical to main (two comment lines differ)
+texts changed: rd_pf_lock_note, rd_pf_rm_body, rd_pf_wait_any, rd_pf_wait_facebook, rd_pf_wait_instagram, rd_pf_wait_shopee, rd_pf_wait_tiktok, rd_sh_err_shop_locked
+texts added: rd_pf_wait_locked
+ok    3084 texts on main: 8 changed, 1 added, 0 removed, 3076 identical in all 8 languages
+ok    the rest of the texts file is byte-identical to main
+   rd_pf_lock_note: src/redesign/adapters/planFull.ts, src/redesign/screens/ShopeeShops.tsx
+   rd_pf_rm_body: src/redesign/components/PlanFullPopup.tsx, src/redesign/screens/ShopeeShops.tsx
+   rd_pf_wait_any: src/redesign/adapters/planFull.ts
+   rd_pf_wait_facebook: src/redesign/adapters/planFull.ts
+   rd_pf_wait_instagram: src/redesign/adapters/planFull.ts
+   rd_pf_wait_locked: src/redesign/components/PlanFullPopup.tsx, src/redesign/screens/ShopeeShops.tsx
+   rd_pf_wait_shopee: src/redesign/adapters/planFull.ts
+   rd_pf_wait_tiktok: src/redesign/adapters/planFull.ts
+   rd_sh_err_shop_locked: src/redesign/adapters/shopeeLink.ts
+ok    the 8 "Plan full" texts: only the popup, the Shopee shops screen and their adapter (opened only for the preview / an admin / the switch)
+ok    rd_sh_err_shop_locked: only the Shopee box's answer 'shop_locked' — the server sends it only to a seller of the preview (shopee_link_register answers 'off' for everyone else)
+ok    the popup and the Shopee shops screen are behind accountLimitsV2 (unchanged lines)
+
+database: scripts/sql205-behaviour.mjs — "switch off: every answer for sellers not in the preview is identical to production (67/67)" (proof/sql205-behaviour.txt)
+
+ALL OK

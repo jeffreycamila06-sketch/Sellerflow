@@ -471,7 +471,8 @@ export default function RedesignApp() {
     }
   };
   // sql/199 — Remove from the "Plan full" popup = the SAME remove as Settings for each platform (the same server
-  // checks: a TikTok name keeps its 4-hour slot check; the database starts the 4-hour wait for every removal).
+  // checks: a TikTok name keeps its 4-hour slot check). sql/205: a removal starts no wait — the account that then
+  // takes the place is locked 4 hours (the popup shows "Wait a little" instead of calling this for a locked one).
   const removeFromPlanFull = async (a: AccountRow): Promise<RemoveResult> => {
     try {
       if (a.platform === "tiktok") {

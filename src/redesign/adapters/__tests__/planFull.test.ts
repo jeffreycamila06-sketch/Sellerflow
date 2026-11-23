@@ -2,12 +2,12 @@
 import { describe, it, expect } from "vitest";
 import { buildT } from "../../i18n";
 import {
-  accountLimitsV2Visible, parseAccountList, tiktokKey, shopTail, accountName, platformName, isAccountLive, waitMs, countdownText, planFullTexts, waitLead,
+  accountLimitsV2Visible, parseAccountList, tiktokKey, shopTail, accountName, platformName, isAccountLive, waitMs, lockMs, countdownText, planFullTexts, waitLead,
   type AccountList, type AccountRow,
 } from "../planFull";
 
 const t = buildT("en");
-const row = (o: Partial<AccountRow>): AccountRow => ({ platform: "tiktok", key: "shop_a", id: null, name: null, link: false, rank: 1, covered: true, addedAt: null, ...o });
+const row = (o: Partial<AccountRow>): AccountRow => ({ platform: "tiktok", key: "shop_a", id: null, name: null, link: false, rank: 1, covered: true, addedAt: null, lockUntil: null, ...o });
 const NOW = Date.parse("2026-11-22T10:00:00Z");
 const list = (o: Partial<AccountList> = {}): AccountList => ({ v2: true, plan: "basic", limit: 1, unlimited: false, used: 1, locked: 0, nextFreeAt: null, serverNow: "2026-11-22T10:00:00Z", loadedAt: NOW, accounts: [row({})], ...o });
 
@@ -25,13 +25,15 @@ describe("parseAccountList (my_account_list)", () => {
     const l = parseAccountList({ v2: true, plan: "plus", limit: 2, unlimited: false, used: 3, locked: 1, next_free_at: "2026-11-22T12:15:00Z", now: "2026-11-22T10:00:00Z",
       accounts: [
         { platform: "tiktok", key: "a_shop", rank: 1, covered: true, link: false, added_at: "2026-11-01T00:00:00Z" },
-        { platform: "shopee", key: "ph:12345678", id: "row-1", name: null, rank: 2, covered: false, link: true },
+        { platform: "shopee", key: "ph:12345678", id: "row-1", name: null, rank: 2, covered: false, link: true, lock_until: "2026-11-22T13:00:00Z" },
         { platform: "x", key: "y" }, { platform: "facebook", key: "" },
       ] })!;
     expect(l.limit).toBe(2); expect(l.used).toBe(3); expect(l.locked).toBe(1);
     expect(l.nextFreeAt).toBe("2026-11-22T12:15:00Z"); expect(l.serverNow).toBe("2026-11-22T10:00:00Z");
     expect(l.accounts.map((a) => `${a.platform}:${a.key}`)).toEqual(["tiktok:a_shop", "shopee:ph:12345678"]);
-    expect(l.accounts[1]).toMatchObject({ id: "row-1", link: true, covered: false });
+    expect(l.accounts[1]).toMatchObject({ id: "row-1", link: true, covered: false, lockUntil: "2026-11-22T13:00:00Z" });
+    expect(l.accounts[0].lockUntil).toBeNull();                                  // no key (before sql/205) = not locked
+    expect(parseAccountList({ accounts: [{ platform: "tiktok", key: "a", lock_until: "later" }] })!.accounts[0].lockUntil).toBeNull();
     expect(parseAccountList(null)).toBeNull();
     expect(parseAccountList({ plan: "x" })).toBeNull();
     expect(parseAccountList({ accounts: [], limit: "2", next_free_at: "soon" })).toMatchObject({ limit: 1, nextFreeAt: null });
@@ -80,7 +82,25 @@ describe("the 4-hour wait", () => {
     expect(countdownText(2 * 3600_000 + 15 * 60_000, t)).toBe("2h 15m");
     expect(countdownText(30_000, t)).toBe("0h 1m");
     expect(countdownText(0, t)).toBe("0h 0m");
-    expect(waitLead({ kind: "shopee" }, t)).toBe("You removed an account. You can add a new Shopee shop in:");
+    expect(waitLead({ kind: "shopee" }, t)).toBe("An account was changed less than 4 hours ago. You can add a new Shopee shop in:");
+  });
+});
+
+describe("an account's own 4 hours (sql/205: it took a removed account's place)", () => {
+  const locked = row({ key: "new_shop", lockUntil: "2026-11-22T13:30:00Z" });
+  it("the time left on the server's clock; null when it is not locked, when it is over, for an admin", () => {
+    const l = list({ accounts: [locked] });
+    expect(lockMs(locked, l, NOW)).toBe(3 * 3600_000 + 30 * 60_000);
+    expect(lockMs(locked, l, NOW + 60_000)).toBe(3 * 3600_000 + 29 * 60_000);            // it counts down
+    const late = { ...l, loadedAt: NOW - 3600_000 };                                     // the phone's clock is 1 hour late
+    expect(lockMs(locked, late, NOW - 3600_000)).toBe(3 * 3600_000 + 30 * 60_000);
+    expect(lockMs(locked, l, NOW + 4 * 3600_000)).toBeNull();                            // over
+    expect(lockMs(row({}), l, NOW)).toBeNull();                                          // never locked
+    expect(lockMs(locked, list({ unlimited: true, accounts: [locked] }), NOW)).toBeNull(); // an admin / exempt seller
+    expect(lockMs(locked, null, NOW)).toBeNull();
+  });
+  it("a locked account alone is not the 'held place' wait (nothing was removed)", () => {
+    expect(waitMs(list({ accounts: [locked] }), { kind: "tiktok" }, NOW)).toBeNull();
   });
 });
 
@@ -89,12 +109,12 @@ describe("texts (the approved design)", () => {
     const tx = planFullTexts({ list: list(), target: { kind: "shopee" }, ios: false, planName: "Basic", t });
     expect(tx.title).toBe("Plan full");
     expect(tx.lead).toBe("Your Basic plan includes 1 account. This is your account now:");
-    expect(tx.note).toBe("To use Shopee, remove this account first. After you remove an account, you can add a new one in 4 hours.");
+    expect(tx.note).toBe("To use Shopee, remove this account first. You can replace an account right away. The new account then can't be changed again for 4 hours.");
   });
   it("Plus, two accounts: lead names the goal, note = the 4-hour line", () => {
     const tx = planFullTexts({ list: list({ limit: 2, accounts: [row({}), row({ platform: "facebook", key: "p1" })] }), target: { kind: "shopee" }, ios: false, planName: "Plus", t });
     expect(tx.lead).toBe("Your Plus plan includes 2 accounts. To use Shopee, remove one of them first.");
-    expect(tx.note).toBe("After you remove an account, you can add a new one in 4 hours.");
+    expect(tx.note).toBe("You can replace an account right away. The new account then can't be changed again for 4 hours.");
   });
   it("live start with an account outside the plan", () => {
     const tx = planFullTexts({ list: list({ limit: 1, accounts: [row({}), row({ key: "second", covered: false })] }), target: { kind: "live", name: "@second" }, ios: false, planName: "Basic", t });

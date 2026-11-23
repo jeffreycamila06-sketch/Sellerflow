@@ -1,14 +1,15 @@
 // Settings → Channels → Shopee: the seller's registered Shopee shops (sql/199 preview). Each one counts as one
 // account. Remove (confirm sheet, the same words as the "Plan full" popup) → the server stops its read and
-// removes it; its place waits 4 hours, shown as a live countdown. A shop is added by connecting its live on the
-// Live screen (paste the share link) — this screen never adds one.
+// removes it; a different shop can be added right away (sql/205). A shop that took a removed account's place
+// less than 4 hours ago is locked: Remove shows "Wait a little" with the time left. A shop is added by
+// connecting its live on the Live screen (paste the share link) — this screen never adds one.
 import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useT, tpl } from "../i18n";
 import { useLang } from "../i18n/langContext";
 import { BackButton } from "../components/BackButton";
 import AccountQuotaLine from "../components/AccountQuotaLine";
-import { accountName, isAccountLive, waitMs, countdownText, type AccountList, type AccountRow, type LiveAccounts } from "../adapters/planFull";
+import { accountName, isAccountLive, waitMs, lockMs, countdownText, type AccountList, type AccountRow, type LiveAccounts } from "../adapters/planFull";
 import type { RemoveResult } from "../components/PlanFullPopup";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "12px 14px", marginBottom: 10, boxShadow: "var(--shadow)" };
@@ -31,15 +32,17 @@ export default function ShopeeShops({ list, live, onRemove, onReload, onBack, no
   const [pick, setPick] = useState<AccountRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [locked, setLocked] = useState<AccountRow | null>(null);   // Remove was tapped on a locked shop
   const [, setTick] = useState(0);
   const shops = (list?.accounts || []).filter((a) => a.platform === "shopee" && a.link);
   const wait = waitMs(list, { kind: "shopee" }, now());
 
+  const counting = wait !== null || locked !== null;
   useEffect(() => {
-    if (wait === null) return;
+    if (!counting) return;
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
-  }, [wait === null]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [counting]);
 
   const confirmRemove = async () => {
     if (!pick || busy) return;
@@ -58,6 +61,22 @@ export default function ShopeeShops({ list, live, onRemove, onReload, onBack, no
         <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.45, color: "var(--text-dim)" }}>{t.rd_pf_rm_body}</p>
         <button type="button" onClick={() => void confirmRemove()} disabled={busy} data-testid="ss-confirm-remove" style={{ minHeight: 50, borderRadius: 14, border: "none", background: "var(--danger)", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 800, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? t.rd_pf_removing : t.rd_pf_remove}</button>
         <button type="button" onClick={() => setPick(null)} disabled={busy} data-testid="ss-keep" style={{ minHeight: 48, borderRadius: 14, border: "1.5px solid var(--border-strong)", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>{t.rd_pf_rm_keep}</button>
+      </div>
+    </div>,
+    (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
+  );
+
+  const lockedSheet = locked && createPortal(
+    <div className="sfl-pf-overlay" data-testid="ss-locked-overlay" onClick={() => setLocked(null)}>
+      <div className="sfl-pf-sheet" role="dialog" aria-modal="true" aria-label={t.rd_pf_wait_title} data-testid="ss-locked" onClick={(e) => e.stopPropagation()}>
+        <div className="sfl-pf-grab" aria-hidden="true" />
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "var(--text)" }}>{t.rd_pf_wait_title}</h2>
+        <p data-testid="ss-locked-lead" style={{ margin: 0, fontSize: 14.5, lineHeight: 1.45, color: "var(--text-dim)" }}>{tpl(t.rd_pf_wait_locked, { name: accountName(locked, t) })}</p>
+        <div data-testid="ss-locked-countdown" role="timer" aria-live="off" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--accent-softer)", borderRadius: 14, padding: 14, color: "var(--accent-fg)" }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+          <span style={{ fontSize: 22, fontWeight: 800 }}>{countdownText(lockMs(locked, list, now()) ?? 0, t)}</span>
+        </div>
+        <button type="button" onClick={() => setLocked(null)} data-testid="ss-locked-ok" style={{ minHeight: 50, borderRadius: 14, border: "none", background: "var(--accent)", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 800, cursor: "pointer", width: "100%" }}>{t.rd_pf_ok}</button>
       </div>
     </div>,
     (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
@@ -95,7 +114,7 @@ export default function ShopeeShops({ list, live, onRemove, onReload, onBack, no
                 </div>
                 {isLive
                   ? <span data-testid="ss-end-live" style={{ fontSize: 12, fontWeight: 800, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 9, padding: "8px 10px", whiteSpace: "nowrap", flexShrink: 0 }}>{t.rd_pf_end_live_first}</span>
-                  : <button type="button" onClick={() => { setErr(null); setPick(s); }} data-testid="ss-remove" style={{ minHeight: 44, borderRadius: 10, border: "1.5px solid var(--danger)", background: "var(--surface)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 800, padding: "0 14px", cursor: "pointer", flexShrink: 0 }}>{t.rd_pf_remove}</button>}
+                  : <button type="button" onClick={() => { setErr(null); if (lockMs(s, list, now()) !== null) { setLocked(s); return; } setPick(s); }} data-testid="ss-remove" style={{ minHeight: 44, borderRadius: 10, border: "1.5px solid var(--danger)", background: "var(--surface)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 800, padding: "0 14px", cursor: "pointer", flexShrink: 0 }}>{t.rd_pf_remove}</button>}
               </div>
             );
           })
@@ -111,6 +130,7 @@ export default function ShopeeShops({ list, live, onRemove, onReload, onBack, no
         <div data-testid="ss-add-hint" style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 2px" }}>{t.rd_ss_add_hint}</div>
       </div>
       {sheet}
+      {lockedSheet}
     </div>
   );
 }

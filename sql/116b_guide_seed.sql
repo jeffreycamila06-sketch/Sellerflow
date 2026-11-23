@@ -65,7 +65,7 @@ When your plan is full, a **Plan full** window shows your accounts:
 - Tap **Remove** next to one, then **Remove** again to confirm. Your orders and stickers stay.
 - An account that is live right now shows **End your live first** — end that live, then remove it.
 - Or tap **Upgrade plan** (on iPhone: **Contact Admin**).
-- After you remove an account, a **different** new account can be added only **4 hours** later ("Wait a little" shows the time left). Adding the same account back works right away.
+- After you remove an account you can add a **different** one right away. That new account then can''t be removed or changed again for **4 hours** ("Wait a little" shows the time left). Adding the same account back works right away.
 
 Messages you may see:
 - "Accounts used: 2 of 3" — your count.
@@ -188,7 +188,7 @@ Messages:
 - "Shopee only on your plan — upgrade to use TikTok/Facebook." On a free plan you can use Shopee only. Message Admin to upgrade.
 - "Shopee access ended — contact Admin." Your 30 days are over. Message Admin to continue.
 - "No room for this Shopee shop. Remove an account in Settings to add it." Your plan is full — remove an account or upgrade.
-- "You removed an account. A new Shopee shop can be added 4 hours after the removal." Wait until the time shown, then tap **Connect** again.
+- "An account was changed less than 4 hours ago. A new Shopee shop can be added when the 4 hours are over." Wait until the time shown, then tap **Connect** again.
 - "This Shopee shop is outside your account limit. Remove an account in Settings to go live with it." Only your oldest accounts within your plan can go live.'),
   ('other-platforms', 'Instagram', '2026-11-22'::date, 'instagram, ig, other platform, coming soon, wala pa, kailan, ig直播, 即将推出', 'On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
 

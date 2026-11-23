@@ -98,7 +98,7 @@ import RedesignApp from "../RedesignApp";
 const t = buildT("en");
 const LINK = "https://ph.shp.ee/AbCdEf12";
 const ACCOUNTS = { v2: true, plan: "basic", limit: 1, unlimited: false, used: 1, locked: 0, nextFreeAt: null, serverNow: "2026-11-22T10:00:00Z", loadedAt: Date.now(),
-  accounts: [{ platform: "tiktok", key: "shop1", id: null, name: null, link: false, rank: 1, covered: true, addedAt: null }] };
+  accounts: [{ platform: "tiktok", key: "shop1", id: null, name: null, link: false, rank: 1, covered: true, addedAt: null, lockUntil: null }] };
 
 async function connectShopee() {
   render(<RedesignApp />);
@@ -173,7 +173,7 @@ async function openGeneralSettings() {
   fireEvent.click(byText(t.rd_sh_general)); await flush();
   expect(screenNow()).toBe("settings");
 }
-const LINKED = { ...ACCOUNTS, limit: 3, accounts: [...ACCOUNTS.accounts, { platform: "shopee", key: "ph:555566667", id: "row", name: null, link: true, rank: 2, covered: true, addedAt: null }] };
+const LINKED = { ...ACCOUNTS, limit: 3, accounts: [...ACCOUNTS.accounts, { platform: "shopee", key: "ph:555566667", id: "row", name: null, link: true, rank: 2, covered: true, addedAt: null, lockUntil: null }] };
 
 describe("Settings → Channels", () => {
   it("a seller NOT in the preview: today's rows, no grid", async () => {
@@ -265,6 +265,46 @@ describe("Remove inside the popup = the same remove as Settings", () => {
     await flush();
     expect(H.upsert.fn).not.toHaveBeenCalled();
     expect(screen.getByTestId("pf-error").textContent).toBe(t.rd_ch_cooldown_err);
+  });
+});
+
+// sql/205 (Jeff 2026-11-22): the first swap is free; the account that took the place is locked for 4 hours.
+describe("the 4-hour rule in the real app (sql/205)", () => {
+  it("the first swap: Remove → removed with the same save as Settings → \"you can add the new account now\" (no wait)", async () => {
+    H.preview.v = true;
+    H.upsert.fn = vi.fn(async () => { H.list.v = { ...ACCOUNTS, used: 0, accounts: [] }; return {}; });   // the database holds no place after a removal
+    await connectShopee();
+    fireEvent.click(screen.getByTestId("pf-remove"));
+    expect(screen.getByTestId("pf-lead").textContent).toBe("Your orders and stickers stay. You can add a new account right away. After that, it can't be changed again for 4 hours.");
+    await act(async () => { fireEvent.click(screen.getByTestId("pf-confirm-remove")); });
+    await flush();
+    expect(H.upsert.fn).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("pf-title").textContent).toBe("Removed");
+    expect(screen.getByTestId("pf-lead").textContent).toBe("Removed. You can add the new account now.");
+    expect(screen.queryByTestId("pf-countdown")).toBeNull();
+  });
+  it("the second swap inside the 4 hours: Remove on the locked account → \"Wait a little\" + the time left; no slot check, no save", async () => {
+    H.preview.v = true;
+    const now = Date.now();
+    H.list.v = { ...ACCOUNTS, serverNow: new Date(now).toISOString(), loadedAt: now,
+      accounts: [{ ...ACCOUNTS.accounts[0], lockUntil: new Date(now + 150 * 60_000).toISOString() }] };
+    await connectShopee();
+    expect(screen.getByTestId("pf-title").textContent).toBe("Plan full");
+    fireEvent.click(screen.getByTestId("pf-remove"));
+    expect(screen.getByTestId("pf-title").textContent).toBe("Wait a little");
+    expect(screen.getByTestId("pf-lead-locked").textContent).toBe("@shop1 replaced another account less than 4 hours ago. You can change it again in:");
+    expect(screen.getByTestId("pf-countdown").textContent).toMatch(/^2h (29|30)m$/);
+    expect(screen.queryByTestId("pf-confirm-remove")).toBeNull();
+    expect(H.touch.fn).not.toHaveBeenCalled();
+    expect(H.upsert.fn).not.toHaveBeenCalled();
+  });
+  it("a seller NOT in the preview never sees any of it: the same refusal is today's one line, with a locked account too", async () => {
+    const now = Date.now();
+    H.list.v = { ...ACCOUNTS, accounts: [{ ...ACCOUNTS.accounts[0], lockUntil: new Date(now + 150 * 60_000).toISOString() }] };
+    H.linkConnect.fn = vi.fn(async () => ({ ok: false, error: "shop_locked", info: { used: 1, limit: 1, nextFreeAt: new Date(now + 90 * 60_000).toISOString(), serverNow: new Date(now).toISOString() } }));
+    await connectShopee();
+    expect(screen.queryByTestId("pf-sheet")).toBeNull();
+    expect(screen.getByTestId("sh-link-error")).toBeTruthy();
   });
 });
 

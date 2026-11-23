@@ -1,0 +1,77 @@
+ok      1-list-new-note_360.png  {"phase":"list","countdown":null}
+ok      1-list-new-note_390.png  {"phase":"list","countdown":null}
+ok      1-list-new-note_390_dark.png  {"phase":"list","countdown":null}
+ok      1-list-new-note_430.png  {"phase":"list","countdown":null}
+ok      1-list-new-note_1280.png  {"phase":"list","countdown":null}
+ok      2-confirm-remove_360.png  {"phase":"confirm","countdown":null}
+ok      2-confirm-remove_390.png  {"phase":"confirm","countdown":null}
+ok      2-confirm-remove_390_dark.png  {"phase":"confirm","countdown":null}
+ok      2-confirm-remove_430.png  {"phase":"confirm","countdown":null}
+ok      2-confirm-remove_1280.png  {"phase":"confirm","countdown":null}
+ok      3-removed-add-now_360.png  {"phase":"room","countdown":null}
+ok      3-removed-add-now_390.png  {"phase":"room","countdown":null}
+ok      3-removed-add-now_390_dark.png  {"phase":"room","countdown":null}
+ok      3-removed-add-now_430.png  {"phase":"room","countdown":null}
+ok      3-removed-add-now_1280.png  {"phase":"room","countdown":null}
+ok      4-locked-wait_360.png  {"phase":"wait","countdown":"3h 30m"}
+ok      4-locked-wait_390.png  {"phase":"wait","countdown":"3h 30m"}
+ok      4-locked-wait_390_dark.png  {"phase":"wait","countdown":"3h 30m"}
+ok      4-locked-wait_430.png  {"phase":"wait","countdown":"3h 30m"}
+ok      4-locked-wait_1280.png  {"phase":"wait","countdown":"3h 30m"}
+ok      5-two-accounts-one-locked_360.png  {"phase":"list","countdown":null}
+ok      5-two-accounts-one-locked_390.png  {"phase":"list","countdown":null}
+ok      5-two-accounts-one-locked_390_dark.png  {"phase":"list","countdown":null}
+ok      5-two-accounts-one-locked_430.png  {"phase":"list","countdown":null}
+ok      5-two-accounts-one-locked_1280.png  {"phase":"list","countdown":null}
+ok      6-held-place-wait_360.png  {"phase":"wait","countdown":"3h 30m"}
+ok      6-held-place-wait_390.png  {"phase":"wait","countdown":"3h 30m"}
+ok      6-held-place-wait_390_dark.png  {"phase":"wait","countdown":"3h 30m"}
+ok      6-held-place-wait_430.png  {"phase":"wait","countdown":"3h 30m"}
+ok      6-held-place-wait_1280.png  {"phase":"wait","countdown":"3h 30m"}
+ok      2-confirm-remove_iphone_360.png  {"phase":"confirm","countdown":null}
+ok      2-confirm-remove_iphone_390.png  {"phase":"confirm","countdown":null}
+ok      2-confirm-remove_iphone_390_dark.png  {"phase":"confirm","countdown":null}
+ok      2-confirm-remove_iphone_430.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_iphone_360.png  {"phase":"wait","countdown":"3h 30m"}
+ok      4-locked-wait_iphone_390.png  {"phase":"wait","countdown":"3h 30m"}
+ok      4-locked-wait_iphone_390_dark.png  {"phase":"wait","countdown":"3h 30m"}
+ok      4-locked-wait_iphone_430.png  {"phase":"wait","countdown":"3h 30m"}
+ok      7-shops-list-new-note_360.png  {"phase":null,"countdown":null}
+ok      7-shops-list-new-note_390.png  {"phase":null,"countdown":null}
+ok      7-shops-list-new-note_390_dark.png  {"phase":null,"countdown":null}
+ok      7-shops-list-new-note_430.png  {"phase":null,"countdown":null}
+ok      7-shops-list-new-note_1280.png  {"phase":null,"countdown":null}
+ok      8-shops-locked-wait_360.png  {"phase":null,"countdown":"3h 30m"}
+ok      8-shops-locked-wait_390.png  {"phase":null,"countdown":"3h 30m"}
+ok      8-shops-locked-wait_390_dark.png  {"phase":null,"countdown":"3h 30m"}
+ok      8-shops-locked-wait_430.png  {"phase":null,"countdown":"3h 30m"}
+ok      8-shops-locked-wait_1280.png  {"phase":null,"countdown":"3h 30m"}
+ok      2-confirm-remove_fil_360.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_fil_360.png  {"phase":"wait","countdown":"3h 30m"}
+ok      6-held-place-wait_fil_360.png  {"phase":"wait","countdown":"3h 30m"}
+ok      8-shops-locked-wait_fil_360.png  {"phase":null,"countdown":"3h 30m"}
+ok      2-confirm-remove_zh_360.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_zh_360.png  {"phase":"wait","countdown":"3小时30分"}
+ok      6-held-place-wait_zh_360.png  {"phase":"wait","countdown":"3小时30分"}
+ok      8-shops-locked-wait_zh_360.png  {"phase":null,"countdown":"3小时30分"}
+ok      2-confirm-remove_zh-TW_360.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_zh-TW_360.png  {"phase":"wait","countdown":"3小時30分"}
+ok      6-held-place-wait_zh-TW_360.png  {"phase":"wait","countdown":"3小時30分"}
+ok      8-shops-locked-wait_zh-TW_360.png  {"phase":null,"countdown":"3小時30分"}
+ok      2-confirm-remove_vi_360.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_vi_360.png  {"phase":"wait","countdown":"3 giờ 30 phút"}
+ok      6-held-place-wait_vi_360.png  {"phase":"wait","countdown":"3 giờ 30 phút"}
+ok      8-shops-locked-wait_vi_360.png  {"phase":null,"countdown":"3 giờ 30 phút"}
+ok      2-confirm-remove_th_360.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_th_360.png  {"phase":"wait","countdown":"3 ชม. 30 นาที"}
+ok      6-held-place-wait_th_360.png  {"phase":"wait","countdown":"3 ชม. 30 นาที"}
+ok      8-shops-locked-wait_th_360.png  {"phase":null,"countdown":"3 ชม. 30 นาที"}
+ok      2-confirm-remove_id_360.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_id_360.png  {"phase":"wait","countdown":"3 jam 30 mnt"}
+ok      6-held-place-wait_id_360.png  {"phase":"wait","countdown":"3 jam 30 mnt"}
+ok      8-shops-locked-wait_id_360.png  {"phase":null,"countdown":"3 jam 30 mnt"}
+ok      2-confirm-remove_bg_360.png  {"phase":"confirm","countdown":null}
+ok      4-locked-wait_bg_360.png  {"phase":"wait","countdown":"3 ч 30 мин"}
+ok      6-held-place-wait_bg_360.png  {"phase":"wait","countdown":"3 ч 30 мин"}
+ok      8-shops-locked-wait_bg_360.png  {"phase":null,"countdown":"3 ч 30 мин"}
+all 76 pictures: right state and words, no sideways scroll, sheets on screen, nothing cut off, buttons ≥ 44 px
