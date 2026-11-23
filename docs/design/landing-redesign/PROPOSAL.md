@@ -4,6 +4,7 @@ Proposal, preview and pictures only. The real page (`src/redesign/screens/Landin
 Nothing merged, no SQL, no deploy. Branch `claude/landing-redesign` (from main `7a03c7e`).
 
 - **Preview page:** `preview/index.html` (open it in a browser; switch the hero with the two buttons at the top).
+- **The same preview as a private link:** https://claude.ai/artifact/WZS8JnMNDxjKABWtAzF7vW
 - **Pictures:** `shots/` — both hero directions × iPhone 390 / Android 360 / laptop 1280 × light / dark,
   first screen (`*_first-screen.png`) and the whole page (`*_whole-page.jpg`), plus `shots/measure.txt`.
 - **How they were made:** `harness/` (`capture-app.cjs` = the real app screens, `to-webp.cjs`, `shots.cjs`).
