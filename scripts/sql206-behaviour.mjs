@@ -76,7 +76,7 @@ const section = (md, id) => parseGuide(md).find((s) => s.id === id);
   await db.exec(UP);
   const twice = await rows(db);
   ok(IDS.every((id) => twice[id].body === after[id].body), "207 twice: nothing changes the second time");
-  ok((after["orders-search"].body.match(/\*\*Scan\*\* \(next to the search box\)/g) || []).length === 1, "207: the Orders Scan line is there once");
+  ok((after["orders-search"].body.match(/In the latest phone app, \*\*Scan\*\* \(next to the search box\)/g) || []).length === 1, "207: the Orders Scan line is there once");
   await db.exec(DOWN);
   const back = await rows(db);
   ok(IDS.every((id) => md5(back[id].body) === LIVE_MD5[id]), "207 rollback: the three rows are the live text again (md5)");

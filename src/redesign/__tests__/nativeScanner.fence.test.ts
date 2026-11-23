@@ -52,13 +52,13 @@ describe("native QR scanner — fence", () => {
     expect(g).toContain('implementation "com.google.mlkit:barcode-scanning:17.3.0"');
     expect(g).not.toMatch(/play-services-mlkit-barcode-scanning|play-services-code-scanner/);
   });
-  it("versions: iOS build 15 / 2.0, Android versionCode 11 / 2.0; native-version.json NOT raised yet", () => {
+  it("versions: iOS build 15 / 1.10, Android versionCode 11 / 1.10; native-version.json NOT raised yet", () => {
     const pbx = read("mobile/ios/App/App.xcodeproj/project.pbxproj");
     expect(count(pbx, "CURRENT_PROJECT_VERSION = 15;")).toBe(2);
-    expect(count(pbx, "MARKETING_VERSION = 2.0;")).toBe(2);
+    expect(count(pbx, "MARKETING_VERSION = 1.10;")).toBe(2);
     const g = read("mobile/android/app/build.gradle");
     expect(g).toMatch(/versionCode 11\b/);
-    expect(g).toMatch(/versionName "2\.0"/);
+    expect(g).toMatch(/versionName "1\.10"/);
     const nv = JSON.parse(read("public/native-version.json"));
     expect(nv.ios.latest).toBe(14);
     expect(nv.android.latest).toBe(10);
@@ -66,6 +66,34 @@ describe("native QR scanner — fence", () => {
   it("the iPhone camera text names the sticker QR and parcel slips", () => {
     const plist = read("mobile/ios/App/App/Info.plist");
     expect(plist).toContain("<string>SellerFlowLive uses the camera to scan the QR code on your order stickers and to scan your parcel slips.</string>");
+  });
+  it("Orders gets its Scan button only from nativeScannerAvailable(the switch) — RedesignApp", () => {
+    const app = read("src/redesign/RedesignApp.tsx");
+    expect(count(app, "liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}")).toBe(1);
+    expect(count(app, "liveScan=")).toBe(1);
+  });
+  it("Android: the scanner screen is portrait while open; the app's orientation comes back on every close path", () => {
+    const d = read("mobile/android/app/src/main/java/com/sellerflow/live/QrScannerDialog.java");
+    expect(d).toContain("activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);");
+    expect(d).toMatch(/int prev = activity\.getRequestedOrientation\(\);/); // what the app had, kept to put back
+    expect(d).toMatch(/protected void onStart\(\) \{\s*super\.onStart\(\);\s*lockPortrait\(\);/);
+    expect(d).toMatch(/protected void onStop\(\) \{\s*restoreOrientation\(\);/); // dismiss + Back (cancel → dismiss)
+    expect(d).toContain("setOnDismissListener(d -> restoreOrientation());");
+    expect(d).toMatch(/void close\(\) \{[\s\S]*?restoreOrientation\(\);[\s\S]*?\n {4}\}/);
+    expect(d).toContain("try { activity.setRequestedOrientation(prev); }");
+    // the app itself is not locked: the manifest still lets MainActivity follow the phone and handle rotation
+    const m = read("mobile/android/app/src/main/AndroidManifest.xml");
+    expect(m).not.toContain("screenOrientation");
+    expect(m).toMatch(/android:configChanges="orientation\|/);
+  });
+  it("a picked photo that can't be opened is reported as photo_unreadable, never as cancelled", () => {
+    const sw = read("mobile/ios/App/App/SellerFlowScannerPlugin.swift");
+    expect(sw).toContain('case .unreadable: // picked, but the picture can\'t be opened');
+    expect(sw).toContain('self?.finish(["status": "error", "code": "photo_unreadable"])');
+    expect(sw).toContain("(object as? UIImage).map { Picked.image($0) } ?? Picked.unreadable"); // iCloud-only photo offline
+    expect(sw).toContain("self.onDone?(b64.map { Outcome.photo($0) } ?? Outcome.unreadable)");
+    const a = read("mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowScannerPlugin.java");
+    expect(a.match(/finish\(error\("photo_unreadable"\)\);/g)).toHaveLength(2); // no picture back + a file that can't be opened
   });
   it("the web reaches the scanner only through adapters/nativeQrScanner", () => {
     for (const f of ["src/redesign/screens/ParcelScan.tsx", "src/redesign/screens/FmParcelScan.tsx", "src/redesign/screens/Blacklist.tsx", "src/redesign/screens/Orders.tsx"]) {

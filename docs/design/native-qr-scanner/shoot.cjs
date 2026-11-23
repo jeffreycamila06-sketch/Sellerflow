@@ -17,7 +17,11 @@ const LANGS = ["en", "fil", "bg", "th"];
   const lines = [];
   for (const lang of LANGS) for (const w of WIDTHS) {
     const p = await b.newPage({ viewport: { width: w, height: 800 }, deviceScaleFactor: lang === "en" ? 2 : 1 });
-    await p.addInitScript((l) => { try { localStorage.setItem("sfl_rd_lang", l); } catch {} }, lang);
+    const phoneApp = w < 1000; // phone widths = the new app build (a fake scanner plugin); 1280 = a laptop (no plugin)
+    await p.addInitScript(([l, app]) => {
+      try { localStorage.setItem("sfl_rd_lang", l); } catch {}
+      if (app) window.Capacitor = { Plugins: { SellerFlowScanner: { scanStickerQr: async () => ({ status: "cancelled" }) } } };
+    }, [lang, phoneApp]);
     await p.goto(`http://localhost:${port}/`, { waitUntil: "networkidle" });
     await p.waitForTimeout(900);
     // The Orders tab = the 3rd button of the bottom bar (phone) or of the left sidebar (laptop);
@@ -28,6 +32,15 @@ const LANGS = ["en", "fil", "bg", "th"];
       const side = all.filter((x) => x.r.left < 40 && x.r.top > 60).sort((a, b) => a.r.top - b.r.top);
       (bottom.length >= 5 ? bottom : side)[2].b.click();
     });
+    await p.locator("input[placeholder]").first().waitFor({ timeout: 8000 });
+    await p.waitForTimeout(500);
+    if (!phoneApp) { // laptop: no Scan button, the search row = just the box (today's Orders)
+      const n = await p.locator("[data-testid=ord-scan]").count();
+      await p.locator("input[placeholder]").first().locator("xpath=../..").screenshot({ path: path.join(OUT, `orders-header_laptop_${lang}_${w}.png`) }).catch(() => {});
+      lines.push(`${lang} ${w}px laptop (no scanner): Scan buttons on the page = ${n}`);
+      await p.close();
+      continue;
+    }
     const btn = p.locator("[data-testid=ord-scan]");
     await btn.waitFor({ timeout: 8000 });
     await p.waitForTimeout(300);

@@ -11,8 +11,11 @@ import { render, fireEvent, waitFor } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
 
-const { loadRows, updateParcelScan, deleteParcelScan, markScansExported } = vi.hoisted(() => ({
+const { loadRows, loadLate, updateParcelScan, deleteParcelScan, markScansExported } = vi.hoisted(() => ({
   loadRows: { current: [] as ParcelScanRow[] },
+  // ms the list read waits before it answers (the CI flake of 2026-11-22: the shutter is on the
+  // page before the rows arrive, so it was checked while still enabled). 0 = answer at once.
+  loadLate: { ms: 0 },
   updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
   deleteParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   markScansExported: vi.fn(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }) as { ok: boolean; batchId?: string; claimed: string[] }),
@@ -25,7 +28,7 @@ vi.mock("../../adapters/parcelScan", async (importOriginal) => {
   return {
     ...actual,
     fileToScanBase64: vi.fn(), scanParcel: vi.fn(), saveParcelScan: vi.fn(async () => ({ ok: true, id: "new-1" })),
-    loadParcelScans: vi.fn(async () => ({ ok: true, rows: loadRows.current })),
+    loadParcelScans: vi.fn(async () => { if (loadLate.ms) await new Promise((r) => setTimeout(r, loadLate.ms)); return { ok: true, rows: loadRows.current }; }),
     checkEmapStore: vi.fn(async () => ({ status: "valid" as const })), saveStoreCheck: vi.fn(async () => ({ ok: true })),
     scanToXlsRow: vi.fn(() => ({})), markScansExported, unmarkScansExported: vi.fn(),
     confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })),
@@ -74,6 +77,7 @@ beforeEach(() => {
   deleteParcelScan.mockResolvedValue({ ok: true });
   markScansExported.mockImplementation(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }));
   loadRows.current = [];
+  loadLate.ms = 0;
 });
 afterEach(() => {
   if (hadMedia) Object.defineProperty(navigator, "mediaDevices", { value: prevMedia, configurable: true });
@@ -107,8 +111,11 @@ describe("Parcel Scan — batch limit (40 pending)", () => {
   it("40 pending → the camera shutter is DISABLED (camera not hidden)", async () => {
     enableCamera();
     loadRows.current = many(40);
-    const { findByTestId } = view();
+    loadLate.ms = 30; // the rows arrive after the shutter is on the page (as on a busy CI runner)
+    const { findByTestId, getByTestId } = view();
     const shutter = await findByTestId("ps-shutter") as HTMLButtonElement;
+    // wait until the 40 rows are in (the pill says 40/40), THEN look at the shutter
+    await waitFor(() => expect(norm(getByTestId("ps-batch-n").textContent)).toBe("40/40"));
     expect(shutter.disabled).toBe(true);
   });
 

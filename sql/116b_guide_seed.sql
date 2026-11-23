@@ -288,7 +288,7 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - The top shows Orders, Total, Buyers and Avg order.
 - **Search buyer #, name, item…** finds orders.
 - Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
-- **Scan** (next to the search box) reads the QR on a buyer''s sticker and opens that buyer''s card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.
+- In the latest phone app, **Scan** (next to the search box) reads the QR on a buyer''s sticker with the camera and opens that buyer''s card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.
 - Each order has **↻ Reprint**. Tapping an order opens **Print** (**🖨 Print** / **🖨 Print all**).
 - An order made with the **Free** button shows **Free** instead of an amount, here and in the export. It counts as an order and adds nothing to the total. See "Choose price before print".
 - **⬇ Export** downloads Excel or PDF of what you see (also a past session). In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.

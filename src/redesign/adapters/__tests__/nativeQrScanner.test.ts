@@ -6,7 +6,7 @@ vi.mock("../qrDecode", () => ({ readQrFromFile: (f: File) => readQrFromFile(f) }
 const track = vi.fn();
 vi.mock("../../analytics", () => ({ track: (e: string, p: unknown) => track(e, p) }));
 
-import { nativeQrScanner, photoFile, runStickerScan, scannerTexts, setNativeQrScannerOn, SCANNER_TEXT_KEYS } from "../nativeQrScanner";
+import { nativeQrScanner, nativeScannerAvailable, photoFile, runStickerScan, scannerTexts, setNativeQrScannerOn, SCANNER_TEXT_KEYS } from "../nativeQrScanner";
 import { buildT } from "../../i18n";
 
 type W = { Capacitor?: unknown };
@@ -67,9 +67,14 @@ describe("runStickerScan — the answer", () => {
     expect(file.type).toBe("image/jpeg");
     expect(file.size).toBe(12);
   });
-  it("a broken photo is a failure", async () => {
-    expect(await runStickerScan(async () => ({ status: "photo", data: "!!!not base64", mime: "image/jpeg" }), TEXTS)).toEqual({ kind: "failed" });
+  it("a photo that can't be opened → today's 'No QR found' (none), never 'failed' or 'cancelled'", async () => {
+    // the phone says it (iPhone: an iCloud-only photo while offline; Android: an unreadable file)
+    expect(await runStickerScan(async () => ({ status: "error", code: "photo_unreadable" }), TEXTS)).toEqual({ kind: "none", reason: "image_unreadable" });
+    // or the picture data itself is broken
+    expect(await runStickerScan(async () => ({ status: "photo", data: "!!!not base64", mime: "image/jpeg" }), TEXTS)).toEqual({ kind: "none", reason: "image_unreadable" });
+    expect(await runStickerScan(async () => ({ status: "photo", data: "", mime: "image/jpeg" }), TEXTS)).toEqual({ kind: "none", reason: "image_unreadable" });
     expect(readQrFromFile).not.toHaveBeenCalled();
+    expect(track.mock.calls.map((c) => (c[1] as { result: string }).result)).toEqual(["photo_unreadable", "photo_unreadable", "photo_unreadable"]);
   });
   it("cancelled / busy → cancelled (nothing happens on the screen)", async () => {
     expect(await runStickerScan(async () => ({ status: "cancelled" }), TEXTS)).toEqual({ kind: "cancelled" });
@@ -85,6 +90,19 @@ describe("runStickerScan — the answer", () => {
     expect(track).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(track.mock.calls[0])).not.toContain("secret_buyer");
     expect(track.mock.calls[0][0]).toBe("qr_native");
+  });
+});
+
+describe("nativeScannerAvailable (the Orders Scan button)", () => {
+  it("only with the scanner in the app build AND the switch on", () => {
+    expect(nativeScannerAvailable(true)).toBe(false); // laptop / older app build
+    expect(nativeScannerAvailable(false)).toBe(false);
+    (window as unknown as W).Capacitor = { Plugins: { SellerFlowScanner: { scanStickerQr: async () => ({}) } } };
+    expect(nativeScannerAvailable(true)).toBe(true);
+    expect(nativeScannerAvailable(false)).toBe(false); // switch off
+    expect(nativeScannerAvailable("true" as unknown as boolean)).toBe(false);
+    (window as unknown as W).Capacitor = { Plugins: { SellerFlowScanner: { scanStickerQr: "x" } } };
+    expect(nativeScannerAvailable(true)).toBe(false);
   });
 });
 

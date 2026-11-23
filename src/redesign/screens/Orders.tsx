@@ -40,7 +40,7 @@ import PostsBody, { type PostsUi } from "./PostSales";
 import { markPostsSeen, postsSeen } from "../adapters/fbPostSales";
 import { useScreenTimers } from "../adapters/useScreenTimers";
 import { isFreeOrder } from "../../lib/freeOrder";
-import { readQrFromFile, warmQrReader, type QrOutcome } from "../adapters/qrDecode";
+import type { QrOutcome } from "../adapters/qrDecode";
 import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
 import { blacklistHandleFromQr } from "../adapters/blacklist";
 
@@ -58,8 +58,13 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
   tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow, posts, postsLocked = false, onPostsLocked,
+  liveScan = false,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
+  // Scan button (2026-11-22): ONLY when the phone app's live scanner is there (the app build has it AND
+  // native_qr_scanner_enabled is on — RedesignApp: nativeScannerAvailable). Absent/false = no Scan button
+  // (laptop, older app build, switch off: today's Orders).
+  liveScan?: boolean;
   shippingSoon?: boolean; // Build 16: non-admin seller → the 🚚 button shows "Coming soon" and never opens Shipping
   // 7-day search reach (display-only lane — see ordersSearch.ts)
   historyOrders?: Order[]; historyState?: HistoryState; onEnsureHistory?: () => void;
@@ -116,7 +121,6 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const scanActive = !!scanned && query === scanned.query;
   const [scanBusy, setScanBusy] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
-  const scanFileRef = useRef<HTMLInputElement | null>(null);
   const aliveRef = useRef(true);
   useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
   // Live | Posts (post sales). A red dot sits on "Posts" until it is opened once on this device.
@@ -223,11 +227,11 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // Sessions mode counts by session ("Session · N"); everyone else keeps "Today · N".
   const badgeWord = sessionsMode ? t.rd_ord_badge_session : t.rd_ord_today;
   const badge = state === "loading" ? `${badgeWord} · …`
-    : searching ? `${receipt ? receipt.count : scanActive ? 0 : matchCount}` : `${badgeWord} · ${orders.length}`;
+    : searching ? `${receipt ? receipt.count : scanActive ? matches.reduce((n, m) => n + m.count, 0) : matchCount}` : `${badgeWord} · ${orders.length}`;
 
-  // Scan: the phone app's live scanner when this build has one (adapters/nativeQrScanner), else today's
-  // photo picker — the same reader the Parcel Scan "Scan QR" uses. STRICT parser (a TikTok profile link
-  // or @name). No 7-day history load (setQuery directly, not onQuery).
+  // Scan: the phone app's live scanner (adapters/nativeQrScanner) — the button exists only when it is
+  // there (liveScan). Its "Take a photo instead" goes through the same reader as Parcel Scan's Scan QR.
+  // STRICT parser (a TikTok profile link or @name). No 7-day history load (setQuery directly, not onQuery).
   const showScanMsg = (m: string) => { setScanMsg(m); later(() => setScanMsg(""), 2800); };
   const applyScan = (read: QrOutcome) => {
     if (read.kind === "many") { showScanMsg(tpl(t.rd_qr_many, { n: String(read.count) })); return; }
@@ -239,17 +243,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
     setQuery(q);
     setScanned({ handle, query: q });
   };
-  const onScanFile = async (files: FileList | null) => {
-    const file = files && files[0];
-    if (scanFileRef.current) scanFileRef.current.value = "";
-    if (!file) return;
-    setScanBusy(true);
-    try { applyScan(await readQrFromFile(file)); } catch { showScanMsg(t.rd_bl_no_qr_found); }
-    finally { if (aliveRef.current) setScanBusy(false); }
-  };
   const onScanTap = () => {
     const native = nativeQrScanner();
-    if (!native) { warmQrReader(); scanFileRef.current?.click(); return; }
+    if (!native) return; // only reachable if the switch went off after the button was drawn
     setScanBusy(true);
     void runStickerScan(native, scannerTexts(t)).then((out) => {
       if (!aliveRef.current) return;
@@ -436,7 +432,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
                 )}
               </div>
             )}
-            {defaultView && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>}
+            {defaultView && <div data-testid="ord-badge" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>}
           </div>
         </div>
         {topTabs}
@@ -449,11 +445,12 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           {searching && (
             <button onClick={() => setQuery("")} aria-label={t.rd_ord_search_clear} style={{ background: "transparent", border: "none", color: "var(--on-header)", fontSize: 14, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
           )}
-          <button type="button" className="sfl-tap44 sfl-tap44-up" onClick={onScanTap} disabled={scanBusy} data-testid="ord-scan" aria-label={t.rd_qrs_title} title={t.rd_qrs_title}
-            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, minHeight: 30, padding: "4px 10px", margin: "-4px -6px -4px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", background: "rgba(255,255,255,.16)", color: "var(--on-header)", fontSize: 12, fontWeight: 800, cursor: scanBusy ? "default" : "pointer", opacity: scanBusy ? 0.6 : 1, fontFamily: "var(--font-ui)", whiteSpace: "nowrap" }}>
-            <span aria-hidden="true">▣</span>{t.rd_ord_scan}
-          </button>
-          <input ref={scanFileRef} type="file" accept="image/*" hidden data-testid="ord-scan-file" onChange={(e) => void onScanFile(e.target.files)} />
+          {liveScan && (
+            <button type="button" className="sfl-tap44 sfl-tap44-up" onClick={onScanTap} disabled={scanBusy} data-testid="ord-scan" aria-label={t.rd_qrs_title} title={t.rd_qrs_title}
+              style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, minHeight: 30, padding: "4px 10px", margin: "-4px -6px -4px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", background: "rgba(255,255,255,.16)", color: "var(--on-header)", fontSize: 12, fontWeight: 800, cursor: scanBusy ? "default" : "pointer", opacity: scanBusy ? 0.6 : 1, fontFamily: "var(--font-ui)", whiteSpace: "nowrap" }}>
+              <span aria-hidden="true">▣</span>{t.rd_ord_scan}
+            </button>
+          )}
         </div>
         {/* F2 platform pills + F4 date range — additive controls; default = All + This session. */}
         {/* ONE line on every width (mobile-first): the chips scroll sideways when they don't fit

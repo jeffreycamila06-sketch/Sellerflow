@@ -2,7 +2,9 @@
 // WITHOUT the 7-day history load → that TikTok buyer's card for the session open here (all items + total).
 // Strict parser (a TikTok profile link or @name). No buyer → "No orders for @username in this session".
 // A past session still loading → wait. Typing afterwards = the normal search again.
-// Laptop / older app → the photo picker + today's reader; a new app build → the live scanner.
+// The button exists ONLY with the live scanner (the app build has it AND the switch is on: liveScan).
+// Laptop / older app build / switch off → no Scan button: today's Orders. "Take a photo instead" in the
+// scanner → today's reader (readQrFromFile, faked here by qrReaderMock).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
 import { TProvider } from "../../i18n";
@@ -48,36 +50,68 @@ const view = (over: Record<string, unknown> = {}) => {
   const r = render(
     <TProvider lang="en">
       <Orders onGoPrint={vi.fn()} cur="NT$" orders={ORDERS_} state="live" todayId="2026-11-22" buyers={BUYERS}
-        historyOrders={HISTORY} historyState="live" onEnsureHistory={onEnsureHistory} onReprintOrder={vi.fn()} {...over} />
+        historyOrders={HISTORY} historyState="live" onEnsureHistory={onEnsureHistory} onReprintOrder={vi.fn()} liveScan {...over} />
     </TProvider>,
   );
   return { ...r, onEnsureHistory };
 };
 const search = (c: HTMLElement) => c.querySelector("input") as HTMLInputElement;
-const scanPhoto = async (r: ReturnType<typeof view>, qr: string | null | string[]) => {
-  m.decode.mockResolvedValue(qr);
+// The phone's scanner answer: a string = the live read of that QR; null / a list = "Take a photo instead"
+// with a photo that the reader finds no QR / that many stickers in.
+const scanAnswer = vi.fn(async (_o: unknown): Promise<unknown> => ({ status: "cancelled" }));
+const scan = async (r: ReturnType<typeof view>, qr: string | null | string[] | { status: string; [k: string]: unknown }) => {
+  if (typeof qr === "string") scanAnswer.mockResolvedValueOnce({ status: "read", text: qr });
+  else if (qr === null || Array.isArray(qr)) { m.decode.mockResolvedValue(qr as string[] | null); scanAnswer.mockResolvedValueOnce({ status: "photo", data: btoa("jpeg"), mime: "image/jpeg" }); }
+  else scanAnswer.mockResolvedValueOnce(qr);
   fireEvent.click(r.getByTestId("ord-scan"));
-  fireEvent.change(r.getByTestId("ord-scan-file"), { target: { files: [new File(["x"], "s.jpg", { type: "image/jpeg" })] } });
   await flush();
 };
 
 type W = { Capacitor?: unknown };
 let fileClicks: ReturnType<typeof vi.spyOn>;
-beforeEach(() => { m.decode.mockReset(); m.decode.mockResolvedValue(null); m.past.current = null; fileClicks = vi.spyOn(HTMLInputElement.prototype, "click"); });
+beforeEach(() => {
+  m.decode.mockReset(); m.decode.mockResolvedValue(null); m.past.current = null; fileClicks = vi.spyOn(HTMLInputElement.prototype, "click");
+  scanAnswer.mockReset(); scanAnswer.mockResolvedValue({ status: "cancelled" });
+  (window as unknown as W).Capacitor = { Plugins: { SellerFlowScanner: { scanStickerQr: scanAnswer } } };
+  setNativeQrScannerOn(true);
+});
 afterEach(() => { cleanup(); fileClicks.mockRestore(); setNativeQrScannerOn(false); delete (window as unknown as W).Capacitor; });
 
-describe("Orders Scan — photo flow (laptop / older app)", () => {
-  it("the Scan button sits in the search row and opens the photo picker", () => {
+describe("Orders Scan — no live scanner = no Scan button (today's Orders)", () => {
+  it("laptop / older app build / switch off (liveScan false or absent) → no Scan button, no file picker", () => {
+    for (const over of [{ liveScan: false }, { liveScan: undefined }]) {
+      const r = view(over);
+      expect(r.queryByTestId("ord-scan")).toBeNull();
+      expect(r.queryByTestId("ord-scan-file")).toBeNull();
+      expect(r.container.querySelector(".sfl-tap44-up")).toBeNull();
+      expect(search(r.container).parentElement!.querySelectorAll("button").length).toBe(0); // the search row = just the box
+      cleanup();
+    }
+  });
+  it("typing '@name' without a scan = the normal search (rows + the 7-day load), no scan card", () => {
+    const r = view({ liveScan: false });
+    fireEvent.change(search(r.container), { target: { value: "@meidolltw" } });
+    expect(r.onEnsureHistory).toHaveBeenCalled();
+    expect(r.queryByTestId("ord-scan-none")).toBeNull();
+    expect(r.container.textContent).toContain("Mei Lin");
+  });
+});
+
+describe("Orders Scan — live scanner (new app build, switch on)", () => {
+  it("the Scan button sits in the search row and opens the scanner (never a file picker)", async () => {
     const r = view();
     const btn = r.getByTestId("ord-scan");
     expect(btn.textContent).toContain("Scan");
     expect(btn.parentElement).toBe(search(r.container).parentElement);
+    expect(r.queryByTestId("ord-scan-file")).toBeNull();
     fireEvent.click(btn);
-    expect(fileClicks.mock.contexts.some((el) => (el as HTMLElement).dataset?.testid === "ord-scan-file")).toBe(true);
+    await flush();
+    expect(scanAnswer).toHaveBeenCalledTimes(1);
+    expect(fileClicks).not.toHaveBeenCalled();
   });
   it("a sticker link → @username in the box, the buyer's card (all items + total), no 7-day load", async () => {
     const r = view();
-    await scanPhoto(r, "https://tiktok.com/@MeiDollTW");
+    await scan(r, "https://tiktok.com/@MeiDollTW");
     expect(search(r.container).value).toBe("@MeiDollTW");
     const card = r.getByTestId("buyer-receipt");
     expect(card.textContent).toContain("#23");
@@ -89,7 +123,7 @@ describe("Orders Scan — photo flow (laptop / older app)", () => {
   });
   it("no buyer with that username in this session → the message, no history rows", async () => {
     const r = view();
-    await scanPhoto(r, "https://tiktok.com/@benwu");
+    await scan(r, "https://tiktok.com/@benwu");
     expect(r.getByTestId("ord-scan-none").textContent).toBe("No orders for @benwu in this session");
     expect(r.container.textContent).not.toContain("Ben Wu");
     expect(r.queryByTestId("buyer-receipt")).toBeNull();
@@ -97,32 +131,32 @@ describe("Orders Scan — photo flow (laptop / older app)", () => {
   });
   it("a Facebook buyer with the same name never matches (TikTok only)", async () => {
     const r = view();
-    await scanPhoto(r, "@Ana");
+    await scan(r, "@Ana");
     expect(r.getByTestId("ord-scan-none")).toBeTruthy();
   });
   it("a Facebook buyer whose name IS the scanned username still never matches", async () => {
     const r = view({ buyers: [...BUYERS, buyer(11, "anareyes", "Ana Reyes", [["300", 300]], "Facebook")] });
-    await scanPhoto(r, "https://tiktok.com/@AnaReyes");
+    await scan(r, "https://tiktok.com/@AnaReyes");
     expect(r.getByTestId("ord-scan-none").textContent).toBe("No orders for @AnaReyes in this session");
     expect(r.queryByTestId("buyer-receipt")).toBeNull();
   });
   it("strict parser: a QR that is not a TikTok link or @name → 'This QR has no buyer', box unchanged", async () => {
     const r = view();
     fireEvent.change(search(r.container), { target: { value: "dress" } });
-    await scanPhoto(r, "meidolltw");
+    await scan(r, "meidolltw");
     expect(r.getByTestId("ord-scan-toast").textContent).toContain("This QR has no buyer");
     expect(search(r.container).value).toBe("dress");
   });
   it("2 stickers in the photo / no QR → today's messages", async () => {
     const r = view();
-    await scanPhoto(r, ["https://tiktok.com/@a", "https://tiktok.com/@b"]);
+    await scan(r, ["https://tiktok.com/@a", "https://tiktok.com/@b"]);
     expect(r.getByTestId("ord-scan-toast").textContent).toContain("2 stickers in the photo");
-    await scanPhoto(r, null);
+    await scan(r, null);
     expect(r.getByTestId("ord-scan-toast").textContent).toContain("No QR found");
   });
   it("typing afterwards = the normal search (rows, the history load)", async () => {
     const r = view();
-    await scanPhoto(r, "https://tiktok.com/@meidolltw");
+    await scan(r, "https://tiktok.com/@meidolltw");
     expect(r.getByTestId("buyer-receipt")).toBeTruthy();
     fireEvent.change(search(r.container), { target: { value: "@meidolltw " } });
     expect(r.queryByTestId("buyer-receipt")).toBeNull();
@@ -132,16 +166,31 @@ describe("Orders Scan — photo flow (laptop / older app)", () => {
   it("two buyers with the same name in different capitals → the usual chooser, then the card", async () => {
     const twins = [...BUYERS, buyer(31, "@MeiDollTW", "Mei 2", [["300", 300]])];
     const r = view({ buyers: twins });
-    await scanPhoto(r, "https://tiktok.com/@meidolltw");
+    await scan(r, "https://tiktok.com/@meidolltw");
     const ch = r.getByTestId("dup-chooser");
     expect(ch.textContent).toContain("2 buyers have @meidolltw — pick one");
     fireEvent.click(r.getAllByTestId("dup-option")[1]);
     expect(r.getByTestId("buyer-receipt").textContent).toContain("#31");
     expect(r.getByTestId("dup-back").textContent).toContain("2 buyers have @meidolltw");
   });
+  it("the header count while the 2-buyer chooser shows = those buyers' orders together (2 + 1), then the picked one's", async () => {
+    const twins = [...BUYERS, buyer(31, "@MeiDollTW", "Mei 2", [["300", 300]])];
+    const r = view({ buyers: twins });
+    expect(r.getByTestId("ord-badge").textContent).toContain("2"); // Today · 2 before the scan
+    await scan(r, "https://tiktok.com/@meidolltw");
+    expect(r.getByTestId("dup-chooser")).toBeTruthy();
+    expect(r.getByTestId("ord-badge").textContent).toBe("3");
+    fireEvent.click(r.getAllByTestId("dup-option")[1]);
+    expect(r.getByTestId("ord-badge").textContent).toBe("1");
+  });
+  it("the header count with no buyer for the scanned name = 0", async () => {
+    const r = view();
+    await scan(r, "https://tiktok.com/@benwu");
+    expect(r.getByTestId("ord-badge").textContent).toBe("0");
+  });
   it("this session still loading → wait instead of 'no orders'", async () => {
     const r = view({ state: "loading", buyers: [] });
-    await scanPhoto(r, "https://tiktok.com/@meidolltw");
+    await scan(r, "https://tiktok.com/@meidolltw");
     expect(r.getByTestId("ord-scan-wait")).toBeTruthy();
     expect(r.queryByTestId("ord-scan-none")).toBeNull();
   });
@@ -156,7 +205,7 @@ describe("Orders Scan — a picked past session", () => {
   it("still loading → wait; then the card from THAT session's buyers", async () => {
     m.past.current = past("loading", []);
     const r = view({ pastSessions: true, sessionId: "s-now" });
-    await scanPhoto(r, "https://tiktok.com/@oldbuyer");
+    await scan(r, "https://tiktok.com/@oldbuyer");
     expect(r.getByTestId("ord-scan-wait").textContent).toContain("Loading");
     expect(r.queryByTestId("ord-scan-none")).toBeNull();
     m.past.current = past("ready", [buyer(5, "@oldbuyer", "Old Buyer", [["500", 500]])]);
@@ -173,23 +222,28 @@ describe("Orders Scan — a picked past session", () => {
   it("ready and no such buyer → the message", async () => {
     m.past.current = past("ready", [buyer(5, "@oldbuyer", "Old Buyer", [["500", 500]])]);
     const r = view({ pastSessions: true, sessionId: "s-now" });
-    await scanPhoto(r, "@someoneelse");
+    await scan(r, "@someoneelse");
     expect(r.getByTestId("ord-scan-none").textContent).toBe("No orders for @someoneelse in this session");
   });
 });
 
-describe("Orders Scan — new app build (live scanner)", () => {
-  it("the live read fills the box and shows the card; no photo picker", async () => {
-    const scanStickerQr = vi.fn(async () => ({ status: "read", text: "https://tiktok.com/@yushan_tw" }));
-    (window as unknown as W).Capacitor = { Plugins: { SellerFlowScanner: { scanStickerQr } } };
-    setNativeQrScannerOn(true);
+describe("Orders Scan — what the scanner hands back", () => {
+  it("a live read fills the box and shows the card; the photo reader is not used", async () => {
     const r = view();
-    fireEvent.click(r.getByTestId("ord-scan"));
-    await flush();
-    expect(scanStickerQr).toHaveBeenCalledTimes(1);
-    expect(fileClicks.mock.contexts.some((el) => (el as HTMLElement).dataset?.testid === "ord-scan-file")).toBe(false);
+    await scan(r, "https://tiktok.com/@yushan_tw");
     expect(search(r.container).value).toBe("@yushan_tw");
     expect(r.getByTestId("buyer-receipt").textContent).toContain("#7");
     expect(m.decode).not.toHaveBeenCalled();
+  });
+  it("a photo that can't be opened → today's 'No QR found'; cancelled → nothing", async () => {
+    const r = view();
+    await scan(r, { status: "error", code: "photo_unreadable" });
+    expect(r.getByTestId("ord-scan-toast").textContent).toContain("No QR found");
+    cleanup();
+    const r2 = view();
+    fireEvent.change(search(r2.container), { target: { value: "dress" } });
+    await scan(r2, { status: "cancelled" });
+    expect(r2.queryByTestId("ord-scan-toast")).toBeNull();
+    expect(search(r2.container).value).toBe("dress");
   });
 });

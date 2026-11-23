@@ -656,7 +656,7 @@
 					"@executable_path/Frameworks",
 				);
 				SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h";
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 1.10;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sellerflow.live;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -682,7 +682,7 @@
 					"@executable_path/Frameworks",
 				);
 				SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h";
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.sellerflow.live;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

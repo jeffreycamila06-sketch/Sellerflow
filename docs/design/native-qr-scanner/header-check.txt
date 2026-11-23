@@ -1,16 +1,16 @@
 en 360px: row 38px one line=true · search box 211px · Scan "▣Scan" 67px inside the row=true · tap area 45px tall · sideways scroll=0px
 en 390px: row 38px one line=true · search box 241px · Scan "▣Scan" 67px inside the row=true · tap area 45px tall · sideways scroll=0px
 en 430px: row 38px one line=true · search box 281px · Scan "▣Scan" 67px inside the row=true · tap area 45px tall · sideways scroll=0px
-en 1280px: row 38px one line=true · search box 891px · Scan "▣Scan" 67px inside the row=true · tap area 45px tall · sideways scroll=0px
+en 1280px laptop (no scanner): Scan buttons on the page = 0
 fil 360px: row 38px one line=true · search box 202px · Scan "▣I-scan" 76px inside the row=true · tap area 45px tall · sideways scroll=0px
 fil 390px: row 38px one line=true · search box 232px · Scan "▣I-scan" 76px inside the row=true · tap area 45px tall · sideways scroll=0px
 fil 430px: row 38px one line=true · search box 272px · Scan "▣I-scan" 76px inside the row=true · tap area 45px tall · sideways scroll=0px
-fil 1280px: row 38px one line=true · search box 882px · Scan "▣I-scan" 76px inside the row=true · tap area 45px tall · sideways scroll=0px
+fil 1280px laptop (no scanner): Scan buttons on the page = 0
 bg 360px: row 38px one line=true · search box 183px · Scan "▣Сканирай" 95px inside the row=true · tap area 45px tall · sideways scroll=0px
 bg 390px: row 38px one line=true · search box 213px · Scan "▣Сканирай" 95px inside the row=true · tap area 45px tall · sideways scroll=0px
 bg 430px: row 38px one line=true · search box 253px · Scan "▣Сканирай" 95px inside the row=true · tap area 45px tall · sideways scroll=0px
-bg 1280px: row 38px one line=true · search box 863px · Scan "▣Сканирай" 95px inside the row=true · tap area 45px tall · sideways scroll=0px
+bg 1280px laptop (no scanner): Scan buttons on the page = 0
 th 360px: row 38px one line=true · search box 210px · Scan "▣สแกน" 68px inside the row=true · tap area 45px tall · sideways scroll=0px
 th 390px: row 38px one line=true · search box 240px · Scan "▣สแกน" 68px inside the row=true · tap area 45px tall · sideways scroll=0px
 th 430px: row 38px one line=true · search box 280px · Scan "▣สแกน" 68px inside the row=true · tap area 45px tall · sideways scroll=0px
-th 1280px: row 38px one line=true · search box 890px · Scan "▣สแกน" 68px inside the row=true · tap area 45px tall · sideways scroll=0px
+th 1280px laptop (no scanner): Scan buttons on the page = 0

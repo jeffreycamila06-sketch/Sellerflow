@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -129,6 +130,44 @@ final class QrScannerDialog extends Dialog {
         setCancelable(true);
         setCanceledOnTouchOutside(false);
         setOnCancelListener(d -> { if (!finished) { finished = true; listener.onCancel(); } });
+        setOnDismissListener(d -> restoreOrientation()); // every way the screen goes away: ✕, Back, read, photo, close()
+    }
+
+    // ── portrait while the scanner is open ──────────────────────────────────────────────────
+    // The scanner screen is always upright; the app's own orientation (whatever MainActivity had asked
+    // for — normally "follow the phone") comes back the moment the scanner closes. MainActivity handles
+    // orientation itself (manifest configChanges), so this never restarts the page under it.
+    private static final int NOT_LOCKED = Integer.MIN_VALUE;
+    private int savedOrientation = NOT_LOCKED;
+
+    private void lockPortrait() {
+        if (savedOrientation != NOT_LOCKED) return;
+        try {
+            int prev = activity.getRequestedOrientation();
+            activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            savedOrientation = prev;
+        } catch (Exception ignored) {
+            savedOrientation = NOT_LOCKED;
+        }
+    }
+
+    private void restoreOrientation() {
+        if (savedOrientation == NOT_LOCKED) return;
+        int prev = savedOrientation;
+        savedOrientation = NOT_LOCKED;
+        try { activity.setRequestedOrientation(prev); } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        lockPortrait();
+    }
+
+    @Override
+    protected void onStop() {
+        restoreOrientation();
+        super.onStop();
     }
 
     @Override
@@ -164,6 +203,7 @@ final class QrScannerDialog extends Dialog {
         finished = true;
         stopCamera();
         try { if (isShowing()) dismiss(); } catch (Exception ignored) {}
+        restoreOrientation(); // also when the dialog was never shown / already gone
     }
 
     // ── views ───────────────────────────────────────────────────────────────────────────────

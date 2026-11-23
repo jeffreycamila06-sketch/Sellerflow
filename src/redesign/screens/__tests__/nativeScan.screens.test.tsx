@@ -100,6 +100,17 @@ describe("7-11 Parcel Scan — Scan QR", () => {
     expect((screen.getByTestId("ps-notes") as HTMLInputElement).value).toBe("typed");
     expect(screen.queryByText(/No QR found/)).toBeNull();
   });
+  it("a photo that can't be opened → today's 'No QR found' message, field left as-is", async () => {
+    installNewAppBuild(); setNativeQrScannerOn(true);
+    scanStickerQr.mockResolvedValue({ status: "error", code: "photo_unreadable" });
+    parcel(); await openParcelForm();
+    fireEvent.change(screen.getByTestId("ps-notes"), { target: { value: "typed" } });
+    fireEvent.click(screen.getByTestId("ps-scan-qr"));
+    await flush();
+    expect(screen.getByText("No QR found — type the username")).toBeTruthy();
+    expect(screen.queryByText(/Couldn't open the scanner/)).toBeNull();
+    expect((screen.getByTestId("ps-notes") as HTMLInputElement).value).toBe("typed");
+  });
   it("laptop (no app) → today's photo picker, the scanner is never asked", async () => {
     setNativeQrScannerOn(true);
     parcel(); await openParcelForm();
@@ -135,6 +146,15 @@ describe("FamilyMart Parcel Scan — Scan QR", () => {
     await fm();
     fireEvent.click(screen.getByTestId("fms-scan-qr"));
     expect(await screen.findByText("Couldn't open the scanner — try again")).toBeTruthy();
+    expect((screen.getByTestId("fms-username") as HTMLInputElement).value).toBe("");
+  });
+  it("a photo that can't be opened → today's 'No QR found' message", async () => {
+    installNewAppBuild(); setNativeQrScannerOn(true);
+    scanStickerQr.mockResolvedValue({ status: "error", code: "photo_unreadable" });
+    await fm();
+    fireEvent.click(screen.getByTestId("fms-scan-qr"));
+    expect(await screen.findByText("No QR found — type the username")).toBeTruthy();
+    expect(screen.queryByText(/Couldn't open the scanner/)).toBeNull();
     expect((screen.getByTestId("fms-username") as HTMLInputElement).value).toBe("");
   });
   it("laptop → today's photo picker", async () => {
@@ -188,5 +208,40 @@ describe("Blacklist — Scan sticker QR", () => {
     fireEvent.click(screen.getByTestId("bl-scan"));
     expect(fileInputClicked("bl-file")).toBe(true);
     expect(scanStickerQr).not.toHaveBeenCalled();
+  });
+  it("the 'Added — Undo' note stays while the scanner is open and when it is closed; a real read replaces it", async () => {
+    installNewAppBuild(); setNativeQrScannerOn(true);
+    let answer: (v: unknown) => void = () => {};
+    scanStickerQr.mockResolvedValueOnce({ status: "read", text: "@first_buyer" });
+    blacklist();
+    fireEvent.click(screen.getByTestId("bl-scan"));
+    await flush();
+    expect(screen.getByTestId("bl-added")).toBeTruthy();
+    // open the scanner again: the note (with Undo) is still there while it is open …
+    scanStickerQr.mockImplementationOnce(() => new Promise((r) => { answer = r; }));
+    fireEvent.click(screen.getByTestId("bl-scan"));
+    await flush();
+    expect(screen.getByTestId("bl-added")).toBeTruthy();
+    expect(screen.getByTestId("bl-undo")).toBeTruthy();
+    // … and after ✕ (cancelled)
+    await act(async () => { answer({ status: "cancelled" }); });
+    await flush();
+    expect(screen.getByTestId("bl-added")).toBeTruthy();
+    // a real read that is not a buyer → its message replaces the note
+    scanStickerQr.mockResolvedValueOnce({ status: "read", text: "hello world" });
+    fireEvent.click(screen.getByTestId("bl-scan"));
+    await flush();
+    expect(screen.queryByTestId("bl-added")).toBeNull();
+    expect(screen.getByTestId("bl-noqr")).toBeTruthy();
+  });
+  it("a photo that can't be opened → today's 'No QR found' (not a scanner failure)", async () => {
+    installNewAppBuild(); setNativeQrScannerOn(true);
+    scanStickerQr.mockResolvedValue({ status: "error", code: "photo_unreadable" });
+    const onAdd = blacklist();
+    fireEvent.click(screen.getByTestId("bl-scan"));
+    await flush();
+    expect(screen.getByTestId("bl-noqr-found")).toBeTruthy();
+    expect(screen.queryByTestId("bl-scan-failed")).toBeNull();
+    expect(onAdd).not.toHaveBeenCalled();
   });
 });

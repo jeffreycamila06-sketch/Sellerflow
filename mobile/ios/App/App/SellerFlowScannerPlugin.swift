@@ -169,10 +169,13 @@ public class SellerFlowScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     private func startPhoto(texts: ScannerTexts, from host: UIViewController, allowCamera: Bool) {
         let flow = StickerPhotoFlow(texts: texts, allowCamera: allowCamera)
         photoFlow = flow
-        flow.onDone = { [weak self] base64 in
-            if let b = base64 {
+        flow.onDone = { [weak self] (result: StickerPhotoFlow.Outcome) in
+            switch result {
+            case .photo(let b):
                 self?.finish(["status": "photo", "data": b, "mime": "image/jpeg"])
-            } else {
+            case .unreadable: // picked, but the picture can't be opened (e.g. iCloud-only photo while offline)
+                self?.finish(["status": "error", "code": "photo_unreadable"]) // the web shows today's "No QR found"
+            case .cancelled:
                 self?.finish(["status": "cancelled"])
             }
         }
@@ -624,7 +627,9 @@ enum ScanFeedback {
 
 // MARK: - "Take a photo instead": the phone's own Take photo / Choose from photos
 final class StickerPhotoFlow: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate, PHPickerViewControllerDelegate {
-    var onDone: ((String?) -> Void)?
+    /// photo = base64 JPEG · unreadable = a picture was picked but can't be opened · cancelled = nothing picked.
+    enum Outcome { case photo(String), unreadable, cancelled }
+    var onDone: ((Outcome) -> Void)?
     private let texts: ScannerTexts
     private let allowCamera: Bool
     private var done = false
@@ -643,7 +648,7 @@ final class StickerPhotoFlow: NSObject, UIImagePickerControllerDelegate, UINavig
         let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         sheet.addAction(UIAlertAction(title: texts.takePhoto, style: .default) { _ in self.openCamera(from: host) })
         sheet.addAction(UIAlertAction(title: texts.library, style: .default) { _ in self.openLibrary(from: host) })
-        sheet.addAction(UIAlertAction(title: texts.cancel, style: .cancel) { _ in self.complete(nil) })
+        sheet.addAction(UIAlertAction(title: texts.cancel, style: .cancel) { _ in self.complete(.cancelled) })
         if let pop = sheet.popoverPresentationController { // iPad
             pop.sourceView = host.view
             pop.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.maxY - 40, width: 1, height: 1)
@@ -670,34 +675,44 @@ final class StickerPhotoFlow: NSObject, UIImagePickerControllerDelegate, UINavig
 
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
         let image = info[.originalImage] as? UIImage
-        picker.dismiss(animated: true) { self.complete(image) }
+        picker.dismiss(animated: true) { self.complete(image.map { Picked.image($0) } ?? Picked.unreadable) }
     }
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true) { self.complete(nil) }
+        picker.dismiss(animated: true) { self.complete(.cancelled) }
     }
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
-        guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else {
-            complete(nil)
+        guard let provider = results.first?.itemProvider else { // Cancel in the photo library
+            complete(.cancelled)
             return
         }
+        guard provider.canLoadObject(ofClass: UIImage.self) else {
+            complete(.unreadable)
+            return
+        }
+        // An iCloud-only photo while offline (or any load error) comes back as nil → "No QR found".
         provider.loadObject(ofClass: UIImage.self) { object, _ in
-            DispatchQueue.main.async { self.complete(object as? UIImage) }
+            DispatchQueue.main.async { self.complete((object as? UIImage).map { Picked.image($0) } ?? Picked.unreadable) }
         }
     }
 
-    private func complete(_ image: UIImage?) {
+    private enum Picked { case image(UIImage), unreadable, cancelled }
+
+    private func complete(_ picked: Picked) {
         if done { return }
         done = true
-        guard let image = image else {
-            onDone?(nil)
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let b64 = StickerPhotoFlow.jpegBase64(image)
-            DispatchQueue.main.async { self.onDone?(b64) }
+        switch picked {
+        case .cancelled:
+            onDone?(.cancelled)
+        case .unreadable:
+            onDone?(.unreadable)
+        case .image(let image):
+            DispatchQueue.global(qos: .userInitiated).async {
+                let b64 = StickerPhotoFlow.jpegBase64(image)
+                DispatchQueue.main.async { self.onDone?(b64.map { Outcome.photo($0) } ?? Outcome.unreadable) }
+            }
         }
     }
 

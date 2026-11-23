@@ -28,6 +28,9 @@ const tables: Record<string, Row[]> = {
     // Parcel Scan: Scan QR → fill from Customers (sql/149) — previews in docs/design/scan-qr-lookup/built.
     // Open the preview with ?qlookup=off to see the screen with the switch off.
     { key: "scan_qr_lookup_enabled", value: typeof location !== "undefined" && /[?&]qlookup=off\b/.test(location.search) ? "false" : "true" },
+    // Native "Scan sticker QR" switch (sql/206) — the Orders Scan button shows only with it AND the phone
+    // app's scanner (docs/design/native-qr-scanner/shoot.cjs fakes that plugin).
+    { key: "native_qr_scanner_enabled", value: "true" },
   ],
   // One finished 2-day session (Orders → Sessions picker + its Export). day(-n) = n days ago.
   live_session_orders: [

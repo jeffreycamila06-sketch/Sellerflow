@@ -121,11 +121,12 @@ export default function Blacklist({
     const native = nativeQrScanner();
     if (!native) { warmQrReader(); fileRef.current?.click(); return; }
     if (!reason) return;
-    setReading(true); setNote(null);
+    setReading(true); // the "Added — Undo" note stays until a real read (a closed scanner keeps it)
     void runStickerScan(native, scannerTexts(t)).then(async (out) => {
       if (!alive.current) return;
       setReading(false);
       if (out.kind === "cancelled") return;
+      setNote(null);
       if (out.kind === "failed") { setNote({ kind: "failed" }); return; }
       await applyRead(out);
     });

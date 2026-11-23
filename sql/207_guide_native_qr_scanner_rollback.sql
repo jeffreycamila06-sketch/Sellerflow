@@ -16,10 +16,10 @@ update public.support_guide
 
 update public.support_guide
    set body = replace(body, '- Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
-- **Scan** (next to the search box) reads the QR on a buyer''s sticker and opens that buyer''s card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.', '- Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.'),
+- In the latest phone app, **Scan** (next to the search box) reads the QR on a buyer''s sticker with the camera and opens that buyer''s card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.', '- Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.'),
        checked = checked
  where id = 'orders-search'
    and position('- Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
-- **Scan** (next to the search box) reads the QR on a buyer''s sticker and opens that buyer''s card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.' in body) > 0;
+- In the latest phone app, **Scan** (next to the search box) reads the QR on a buyer''s sticker with the camera and opens that buyer''s card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.' in body) > 0;
 
 commit;

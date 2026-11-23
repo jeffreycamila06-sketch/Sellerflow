@@ -196,15 +196,15 @@ public class SellerFlowScannerPlugin extends Plugin {
         }
         Intent data = result.getData();
         Uri uri = data != null && data.getData() != null ? data.getData() : (cameraFile != null ? Uri.fromFile(cameraFile) : null);
-        if (uri == null) {
-            finish(status("cancelled"));
+        if (uri == null) { // "done" but no picture came back → the web shows today's "No QR found"
+            finish(error("photo_unreadable"));
             return;
         }
         final Uri src = uri;
         new Thread(() -> {
             String b64 = jpegBase64(src);
             getActivity().runOnUiThread(() -> {
-                if (b64 == null) {
+                if (b64 == null) { // the file can't be opened → the web shows today's "No QR found"
                     finish(error("photo_unreadable"));
                 } else {
                     JSObject r = status("photo");

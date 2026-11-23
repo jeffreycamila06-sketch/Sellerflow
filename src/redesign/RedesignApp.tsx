@@ -41,7 +41,7 @@ import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
 import { parcelTrackingVisible, parcelTrackingLocked, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
 import { buyerContactVisible } from "./adapters/buyerContact";
 import { scanQrLookupVisible } from "./adapters/scanQrLookup";
-import { setNativeQrScannerOn } from "./adapters/nativeQrScanner";
+import { nativeScannerAvailable, setNativeQrScannerOn } from "./adapters/nativeQrScanner";
 import { fmStoreCheckVisible } from "./adapters/fmStoreCheck";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -3147,7 +3147,7 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => { if (source === "post") return postItemStock(postSales?.sales ?? [], code, saleId ?? null); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote, postLabel: (sid: number) => postLabel(postSales?.sales.find((x) => x.id === sid)), postGiveOff: postAccess !== "full" } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />}
+            initialQuery={ordersInitialQuery} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
             tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
             pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}

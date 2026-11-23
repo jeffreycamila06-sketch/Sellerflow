@@ -37,9 +37,9 @@ let switchOn = false;
 /** RedesignApp: the kill switch (featureSw.nativeQrScanner). Anything but true = off. */
 export function setNativeQrScannerOn(on: boolean): void { switchOn = on === true; }
 
-/** The native scanner, or null → use today's photo flow (laptop, older app build, switch off). */
-export function nativeQrScanner(): ScanFn | null {
-  if (!switchOn || typeof window === "undefined") return null;
+// The app build's scanner plugin, whatever the switch says. null on a laptop / an older app build.
+function pluginScan(): ScanFn | null {
+  if (typeof window === "undefined") return null;
   try {
     const p = (window as unknown as { Capacitor?: { Plugins?: { SellerFlowScanner?: { scanStickerQr?: unknown } } } }).Capacitor?.Plugins?.SellerFlowScanner;
     const fn = p?.scanStickerQr;
@@ -47,6 +47,17 @@ export function nativeQrScanner(): ScanFn | null {
   } catch {
     return null;
   }
+}
+
+/** The native scanner, or null → use today's photo flow (laptop, older app build, switch off). */
+export function nativeQrScanner(): ScanFn | null {
+  return switchOn ? pluginScan() : null;
+}
+
+/** For a screen that shows a Scan button ONLY with the live scanner (Orders): the app build has the
+ *  scanner AND the switch (featureSw.nativeQrScanner, passed in so a render sees it at once) is on. */
+export function nativeScannerAvailable(switchOnNow: boolean): boolean {
+  return switchOnNow === true && pluginScan() !== null;
 }
 
 export type StickerScanOutcome = QrOutcome | { kind: "cancelled" } | { kind: "failed" };
@@ -86,9 +97,13 @@ export async function runStickerScan(scan: ScanFn, texts: ScannerTexts): Promise
   if (a.status === "read") {
     return typeof a.text === "string" && a.text !== "" ? done("read", { kind: "one", text: a.text }) : done("failed", { kind: "failed" });
   }
+  // A picture that can't be opened (iPhone: an iCloud-only photo while offline; Android: an unreadable
+  // file) = today's photo flow on an unreadable picture: "No QR found".
+  const unreadable = (): StickerScanOutcome => done("photo_unreadable", { kind: "none", reason: "image_unreadable" });
+  if (a.status === "error" && a.code === "photo_unreadable") return unreadable();
   if (a.status === "photo") {
     const file = photoFile(a.data, a.mime);
-    if (!file) return done("failed", { kind: "failed" });
+    if (!file) return unreadable();
     try {
       const read = await readQrFromFile(file);
       return done(`photo_${read.kind}`, read);
