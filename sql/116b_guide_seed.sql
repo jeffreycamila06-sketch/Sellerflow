@@ -82,8 +82,8 @@ What to do:
 - When you reach it, the popup says you''ve used all your free orders. New orders are not created after this.
 - At the limit, tap **Upgrade plan** or **View my orders**.
 - To upgrade, message Admin on Telegram @SellerFlowLive. On iPhone the popup says "Free limit reached… Please contact support."
-- The free orders are counted for your live account too (your TikTok username, Facebook Page, Instagram account or Shopee shop). A live account that has used its free orders needs a paid plan to continue, also on a new login.
-- "This account''s free orders are used — upgrade to continue." You see this when you add a live account that has already used its free orders. Message Admin to upgrade. On iPhone it says "This account can''t be added right now. Contact support to continue."
+- The free orders are counted for your live account too (your TikTok username, Facebook Page, Instagram account or Shopee shop). When a live account''s free orders are used, it needs a paid plan to continue, also on a new login.
+- "This account''s free orders are used — upgrade to continue." You see this when you add a live account with no free orders left. Message Admin to upgrade. On iPhone it says "This account can''t be added right now. Contact support to continue."
 
 You can see "Free orders used" on **Settings → General Settings → Subscription** (not shown on iPhone — message Admin).'),
   ('plan-expired', 'Plan expired or expiring', '2026-10-15'::date, 'expired, expire, plan ended, renew, renewal, inactive, nag-expire, tapos na plan, 过期, 到期, 續費', 'Before your plan ends, the app shows "Your plan expires in N days" or "Your plan expires today". After it ends: "Your plan has expired. Renew to keep your live sessions and printing running." Tap **Renew now**.
