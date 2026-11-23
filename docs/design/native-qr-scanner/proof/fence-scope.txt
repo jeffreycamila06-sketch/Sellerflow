@@ -28,3 +28,8 @@ exit 1
 == 3b. same command without SCANNER_GATE ==
 mobile/ byte pin: skipped (set SCANNER_GATE=1 — qr-scanner-gate.sh does)
 exit 0
+
+== 4. The WHOLE normal test suite on the same scratch copy (npx vitest run, no SCANNER_GATE) ==
+Test Files  822 passed | 2 skipped (824)
+Tests  11942 passed | 10 skipped (11952)
+(the 2 skipped files: nativeScannerMain.fence.test.ts — the mobile/ byte pin — and oneSticker.proof.test.ts, which main also skips: it runs only when asked to write proof pictures)
