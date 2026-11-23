@@ -1,0 +1,65 @@
+ok   base: my_feature_access is production's text (md5 read 2026-11-23)
+ok   base: account_limits_v2_on is production's text
+ok   base: account_switch_on is production's text
+ok   base: no shopee_public_on
+ok   base: no switch row
+ok   base: 27 feature keys, none called shopee_public
+ok   sql/206 applies
+ok   my_feature_access is sql/206's text
+ok   shopee_public_on exists
+ok   only my_feature_access changed and shopee_public_on was added (my_feature_access, shopee_public_on)
+ok   every other function was compared (30 functions)
+ok   the switch row is created 'false'
+ok   nobody is on the preview list
+ok   28 feature keys; shopee_public is false
+ok   the 27 older keys answer the same for every login
+ok   shopee_public is false for every login (admin too — the list is by email)
+ok   switch off: a seller with an active beta row → false
+ok   switch off: a Pro seller → false
+ok   switch off: a Free seller → false
+ok   switch off: an unknown id → false
+ok   null → false
+ok   switch off: an admin → true
+ok   preview login (exact email) → true
+ok   another seller stays false
+ok   my_feature_access says shopee_public for the preview login
+ok   … and not for another seller
+ok   preview login (prefix) → true
+ok   a login on another feature's list → false
+ok   switch 'true' → true for every seller
+ok   switch 'TRUE' → true for every seller
+ok   switch ' true ' → true for every seller
+ok   switch on: null is still false
+ok   switch 'yes' → false
+ok   switch '1' → false
+ok   switch 'on' → false
+ok   switch '' → false
+ok   switch 'false' → false
+ok   no switch row → false for a seller, true for an admin
+ok   the preview table missing → false, no error
+ok   the profile read failing → false, no error
+ok   … and back to normal after
+ok   a signed-in seller cannot call shopee_public_on
+ok   a visitor cannot call shopee_public_on
+ok   the service role can
+ok   sql/206 applies a second time
+ok   a switch that is 'true' stays 'true'
+ok   the preview login is kept
+ok   every function text is the same as after the first run
+ok   the rollback runs
+ok   every function is production's text again; shopee_public_on is gone
+ok   the switch row is gone
+ok   the preview logins are gone
+ok   other features' logins are kept
+ok   my_feature_access answers as before sql/206
+ok   the rollback runs a second time
+ok   sql/206 applies again after the rollback
+ok   … with the switch 'false'
+ok   … and the same texts
+ok   a changed my_feature_access: sql/206 refuses
+ok   … no function was changed
+ok   … and no switch row was made
+ok   … the rollback refuses too
+ok   shopee_beta keeps its rows
+
+63 passed, 0 failed

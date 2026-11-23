@@ -52,7 +52,11 @@ describe("sql/202 — Shopee help text without 'beta'", () => {
     }
   });
   it("the new words are the guide's words (docs/support/sfl-guide.md = sql/116b), with no 'beta' left to read", () => {
-    for (const [, n] of PAIRS.slice(0, 4)) expect(guide).toContain(n);
+    // the first three phrases are in the row production has today (kept as sql/207's rollback); the guide's
+    // Shopee section was rewritten after that (sql/207, 2026-11-23 — Shopee for every plan)
+    const liveShopee = readFileSync("sql/207_guide_shopee_public_rollback.sql", "utf8");
+    for (const [, n] of PAIRS.slice(0, 3)) expect(liveShopee).toContain(sq(n));
+    expect(guide).toContain(PAIRS[3][1]);
     expect(guide).toContain("**Shopee** opens your Shopee shops.");
     expect(guide).toContain("## connect-shopee — Shopee Live\n");
     for (const id of ["connect-shopee", "other-platforms", "general-settings"]) {

@@ -101,12 +101,6 @@ export interface AdminActions {
   // Grant Scan Credits (manual Wise/Telegram top-up). Calls the is_admin()-gated
   // grant_parcel_credit RPC + writes an audit row. Returns the new balance.
   addCredits: (email: string, amount: number) => Promise<AdminResult & { balance?: number }>;
-  // Shopee Live beta (sql/135): start/extend a 30-day window, end it now (expires_at = now(),
-  // the row stays → the seller's Shopee locks as "Beta ended"), list every row
-  // (authUserId → expires_at) for the seller cards. is_admin()-gated RPCs + audit rows.
-  shopeeBetaStart: (email: string, userId: string) => Promise<AdminResult & { expiresAt?: string }>;
-  shopeeBetaRemove: (email: string, userId: string) => Promise<AdminResult>;
-  shopeeBetaList: () => Promise<Record<string, string>>;
   // Plan DOWNGRADE that also removes the chosen accounts (sql/154) — ONE database step: the
   // same plan patch as changePlan + the removal. Called ONLY from the admin's downgrade confirm
   // dialog (never on expiry or any automatic change). Afterwards the server is asked (best
@@ -321,35 +315,6 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);
 
-  const shopeeBetaStart = useCallback(async (email: string, userId: string): Promise<AdminResult & { expiresAt?: string }> => {
-    if (!supabase) return { ok: false, error: "Service unavailable" };
-    try {
-      const { data, error } = await supabase.rpc("admin_shopee_beta_start", { p_user: userId });
-      if (error) return { ok: false, error: error.message };
-      const row = (Array.isArray(data) ? data[0] : data) as { expires_at?: string } | null;
-      audit("shopee beta started", email, row?.expires_at ? `until ${row.expires_at}` : "30 days");
-      return { ok: true, expiresAt: row?.expires_at ? String(row.expires_at) : undefined };
-    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
-  }, [audit]);
-  const shopeeBetaRemove = useCallback(async (email: string, userId: string): Promise<AdminResult> => {
-    if (!supabase) return { ok: false, error: "Service unavailable" };
-    try {
-      const { error } = await supabase.rpc("admin_shopee_beta_remove", { p_user: userId });
-      if (error) return { ok: false, error: error.message };
-      audit("shopee beta ended", email, "expires_at = now()");
-      return { ok: true };
-    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
-  }, [audit]);
-  const shopeeBetaList = useCallback(async (): Promise<Record<string, string>> => {
-    if (!supabase) return {};
-    try {
-      const { data, error } = await supabase.rpc("admin_shopee_beta_list");
-      if (error || !Array.isArray(data)) return {};
-      const out: Record<string, string> = {};
-      for (const r of data as { user_id?: string; expires_at?: string }[]) if (r.user_id && r.expires_at) out[String(r.user_id)] = String(r.expires_at);
-      return out;
-    } catch { return {}; }
-  }, []);
   const downgradeRemove = useCallback(async (email: string, userId: string, plan: Plan, current: { plan: string; status: string; expiry: string }, items: RemovalItem[]): Promise<AdminResult & { liveStopped?: boolean }> => {
     const patch = planChangePatch(plan, 1, current, new Date()); // the SAME patch the plan buttons send
     const r = await downgradeRemoveRpc(userId, patch, items);
@@ -359,5 +324,5 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     const liveStopped = await stopRemovedLives(userId, items);
     return { ok: true, liveStopped };
   }, [audit]);
-  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts, setContactNote, addCredits, shopeeBetaStart, shopeeBetaRemove, shopeeBetaList, downgradeRemove };
+  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts, setContactNote, addCredits, downgradeRemove };
 }

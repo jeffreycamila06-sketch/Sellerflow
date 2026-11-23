@@ -6316,3 +6316,42 @@ must move platform right now (TikTok restricted → Shopee / Facebook) could not
   `accountSwapRuleSql.test.ts` (CI) · `PlanFullPopup.test.tsx` · `ShopeeShops.test.tsx` · `planFull.test.ts` ·
   `planFull.app.test.tsx` · `docs/design/account-swap-rule/` (README, same-as-main, breaks, 76 pictures).
 - **Order:** sql/205 → merge (Vercel). To release v2 later: sql/200 → switch 'true' → sql/201 (unchanged order).
+
+## 2026-11-23 — SHOPEE LIVE FOR EVERY SELLER (branch `claude/shopee-public` from main `8a237c68`, NOT merged; sql/206 + sql/207 NOT applied; server half needs a Render deploy)
+Jeff's decisions: every plan can use Shopee Live (Free too) under the SAME plan rule as `/connect/tiktok`; the shop
+counts in the same account total (sql/199 counting — not changed); a seller with an ACTIVE `shopee_beta` row keeps
+today's behaviour until `expires_at`, then follows the plan (no "Shopee access ended" lock); the Admin "Shopee Beta"
+row is REMOVED now, switch on or off (table, rows and RPCs stay).
+- **Switch `app_settings.shopee_public_enabled`** (sql/206 creates it 'false'; exact 'true' = on) · preview key
+  **`shopee_public`** (`feature_access_emails`; sql/206 adds NO login) · an admin always sees "on".
+  ONE rule in the database: `shopee_public_on(uuid)` (service role only; any error → false).
+- **sql/206 (+ rollback):** the switch row, `my_feature_access` = the live text + `'shopee_public'` (md5 guard
+  053c1dbd… → c2839ef7…), `shopee_public_on`. Nothing else (not shopee_beta, not the free order limit, not an account
+  function). ⚠️ After it, sql/199's rollback refuses (roll 206 back first). ⚠️ The NEXT file that adds a feature key
+  must start from sql/206's `my_feature_access`. Proof `scripts/sql206-behaviour.mjs` (PGlite, 63).
+- **Server (`server/shopeePublic.js`, + 10 lines in `shopeeLiveLink.js` connect / registerRoutes, wiring in
+  server.js):** the access step is asked ONLY when the beta rule refused the seller (no active row, not admin).
+  `shopee_public_on` true → `checkPlanActive` (the TikTok connect's own function): free = allowed, paid expired / past
+  date → 403 `plan_expired`, no profile row → 403 `no_profile`, a failed plan read → allowed. Anything else (false, a
+  database error, a throw, the function missing) → main's 403 `no_beta`. The kill switch `shopee_live_enabled` still
+  comes first; the account step (`shopee_link_register`) still runs after. The comment reader is untouched.
+  `fixtures/shopeeLiveLink.main206.js` = frozen main reader (⚠️ refresh it when `shopeeLiveLink.js` changes on purpose).
+- **App:** `shopeePublicVisible` + `shopeeSellerView` (adapters/shopeeBeta.ts) → `shopeeLinkOn` / `platformLocks` /
+  the tile's days line in RedesignApp. On: the Shopee box for every seller in a TW / PH market (market rule
+  unchanged); active row = today's rules (days line; on a free / expired plan TikTok / Facebook / Instagram locked);
+  ended row = no lock, no days. Connect answers `plan_expired` → `rd_cm_plan_ended` (iPhone app: the neutral
+  `ContactSupportPopup`, no line in the box), `no_profile` → `rd_cm_conn_try_again`; with Shopee open a 403 `no_beta`
+  reads "not responding" (`shopeeLinkErrKey`). Free order limit unchanged: a Shopee order is outside it only while a
+  beta row is active (sql/136).
+- **Admin:** the row (label, days left, Start / extend 30 days, Remove), its list read and `useAdmin`'s three
+  functions are gone; texts `rd_adm_shopee_beta*` removed. Until the switch is on, a beta can only be given by SQL
+  (`insert into shopee_beta (user_id) values (…) on conflict (user_id) do update set expires_at = greatest(shopee_beta.expires_at, now()) + interval '30 days'`).
+- **Guide:** connect-shopee rewritten (every plan, no "Admin turns Shopee on"), 116b regenerated; **sql/207** = that
+  ONE row (rollback = the live row, md5 checked 2026-11-23). Apply LAST, after the switch is 'true'.
+- **Order:** sql/206 → Render deploy (quiet window) → web merge (Vercel) — any order is safe, nothing opens until the
+  switch or a preview login → Jeff adds the test login to `feature_access_emails` ('shopee_public') → test → switch
+  'true' → sql/207. Rollback: switch 'false' (instant).
+- Proof: `shopeePublic.server.test.ts` (188) · `shopeePublic.test.ts` (41) · `shopeePublic.app.test.tsx` (32, real
+  RedesignApp) · `shopeePublicSql.test.ts` (16) · `docs/design/shopee-public/` (pictures, on-purpose breaks).
+- ⚠️ Known, not changed: `rd_sh_lock_beta_only` ("…upgrade to use TikTok/Facebook") is shown as it is on the iPhone
+  app to a seller with an active beta row on a free plan (today's text, kept by decision 3).

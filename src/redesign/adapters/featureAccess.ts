@@ -26,6 +26,7 @@ export const FEATURE_KEYS = [
   "seller_website", // Seller Website (Phase 1) for this account before seller_website_enabled (sql/163)
   "blacklist", // Blacklist for this account (outside Taiwan) before blacklist_enabled (sql/190)
   "account_limits_v2", // Plan full popup, Channels 2×2, Shopee shop = one account, for this account before shopee_account_enforce (sql/199)
+  "shopee_public", // Shopee Live without a beta row, for this account before shopee_public_enabled (sql/206)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

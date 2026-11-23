@@ -96,9 +96,12 @@ describe("sql/117 my_feature_access", () => {
     expect(k163).toEqual([...k160, "seller_website"]);
     const k190 = keysOf("sql/190_buyer_blacklist.sql"); // blacklist
     expect(k190).toEqual([...k163, "blacklist"]);
-    const k199 = keysOf("sql/199_account_limits_v2.sql"); // the LATEST my_feature_access list (account limits v2 preview)
+    const k199 = keysOf("sql/199_account_limits_v2.sql"); // account limits v2 preview
     expect(k199).toEqual([...k190, "account_limits_v2"]);
-    expect([...k199].sort()).toEqual([...FEATURE_KEYS].sort());
+    const k206 = keysOf("sql/206_shopee_public.sql"); // the LATEST my_feature_access list (Shopee for every seller, preview)
+    expect(k206).toEqual([...k199, "shopee_public"]);
+    expect([...k206].sort()).toEqual([...FEATURE_KEYS].sort());
+    expect(keysOf("sql/206_shopee_public_rollback.sql")).toEqual(k199);
     expect(keysOf("sql/199_account_limits_v2_rollback.sql")).toEqual(k190);
     expect(keysOf("sql/190_buyer_blacklist_rollback.sql")).toEqual(k163);
     expect(keysOf("sql/160_printer_testers_rollback.sql")).toEqual(k155);

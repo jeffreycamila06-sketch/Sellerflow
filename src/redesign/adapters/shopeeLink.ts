@@ -6,7 +6,8 @@ import { supabase } from "../../supabase";
 import { SERVER, browserSessionId } from "./serverIdentity";
 
 export type ShopeeLinkFail = "bad_link" | "not_own" | "ended" | "unreachable" | "no_beta"
-  | "shop_limit" | "shop_locked" | "not_covered"; // sql/199 — only ever sent for a seller in the preview / after the switch
+  | "shop_limit" | "shop_locked" | "not_covered" // sql/199 — only ever sent for a seller in the preview / after the switch
+  | "plan_expired" | "no_profile"; // sql/206 — the TikTok connect's two plan answers; only sent once Shopee is open for the seller
 // The numbers a refusal carries (sql/199): the "Plan full" popup's countdown uses next_free_at with the server's now.
 export interface ShopeeLimitInfo { used: number | null; limit: number | null; nextFreeAt: string | null; serverNow: string | null }
 export type ShopeeLinkResult = { ok: true; uid: string; region: string } | { ok: false; error: ShopeeLinkFail; info?: ShopeeLimitInfo };
@@ -18,7 +19,14 @@ export const SHOPEE_LINK_ERR_KEY: Record<ShopeeLinkFail, string> = {
   bad_link: "rd_sh_err_bad_link", not_own: "rd_sh_err_not_own", ended: "rd_sh_err_ended",
   unreachable: "rd_sh_err_unreach", no_beta: "rd_sh_lock_ended",
   shop_limit: "rd_sh_err_shop_limit", shop_locked: "rd_sh_err_shop_locked", not_covered: "rd_sh_err_not_covered",
+  // the texts a TikTok connect shows for the same two answers (connectFailText)
+  plan_expired: "rd_cm_plan_ended", no_profile: "rd_cm_conn_try_again",
 };
+// Shopee for every seller (sql/206): with it there is no "access ended" state, so a 403 no_beta (the server could
+// not read the rule) reads as "not responding — try again", never "contact Admin". Not public = the map above.
+export function shopeeLinkErrKey(code: ShopeeLinkFail, publicOn: boolean): string {
+  return publicOn && code === "no_beta" ? "rd_sh_err_unreach" : SHOPEE_LINK_ERR_KEY[code];
+}
 // The refusals the "Plan full" popup answers (the box keeps its one-line text under it).
 export const isShopeeLimitFail = (e: ShopeeLinkFail): boolean => e === "shop_limit" || e === "shop_locked" || e === "not_covered";
 
@@ -26,6 +34,7 @@ export function shopeeLinkFailOf(status: number, code: unknown): ShopeeLinkFail 
   const c = String(code || "");
   if (c === "bad_link" || c === "not_own" || c === "ended" || c === "no_beta") return c;
   if (status === 409 && (c === "shop_limit" || c === "shop_locked" || c === "not_covered")) return c;
+  if (status === 403 && (c === "plan_expired" || c === "no_profile")) return c;
   if (status === 403) return "no_beta";
   if (status === 410) return "ended";
   if (status === 400) return "bad_link";

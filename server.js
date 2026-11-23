@@ -48,6 +48,7 @@ import { createFbDiagHandler, FB_DIAG_PATH } from "./server/fbDiag.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
 import { createShopeeAccountGate } from "./server/shopeeAccount.js";
+import { createShopeePublicGate } from "./server/shopeePublic.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
 import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
 import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
@@ -2943,7 +2944,15 @@ try {
       liveCheck: accountLiveCheck,
       log: (line) => console.log(line),
     });
-    shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate, accountGate });
+    // sql/206 — Shopee for every seller: asked only for a seller the beta rule refused. The database says whether
+    // Shopee is open for this login (switch shopee_public_enabled / preview list; function missing = not open =
+    // the answer of before); then the SAME plan read as /connect/tiktok (checkPlanActive).
+    const publicGate = createShopeePublicGate({
+      publicOn: (userId) => serviceSb.rpc("shopee_public_on", { p_user: String(userId || "") }),
+      planCheck: (req) => checkPlanActive(req.userEmail, req.authUserId, req.authToken),
+      log: (line) => console.log(line),
+    });
+    shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate, accountGate, publicGate });
     console.log("[SHOPEE-LINK] routes registered (switch: app_settings.shopee_live_enabled)");
   }
 } catch (e) {
