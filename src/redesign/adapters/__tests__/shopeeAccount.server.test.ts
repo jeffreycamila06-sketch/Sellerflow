@@ -207,7 +207,7 @@ describe("server.js wiring (source pins — server.js has no test harness)", () 
     expect(s).toContain('import { createShopeeAccountGate } from "./server/shopeeAccount.js";');
     expect(s).toContain('register: (userId, region, uid) => serviceSb.rpc("shopee_link_register", { p_user: String(userId || ""), p_region: region, p_uid: String(uid || "") }),');
     expect(s).toContain("liveCheck: accountLiveCheck,");
-    expect(s).toContain("shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate, accountGate });");
+    expect(s).toContain("shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate, accountGate, publicGate });");
     expect(s).toMatch(/from\("shopee_link_shops"\)\.delete\(\)\.eq\("user_id", String\(userId \|\| ""\)\)\.eq\("account_key", String\(key \|\| ""\)\)/);
     expect(s).toContain('stillConnected: (uid, key) => (String(key).includes(":") ? gone("shopee_link_shops", "account_key", String)(uid, key)');
   });
