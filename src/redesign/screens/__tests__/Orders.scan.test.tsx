@@ -11,6 +11,8 @@ import { TProvider } from "../../i18n";
 import type { Order } from "../../data";
 import type { Buyer, LiveOrder } from "../../../lib/orderTypes";
 import { setNativeQrScannerOn } from "../../adapters/nativeQrScanner";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const m = vi.hoisted(() => ({
   decode: vi.fn(async (_f: File): Promise<string | null | string[]> => null),
@@ -114,6 +116,10 @@ describe("Orders Scan — live scanner (new app build, switch on)", () => {
     await flush();
     expect(scanAnswer).toHaveBeenCalledTimes(1);
     expect(fileClicks).not.toHaveBeenCalled();
+  });
+  it("its 44 px tap area starts 6 px higher (Jeff's 33 px row: ≥ 44 px, ✕ / tabs / chips / Sessions keep main's — header-check.txt)", () => {
+    const css = readFileSync(resolve(__dirname, "../../redesign.css"), "utf8");
+    expect(css).toContain("[data-redesign] .sfl-tap44.sfl-tap44-up::after { transform: translateY(calc(-50% - 6px)); }");
   });
   it("a sticker link → @username in the box, the buyer's card (all items + total), no 7-day load", async () => {
     const r = view();

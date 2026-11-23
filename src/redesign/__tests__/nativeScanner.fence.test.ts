@@ -36,9 +36,10 @@ describe("native QR scanner — fence", () => {
       }
     }
   });
-  it("no npm Capacitor plugin was added; the Android includePlugins lock is still empty", () => {
+  it("no npm scanner plugin; the Android includePlugins lock is still empty", () => {
     const pkg = JSON.parse(read("mobile/package.json"));
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@capacitor/android", "@capacitor/core", "@capacitor/ios", "@capacitor/status-bar"]);
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    expect(deps.filter((d) => /barcode|scanner|mlkit|ml-kit|qr|zxing|camera/i.test(d))).toEqual([]);
     expect(read("mobile/capacitor.config.ts")).toMatch(/includePlugins: \[\]/);
   });
   it("Android adds no permission: CAMERA was already there, no VIBRATE", () => {
@@ -52,16 +53,17 @@ describe("native QR scanner — fence", () => {
     expect(g).toContain('implementation "com.google.mlkit:barcode-scanning:17.3.0"');
     expect(g).not.toMatch(/play-services-mlkit-barcode-scanning|play-services-code-scanner/);
   });
-  it("versions: iOS build 15 / 1.10, Android versionCode 11 / 1.10; native-version.json NOT raised yet", () => {
+  it("versions: iOS build at least 15, Android versionCode at least 11 (later releases only raise them)", () => {
     const pbx = read("mobile/ios/App/App.xcodeproj/project.pbxproj");
-    expect(count(pbx, "CURRENT_PROJECT_VERSION = 15;")).toBe(2);
-    expect(count(pbx, "MARKETING_VERSION = 1.10;")).toBe(2);
-    const g = read("mobile/android/app/build.gradle");
-    expect(g).toMatch(/versionCode 11\b/);
-    expect(g).toMatch(/versionName "1\.10"/);
-    const nv = JSON.parse(read("public/native-version.json"));
-    expect(nv.ios.latest).toBe(14);
-    expect(nv.android.latest).toBe(10);
+    // the app target's build settings (Debug + Release) = the blocks with the app's own bundle id
+    const blocks = pbx.split("buildSettings = {").slice(1).map((b) => b.slice(0, b.indexOf("};")));
+    const app = blocks.filter((b) => /PRODUCT_BUNDLE_IDENTIFIER = com\.sellerflow\.live;/.test(b));
+    const builds = app.map((b) => Number(/CURRENT_PROJECT_VERSION = (\d+);/.exec(b)?.[1]));
+    expect(builds).toHaveLength(2);
+    for (const b of builds) expect(b).toBeGreaterThanOrEqual(15);
+    const code = /versionCode (\d+)/.exec(read("mobile/android/app/build.gradle"));
+    expect(code).not.toBeNull();
+    expect(Number(code![1])).toBeGreaterThanOrEqual(11);
   });
   it("the iPhone camera text names the sticker QR and parcel slips", () => {
     const plist = read("mobile/ios/App/App/Info.plist");

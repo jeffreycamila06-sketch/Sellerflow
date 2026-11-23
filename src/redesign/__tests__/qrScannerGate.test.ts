@@ -2,15 +2,16 @@
 // FAIL on the change it exists for (a changed .so, a new chip type, a bumped library, a changed printer
 // class, a new permission …) and PASS when the only change is the scanner. The real run is on Jeff's Mac.
 import { describe, it, expect, afterAll } from "vitest";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, chmodSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, chmodSync, readFileSync, copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
 import { deflateRawSync, crc32 } from "node:zlib";
 import {
   readZip, nativeLibs, abisOf, checkAbis, checkSoHashes, elfLoadAlign, checkNewSoAlignment, checkSize,
   parseDexdump, printerClosure, mainActivityOnlyRegistration, libClassDescriptors,
-  parseGradleDeps, checkDeps, parseManifest, parseBlame, checkManifest, runGate,
+  parseGradleDeps, checkDeps, parseBlame, checkManifest, runGate, parseXml, canonXml,
+  pbFields, pbCanon, resourceEntries, checkBundleEntries, rootFileOf,
 } from "../../../mobile/android/qr-scanner-gate-check.mjs";
 
 const ROOT = resolve(__dirname, "../../..");
@@ -56,8 +57,15 @@ function makeElf(is64: boolean, align: number, fill = 0): Buffer {
 const hex = (n: number, w: number) => n.toString(16).padStart(w, "0");
 type M = { name: string; type: string; insns: string[] };
 /** dexdump -d text for one class; `v` = where it sits in that build (offsets, index numbers, line numbers). */
-function dexClass(n: number, desc: string, methods: M[], v: { off: number; idx: number; line: number }) {
-  const L = [`Class #${n}            -`, `  Class descriptor  : '${desc}'`, `  Access flags      : 0x0001 (PUBLIC)`, `  Superclass        : 'Ljava/lang/Object;'`, `  Interfaces        -`, `  Static fields     -`, `  Instance fields   -`, `  Direct methods    -`];
+function dexClass(n: number, desc: string, methods: M[], v: { off: number; idx: number; line: number }, annos?: { cls?: string[]; method?: Record<string, string[]> }) {
+  const A: string[] = [];
+  if (annos) {
+    A.push(`Class #${n} annotations:`);
+    if (annos.cls) A.push("Annotations on class", ...annos.cls.map((x) => `  ${x}`));
+    methods.forEach((m, i) => { const l = annos.method?.[m.name]; if (l) A.push(`Annotations on method #${v.idx + 100 + i} '${m.name}'`, ...l.map((x) => `  ${x}`)); });
+    A.push("");
+  }
+  const L = [...A, `Class #${n}            -`, `  Class descriptor  : '${desc}'`, `  Access flags      : 0x0001 (PUBLIC)`, `  Superclass        : 'Ljava/lang/Object;'`, `  Interfaces        -`, `  Static fields     -`, `  Instance fields   -`, `  Direct methods    -`];
   methods.forEach((m, i) => {
     const base = v.off + i * 0x80;
     L.push(`    #${i}              : (in ${desc})`, `      name          : '${m.name}'`, `      type          : '${m.type}'`, `      access        : 0x0001 (PUBLIC)`, `      method_idx    : ${v.idx + i}`, `      code          -`, `      registers     : 3`, `      ins           : 1`, `      outs          : 2`, `      insns size    : ${m.insns.length * 2} 16-bit code units`);
@@ -85,14 +93,19 @@ const mainActM = (scanner: boolean, extra = false): M[] => [{ name: "onCreate", 
   "return-void",
 ] }];
 
-/** A whole dexdump text for a build. `layout` moves offsets / index numbers / line numbers like a real rebuild. */
-function dexdumpText(o: { layout: number; scanner: boolean; printerExtra?: string; tspl?: string; mainActExtra?: boolean }) {
+const PRINTER_ANNOS = (o: { returnType?: string; name?: string } = {}) => ({
+  cls: [`VISIBILITY_RUNTIME Lcom/getcapacitor/annotation/CapacitorPlugin; name="${o.name ?? "SellerFlowPrinter"}" permissions={ }`],
+  method: { printSlip: [`VISIBILITY_RUNTIME Lcom/getcapacitor/PluginMethod; returnType="${o.returnType ?? "promise"}"`] },
+});
+/** A whole dexdump -d -a text for a build. `layout` moves offsets / index numbers / line numbers like a real rebuild. */
+function dexdumpText(o: { layout: number; scanner: boolean; printerExtra?: string; tspl?: string; mainActExtra?: boolean; returnType?: string; pluginName?: string; noAnnos?: boolean; printerFirst?: boolean }) {
   const v = (k: number) => ({ off: 0x1000 * (k + 1) + o.layout * 0x700, idx: 10 * k + o.layout * 37, line: 20 + o.layout * 3 });
+  const printer = dexClass(2, PRINTER, printerM(o.printerExtra), v(2), o.noAnnos ? undefined : PRINTER_ANNOS({ returnType: o.returnType, name: o.pluginName }));
+  const mainAct = dexClass(1, MAIN_ACT, mainActM(o.scanner, o.mainActExtra), v(1));
   const parts = [
     `Processing 'classes.dex'...`, `Opened 'classes.dex', DEX version '035'`,
-    ...(o.scanner ? [dexClass(0, CAMERA, [{ name: "x", type: "()V", insns: ["return-void"] }], v(9))] : []),
-    dexClass(1, MAIN_ACT, mainActM(o.scanner, o.mainActExtra), v(1)),
-    dexClass(2, PRINTER, printerM(o.printerExtra), v(2)),
+    ...(o.scanner ? [dexClass(0, CAMERA, [{ name: "x", type: "()V", insns: ["return-void"] }], v(9), { cls: ["VISIBILITY_RUNTIME Landroidx/annotation/RequiresApi; value=21"] })] : []),
+    ...(o.printerFirst ? [printer, mainAct] : [mainAct, printer]),
     dexClass(3, TSPL, tsplM(o.tspl), v(3)),
     dexClass(4, NIIM, niimM(), v(4)),
     dexClass(5, "Lcom/sellerflow/live/R$drawable;", [{ name: "x", type: "()V", insns: [`const v0, #int ${o.scanner ? 2131 : 2130}`] }], v(5)),
@@ -100,9 +113,99 @@ function dexdumpText(o: { layout: number; scanner: boolean; printerExtra?: strin
   return parts.join("\n");
 }
 
+// ── made-up protobuf (aapt2 Resources.proto field numbers) ──────────────────────────────────
+type PbV = number | bigint | string | Buffer;
+const pbVar = (n: number | bigint) => { let v = BigInt(n); const out: number[] = []; do { let b = Number(v & 0x7fn); v >>= 7n; if (v) b |= 0x80; out.push(b); } while (v); return Buffer.from(out); };
+/** fields: [no, value] — number/bigint = varint, string/Buffer = bytes. */
+function pb(fields: [number, PbV][]): Buffer {
+  return Buffer.concat(fields.map(([no, v]) => {
+    if (typeof v === "number" || typeof v === "bigint") return Buffer.concat([pbVar((no << 3) | 0), pbVar(v)]);
+    const b = Buffer.isBuffer(v) ? v : Buffer.from(v);
+    return Buffer.concat([pbVar((no << 3) | 2), pbVar(b.length), b]);
+  }));
+}
+const SRC = (line: number) => pb([[1, 3], [2, pb([[1, line]])]]); // Source{path_idx, position{line}}
+const REF = (name: string, id: number) => pb([[2, id], [3, name]]); // Reference{id, name}
+const ITEM_STR = (s: string) => pb([[2, pb([[1, s]])]]);
+const ITEM_REF = (name: string, id: number) => pb([[1, REF(name, id)]]);
+const ITEM_FILE = (path: string) => pb([[5, pb([[1, path], [2, 1]])]]);
+const VAL = (item: Buffer, line = 1) => pb([[1, SRC(line)], [2, "a comment"], [4, item]]);
+const CV = (value: Buffer) => pb([[1, pb([])], [2, value]]);
+const ENTRY = (id: number, name: string, ...cvs: Buffer[]) => pb([[1, pb([[1, id]])], [2, name], ...cvs.map((c) => [6, c] as [number, PbV])]);
+const TYPE = (id: number, name: string, entries: Buffer[]) => pb([[1, pb([[1, id]])], [2, name], ...entries.map((e) => [3, e] as [number, PbV])]);
+const STYLE = (parent: Buffer, entries: [Buffer, Buffer][], line = 1) => pb([[1, SRC(line)], [5, pb([[2, pb([[1, parent], [2, SRC(line)], ...entries.map(([k, it]) => [3, pb([[1, SRC(line)], [3, k], [4, it]])] as [number, PbV])])]])]]);
+/** A resource table. `shift` moves every app resource number (as adding a resource does); `extra` = new entries. */
+function resTable(o: { shift?: number; appName?: string; extra?: { type: string; entries: Buffer[] }[]; removeSplash?: boolean; pool?: string; style?: "same" | "changed" } = {}) {
+  const k = o.shift || 0;
+  const id = (t: number, e: number) => 0x7f000000 + (t << 16) + e + k;
+  const types: Record<string, Buffer[]> = {
+    attr: [ENTRY(0, "colorMain", CV(pb([[5, pb([[1, pb([[1, 0x10]])]])]])))],
+    color: [ENTRY(0, "main", CV(VAL(pb([[7, pb([[6, 0xff4f46e5]])]]), 3)))],
+    drawable: [ENTRY(0, "a_icon", CV(VAL(ITEM_FILE("res/drawable/a_icon.xml")))), ...(o.removeSplash ? [] : [ENTRY(1 + k, "splash", CV(VAL(ITEM_FILE("res/drawable/splash.png"))))])],
+    string: [ENTRY(0, "app_name", CV(VAL(ITEM_STR(o.appName ?? "SellerFlowLive"), 7 + k)))],
+    style: [ENTRY(0, "AppTheme", CV(STYLE(REF("style/Base", id(9, 0)), o.style === "changed"
+      ? [[REF("attr/colorMain", id(1, 0)), ITEM_REF("color/other", id(2, 1))]]
+      : (k
+        ? [[REF("android:attr/windowBackground", 0x01010054), ITEM_REF("drawable/splash", id(3, 1))], [REF("attr/colorMain", id(1, 0)), ITEM_REF("color/main", id(2, 0))]]
+        : [[REF("attr/colorMain", id(1, 0)), ITEM_REF("color/main", id(2, 0))], [REF("android:attr/windowBackground", 0x01010054), ITEM_REF("drawable/splash", id(3, 1))]]) as [Buffer, Buffer][], 4 + k)))],
+  };
+  for (const x of o.extra || []) types[x.type] = [...(types[x.type] || []), ...x.entries];
+  const typeBufs = Object.entries(types).map(([t, es], i) => TYPE(i + 1 + (k ? 1 : 0), t, es));
+  return pb([[1, pb([[1, o.pool ?? "/Users/j/sfl-wt/main/res/values.xml"]])], [2, pb([[1, pb([[1, 0x7f]])], [2, "com.sellerflow.live"], ...typeBufs.map((t) => [3, t] as [number, PbV])])], [4, pb([[1, "Android Asset Packaging Tool (aapt)"], [2, "2.19-" + (k ? "b" : "a")]])]]);
+}
+/** A compiled res XML (XmlNode). Attribute order follows resource numbers in aapt2 — so it moves with `shift`. */
+function resXml(o: { shift?: number; tint?: string; width?: string } = {}) {
+  const k = o.shift || 0;
+  const attr = (name: string, value: string, rid: number, item?: Buffer) => pb([[1, "http://schemas.android.com/apk/res/android"], [2, name], [3, value], [4, pb([[1, 2]])], [5, rid], ...(item ? [[6, item] as [number, PbV]] : [])]);
+  const width = attr("width", o.width ?? "24dp", 0x01010159, pb([[7, pb([[3, 24]])]]));
+  const tint = attr("tint", o.tint ?? "@color/main", 0x7f040001 + k, ITEM_REF(`color/${(o.tint ?? "@color/main").split("/")[1]}`, 0x7f050000 + k));
+  const attrs = k ? [tint, width] : [width, tint];
+  const child = pb([[1, pb([[3, "path"], [4, attr("pathData", "M0 0h24v24H0z", 0x01010405)]])], [3, pb([[1, 3]])]]);
+  return pb([[1, pb([[1, pb([[1, "android"], [2, "http://schemas.android.com/apk/res/android"]])], [3, "vector"], ...attrs.map((a) => [4, a] as [number, PbV]), [5, child]])], [3, pb([[1, 1]])]]);
+}
+const QR_RES = ["sfl_qr_close", "sfl_qr_light_off", "sfl_qr_light_on"];
+/** Every other entry of a made-up .aab (assets, res, resources.pb, root, BundleConfig). */
+function bundleOther(side: "main" | "new", over: Record<string, Buffer | string | null> = {}) {
+  const isNew = side === "new";
+  const shift = isNew ? 3 : 0;
+  const files: Record<string, Buffer | string | null> = {
+    "BundleConfig.pb": pb([[1, pb([[1, "1.17.2"]])]]),
+    "BUNDLE-METADATA/com.android.tools.build.libraries/dependencies.pb": isNew ? "deps-new" : "deps-main",
+    "BUNDLE-METADATA/com.android.tools.build.gradle/app-metadata.properties": "appMetadataVersion=1.1\nandroidGradlePluginVersion=8.13.0\n",
+    "META-INF/MANIFEST.MF": isNew ? "signed new" : "signed main",
+    "META-INF/UPLOAD.SF": isNew ? "sf new" : "sf main",
+    "META-INF/UPLOAD.RSA": isNew ? "rsa new" : "rsa main",
+    "base/assets/capacitor.config.json": '{"appId":"com.sellerflow.live","server":{"url":"https://www.sellerflowlive.com/?apk=20260523-dark-mobile"}}',
+    "base/assets/capacitor.plugins.json": "[]",
+    "base/assets/public/index.html": "<!doctype html><title>x</title>",
+    "base/res/drawable/a_icon.xml": resXml({ shift }),
+    "base/res/drawable/splash.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]),
+    "base/root/META-INF/androidx.core_core.version": "1.15.0",
+    "base/root/kotlin/kotlin.kotlin_builtins": "kb",
+    "base/native.pb": pb([[1, "lib/arm64-v8a"], [1, "lib/armeabi-v7a"]]),
+    "base/resources.pb": isNew
+      ? resTable({ shift, pool: "/private/tmp/sfl-qr-gate.ab12/new/res/values.xml", extra: [
+          { type: "drawable", entries: QR_RES.map((n, i) => ENTRY(10 + i, n, CV(VAL(ITEM_FILE(`res/drawable/${n}.xml`))))) },
+          { type: "string", entries: [ENTRY(5, "common_google_play_services_unknown_issue", CV(VAL(ITEM_STR("%1$s is having trouble"))))] },
+        ] })
+      : resTable(),
+  };
+  if (isNew) {
+    for (const n of QR_RES) files[`base/res/drawable/${n}.xml`] = resXml({ tint: "@color/main" });
+    files["base/assets/mlkit_barcode_models/barcode_ssd_mobilenet_v1_dmp25_quant.tflite"] = "model";
+    files["base/root/META-INF/androidx.camera_camera-core.version"] = "1.5.2";
+    files["base/root/transport-runtime.properties"] = "version=3.1.8";
+  }
+  for (const [k, v] of Object.entries(over)) files[k] = v;
+  return Object.fromEntries(Object.entries(files).filter(([, v]) => v !== null)) as Record<string, Buffer | string>;
+}
+
 const LIBS_MAIN = { "arm64-v8a/libskia.so": makeElf(true, 16384, 1), "arm64-v8a/libminilzo.so": makeElf(true, 4096, 2), "armeabi-v7a/libskia.so": makeElf(false, 4096, 3), "armeabi-v7a/libminilzo.so": makeElf(false, 4096, 4) };
 const LIBS_SCANNER = { "arm64-v8a/libbarhopper_v3.so": makeElf(true, 16384, 5), "armeabi-v7a/libbarhopper_v3.so": makeElf(false, 4096, 6) };
-const aab = (libs: Record<string, Buffer>, dex = "dex") => readZip(makeZip({ "base/manifest/AndroidManifest.xml": "pb", "base/dex/classes.dex": dex, ...Object.fromEntries(Object.entries(libs).map(([k, b]) => [`base/lib/${k}`, b])) }));
+const aabFiles = (libs: Record<string, Buffer>, side: "main" | "new" = "main", over: Record<string, Buffer | string | null> = {}, dex = "dex") =>
+  makeZip({ "base/manifest/AndroidManifest.xml": `pb-${side}`, "base/dex/classes.dex": dex, ...Object.fromEntries(Object.entries(libs).map(([k, b]) => [`base/lib/${k}`, b])), ...bundleOther(side, over) });
+const aab = (libs: Record<string, Buffer>, side: "main" | "new" = "main", over: Record<string, Buffer | string | null> = {}) => readZip(aabFiles(libs, side, over));
+const NEW_LIBS = { ...LIBS_MAIN, ...LIBS_SCANNER };
 
 const DEPS_MAIN = `
 releaseRuntimeClasspath - Runtime classpath of compilation 'release' (target  (androidJvm)).
@@ -117,7 +220,7 @@ releaseRuntimeClasspath - Runtime classpath of compilation 'release' (target  (a
 const DEPS_SCANNER = DEPS_MAIN.replace("\\--- androidx.browser:browser:1.8.0", "+--- androidx.browser:browser:1.8.0\n+--- androidx.camera:camera-core:1.5.2\n|    \\--- androidx.core:core:1.1.0 -> 1.15.0 (*)\n\\--- com.google.mlkit:barcode-scanning:17.3.0\n     \\--- com.google.android.datatransport:transport-runtime:3.1.8");
 
 const MANIFEST_MAIN = `<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.sellerflow.live">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.sellerflow.live" android:versionCode="10" android:versionName="1.9">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -126,11 +229,16 @@ const MANIFEST_MAIN = `<?xml version="1.0" encoding="utf-8"?>
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application android:name="x" android:label="@string/app_name">
-        <activity android:name="com.sellerflow.live.MainActivity" android:exported="true" />
+        <activity android:name="com.sellerflow.live.MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="com.sellerflow.live.fileprovider" />
     </application>
 </manifest>`;
-const MANIFEST_SCANNER = MANIFEST_MAIN.replace("    </application>", `        <service android:name="androidx.camera.core.impl.MetadataHolderService" android:enabled="false" android:exported="false">
+const MANIFEST_SCANNER = MANIFEST_MAIN.replace('android:versionCode="10" android:versionName="1.9"', 'android:versionCode="11" android:versionName="1.10"').replace("    </application>", `        <service android:name="androidx.camera.core.impl.MetadataHolderService" android:enabled="false" android:exported="false">
             <meta-data android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER" android:value="androidx.camera.camera2.Camera2Config$DefaultProvider" />
         </service>
         <service android:name="com.google.mlkit.common.internal.MlKitComponentDiscoveryService" android:exported="false" />
@@ -158,7 +266,7 @@ function dexInputs(o: { mainText?: string; newText?: string; libFiles?: { name: 
 }
 function gate(over: Partial<Parameters<typeof runGate>[0]> = {}) {
   return runGate({
-    mainZip: aab(LIBS_MAIN), newZip: aab({ ...LIBS_MAIN, ...LIBS_SCANNER }),
+    mainZip: aab(LIBS_MAIN), newZip: aab(NEW_LIBS, "new"),
     mainAabBytes: 30_000_000, newAabBytes: 34_000_000,
     dex: dexInputs(), mainDeps: DEPS_MAIN, newDeps: DEPS_SCANNER,
     mainManifest: MANIFEST_MAIN, newManifest: MANIFEST_SCANNER, newBlame: BLAME,
@@ -167,17 +275,19 @@ function gate(over: Partial<Parameters<typeof runGate>[0]> = {}) {
     maxMb: 6, ...over,
   });
 }
-const firstLine = (r: { lines: string[] }, tag: string) => r.lines.find((l) => l.startsWith(`PASS ${tag}`) || l.startsWith(`FAIL ${tag}`)) || "";
+const firstLine = (r: { lines: string[] }, tag: string) => r.lines.find((l) => l.startsWith(`PASS ${tag}`) || l.startsWith(`FAIL ${tag}`) || l.startsWith(`CANNOT MEASURE ${tag}`)) || "";
+const all = (r: { lines: string[] }) => r.lines.join("\n");
 
 describe("the whole gate", () => {
   it("only the scanner added → every check PASS", () => {
     const r = gate();
     expect(r.pass, r.lines.join("\n")).toBe(true);
-    for (const t of ["a)", "b)", "c)", "d)", "e)", "f) size", "f) 16 KB"]) expect(firstLine(r, t)).toMatch(/^PASS/);
+    expect(r.status).toBe("pass");
+    for (const t of ["a)", "b)", "c)", "d)", "e)", "g)", "f) size", "f) 16 KB"]) expect(firstLine(r, t)).toMatch(/^PASS/);
     expect(r.lines.at(-1)).toMatch(/^RESULT: PASS/);
   });
   it("a changed native library (same name, other bytes) → FAIL b + STOP", () => {
-    const r = gate({ newZip: aab({ ...LIBS_MAIN, "arm64-v8a/libminilzo.so": makeElf(true, 4096, 9), ...LIBS_SCANNER }) });
+    const r = gate({ newZip: aab({ ...LIBS_MAIN, "arm64-v8a/libminilzo.so": makeElf(true, 4096, 9), ...LIBS_SCANNER }, "new") });
     expect(r.pass).toBe(false);
     expect(firstLine(r, "b)")).toMatch(/^FAIL b\).*arm64-v8a\/libminilzo\.so changed/);
     expect(r.lines.join("\n")).toMatch(/CHANGED arm64-v8a\/libminilzo\.so [0-9a-f]{64} → [0-9a-f]{64}/);
@@ -185,11 +295,11 @@ describe("the whole gate", () => {
   });
   it("a native library gone → FAIL b", () => {
     const { ["armeabi-v7a/libskia.so"]: _, ...rest } = LIBS_MAIN;
-    expect(firstLine(gate({ newZip: aab({ ...rest, ...LIBS_SCANNER }) }), "b)")).toMatch(/^FAIL b\).*armeabi-v7a\/libskia\.so missing/);
+    expect(firstLine(gate({ newZip: aab({ ...rest, ...LIBS_SCANNER }, "new") }), "b)")).toMatch(/^FAIL b\).*armeabi-v7a\/libskia\.so missing/);
   });
   it("a new chip type (x86_64 from CameraX / ML Kit) → FAIL a", () => {
-    const r = gate({ newZip: aab({ ...LIBS_MAIN, ...LIBS_SCANNER, "x86_64/libbarhopper_v3.so": makeElf(true, 16384, 7) }) });
-    expect(firstLine(r, "a)")).toBe("FAIL a) chip types: main [arm64-v8a, armeabi-v7a] · new [arm64-v8a, armeabi-v7a, x86_64]");
+    const r = gate({ newZip: aab({ ...NEW_LIBS, "x86_64/libbarhopper_v3.so": makeElf(true, 16384, 7) }, "new") });
+    expect(firstLine(r, "a)")).toBe("FAIL a) chip types: base [arm64-v8a, armeabi-v7a] · new [arm64-v8a, armeabi-v7a, x86_64]");
     expect(r.pass).toBe(false);
   });
   it("a bumped library version → FAIL d, listed old → new", () => {
@@ -217,29 +327,153 @@ describe("the whole gate", () => {
   it("a new permission → FAIL e (even from ML Kit)", () => {
     const r = gate({ newManifest: MANIFEST_SCANNER.replace("<uses-permission android:name=\"android.permission.CAMERA\" />", "<uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-permission android:name=\"android.permission.WAKE_LOCK\" />") });
     expect(firstLine(r, "e)")).toMatch(/^FAIL e\)/);
-    expect(r.lines.join("\n")).toMatch(/FAIL NEW permission android\.permission\.WAKE_LOCK/);
+    expect(all(r)).toMatch(/FAIL NEW <uses-permission android\.permission\.WAKE_LOCK> \(a new permission\)/);
   });
   it("a Bluetooth permission changed → FAIL e, named as printer / Bluetooth", () => {
     const r = gate({ newManifest: MANIFEST_SCANNER.replace('android.permission.BLUETOOTH" android:maxSdkVersion="30"', 'android.permission.BLUETOOTH" android:maxSdkVersion="33"') });
-    expect(r.lines.join("\n")).toMatch(/FAIL permission changed: android\.permission\.BLUETOOTH \(printer \/ Bluetooth\)/);
+    expect(all(r)).toMatch(/FAIL removed or changed: <uses-permission android\.permission\.BLUETOOTH> \(printer \/ Bluetooth\)/);
   });
   it("a new service that is not CameraX / ML Kit → FAIL e", () => {
     const r = gate({ newManifest: MANIFEST_SCANNER.replace("    </application>", '        <service android:name="com.example.Tracker" />\n    </application>') });
-    expect(r.lines.join("\n")).toMatch(/FAIL NEW service com\.example\.Tracker/);
+    expect(all(r)).toMatch(/FAIL NEW service com\.example\.Tracker \(from name only — no merge report line\) — not a CameraX \/ ML Kit part/);
   });
   it("a new uses-feature → FAIL e", () => {
     const r = gate({ newManifest: MANIFEST_SCANNER.replace('android:required="false" />', 'android:required="false" />\n    <uses-feature android:name="android.hardware.camera.any" android:required="true" />') });
-    expect(r.lines.join("\n")).toMatch(/FAIL NEW feature android\.hardware\.camera\.any/);
+    expect(all(r)).toMatch(/FAIL NEW <uses-feature android\.hardware\.camera\.any>/);
   });
   it("too big → FAIL f; a new 64-bit library not 16 KB aligned → FAIL f", () => {
     expect(firstLine(gate({ newSizeCsv: "ABI,MIN,MAX\narm64-v8a,27000000,27000000\narmeabi-v7a,21000000,21000000\n" }), "f) size")).toMatch(/^FAIL f\) size: per-phone download \+7\.0 MB/);
-    const r = gate({ newZip: aab({ ...LIBS_MAIN, ...LIBS_SCANNER, "arm64-v8a/libbarhopper_v3.so": makeElf(true, 4096, 5) }) });
+    const r = gate({ newZip: aab({ ...NEW_LIBS, "arm64-v8a/libbarhopper_v3.so": makeElf(true, 4096, 5) }, "new") });
     expect(firstLine(r, "f) 16 KB")).toMatch(/^FAIL f\) 16 KB.*arm64-v8a\/libbarhopper_v3\.so/);
   });
   it("no bundletool → the .aab size is used", () => {
     expect(firstLine(gate({ mainSizeCsv: "", newSizeCsv: "" }), "f) size")).toMatch(/^PASS f\) size: \.aab 30\.0 → 34\.0 MB/);
   });
 });
+describe("Fix Round 3 rules — each one turns FAIL / CANNOT MEASURE", () => {
+  // c) annotations (dexdump -a)
+  it("an annotation changed (@PluginMethod returnType) → FAIL c", () => {
+    const r = gate({ dex: dexInputs({ newText: dexdumpText({ layout: 1, scanner: true, returnType: "none" }) }) });
+    expect(firstLine(r, "c)")).toMatch(/^FAIL c\)/);
+    expect(r.lines).toContain(`  CHANGED ${PRINTER} changed`);
+  });
+  it("the @CapacitorPlugin name changed → FAIL c; annotations gone → FAIL c", () => {
+    expect(firstLine(gate({ dex: dexInputs({ newText: dexdumpText({ layout: 1, scanner: true, pluginName: "Printer2" }) }) }), "c)")).toMatch(/^FAIL c\)/);
+    expect(firstLine(gate({ dex: dexInputs({ newText: dexdumpText({ layout: 1, scanner: true, noAnnos: true }) }) }), "c)")).toMatch(/^FAIL c\)/);
+  });
+  it("annotations belong to their own class, wherever it sits in the dex (moved class + new index numbers → same)", () => {
+    const r = gate({ dex: dexInputs({ newText: dexdumpText({ layout: 2, scanner: true, printerFirst: true }) }) });
+    expect(firstLine(r, "c)")).toMatch(/^PASS c\)/);
+    const p = parseDexdump(dexdumpText({ layout: 0, scanner: false })).get(PRINTER)!.text;
+    expect(p).toMatch(/anno +VISIBILITY_RUNTIME Lcom\/getcapacitor\/PluginMethod; returnType="promise"/);
+    expect(p).toMatch(/anno Annotations on method 'printSlip'/);
+    expect(p).not.toMatch(/Annotations on method #/);
+    expect(parseDexdump(dexdumpText({ layout: 0, scanner: false })).get(MAIN_ACT)!.text).not.toMatch(/PluginMethod/);
+  });
+  // e) the whole manifest
+  it("LAUNCHER removed from MainActivity → FAIL e", () => {
+    const r = gate({ newManifest: MANIFEST_SCANNER.replace('                <category android:name="android.intent.category.LAUNCHER" />\n', "") });
+    expect(firstLine(r, "e)")).toMatch(/^FAIL e\)/);
+    expect(all(r)).toMatch(/removed or changed in <application>: <activity com\.sellerflow\.live\.MainActivity>/);
+  });
+  it("a new intent-filter on an existing activity → FAIL e", () => {
+    const r = gate({ newManifest: MANIFEST_SCANNER.replace("            </intent-filter>\n", '            </intent-filter>\n            <intent-filter><action android:name="android.intent.action.VIEW" /></intent-filter>\n') });
+    expect(firstLine(r, "e)")).toMatch(/^FAIL e\)/);
+  });
+  it("a new <uses-library> → FAIL e (even inside <application>)", () => {
+    const r = gate({ newManifest: MANIFEST_SCANNER.replace("    </application>", '        <uses-library android:name="org.apache.http.legacy" android:required="false" />\n    </application>') });
+    expect(all(r)).toMatch(/FAIL NEW uses-library org\.apache\.http\.legacy in <application>/);
+  });
+  it("a new permission declaration → FAIL e", () => {
+    const r = gate({ newManifest: MANIFEST_SCANNER.replace("    <uses-sdk", '    <permission android:name="com.sellerflow.live.SPY" android:protectionLevel="normal" />\n    <uses-sdk') });
+    expect(all(r)).toMatch(/FAIL NEW <permission com\.sellerflow\.live\.SPY>/);
+  });
+  it("an application setting changed → FAIL e", () => {
+    const r = gate({ newManifest: MANIFEST_SCANNER.replace('<application android:name="x"', '<application android:name="x" android:allowBackup="true"') });
+    expect(all(r)).toMatch(/FAIL application setting android:allowBackup changed: \(none\) → true/);
+  });
+  it("an empty manifest (either side) → FAIL e", () => {
+    expect(firstLine(gate({ newManifest: "" }), "e)")).toMatch(/^FAIL e\)/);
+    expect(all(gate({ mainManifest: "  " }))).toMatch(/FAIL the base manifest is empty/);
+  });
+  it("<application> or BLUETOOTH_CONNECT missing → FAIL e", () => {
+    const noBt = MANIFEST_SCANNER.replace('    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n', "");
+    expect(all(gate({ newManifest: noBt }))).toMatch(/FAIL no BLUETOOTH_CONNECT permission in the new manifest/);
+    const noApp = MANIFEST_SCANNER.replace(/<application[\s\S]*<\/application>/, "");
+    expect(all(gate({ newManifest: noApp }))).toMatch(/FAIL no <application> in the new manifest/);
+  });
+  it("only the version may change on <manifest>; package changed → FAIL e", () => {
+    expect(all(gate())).toMatch(/version: android:versionCode 10 → 11/);
+    expect(all(gate({ newManifest: MANIFEST_SCANNER.replace('package="com.sellerflow.live"', 'package="com.other"') }))).toMatch(/FAIL <manifest> package changed/);
+  });
+  // d) unreadable dependency lines
+  it("a dependency line it cannot read ({require …}, FAILED, (n), reject) → CANNOT MEASURE — STOP", () => {
+    for (const bad of ["+--- a.b:c:{require 1.0} -> 1.2", "+--- a.b:c:{require 1.0; reject 2.0} -> 1.0", "+--- a.b:c:1.0 FAILED", "+--- a.b:c:1.0 (n)", "+--- something odd"]) {
+      const r = gate({ newDeps: DEPS_SCANNER + bad + "\n" });
+      expect(r.status, bad).toBe("cannot");
+      expect(firstLine(r, "d)"), bad).toMatch(/^CANNOT MEASURE d\)/);
+      expect(r.lines.find((l) => l.startsWith("CANNOT MEASURE — STOP"))).toBeTruthy();
+      expect(r.pass).toBe(false);
+    }
+    expect(gate({ mainDeps: "nothing here" }).status).toBe("cannot");
+  });
+  // g) every other file
+  it("capacitor.config.json changed → FAIL g, named", () => {
+    const r = gate({ newZip: aab(NEW_LIBS, "new", { "base/assets/capacitor.config.json": '{"appId":"com.sellerflow.live","server":{"url":"https://preview.vercel.app"}}' }) });
+    expect(firstLine(r, "g)")).toMatch(/^FAIL g\)/);
+    expect(r.lines).toContain("  FAIL changed: base/assets/capacitor.config.json");
+  });
+  it("capacitor.plugins.json changed, a new asset, a removed file, BundleConfig changed → FAIL g each", () => {
+    const cases: [Record<string, Buffer | string | null>, string][] = [
+      [{ "base/assets/capacitor.plugins.json": '[{"pkg":"x"}]' }, "  FAIL changed: base/assets/capacitor.plugins.json"],
+      [{ "base/assets/tracker.js": "x" }, "  FAIL NEW file not from CameraX / ML Kit: base/assets/tracker.js"],
+      [{ "base/assets/public/index.html": null }, "  FAIL removed: base/assets/public/index.html"],
+      [{ "BundleConfig.pb": "other" }, "  FAIL changed: BundleConfig.pb"],
+      [{ "base/root/META-INF/androidx.core_core.version": "1.16.0" }, "  FAIL changed: base/root/META-INF/androidx.core_core.version"],
+      [{ "base/root/META-INF/com.example_spy.version": "1" }, "  FAIL NEW file not from CameraX / ML Kit: base/root/META-INF/com.example_spy.version"],
+      [{ "base/res/drawable/splash.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 9]) }, "  FAIL changed: base/res/drawable/splash.png"],
+      [{ "base/res/drawable/new_thing.png": "x" }, "  FAIL NEW file not from CameraX / ML Kit: base/res/drawable/new_thing.png"],
+    ];
+    for (const [over, line] of cases) {
+      const r = gate({ newZip: aab(NEW_LIBS, "new", over) });
+      expect(r.lines, line).toContain(line);
+      expect(r.pass).toBe(false);
+    }
+  });
+  it("a res XML whose content changed → FAIL g; only moved resource numbers → same", () => {
+    const r = gate({ newZip: aab(NEW_LIBS, "new", { "base/res/drawable/a_icon.xml": resXml({ shift: 3, width: "48dp" }) }) });
+    expect(r.lines).toContain("  FAIL changed: base/res/drawable/a_icon.xml");
+    expect(pbCanon("XmlNode", resXml({ shift: 3 }))).toBe(pbCanon("XmlNode", resXml()));
+    expect(pbCanon("XmlNode", resXml({ tint: "@color/other" }))).not.toBe(pbCanon("XmlNode", resXml()));
+  });
+  it("resources.pb: an existing value changed or removed → FAIL g; style entries reordered by new numbers → same", () => {
+    const one = (o: Parameters<typeof resTable>[0]) => gate({ newZip: aab(NEW_LIBS, "new", { "base/resources.pb": resTable({ shift: 3, ...o }) }) });
+    expect(one({ appName: "SellerFlow" }).lines).toContain("  FAIL resource changed: com.sellerflow.live:string/app_name");
+    expect(one({ removeSplash: true }).lines).toContain("  FAIL resource removed: com.sellerflow.live:drawable/splash");
+    expect(one({ style: "changed" }).lines).toContain("  FAIL resource changed: com.sellerflow.live:style/AppTheme");
+    const a = resourceEntries(resTable()), b = resourceEntries(resTable({ shift: 3 }));
+    expect([...a.keys()].sort()).toEqual([...b.keys()].sort());
+    for (const [k, v] of a) expect(b.get(k), k).toBe(v);
+  });
+  it("a resources.pb (or res XML) it cannot read → CANNOT MEASURE — STOP, never PASS", () => {
+    const r = gate({ newZip: aab(NEW_LIBS, "new", { "base/resources.pb": Buffer.from([0x0a, 0xff, 0xff, 0xff]) }) });
+    expect(r.status).toBe("cannot");
+    expect(firstLine(r, "g)")).toMatch(/^CANNOT MEASURE g\) every other file: resources\.pb cannot be read/);
+    const x = gate({ newZip: aab(NEW_LIBS, "new", { "base/res/drawable/a_icon.xml": "<vector/> plain text" }) });
+    expect(x.status).toBe("cannot");
+  });
+  it("what IS allowed new: the 3 sfl_qr drawables, the ML Kit model, new libraries' version files, new resources", () => {
+    const r = gate();
+    for (const n of QR_RES) expect(all(r)).toContain(`    new base/res/drawable/${n}.xml (sfl_qr drawable)`);
+    expect(all(r)).toContain("    new base/assets/mlkit_barcode_models/barcode_ssd_mobilenet_v1_dmp25_quant.tflite (ML Kit model)");
+    expect(all(r)).toContain("    new base/root/META-INF/androidx.camera_camera-core.version (from androidx.camera:camera-core)");
+    expect(all(r)).toContain("    new base/root/transport-runtime.properties (from com.google.android.datatransport:transport-runtime)");
+    expect(all(r)).toMatch(/resources\.pb: 6 resources of the base — 6 the same by name and value; 4 new \(3 sfl_qr drawables \+ 1 from the new libraries\)/);
+    expect(rootFileOf("META-INF/camera-core_release.kotlin_module", ["androidx.camera:camera-core"])).toBe("from androidx.camera:camera-core");
+    expect(rootFileOf("META-INF/camera-core.version", ["androidx.camera:camera-core"])).toBeNull();
+  });
+});
+
 
 describe("the pieces", () => {
   it("zip reader: stored + deflated entries", () => {
@@ -281,26 +515,40 @@ describe("the pieces", () => {
     expect([...libClassDescriptors("4.1.1-release.aar", makeZip({ "classes.jar": jar, "jni/arm64-v8a/libminilzo.so": "so" }))]).toEqual([NIIM]);
     expect([...libClassDescriptors("LPAPI-2019-11-20-R.jar", jar)]).toEqual([NIIM]);
   });
-  it("gradle dependencies: resolved versions; constraints and projects skipped", () => {
+  it("gradle dependencies: resolved versions; constraints and projects skipped; odd lines kept aside", () => {
     const m = parseGradleDeps(DEPS_MAIN);
-    expect(Object.fromEntries(m)).toEqual({ "androidx.appcompat:appcompat": "1.7.0", "androidx.activity:activity": "1.9.2", "androidx.core:core": "1.15.0", "androidx.browser:browser": "1.8.0" });
-    expect(checkDeps(m, parseGradleDeps(DEPS_SCANNER)).ok).toBe(true);
-    expect(checkDeps(new Map(), new Map()).ok).toBe(false); // an empty list must not pass
+    expect(Object.fromEntries(m.deps)).toEqual({ "androidx.appcompat:appcompat": "1.7.0", "androidx.activity:activity": "1.9.2", "androidx.core:core": "1.15.0", "androidx.browser:browser": "1.8.0" });
+    expect(m.unreadable).toEqual([]);
+    const d = checkDeps(m, parseGradleDeps(DEPS_SCANNER));
+    expect(d.ok).toBe(true);
+    expect(d.added).toEqual(["androidx.camera:camera-core", "com.google.android.datatransport:transport-runtime", "com.google.mlkit:barcode-scanning"]);
+    expect(checkDeps({ deps: new Map(), unreadable: [] }, { deps: new Map(), unreadable: [] }).cannot).toBe(true); // an empty list never passes
+    expect(parseGradleDeps("+--- a:b:{prefer 1.0} -> 1.0\n").unreadable).toHaveLength(1);
   });
-  it("manifest + merge report", () => {
-    const p = parseManifest(MANIFEST_SCANNER);
-    expect(p.components.has("service androidx.camera.core.impl.MetadataHolderService")).toBe(true);
-    expect(p.metas.has("androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER")).toBe(true);
+  it("manifest: whole-element compare + merge report", () => {
+    const doc = parseXml(MANIFEST_SCANNER);
+    const app = doc.children[0].children.find((c: { tag: string }) => c.tag === "application");
+    expect(app.children.map((c: { tag: string }) => c.tag)).toEqual(["activity", "provider", "service", "service", "provider"]);
+    // attribute order and child order do not matter; content does
+    expect(canonXml(parseXml('<a y="2" x="1"><b/><c/></a>').children[0])).toBe(canonXml(parseXml('<a x="1" y="2"><c/><b/></a>').children[0]));
+    expect(canonXml(parseXml('<a x="1"><b z="1"/></a>').children[0])).not.toBe(canonXml(parseXml('<a x="1"><b z="2"/></a>').children[0]));
+    expect(() => parseXml("<a><b></a>")).toThrow();
     const b = parseBlame(BLAME);
     expect(b.get("service androidx.camera.core.impl.MetadataHolderService")).toBe("androidx.camera:camera-core");
     expect(b.get("provider com.google.mlkit.common.internal.MlKitInitProvider")).toBe("com.google.mlkit:common");
     expect(b.get("android.permission.INTERNET")).toBe("app");
     const r = checkManifest(MANIFEST_MAIN, MANIFEST_SCANNER, BLAME);
-    expect(r.ok).toBe(true);
+    expect(r.ok, r.lines.join("\n")).toBe(true);
     expect(r.lines.join("\n")).toMatch(/service androidx\.camera\.core\.impl\.MetadataHolderService \(from androidx\.camera:camera-core\)/);
     // the merge report says a "camera-looking" service came from somewhere else → not allowed
     const lie = BLAME.replace("[androidx.camera:camera-core:1.5.2] /Users/j/.gradle/caches/x/AndroidManifest.xml:24:9-33:19", "[com.example:spy:1.0] /x:1:1");
     expect(checkManifest(MANIFEST_MAIN, MANIFEST_SCANNER, lie).ok).toBe(false);
+  });
+  it("protobuf reader: fields, odd input throws", () => {
+    expect(pbFields(pb([[1, 5], [2, "hi"]])).map((f: { no: number }) => f.no)).toEqual([1, 2]);
+    expect(() => pbFields(Buffer.from([0x0a, 0x05, 0x01]))).toThrow();
+    expect(() => pbFields(Buffer.from([0x0b]))).toThrow(); // wire type 3
+    expect(checkBundleEntries(aab(LIBS_MAIN), aab(LIBS_MAIN)).ok).toBe(true);
   });
 });
 
@@ -309,10 +557,11 @@ describe("the checker program", () => {
   const dir = mkdtempSync(join(tmpdir(), "sfl-gate-test-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
   const fakeDexdump = join(dir, "dexdump");
-  writeFileSync(fakeDexdump, '#!/bin/sh\n# fake dexdump: the test "dex" files hold dexdump text already\ncat "$2"\n');
+  // fake dexdump: the test "dex" files hold dexdump text already; it insists on "-d -a" (annotations)
+  writeFileSync(fakeDexdump, '#!/bin/sh\n[ "$1" = "-d" ] && [ "$2" = "-a" ] || { echo "called without -d -a" >&2; exit 9; }\ncat "$3"\n');
   chmodSync(fakeDexdump, 0o755);
   const jar = makeZip({ "com/gengcon/print/draw/PrintBuilder.class": "x" });
-  function setup(name: string, o: { newText?: string; lfs?: boolean; newLibs?: Record<string, Buffer> } = {}) {
+  function setup(name: string, o: { newText?: string; lfs?: boolean; newLibs?: Record<string, Buffer>; newDeps?: string; newOver?: Record<string, Buffer | string | null> } = {}) {
     const d = join(dir, name);
     for (const s of ["main", "new"]) {
       mkdirSync(join(d, s, "libs"), { recursive: true });
@@ -320,9 +569,9 @@ describe("the checker program", () => {
       writeFileSync(join(d, s, "libs/image-1.9.5.aar"), makeZip({ "classes.jar": makeZip({ "a/B.class": "y" }) }));
       writeFileSync(join(d, s, "libs/LPAPI-2019-11-20-R.jar"), makeZip({ "c/D.class": "z" }));
     }
-    writeFileSync(join(d, "main.aab"), makeZip({ "base/dex/classes.dex": dexdumpText({ layout: 0, scanner: false }), ...Object.fromEntries(Object.entries(LIBS_MAIN).map(([k, b]) => [`base/lib/${k}`, b])) }));
-    writeFileSync(join(d, "new.aab"), makeZip({ "base/dex/classes.dex": o.newText ?? dexdumpText({ layout: 1, scanner: true }), ...Object.fromEntries(Object.entries(o.newLibs ?? { ...LIBS_MAIN, ...LIBS_SCANNER }).map(([k, b]) => [`base/lib/${k}`, b])) }));
-    writeFileSync(join(d, "main.deps"), DEPS_MAIN); writeFileSync(join(d, "new.deps"), DEPS_SCANNER);
+    writeFileSync(join(d, "main.aab"), aabFiles(LIBS_MAIN, "main", {}, dexdumpText({ layout: 0, scanner: false })));
+    writeFileSync(join(d, "new.aab"), aabFiles(o.newLibs ?? NEW_LIBS, "new", o.newOver ?? {}, o.newText ?? dexdumpText({ layout: 1, scanner: true })));
+    writeFileSync(join(d, "main.deps"), DEPS_MAIN); writeFileSync(join(d, "new.deps"), o.newDeps ?? DEPS_SCANNER);
     writeFileSync(join(d, "main.xml"), MANIFEST_MAIN); writeFileSync(join(d, "new.xml"), MANIFEST_SCANNER); writeFileSync(join(d, "blame.txt"), BLAME);
     return spawnSync("node", [CHECKER, "--main-aab", join(d, "main.aab"), "--new-aab", join(d, "new.aab"), "--main-deps", join(d, "main.deps"), "--new-deps", join(d, "new.deps"),
       "--main-manifest", join(d, "main.xml"), "--new-manifest", join(d, "new.xml"), "--new-blame", join(d, "blame.txt"),
@@ -330,6 +579,7 @@ describe("the checker program", () => {
   }
   it("only the scanner → exit 0, RESULT: PASS", () => {
     const r = setup("ok");
+    if (process.env.SHOW_GATE) writeFileSync(process.env.SHOW_GATE, r.stdout); // SHOW_GATE=<file> = keep the report
     expect(r.stdout).toMatch(/RESULT: PASS/);
     expect(r.status).toBe(0);
   });
@@ -338,12 +588,21 @@ describe("the checker program", () => {
     expect(r.stdout).toMatch(/STOP — do not release/);
     expect(r.status).toBe(1);
   });
-  it("a changed .so → exit 1", () => {
-    expect(setup("so", { newLibs: { ...LIBS_MAIN, "armeabi-v7a/libskia.so": makeElf(false, 4096, 8), ...LIBS_SCANNER } }).status).toBe(1);
+  it("an annotation changed → exit 1", () => {
+    expect(setup("anno", { newText: dexdumpText({ layout: 1, scanner: true, returnType: "callback" }) }).status).toBe(1);
   });
-  it("a printer library still a Git LFS pointer → exit 2, CANNOT MEASURE (never a PASS)", () => {
+  it("a changed .so → exit 1; a changed asset → exit 1", () => {
+    expect(setup("so", { newLibs: { ...LIBS_MAIN, "armeabi-v7a/libskia.so": makeElf(false, 4096, 8), ...LIBS_SCANNER } }).status).toBe(1);
+    expect(setup("asset", { newOver: { "base/assets/capacitor.plugins.json": "[1]" } }).status).toBe(1);
+  });
+  it("an unreadable dependency line → exit 2, CANNOT MEASURE — STOP", () => {
+    const r = setup("deps", { newDeps: DEPS_SCANNER + "+--- a.b:c:{require 1.0} -> 1.2\n" });
+    expect(r.stdout).toMatch(/CANNOT MEASURE — STOP/);
+    expect(r.status).toBe(2);
+  });
+  it("a printer library still a Git LFS pointer → exit 2, CANNOT MEASURE — STOP (never a PASS)", () => {
     const r = setup("lfs", { lfs: true });
-    expect(r.stdout).toMatch(/CANNOT MEASURE: 4\.1\.1-release\.aar is a Git LFS pointer in the new build/);
+    expect(r.stdout).toMatch(/CANNOT MEASURE — STOP: 4\.1\.1-release\.aar is a Git LFS pointer in the new build/);
     expect(r.status).toBe(2);
   });
 });
@@ -351,27 +610,84 @@ describe("the checker program", () => {
 describe("the shell script (it runs only on the Mac — its rules are pinned here)", () => {
   const sh = readFileSync(SCRIPT, "utf8");
   const code = sh.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
-  it("builds main and this commit in two NEW worktrees, never in this checkout or ~/Sellerflow", () => {
-    expect(code).toContain('git -C "$ROOT" worktree add -q --detach "$WORK/main" "$MAIN_SHA"');
+  it("builds the base and this commit in two NEW worktrees, never in this checkout or ~/Sellerflow; no worktree prune", () => {
+    expect(code).toContain('git -C "$ROOT" worktree add -q --detach "$WORK/main" "$BASE_SHA"');
     expect(code).toContain('git -C "$ROOT" worktree add -q --detach "$WORK/new" "$NEW_SHA"');
     expect(code).not.toMatch(/\bgit (-C "[^"]*" )?(checkout|switch|reset|stash|clean|restore)\b/);
+    expect(code).not.toMatch(/worktree prune/);
     expect(code).not.toMatch(/cd "\$ROOT\/mobile/);
     expect(code).not.toMatch(/\$HOME\/Sellerflow\/[^"\n]*(gradlew|npm|cap sync)/);
     // ~/Sellerflow is only READ for the key file / SDK path
     expect((code.match(/\$HOME\/Sellerflow/g) || []).length).toBe(2);
     expect(code).toContain('worktree remove --force "$wt"');
+    // the header says honestly what it writes in the shared .git and that the key is only read
+    expect(sh).toMatch(/What it WRITES, honestly:/);
+    for (const w of ["git fetch origin main", "git worktree add", "git lfs pull", "only READ"]) expect(sh).toContain(w);
   });
-  it("release build, the release classpath, every check input passed to the checker", () => {
+  it("release build, the release classpath, the source byte pin, every check input passed to the checker", () => {
     expect(code).toContain("clean bundleRelease");
     expect(code).toContain(":app:dependencies --configuration releaseRuntimeClasspath");
+    expect(code).toContain('SCANNER_GATE=1 node scripts/native-scanner-fence.mjs --check --base "$BASE_SHA"');
     for (const a of ["--main-aab", "--new-aab", "--main-deps", "--new-deps", "--main-manifest", "--new-manifest", "--main-libs", "--new-libs", "--dexdump", "--max-mb"]) expect(code).toContain(a);
     expect(code).toContain('die "keystore.properties not found');
     expect(code).toContain('die "dexdump not found');
+    expect(code).toContain('die() { say "CANNOT MEASURE — STOP: $*"');
   });
   it("safe on the Mac's bash 3.2 (empty arrays) and stops on the checker's exit code", () => {
     expect(code).toContain('${SIZE_ARGS[@]+"${SIZE_ARGS[@]}"}');
     expect(code).toContain('${BLAME_ARGS[@]+"${BLAME_ARGS[@]}"}');
     expect(code).toContain("code=${PIPESTATUS[0]}");
     expect(spawnSync("bash", ["-n", SCRIPT]).status).toBe(0);
+  });
+
+  // the commit choice, run for real on a made-up git history (--commits = print the two commits, build nothing)
+  const repo = mkdtempSync(join(tmpdir(), "sfl-gate-git-"));
+  const home = mkdtempSync(join(tmpdir(), "sfl-gate-home-"));
+  afterAll(() => { rmSync(repo, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); });
+  const git = (...a: string[]) => execFileSync("git", ["-C", repo, ...a], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).trim();
+  const SC = "mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowScannerPlugin.java";
+  const put = (rel: string, txt: string) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), txt); };
+  const commit = (msg: string) => { git("add", "-A"); git("commit", "-q", "-m", msg, "--allow-empty"); return git("rev-parse", "HEAD"); };
+  const run = () => spawnSync("bash", [join(repo, "mobile/android/qr-scanner-gate.sh"), "--commits"], { encoding: "utf8", env: { ...process.env, HOME: home, TMPDIR: home } });
+  let c1 = "", c2 = "", c4 = "";
+  it("base = the newest main commit WITHOUT the scanner (walking main's own line), new = HEAD; both printed", () => {
+    git("init", "-q", "-b", "main");
+    mkdirSync(join(repo, "mobile/android"), { recursive: true });
+    copyFileSync(SCRIPT, join(repo, "mobile/android/qr-scanner-gate.sh"));
+    put("a.txt", "1"); c1 = commit("c1");
+    put("a.txt", "2"); c2 = commit("c2");
+    git("checkout", "-q", "-b", "scanner");
+    put(SC, "class X {}"); const s1 = commit("scanner");
+    git("checkout", "-q", "main");
+    git("merge", "-q", "--no-ff", "-m", "merge scanner", s1);
+    put("a.txt", "3"); c4 = commit("c4 after the merge");
+    git("update-ref", "refs/remotes/origin/main", c4);
+    const r = run();
+    expect(r.stdout, r.stdout + r.stderr).toContain(`base = ${c2}`);
+    expect(r.stdout).toContain(`new  = ${c4}`);
+    expect(r.status).toBe(0);
+  });
+  it("before the merge: base = origin/main itself; new = the scanner branch", () => {
+    git("update-ref", "refs/remotes/origin/main", c2);
+    git("checkout", "-q", "scanner");
+    const r = run();
+    expect(r.stdout).toContain(`base = ${c2}`);
+    expect(r.stdout).toContain(`new  = ${git("rev-parse", "HEAD")}`);
+    expect(r.status).toBe(0);
+  });
+  it("HEAD without the scanner → CANNOT MEASURE — STOP (exit 2)", () => {
+    git("checkout", "-q", "--detach", c1);
+    const r = run();
+    expect(r.stdout).toMatch(/CANNOT MEASURE — STOP: this commit \([0-9a-f]{8}\) has no .*SellerFlowScannerPlugin\.java/);
+    expect(r.status).toBe(2);
+  });
+  it("every main commit has the scanner → CANNOT MEASURE — STOP (exit 2)", () => {
+    git("checkout", "-q", "scanner");
+    const lone = git("commit-tree", git("rev-parse", "HEAD^{tree}"), "-m", "root with scanner");
+    git("update-ref", "refs/remotes/origin/main", lone);
+    const r = run();
+    expect(r.stdout).toMatch(/CANNOT MEASURE — STOP: no commit of origin\/main without the scanner was found/);
+    expect(r.status).toBe(2);
+    void c4;
   });
 });

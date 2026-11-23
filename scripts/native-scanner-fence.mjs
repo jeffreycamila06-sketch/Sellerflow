@@ -1,16 +1,21 @@
-// Native QR scanner fence (Android versionCode 11 / iOS build 15). ONE source of the rules for
-// src/redesign/__tests__/nativeScannerMain.fence.test.ts and of its fixture.
+// Native QR scanner fence (Android versionCode 11 / iOS build 15) — the mobile/ BYTE PIN.
+// ONE source of the rules for src/redesign/__tests__/nativeScannerMain.fence.test.ts (vitest) and for
+// mobile/android/qr-scanner-gate.sh (the Mac gate before an upload). Both run it ONLY with SCANNER_GATE=1:
+// after the scanner is merged, normal work on mobile/ files must not turn CI red.
 //
-//   node scripts/native-scanner-fence.mjs [ref]   → rewrites the fixture from <ref> (default origin/main)
+//   node scripts/native-scanner-fence.mjs --write [ref]            rewrite the fixture from <ref> (default origin/main)
+//   SCANNER_GATE=1 node scripts/native-scanner-fence.mjs --check [--base <commit>]
+//                                                                   check this checkout; exit 0 = PASS, 1 = FAIL
 //
-// What it pins: every file under mobile/ that the scanner branch must NOT change (printer code, Niimbot
-// libraries, Swift packages, gradle files …) has main's exact bytes, and the five files the scanner DOES
-// edit equal main's once the scanner lines are taken out and the version numbers are blanked.
-// Git LFS files are compared by their LFS id (= sha256 of the real file), so the test reads the same in
-// a checkout with the real libraries and in CI, where they are only pointer files.
+// What it pins: every file under mobile/ that the scanner must NOT change (printer code, Niimbot libraries,
+// Swift packages, gradle files …) has the base's exact bytes; the five files the scanner DOES edit equal the
+// base's once the scanner lines are taken out and the version numbers are blanked; no other file is added.
+// The base = the fixture (main 3dfb26b8), or --base <commit> (the gate passes the newest main commit that
+// has no scanner). Git LFS files are compared by their LFS id (= sha256 of the real file), so it reads the
+// same with the real libraries and with pointer files.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -92,23 +97,76 @@ export function contentId(buf) {
 }
 export const normId = (path, text) => sha(Buffer.from(EDITED[path].norm(text)));
 
-const git = (...a) => execFileSync("git", ["-C", ROOT, ...a], { maxBuffer: 256 * 1024 * 1024 });
+const gitIn = (root, ...a) => execFileSync("git", ["-C", root, ...a], { maxBuffer: 256 * 1024 * 1024 });
 
-/** The fixture, read from <ref> (main). */
-export function fixtureFrom(ref) {
-  const files = git("ls-tree", "-r", "--name-only", ref, "--", "mobile").toString().split("\n").filter(Boolean).sort();
+/** The fixture, read from <ref> (the base = main without the scanner). */
+export function fixtureFrom(ref, root = ROOT) {
+  const files = gitIn(root, "ls-tree", "-r", "--name-only", ref, "--", "mobile").toString().split("\n").filter(Boolean).sort();
   const unchanged = {}, edited = {};
   for (const f of files) {
-    const buf = git("show", `${ref}:${f}`);
+    const buf = gitIn(root, "show", `${ref}:${f}`);
     if (EDITED[f]) edited[f] = normId(f, buf.toString("utf8"));
     else if (!ADDED.includes(f)) unchanged[f] = contentId(buf);
   }
-  return { from: git("rev-parse", ref).toString().trim(), unchanged, edited };
+  return { from: gitIn(root, "rev-parse", ref).toString().trim(), unchanged, edited };
 }
 
+/**
+ * Check a checkout against a fixture. Returns the problems (empty = PASS). `tracked` = the files git tracks
+ * under mobile/ (null = not a git checkout: the "no other file" check is skipped, said in a problem-free note).
+ */
+export function checkTree(root, fx, tracked) {
+  const problems = [];
+  const read = (p) => readFileSync(resolve(root, p));
+  for (const [p, id] of Object.entries(fx.unchanged)) {
+    if (!existsSync(resolve(root, p))) problems.push(`missing: ${p}`);
+    else if (contentId(read(p)) !== id) problems.push(`changed: ${p}`);
+  }
+  for (const [p, id] of Object.entries(fx.edited)) {
+    if (!EDITED[p]) { problems.push(`no rule for edited file: ${p}`); continue; }
+    if (!existsSync(resolve(root, p))) { problems.push(`missing: ${p}`); continue; }
+    const t = read(p).toString("utf8");
+    for (const [piece, n] of EDITED[p].pieces) {
+      const got = t.split(piece).length - 1;
+      if (got !== n) problems.push(`scanner lines in ${p}: "${piece.trim().slice(0, 60)}" ${got}× (expected ${n}×)`);
+    }
+    if (normId(p, t) !== id) problems.push(`changed beyond the scanner lines: ${p}`);
+  }
+  for (const p of Object.keys(EDITED)) if (!fx.edited[p]) problems.push(`edited file missing from the base: ${p}`);
+  if (tracked) {
+    const known = new Set([...Object.keys(fx.unchanged), ...Object.keys(fx.edited), ...ADDED]);
+    for (const f of tracked) if (!known.has(f)) problems.push(`added: ${f}`);
+  }
+  return problems;
+}
+
+/** The files git tracks under mobile/ in <root>, or null when it is not a git checkout. */
+export function trackedMobile(root = ROOT) {
+  try { return gitIn(root, "ls-files", "mobile").toString().split("\n").filter(Boolean); } catch { return null; }
+}
+
+export const loadFixture = (root = ROOT) => JSON.parse(readFileSync(resolve(root, FIXTURE), "utf8"));
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const ref = process.argv[2] || "origin/main";
-  const fx = fixtureFrom(ref);
-  writeFileSync(resolve(ROOT, FIXTURE), JSON.stringify(fx, null, 1) + "\n");
-  console.log(`${FIXTURE}: ${Object.keys(fx.unchanged).length} unchanged + ${Object.keys(fx.edited).length} edited files from ${ref} (${fx.from.slice(0, 8)})`);
+  const args = process.argv.slice(2);
+  if (args[0] === "--write") {
+    const ref = args[1] || "origin/main";
+    const fx = fixtureFrom(ref);
+    writeFileSync(resolve(ROOT, FIXTURE), JSON.stringify(fx, null, 1) + "\n");
+    console.log(`${FIXTURE}: ${Object.keys(fx.unchanged).length} unchanged + ${Object.keys(fx.edited).length} edited files from ${ref} (${fx.from.slice(0, 8)})`);
+  } else if (args[0] === "--check") {
+    if (process.env.SCANNER_GATE !== "1") { console.log("mobile/ byte pin: skipped (set SCANNER_GATE=1 — qr-scanner-gate.sh does)"); process.exit(0); }
+    const bi = args.indexOf("--base");
+    const fx = bi >= 0 ? fixtureFrom(args[bi + 1]) : loadFixture();
+    const problems = checkTree(ROOT, fx, trackedMobile());
+    const n = Object.keys(fx.unchanged).length + Object.keys(fx.edited).length;
+    if (!problems.length) { console.log(`PASS mobile/ byte pin: ${n} files = base ${fx.from.slice(0, 8)} (scanner lines and files only)`); process.exit(0); }
+    console.log(`FAIL mobile/ byte pin vs base ${fx.from.slice(0, 8)}: ${problems.length} problem(s)`);
+    for (const p of problems.slice(0, 60)) console.log(`  ${p}`);
+    if (problems.length > 60) console.log(`  … and ${problems.length - 60} more`);
+    process.exit(1);
+  } else {
+    console.log("usage: node scripts/native-scanner-fence.mjs --write [ref] | SCANNER_GATE=1 node scripts/native-scanner-fence.mjs --check [--base <commit>]");
+    process.exit(2);
+  }
 }
