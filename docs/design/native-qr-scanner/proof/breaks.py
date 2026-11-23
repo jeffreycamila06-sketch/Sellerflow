@@ -19,6 +19,19 @@ BREAKS=[
  ("VIBRATE permission added", "mobile/android/app/src/main/AndroidManifest.xml", "    <uses-permission android:name=\"android.permission.CAMERA\" />", "    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-permission android:name=\"android.permission.VIBRATE\" />", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
  ("sql/207 changes the Blacklist step to other words than the guide", "sql/207_guide_native_qr_scanner.sql", "or use a photo of it (on a laptop: **Upload sticker photo**).'),\n", "or use a photo (on a laptop: **Upload sticker photo**).'),\n", "src/redesign/adapters/__tests__/blacklistSql.test.ts"),
  ("Orders scan toast timer is a bare setTimeout", "src/redesign/screens/Orders.tsx", "setScanMsg(m); later(() => setScanMsg(\"\"), 2800);", "setScanMsg(m); setTimeout(() => setScanMsg(\"\"), 2800);", "src/redesign/adapters/__tests__/useScreenTimers.test.tsx"),
+ # ── Fix Round 1 ──
+ ("Orders shows Scan without the live scanner", "src/redesign/screens/Orders.tsx", "          {liveScan && (\n", "          {(liveScan || true) && (\n", "src/redesign/screens/__tests__/Orders.scan.test.tsx"),
+ ("RedesignApp always passes liveScan", "src/redesign/RedesignApp.tsx", "liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}", "liveScan", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("availability ignores the switch", "src/redesign/adapters/nativeQrScanner.ts", "return switchOnNow === true && pluginScan() !== null;", "return pluginScan() !== null;", "src/redesign/adapters/__tests__/nativeQrScanner.test.ts"),
+ ("unreadable photo treated as a scanner failure", "src/redesign/adapters/nativeQrScanner.ts", "  if (a.status === \"error\" && a.code === \"photo_unreadable\") return unreadable();\n", "", "src/redesign/screens/__tests__/nativeScan.screens.test.tsx"),
+ ("broken photo data = failed again", "src/redesign/adapters/nativeQrScanner.ts", "    if (!file) return unreadable();", "    if (!file) return done(\"failed\", { kind: \"failed\" });", "src/redesign/adapters/__tests__/nativeQrScanner.test.ts"),
+ ("chooser count back to 0", "src/redesign/screens/Orders.tsx", "scanActive ? matches.reduce((n, m) => n + m.count, 0)", "scanActive ? 0", "src/redesign/screens/__tests__/Orders.scan.test.tsx"),
+ ("Blacklist clears the note before the scanner opens", "src/redesign/screens/Blacklist.tsx", "    setReading(true); // the \"Added", "    setReading(true); setNote(null); // the \"Added", "src/redesign/screens/__tests__/nativeScan.screens.test.tsx"),
+ ("Android: no portrait lock", "mobile/android/app/src/main/java/com/sellerflow/live/QrScannerDialog.java", "        super.onStart();\n        lockPortrait();\n", "        super.onStart();\n", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("Android: close() does not restore", "mobile/android/app/src/main/java/com/sellerflow/live/QrScannerDialog.java", "        restoreOrientation(); // also when the dialog was never shown / already gone\n", "", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("iPhone: unreadable photo reported as cancelled", "mobile/ios/App/App/SellerFlowScannerPlugin.swift", "self?.finish([\"status\": \"error\", \"code\": \"photo_unreadable\"])", "self?.finish([\"status\": \"cancelled\"])", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("version name back to 2.0", "mobile/android/app/build.gradle", "versionName \"1.10\"", "versionName \"2.0\"", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("batchLimit: shutter checked before the rows are in", "src/redesign/screens/__tests__/ParcelScan.batchLimit.test.tsx", "    await waitFor(() => expect(norm(getByTestId(\"ps-batch-n\").textContent)).toBe(\"40/40\"));\n", "", "src/redesign/screens/__tests__/ParcelScan.batchLimit.test.tsx"),
 ]
 red=0
 for name,f,a,b,test in BREAKS:
