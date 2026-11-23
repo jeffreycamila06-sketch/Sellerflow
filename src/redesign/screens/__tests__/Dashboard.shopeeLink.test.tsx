@@ -108,7 +108,10 @@ describe("RedesignApp wiring (source pins)", () => {
     expect(app).toContain("isCapped: (platform) => freeCap.freeCapped && freeCapAppliesTo(platform, shopeeBetaRowActive)");
     expect(readFileSync("src/redesign/adapters/useOrders.ts", "utf8")).toContain("if (isCapped?.(c.platform)) { onCapBlocked?.(); return null; }");
   });
-  it("the tile shows only for allowed sellers in TW/PH", () => {
-    expect(app).toContain("const shopeeLinkOn = shopeeBetaAcc.allowed && shopeeBetaMarketOk(market);");
+  it("the tile shows only for allowed sellers in TW/PH (one rule: shopeeSellerView — the beta row, or Shopee for every seller, sql/206)", () => {
+    expect(app).toContain("const shopeeView = shopeeSellerView({ isAdmin, access: shopeeBetaAcc, paidActive: isShopeeEligible(auth.profile), marketOk: shopeeBetaMarketOk(market), publicOn: shopeePublic });");
+    expect(app).toContain("const shopeeLinkOn = shopeeView.linkOn;");
+    expect(app).toContain("const platformLocks = shopeeView.locks;");
+    expect(readFileSync("src/redesign/adapters/shopeeBeta.ts", "utf8")).toContain("if (!o.publicOn) return { linkOn: o.access.allowed && o.marketOk, locks, daysLeft: o.access.daysLeft };");
   });
 });

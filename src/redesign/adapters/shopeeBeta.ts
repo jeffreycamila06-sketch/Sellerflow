@@ -39,6 +39,29 @@ export function shopeeBetaLocks(o: { isAdmin: boolean; access: ShopeeBetaAccess;
   return {};
 }
 
+// ── SHOPEE FOR EVERY SELLER (sql/206, Jeff 2026-11-23) ───────────────────────────────────────────────
+// Who has it: the switch shopee_public_enabled, OR the login has the feature key shopee_public, OR an
+// admin — the same rule the server asks the database (shopee_public_on). Off = the beta rules above.
+export function shopeePublicVisible(o: { isAdmin: boolean; previewKey: boolean; switchOn: boolean }): boolean {
+  return o.isAdmin || o.previewKey || o.switchOn;
+}
+
+export interface ShopeeSellerView { linkOn: boolean; locks: ShopeeBetaLocks; daysLeft: number | null }
+// What the seller sees.
+//   publicOn false → the beta rules, unchanged: the Shopee box only with an allowed beta row (or an admin);
+//                    an ended row locks Shopee.
+//   publicOn true  → the Shopee box for every seller (same TW / PH market rule). A seller with an ACTIVE beta
+//                    row keeps what the row gives today until it ends (the days line, and TikTok / Facebook /
+//                    Instagram locked on a free / expired plan). An ENDED row locks nothing and shows no days:
+//                    the seller follows the plan like everyone else.
+export function shopeeSellerView(o: { isAdmin: boolean; access: ShopeeBetaAccess; paidActive: boolean; marketOk: boolean; publicOn: boolean }): ShopeeSellerView {
+  const locks = shopeeBetaLocks({ isAdmin: o.isAdmin, access: o.access, paidActive: o.paidActive });
+  if (!o.publicOn) return { linkOn: o.access.allowed && o.marketOk, locks, daysLeft: o.access.daysLeft };
+  const open: ShopeeBetaLocks = { ...locks };
+  delete open.Shopee;
+  return { linkOn: o.marketOk, locks: open, daysLeft: o.access.allowed ? o.access.daysLeft : null };
+}
+
 // The beta reads TW and PH lives only (tw.shp.ee / ph.shp.ee). adminUnion = "View as: All".
 export function shopeeBetaMarketOk(m: { market: { country: string }; adminUnion: boolean }): boolean {
   return m.adminUnion || m.market.country === "TW" || m.market.country === "PH";

@@ -36,8 +36,9 @@ describe("no Beta in seller-facing Shopee texts (8 languages)", () => {
       expect(hits, lang).toEqual([]);
     }
   });
-  it("the admin card label is left as it was (admins only)", () => {
-    expect(buildT("en").rd_adm_shopee_beta).toBe("Shopee Beta");
+  it("the Admin screen's Shopee Beta row is gone (2026-11-23): its three texts are no longer in the app", () => {
+    const en = buildT("en") as unknown as Record<string, string>;
+    for (const k of ["rd_adm_shopee_beta", "rd_adm_shopee_beta_start", "rd_adm_shopee_beta_remove"]) expect(k in en, k).toBe(false);
   });
 });
 
