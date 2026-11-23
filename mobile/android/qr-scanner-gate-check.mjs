@@ -11,15 +11,21 @@
 //      added, the code does not). MainActivity may differ ONLY by the one registration line in onCreate.
 //   d) every library on the base's releaseRuntimeClasspath keeps the SAME version (old → new listed); a
 //      dependency line that cannot be read → CANNOT MEASURE
-//   e) the WHOLE merged manifest: only new CameraX / ML Kit elements (by the merge report); anything else
-//      added / removed / changed (intent-filters, uses-library, permission declarations, application
-//      settings …) = FAIL; <application> and BLUETOOTH_CONNECT must be there; an empty manifest = FAIL
+//   e) the WHOLE merged manifest: only new CameraX / ML Kit elements, each one traced by the merge report
+//      (no merge report, or a new element without a line in it → CANNOT MEASURE — a name alone allows
+//      nothing); anything else added / removed / changed (intent-filters, uses-library, permission
+//      declarations, application settings …) = FAIL; <application> and BLUETOOTH_CONNECT must be there; an
+//      empty manifest = FAIL
 //   g) EVERY other file in the .aab (assets incl. capacitor.config.json / capacitor.plugins.json, res,
-//      resources.pb, root/META-INF, BundleConfig.pb …): unchanged, except the 3 sfl_qr drawables and new
-//      CameraX / ML Kit files (new resources, the ML Kit model folder, new libraries' version files).
-//      resources.pb and compiled res XML are compared by NAME with resource numbers taken out (those
-//      numbers move whenever any resource is added), following aapt2's Resources.proto.
-//   f) per-phone download growth ≤ max MB; every NEW .so has 16 KB-aligned load segments
+//      resources.pb, root/META-INF, BundleConfig.pb, any file under base/lib/ that is not a
+//      <chip>/<name>.so …): unchanged, except the 3 sfl_qr drawables and new CameraX / ML Kit files (new
+//      resources, the ML Kit model folder, new libraries' version files). resources.pb and compiled res XML
+//      are compared by NAME with resource numbers taken out (those numbers move whenever any resource is
+//      added), following aapt2's Resources.proto. NOT compared, and only these: the baseline profile
+//      (baseline.prof / baseline.profm) and version-control-info.textproto — they differ in every build;
+//      the .aab's signature files; the library list (that is check d).
+//   f) per-phone download growth ≤ max MB (a size table with no rows or a value that is not a number →
+//      CANNOT MEASURE); every NEW .so has 16 KB-aligned load segments
 // Any FAIL → "STOP — do not release" + the reasons. Exit 0 = PASS, 1 = FAIL, 2 = CANNOT MEASURE — STOP.
 import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -132,21 +138,34 @@ export function parseSizeCsv(text) {
   const head = rows.shift() || [];
   const ia = head.indexOf("ABI"), im = head.indexOf("MAX");
   const m = new Map();
-  for (const r of rows) m.set(ia >= 0 ? r[ia] : "all", Number(r[im]));
+  if (im < 0) return m; // no MAX column = nothing readable
+  for (const r of rows) {
+    if (r.every((c) => !String(c).trim())) continue;
+    const raw = String(r[im] ?? "").trim();
+    m.set(ia >= 0 ? String(r[ia] ?? "").trim() : "all", /^\d+$/.test(raw) ? Number(raw) : NaN);
+  }
   return m;
 }
 export function checkSize({ mainCsv, newCsv, mainAab, newAab, maxMb }) {
-  if (mainCsv && newCsv) {
+  const cannot = (why) => ({ ok: false, cannot: true, lines: [`CANNOT MEASURE f) size: ${why}`] });
+  const real = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0;
+  if (!real(maxMb)) return cannot("the size limit is not a number");
+  if (mainCsv || newCsv) {
+    if (!mainCsv || !newCsv) return cannot(`no size table for the ${!mainCsv ? "base" : "new"} build`);
     const b = parseSizeCsv(mainCsv), a = parseSizeCsv(newCsv);
+    if (!b.size || !a.size) return cannot(`the size table of the ${!b.size ? "base" : "new"} build has no rows`);
+    for (const [side, m] of [["base", b], ["new", a]]) for (const [abi, v] of m) if (!real(v)) return cannot(`the size of ${abi || "?"} in the ${side} table is not a number`);
+    for (const abi of a.keys()) if (!b.has(abi)) return cannot(`no row for ${abi} in the base size table`);
     let worst = 0; const parts = [];
     for (const [abi, v] of [...a].sort()) {
-      const grow = (v - (b.get(abi) || 0)) / 1e6;
+      const grow = (v - b.get(abi)) / 1e6;
       worst = Math.max(worst, grow);
-      parts.push(`${abi}: ${((b.get(abi) || 0) / 1e6).toFixed(1)} → ${(v / 1e6).toFixed(1)} MB (+${grow.toFixed(1)})`);
+      parts.push(`${abi}: ${(b.get(abi) / 1e6).toFixed(1)} → ${(v / 1e6).toFixed(1)} MB (+${grow.toFixed(1)})`);
     }
     const ok = worst <= maxMb;
     return { ok, lines: [`${ok ? "PASS" : "FAIL"} f) size: per-phone download +${worst.toFixed(1)} MB at most (limit ${maxMb} MB) — ${parts.join("; ")}`] };
   }
+  if (!real(mainAab) || !real(newAab) || !mainAab || !newAab) return cannot("the .aab sizes are not numbers");
   const grow = (newAab - mainAab) / 1e6;
   const ok = grow <= maxMb;
   return { ok, lines: [`${ok ? "PASS" : "FAIL"} f) size: .aab ${(mainAab / 1e6).toFixed(1)} → ${(newAab / 1e6).toFixed(1)} MB (+${grow.toFixed(1)}, limit ${maxMb} MB; install bundletool for the per-phone sizes)`] };
@@ -416,7 +435,6 @@ export function parseBlame(text) {
   return out;
 }
 const SCANNER_ORIGINS = /^(androidx\.camera|com\.google\.mlkit|com\.google\.android\.gms|com\.google\.android\.datatransport|com\.google\.firebase)(\.[\w.-]+)?:/;
-const SCANNER_NAMES = /^(activity|activity-alias|service|receiver|provider) (androidx\.camera\.|com\.google\.mlkit\.|com\.google\.android\.gms\.|com\.google\.android\.datatransport\.|com\.google\.firebase\.)/;
 const PRINTER_WORDS = /bluetooth|location|nearby|printer|niimbot|(^|\.)ble/i;
 const NEW_OK_IN_APP = new Set(["activity", "activity-alias", "service", "receiver", "provider", "meta-data"]);
 const VERSION_ATTRS = new Set(["android:versionCode", "android:versionName"]);
@@ -432,9 +450,16 @@ export function checkManifest(mainXml, newXml, blameText) {
     } catch (e) { fails.push(`the ${side} manifest cannot be read (${e.message})`); return null; }
   };
   const a = read(mainXml, "base"), b = read(newXml, "new");
-  const done = () => ({ ok: !fails.length, lines: [`${fails.length ? "FAIL" : "PASS"} e) manifest: ${fails.length ? fails.length + " problem(s)" : `everything the same except ${allowed.length} new CameraX / ML Kit part(s)`}`, ...lines, ...fails.map((f) => `  FAIL ${f}`)] });
+  const unsure = []; // what cannot be judged without the merge report
+  const done = () => {
+    if (unsure.length) return { ok: false, cannot: true, lines: [`CANNOT MEASURE e) manifest: ${unsure[0]}${unsure.length > 1 ? ` (+${unsure.length - 1} more)` : ""}`, ...unsure.slice(1).map((u) => `  UNSURE ${u}`), ...lines, ...fails.map((f) => `  FAIL ${f}`)] };
+    return { ok: !fails.length, lines: [`${fails.length ? "FAIL" : "PASS"} e) manifest: ${fails.length ? fails.length + " problem(s)" : `everything the same except ${allowed.length} new CameraX / ML Kit part(s)`}`, ...lines, ...fails.map((f) => `  FAIL ${f}`)] };
+  };
   if (!a || !b) return done();
-  const blame = blameText ? parseBlame(blameText) : new Map();
+  // The merge report says which library added each element. Without it nothing new can be allowed
+  // (a name that looks like CameraX / ML Kit is not proof).
+  const blame = String(blameText || "").trim() ? parseBlame(blameText) : new Map();
+  if (!blame.size) unsure.push("no merge report (manifest-merger-blame-release-report.txt) for the new build — a new part cannot be traced to CameraX / ML Kit");
   for (const [m, side] of [[a, "base"], [b, "new"]]) {
     if (!m.children.some((c) => c.tag === "application")) fails.push(`no <application> in the ${side} manifest`);
     if (!m.children.some((c) => c.tag === "uses-permission" && attrOf(c, "android:name") === "android.permission.BLUETOOTH_CONNECT")) fails.push(`no BLUETOOTH_CONNECT permission in the ${side} manifest (printer / Bluetooth)`);
@@ -447,17 +472,18 @@ export function checkManifest(mainXml, newXml, blameText) {
     else fails.push(`<manifest> ${k} changed: ${ra.get(k) ?? "(none)"} → ${rb.get(k) ?? "(none)"}`);
   }
   const origin = (key) => blame.get(key) || "";
-  const fromScanner = (key, nameKey) => {
+  const fromScanner = (key) => {
     const from = origin(key);
     if (from && from !== "unknown") return { ok: SCANNER_ORIGINS.test(from + ":"), from }; // from = "group:artifact"
-    return { ok: SCANNER_NAMES.test(nameKey), from: "name only — no merge report line" };
+    return { ok: false, from: "", unknown: true }; // no merge report line: never allowed by its name alone
   };
   const judgeNew = (el, where) => {
     const name = attrOf(el, "android:name");
     const okTag = where === "queries" ? el.tag === "package" : NEW_OK_IN_APP.has(el.tag);
     if (!okTag || !name) { fails.push(`NEW ${label(el)} in <${where}> — only CameraX / ML Kit components, meta-data or packages may be added`); return; }
     const key = el.tag === "meta-data" || el.tag === "package" ? name : `${el.tag} ${name}`;
-    const f = fromScanner(key, el.tag === "meta-data" || el.tag === "package" ? `service ${name}` : key);
+    const f = fromScanner(key);
+    if (f.unknown) { if (blame.size) unsure.push(`NEW ${label(el)} has no line in the merge report — it cannot be traced to CameraX / ML Kit`); return; }
     if (f.ok && !PRINTER_WORDS.test(name)) allowed.push(`${label(el)} (from ${f.from})`);
     else fails.push(`NEW ${label(el)} (from ${f.from || "?"}) — not a CameraX / ML Kit part`);
   };
@@ -472,8 +498,12 @@ export function checkManifest(mainXml, newXml, blameText) {
   const qAttrs = (l) => l.map((c) => canonXml({ ...c, children: [] })).sort().join("");
   if (qa.length && qb.length && qAttrs(qa) !== qAttrs(qb)) fails.push("<queries> settings changed");
   const qd = diffChildren(qa.flatMap((c) => c.children), qb.flatMap((c) => c.children));
+  // An element of the base whose content changed shows up as removed + added: that is a change (FAIL above),
+  // not a new part to trace.
+  const idOf = (el) => `${el.tag} ${attrOf(el, "android:name") || ""}`;
+  const changedIn = (d) => new Set(d.removed.map(idOf));
   for (const el of qd.removed) fails.push(`removed or changed in <queries>: <${label(el)}>`);
-  for (const el of qd.added) judgeNew(el, "queries");
+  { const ch = changedIn(qd); for (const el of qd.added) if (!ch.has(idOf(el))) judgeNew(el, "queries"); }
   // <application>: same settings; nothing removed or changed (intent-filters, uses-library … included); new only CameraX / ML Kit
   const appA = a.children.find((c) => c.tag === "application"), appB = b.children.find((c) => c.tag === "application");
   if (appA && appB) {
@@ -481,7 +511,7 @@ export function checkManifest(mainXml, newXml, blameText) {
     for (const k of new Set([...aa.keys(), ...ab.keys()])) if (aa.get(k) !== ab.get(k)) fails.push(`application setting ${k} changed: ${aa.get(k) ?? "(none)"} → ${ab.get(k) ?? "(none)"}`);
     const ad = diffChildren(appA.children, appB.children);
     for (const el of ad.removed) fails.push(`removed or changed in <application>: <${label(el)}>${PRINTER_WORDS.test(label(el)) ? " (printer / Bluetooth)" : ""}`);
-    for (const el of ad.added) judgeNew(el, "application");
+    { const ch = changedIn(ad); for (const el of ad.added) if (!ch.has(idOf(el))) judgeNew(el, "application"); }
   }
   const bt = b.children.filter((c) => c.tag === "uses-permission" && PRINTER_WORDS.test(attrOf(c, "android:name") || "")).map((c) => attrOf(c, "android:name")).sort();
   lines.push(`  Bluetooth / location permissions (same as the base): ${bt.join(", ") || "none"}`);
@@ -601,12 +631,27 @@ const RES_KEY = (n) => { // base/res/drawable-v24/sfl_qr_close.xml → drawable/
 export const QR_DRAWABLES = ["sfl_qr_close", "sfl_qr_light_off", "sfl_qr_light_on"];
 const MLKIT_ASSETS = "base/assets/mlkit_barcode_models/";
 const SIGNATURE = /^META-INF\/[^/]+\.(MF|SF|RSA|DSA|EC)$/i;
+/**
+ * The ONLY files that may differ without being compared (exact paths, no pattern): the baseline profile is
+ * rebuilt from the dex of each build, and version-control-info holds the commit the build was made from
+ * (in an .aab the app's root files sit under base/root/).
+ */
+export const EXPECTED_DIFF = new Set([
+  "BUNDLE-METADATA/com.android.tools.build.profiles/baseline.prof",
+  "BUNDLE-METADATA/com.android.tools.build.profiles/baseline.profm",
+  "META-INF/version-control-info.textproto",
+  "base/root/META-INF/version-control-info.textproto",
+]);
 /** Every entry of the two .aab files except dex (c), lib (b) and the manifest (e). */
 export function checkBundleEntries(mainZip, newZip, ctx = {}) {
   const addedDeps = ctx.addedDeps || [], newSo = (ctx.newSo || []).map((k) => k.split("/").pop());
   const fails = [], notes = [], allowedNew = [];
   let cannot = null, compared = 0;
-  const skip = (n) => /^base\/dex\//.test(n) || /^base\/lib\//.test(n) || n === "base/manifest/AndroidManifest.xml" || SIGNATURE.test(n) || n === "BUNDLE-METADATA/com.android.tools.build.libraries/dependencies.pb";
+  // Checked by another part: the dex (c), the native libraries themselves (a, b — ONLY base/lib/<chip>/<name>.so;
+  // any other file under base/lib/, e.g. wrap.sh, is compared here like every other file), the manifest (e), the
+  // library list (d). The .aab's own signature files list a digest of every entry, so they differ by definition.
+  const skip = (n) => /^base\/dex\//.test(n) || LIB_RE.test(n) || n === "base/manifest/AndroidManifest.xml" || SIGNATURE.test(n) || n === "BUNDLE-METADATA/com.android.tools.build.libraries/dependencies.pb";
+  const notCompared = [];
   // the resource table first: which resources are new, which existing ones changed
   let addedRes = new Set();
   const rm = mainZip.get("base/resources.pb"), rn = newZip.get("base/resources.pb");
@@ -630,6 +675,7 @@ export function checkBundleEntries(mainZip, newZip, ctx = {}) {
   const names = [...new Set([...mainZip.keys(), ...newZip.keys()])].sort();
   for (const n of names) {
     if (skip(n) || n === "base/resources.pb") continue;
+    if (EXPECTED_DIFF.has(n)) { notCompared.push(n); continue; }
     const ga = mainZip.get(n), gb = newZip.get(n);
     if (ga && !gb) { fails.push(`removed: ${n}`); continue; }
     if (!ga) {
@@ -658,6 +704,7 @@ export function checkBundleEntries(mainZip, newZip, ctx = {}) {
   return { ok: !fails.length, lines: [
     `${fails.length ? "FAIL" : "PASS"} g) every other file in the .aab: ${compared} of the base compared${fails.length ? ` — ${fails.length} problem(s)` : ", all the same"}; ${allowedNew.length} new (${qrFiles} sfl_qr drawable file(s), the rest CameraX / ML Kit)`,
     ...notes,
+    ...notCompared.map((x) => `    not compared (differs in every build): ${x}`),
     ...allowedNew.slice(0, 40).map((x) => `    new ${x}`), ...(allowedNew.length > 40 ? [`    … and ${allowedNew.length - 40} more new`] : []),
     ...fails.slice(0, 60).map((f) => `  FAIL ${f}`), ...(fails.length > 60 ? [`  … and ${fails.length - 60} more`] : []),
   ] };

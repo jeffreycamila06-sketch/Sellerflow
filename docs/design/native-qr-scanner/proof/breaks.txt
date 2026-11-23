@@ -12,7 +12,7 @@ RED  switch accepts any truthy value
 RED  photo answer skips readQrFromFile
 RED  a second scanner registration line
 RED  VIBRATE permission added
-RED  sql/209 changes the Blacklist step to other words than the guide
+RED  sql/211 changes the Blacklist step to other words than the guide
 RED  Orders scan toast timer is a bare setTimeout
 RED  Orders shows Scan without the live scanner
 RED  RedesignApp always passes liveScan
@@ -84,4 +84,27 @@ RED  gate g: style entries compared in order (false FAIL)
 RED  gate g: unreadable resources.pb not CANNOT MEASURE
 RED  gate CLI: CANNOT MEASURE exits 1 like a FAIL
 RED  Orders: Scan tap area back to 4px higher (43px at a 33px row)
-86/86 breaks caught
+RED  gate a: baseline.prof compared again
+RED  gate a: baseline.profm compared again
+RED  gate a: version-control-info compared again
+RED  gate a: every BUNDLE-METADATA file skipped (too wide)
+RED  gate b: a size table with no rows passes
+RED  gate b: a value that is not a number is not CANNOT MEASURE
+RED  gate b: only one size table is accepted
+RED  gate b: .aab sizes that are not numbers pass
+RED  gate c: everything under base/lib/ skipped again (wrap.sh not compared)
+RED  gate d: no merge report still passes
+RED  gate d: a new part allowed by its name alone
+RED  byte pin e: any line naming the scanner is taken out (old rule)
+RED  byte pin e: an expected line is taken out every time it appears
+RED  iPhone: no check for something already on top of the app
+RED  iPhone: the camera error restarts a closed scanner
+RED  iPhone: the one camera start has no closed check
+RED  Android: the photo thread uses the screen without checking it is there
+RED  Android: finish can answer twice (not synchronized)
+RED  Blacklist: a tablet with the live scanner still says Upload sticker photo
+RED  Blacklist: the No camera line stays with the live scanner
+RED  Blacklist: the laptop wording changes too (live by default)
+RED  Blacklist: RedesignApp does not tell it about the live scanner
+RED  web: an iPhone 'view busy' answer is silent instead of 'try again'
+109/109 breaks caught

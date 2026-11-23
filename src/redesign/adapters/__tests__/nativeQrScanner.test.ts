@@ -84,6 +84,8 @@ describe("runStickerScan — the answer", () => {
     expect(await runStickerScan(async () => { throw new Error("x"); }, TEXTS)).toEqual({ kind: "failed" });
     expect(await runStickerScan(async () => null, TEXTS)).toEqual({ kind: "failed" });
     expect(await runStickerScan(async () => ({ status: "error", code: "no_camera" }), TEXTS)).toEqual({ kind: "failed" });
+    // iPhone: another sheet / alert was already on top of the app (Fix Round 4) → "Couldn't open the scanner — try again"
+    expect(await runStickerScan(async () => ({ status: "error", code: "view_busy" }), TEXTS)).toEqual({ kind: "failed" });
   });
   it("the scan event never carries the QR text", async () => {
     await runStickerScan(async () => ({ status: "read", text: "secret_buyer" }), TEXTS);

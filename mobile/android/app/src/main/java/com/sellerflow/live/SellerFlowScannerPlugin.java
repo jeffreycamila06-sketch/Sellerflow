@@ -203,7 +203,12 @@ public class SellerFlowScannerPlugin extends Plugin {
         final Uri src = uri;
         new Thread(() -> {
             String b64 = jpegBase64(src);
-            getActivity().runOnUiThread(() -> {
+            Activity activity = getActivity();
+            if (activity == null) { // the screen is gone while the picture was read: answer ONCE, here, never stay pending
+                finish(error("photo_unreadable"));
+                return;
+            }
+            activity.runOnUiThread(() -> {
                 if (b64 == null) { // the file can't be opened → the web shows today's "No QR found"
                     finish(error("photo_unreadable"));
                 } else {
@@ -253,7 +258,8 @@ public class SellerFlowScannerPlugin extends Plugin {
         return getContext().getContentResolver().openInputStream(uri);
     }
 
-    private void finish(JSObject r) {
+    /** Answers the waiting call exactly once (it can be reached from the photo thread too). */
+    private synchronized void finish(JSObject r) {
         PluginCall c = pending;
         pending = null;
         if (c != null) c.resolve(r);

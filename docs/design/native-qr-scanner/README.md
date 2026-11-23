@@ -37,6 +37,17 @@ same button opens today's photo picker, unchanged. Nothing else changes — no p
   versionCode 12 → the normal tests stay green; with `SCANNER_GATE=1` the byte pin fails on exactly the
   changed printer file and the added file.
 
+## Fix Round 4
+- SQL numbers: the scanner's files are `sql/210_native_qr_scanner_switch` and `sql/211_guide_native_qr_scanner`
+  (main took 208 / 209); `scripts/sql210-native-behaviour.mjs`.
+- Gate: only the baseline profile and version-control-info may differ without being compared; an empty or
+  unreadable size table and a missing merge report = CANNOT MEASURE; any file under `base/lib/` that is not a
+  chip's `.so` is compared; the byte pin takes out only the exact expected scanner lines.
+- iPhone: a scan asked while another sheet is on top is answered as an error at once; a closed scanner never
+  starts the camera again. Android: the photo thread checks the screen is still there.
+- Blacklist on a wide screen WITH the live scanner (a tablet in the new app) says "Scan sticker QR". Without
+  the live scanner the screen is main's: `proof/blacklist-same-as-main.txt` (64 cases, same HTML).
+
 ## Printer safety — proven by files
 - Android build: `mobile/android/qr-scanner-gate.sh` (run once on the Mac) picks BASE = the newest
   origin/main commit without the scanner and NEW = HEAD (both printed), runs the mobile/ byte pin, builds
@@ -58,8 +69,8 @@ The native scanner screens (iPhone + Android) cannot run in this cloud session (
 Android SDK). They are checked on Jeff's Mac and phones.
 
 ## On-purpose breaks
-`proof/breaks.py` makes 86 small wrong changes one at a time and runs the test that should catch each;
-every file is put back after. First build (16), Fix Round 1 (12), Fix Round 2 (26), Fix Round 3 (32): the chip-type filter
+`proof/breaks.py` makes 109 small wrong changes one at a time and runs the test that should catch each;
+every file is put back after. First build (16), Fix Round 1 (12), Fix Round 2 (26), Fix Round 3 (32), Fix Round 4 (23): the chip-type filter
 removed / x86_64 added / a library added; the iPhone photo library swipe-away or a Cancel that does not
 finish; a printer file, Package.swift, Package.resolved, the Bluetooth sentence, a second registration
 line or a framework changed; the Orders button back to a taller row (and its tap area back to 4 px);

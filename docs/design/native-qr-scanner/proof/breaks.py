@@ -21,7 +21,7 @@ BREAKS=[
  ("Orders scan toast timer is a bare setTimeout", "src/redesign/screens/Orders.tsx", "setScanMsg(m); later(() => setScanMsg(\"\"), 2800);", "setScanMsg(m); setTimeout(() => setScanMsg(\"\"), 2800);", "src/redesign/adapters/__tests__/useScreenTimers.test.tsx"),
  # ── Fix Round 1 ──
  ("Orders shows Scan without the live scanner", "src/redesign/screens/Orders.tsx", "          {liveScan && (\n", "          {(liveScan || true) && (\n", "src/redesign/screens/__tests__/Orders.scan.test.tsx"),
- ("RedesignApp always passes liveScan", "src/redesign/RedesignApp.tsx", "liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}", "liveScan", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("RedesignApp always passes liveScan", "src/redesign/RedesignApp.tsx", "initialQuery={ordersInitialQuery} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}", "initialQuery={ordersInitialQuery} liveScan", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
  ("availability ignores the switch", "src/redesign/adapters/nativeQrScanner.ts", "return switchOnNow === true && pluginScan() !== null;", "return pluginScan() !== null;", "src/redesign/adapters/__tests__/nativeQrScanner.test.ts"),
  ("unreadable photo treated as a scanner failure", "src/redesign/adapters/nativeQrScanner.ts", "  if (a.status === \"error\" && a.code === \"photo_unreadable\") return unreadable();\n", "", "src/redesign/screens/__tests__/nativeScan.screens.test.tsx"),
  ("broken photo data = failed again", "src/redesign/adapters/nativeQrScanner.ts", "    if (!file) return unreadable();", "    if (!file) return done(\"failed\", { kind: \"failed\" });", "src/redesign/adapters/__tests__/nativeQrScanner.test.ts"),
@@ -78,7 +78,7 @@ BREAKS=[
  ("gate e: empty manifest passes", "mobile/android/qr-scanner-gate-check.mjs", "if (!String(xml || \"\").trim()) { fails.push(`the ${side} manifest is empty`); return null; }", "if (!String(xml || \"\").trim()) return null;", "src/redesign/__tests__/qrScannerGate.test.ts"),
  ("gate e: missing BLUETOOTH_CONNECT passes", "mobile/android/qr-scanner-gate-check.mjs", "=== \"android.permission.BLUETOOTH_CONNECT\")) fails.push(", "=== \"android.permission.BLUETOOTH_CONNECT\") && false) fails.push(", "src/redesign/__tests__/qrScannerGate.test.ts"),
  ("gate e: LAUNCHER / intent-filter removed passes", "mobile/android/qr-scanner-gate-check.mjs", "    for (const el of ad.removed) fails.push(", "    for (const el of ad.removed) if (false) fails.push(", "src/redesign/__tests__/qrScannerGate.test.ts"),
- ("gate e: new uses-library passes", "mobile/android/qr-scanner-gate-check.mjs", "    for (const el of ad.added) judgeNew(el, \"application\");", "    for (const el of ad.added) if (el.tag !== \"uses-library\") judgeNew(el, \"application\");", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate e: new uses-library passes", "mobile/android/qr-scanner-gate-check.mjs", "for (const el of ad.added) if (!ch.has(idOf(el))) judgeNew(el, \"application\");", "for (const el of ad.added) if (!ch.has(idOf(el)) && el.tag !== \"uses-library\") judgeNew(el, \"application\");", "src/redesign/__tests__/qrScannerGate.test.ts"),
  ("gate e: application setting change passes", "mobile/android/qr-scanner-gate-check.mjs", "if (aa.get(k) !== ab.get(k)) fails.push(`application setting", "if (false) fails.push(`application setting", "src/redesign/__tests__/qrScannerGate.test.ts"),
  ("gate e: <manifest> package change passes", "mobile/android/qr-scanner-gate-check.mjs", "    else fails.push(`<manifest> ${k} changed:", "    else if (false) fails.push(`<manifest> ${k} changed:", "src/redesign/__tests__/qrScannerGate.test.ts"),
  ("gate g: changed asset passes", "mobile/android/qr-scanner-gate-check.mjs", "    fails.push(`changed: ${n}`);\n", "", "src/redesign/__tests__/qrScannerGate.test.ts"),
@@ -92,13 +92,41 @@ BREAKS=[
  ("gate g: unreadable resources.pb not CANNOT MEASURE", "mobile/android/qr-scanner-gate-check.mjs", "} catch (e) { cannot = `resources.pb cannot be read (${e.message})`; }", "} catch (e) { /* ignored */ }", "src/redesign/__tests__/qrScannerGate.test.ts"),
  ("gate CLI: CANNOT MEASURE exits 1 like a FAIL", "mobile/android/qr-scanner-gate-check.mjs", "return r.status === \"pass\" ? 0 : r.status === \"cannot\" ? 2 : 1;", "return r.status === \"pass\" ? 0 : 1;", "src/redesign/__tests__/qrScannerGate.test.ts"),
  ("Orders: Scan tap area back to 4px higher (43px at a 33px row)", "src/redesign/redesign.css", "transform: translateY(calc(-50% - 6px)); }", "transform: translateY(calc(-50% - 4px)); }", "src/redesign/screens/__tests__/Orders.scan.test.tsx"),
+ # ── Fix Round 4 ──
+ ("gate a: baseline.prof compared again", "mobile/android/qr-scanner-gate-check.mjs", "  \"BUNDLE-METADATA/com.android.tools.build.profiles/baseline.prof\",\n", "", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate a: baseline.profm compared again", "mobile/android/qr-scanner-gate-check.mjs", "  \"BUNDLE-METADATA/com.android.tools.build.profiles/baseline.profm\",\n", "", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate a: version-control-info compared again", "mobile/android/qr-scanner-gate-check.mjs", "  \"base/root/META-INF/version-control-info.textproto\",\n", "", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate a: every BUNDLE-METADATA file skipped (too wide)", "mobile/android/qr-scanner-gate-check.mjs", "if (EXPECTED_DIFF.has(n)) { notCompared.push(n); continue; }", "if (EXPECTED_DIFF.has(n) || n.startsWith(\"BUNDLE-METADATA/\")) { notCompared.push(n); continue; }", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate b: a size table with no rows passes", "mobile/android/qr-scanner-gate-check.mjs", "if (!b.size || !a.size) return cannot(", "if (false) return cannot(", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate b: a value that is not a number is not CANNOT MEASURE", "mobile/android/qr-scanner-gate-check.mjs", "if (!real(v)) return cannot(", "if (false) return cannot(", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate b: only one size table is accepted", "mobile/android/qr-scanner-gate-check.mjs", "if (!mainCsv || !newCsv) return cannot(", "if (false) return cannot(", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate b: .aab sizes that are not numbers pass", "mobile/android/qr-scanner-gate-check.mjs", "if (!real(mainAab) || !real(newAab) || !mainAab || !newAab) return cannot(", "if (false) return cannot(", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate c: everything under base/lib/ skipped again (wrap.sh not compared)", "mobile/android/qr-scanner-gate-check.mjs", "LIB_RE.test(n) || n === \"base/manifest/AndroidManifest.xml\"", "/^base\\/lib\\//.test(n) || n === \"base/manifest/AndroidManifest.xml\"", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate d: no merge report still passes", "mobile/android/qr-scanner-gate-check.mjs", "if (!blame.size) unsure.push(", "if (false) unsure.push(", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("gate d: a new part allowed by its name alone", "mobile/android/qr-scanner-gate-check.mjs", "    return { ok: false, from: \"\", unknown: true }; // no merge report line: never allowed by its name alone", "    return { ok: /^(service|provider) (androidx\\.camera\\.|com\\.google\\.mlkit\\.)/.test(key), from: \"name only\" };", "src/redesign/__tests__/qrScannerGate.test.ts"),
+ ("byte pin e: any line naming the scanner is taken out (old rule)", "scripts/native-scanner-fence.mjs", [["    const n = left.get(l);\n    if (n > 0) { left.set(l, n - 1); return false; }\n    return true;", "    return !/SellerFlowScanner|QrCentrePick/.test(l);"], ["    if (got !== want) out.push(`scanner lines in ${p}: ${got} line(s) name the scanner (expected ${want})`);\n", ""]], None, "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("byte pin e: an expected line is taken out every time it appears", "scripts/native-scanner-fence.mjs", [["if (n > 0) { left.set(l, n - 1); return false; }", "if (n > 0) { return false; }"], ["    if (got !== n) out.push(`scanner lines in ${p}: \"${line.trim().slice(0, 60)}\" ${got}× (expected ${n}×)`);\n", ""], ["    if (got !== want) out.push(`scanner lines in ${p}: ${got} line(s) name the scanner (expected ${want})`);\n", ""]], None, "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("iPhone: no check for something already on top of the app", "mobile/ios/App/App/SellerFlowScannerPlugin.swift", "            if host.presentedViewController != nil {\n                call.resolve([\"status\": \"error\", \"code\": \"view_busy\"])\n                return\n            }\n", "", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("iPhone: the camera error restarts a closed scanner", "mobile/ios/App/App/SellerFlowScannerPlugin.swift", "            guard let self = self, !self.finished else { return } // closed: no restart, no message", "            guard let self = self else { return }", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("iPhone: the one camera start has no closed check", "mobile/ios/App/App/SellerFlowScannerPlugin.swift", "        if finished { return }\n        sessionQueue.async { [session] in if !session.isRunning { session.startRunning() } }", "        sessionQueue.async { [session] in if !session.isRunning { session.startRunning() } }", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("Android: the photo thread uses the screen without checking it is there", "mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowScannerPlugin.java", "            if (activity == null) { // the screen is gone while the picture was read: answer ONCE, here, never stay pending\n                finish(error(\"photo_unreadable\"));\n                return;\n            }\n", "", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("Android: finish can answer twice (not synchronized)", "mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowScannerPlugin.java", "private synchronized void finish(", "private void finish(", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("Blacklist: a tablet with the live scanner still says Upload sticker photo", "src/redesign/screens/Blacklist.tsx", "wide && !liveScan ? t.rd_bl_upload : t.rd_bl_scan", "wide ? t.rd_bl_upload : t.rd_bl_scan", "src/redesign/screens/__tests__/nativeScan.screens.test.tsx"),
+ ("Blacklist: the No camera line stays with the live scanner", "src/redesign/screens/Blacklist.tsx", "{wide && !liveScan && <div style", "{wide && <div style", "src/redesign/screens/__tests__/nativeScan.screens.test.tsx"),
+ ("Blacklist: the laptop wording changes too (live by default)", "src/redesign/screens/Blacklist.tsx", "onRemove, liveScan = false,", "onRemove, liveScan = true,", "src/redesign/screens/__tests__/nativeScan.screens.test.tsx"),
+ ("Blacklist: RedesignApp does not tell it about the live scanner", "src/redesign/RedesignApp.tsx", "onRemove={blacklist.remove} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} />", "onRemove={blacklist.remove} />", "src/redesign/__tests__/nativeScanner.fence.test.ts"),
+ ("web: an iPhone 'view busy' answer is silent instead of 'try again'", "src/redesign/adapters/nativeQrScanner.ts", "if (a.status === \"cancelled\" || a.status === \"busy\") return", "if (a.status === \"cancelled\" || a.status === \"busy\" || a.status === \"error\") return", "src/redesign/adapters/__tests__/nativeQrScanner.test.ts"),
 ]
 red=0
 for br in BREAKS:
     name,f,a,b,test=br[:5]; env=dict(os.environ, **(br[5] if len(br)>5 else {}))
     p=R+f; s=open(p).read()
-    assert s.count(a)==1,(name,s.count(a))
-    open(p,'w').write(s.replace(a,b))
+    pairs = a if isinstance(a, list) else [[a, b]]   # a list = several edits of the same file in one break
+    t = s
+    for x, y in pairs:
+        assert t.count(x)==1,(name,t.count(x))
+        t = t.replace(x, y)
+    open(p,'w').write(t)
     try:
         r=subprocess.run(["npx","vitest","run",test],cwd=R,env=env,capture_output=True,text=True,timeout=600)
         ok = r.returncode!=0

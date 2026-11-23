@@ -3285,7 +3285,7 @@ export default function RedesignApp() {
               downloadable as a real-looking CSV. */}
           {screen === "blacklist" && blacklistOn && (
             <Blacklist onBack={() => goBack()} rows={blacklist.rows} error={blacklist.error} onReload={() => void blacklist.reload()}
-              onAdd={blacklist.add} onUndo={blacklist.undo} onRemove={blacklist.remove} />
+              onAdd={blacklist.add} onUndo={blacklist.undo} onRemove={blacklist.remove} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} />
           )}
           {screen === "customers" && <Customers onBack={() => goBack()} cur={cur} customers={customersData.customers} state={customersData.state} onExport={customersData.state === "live" ? exportCustomers : undefined} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}
           {screen === "subscription" && !ios && <Subscription onBack={() => goBack()} cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}

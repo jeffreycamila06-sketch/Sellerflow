@@ -140,6 +140,13 @@ public class SellerFlowScannerPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.resolve(["status": "error", "code": "no_view"])
                 return
             }
+            // Something is already shown on top of the app (a sheet, an alert, a picker): presenting now would
+            // do nothing and this call would wait forever. Answer at once — the web shows "Couldn't open the
+            // scanner — try again".
+            if host.presentedViewController != nil {
+                call.resolve(["status": "error", "code": "view_busy"])
+                return
+            }
             self.pending = call
             // No camera at all (e.g. the Simulator) → straight to the photo choice.
             if !QrScannerViewController.hasAnyCamera() {
@@ -392,6 +399,7 @@ final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputOb
 
     // MARK: permission + camera
     private func checkPermissionAndStart() {
+        if finished { return } // closed while the permission question was open: nothing starts
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             denied = false
@@ -411,9 +419,16 @@ final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputOb
         showPanel(texts.camOff, settings: true)
     }
 
+    /// The ONLY place the camera is started. Main thread (where `finished` is set): a scanner that was
+    /// closed (read / Cancel / photo) never starts its session again.
+    private func startSessionIfOpen() {
+        if finished { return }
+        sessionQueue.async { [session] in if !session.isRunning { session.startRunning() } }
+    }
+
     private func configureIfNeeded() {
         if configured {
-            sessionQueue.async { [session] in if !session.isRunning { session.startRunning() } }
+            startSessionIfOpen()
             return
         }
         configured = true
@@ -444,7 +459,7 @@ final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputOb
         previewLayer = layer
         updateVideoOrientation()
         torchButton.isHidden = !(camera.hasTorch && camera.isTorchAvailable)
-        sessionQueue.async { [session] in session.startRunning() }
+        startSessionIfOpen()
     }
 
     private func updateVideoOrientation() {
@@ -492,10 +507,14 @@ final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputOb
 
     @objc private func runtimeError(_ n: Notification) {
         let err = n.userInfo?[AVCaptureSessionErrorKey] as? AVError
-        if err?.code == .mediaServicesWereReset {
-            sessionQueue.async { [session] in if !session.isRunning { session.startRunning() } }
-        } else {
-            showPanel(texts.camBusy, settings: false)
+        // This notification can arrive on any thread; `finished` and the views belong to the main thread.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, !self.finished else { return } // closed: no restart, no message
+            if err?.code == .mediaServicesWereReset {
+                self.startSessionIfOpen()
+            } else {
+                self.showPanel(self.texts.camBusy, settings: false)
+            }
         }
     }
 
@@ -506,7 +525,7 @@ final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputOb
             return
         }
         if configured {
-            sessionQueue.async { [session] in if !session.isRunning { session.startRunning() } }
+            startSessionIfOpen()
             if torchWanted {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.setTorch(true) }
             }

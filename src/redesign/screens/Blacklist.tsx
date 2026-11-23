@@ -54,8 +54,12 @@ function NoteBox({ tone, children, testid }: { tone: "ok" | "warn" | "bad"; chil
 }
 
 export default function Blacklist({
-  onBack, rows, error = false, onReload, onAdd, onUndo, onRemove,
+  onBack, rows, error = false, onReload, onAdd, onUndo, onRemove, liveScan = false,
 }: {
+  /** The phone app's live scanner can be opened here (the app build has it AND the switch is on). A wide
+   *  screen (a tablet in the app) then says "Scan sticker QR" like the phone, with no "No camera?" line.
+   *  false / absent (laptop, older app build, switch off) = the screen as before. */
+  liveScan?: boolean;
   onBack: () => void;
   rows: BlRow[] | null;          // null = not read yet (shows "Loading…")
   error?: boolean;
@@ -162,7 +166,7 @@ export default function Blacklist({
         <input ref={fileRef} type="file" accept="image/*" hidden data-testid="bl-file" onChange={(e) => void onScanFile(e.target.files)} />
         <button type="button" disabled={!on || reading || busy} onClick={onScanTap} data-testid="bl-scan"
           style={{ ...btnPrimary, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: reading ? 0.75 : 1, cursor: on ? "pointer" : "default" }}>
-          {camIcon}{reading ? t.rd_bl_reading : wide ? t.rd_bl_upload : t.rd_bl_scan}
+          {camIcon}{reading ? t.rd_bl_reading : wide && !liveScan ? t.rd_bl_upload : t.rd_bl_scan}
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 2px 10px", color: "var(--text-muted)", fontSize: 11.5, fontWeight: 700 }}>
           <span style={{ flex: 1, height: 1, background: "var(--border)" }} />{t.rd_bl_or}<span style={{ flex: 1, height: 1, background: "var(--border)" }} />
@@ -185,7 +189,7 @@ export default function Blacklist({
         {on && text.trim() !== "" && (problem === "space" || problem === "long") && (
           <div data-testid="bl-type-problem" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginTop: 7 }}>{problem === "space" ? t.rd_bl_tt_space : t.rd_bl_too_long}</div>
         )}
-        {wide && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 9, lineHeight: 1.4 }}>{t.rd_bl_no_cam}</div>}
+        {wide && !liveScan && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 9, lineHeight: 1.4 }}>{t.rd_bl_no_cam}</div>}
       </div>
       {note?.kind === "added" && (
         <NoteBox tone="ok" testid="bl-added">

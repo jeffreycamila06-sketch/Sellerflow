@@ -1,0 +1,10 @@
+Blacklist screen WITHOUT the live scanner (laptop, older app build, switch off) vs main's screen.
+One-off check (the copy of main's file and this test are not kept in the repo):
+  main's src/redesign/screens/Blacklist.tsx (origin/main 493b40cc) and the branch's were rendered with the
+  same rows at 360 / 390 / 430 / 1280 px, in 8 languages, before and after a reason is picked,
+  with no liveScan prop and with liveScan={false}; the HTML of the two screens was compared as text.
+  Same HTML + the same stylesheet = the same pixels.
+
+Test Files  1 passed (1)
+Tests  64 passed (64)
+(64 cases = 4 widths x 8 languages x 2 states; each case compares 2 branch renders with main's)

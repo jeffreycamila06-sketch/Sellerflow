@@ -8,6 +8,8 @@ import { TProvider } from "../../i18n";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
 import type { BlAddResult, BlRow } from "../../adapters/blacklist";
 import { setNativeQrScannerOn } from "../../adapters/nativeQrScanner";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const m = vi.hoisted(() => ({
   decode: vi.fn(async (_f: File): Promise<string | null | string[]> => null),
@@ -174,6 +176,46 @@ function blacklist() {
   fireEvent.click(screen.getByTestId("bl-reason-notout"));
   return onAdd;
 }
+
+describe("Blacklist — the wide-screen button when the live scanner can be opened (Fix Round 4)", () => {
+  const realWidth = window.innerWidth;
+  const setWidth = (w: number) => Object.defineProperty(window, "innerWidth", { configurable: true, value: w });
+  afterEach(() => setWidth(realWidth));
+  const NO_CAM = "No camera? Type the TikTok @username or the Facebook name.";
+  const show = (liveScan?: boolean) => {
+    const r = render(<TProvider lang="en"><Blacklist onBack={vi.fn()} rows={ROWS} error={false} onReload={vi.fn()} onAdd={vi.fn(async (): Promise<BlAddResult> => ({ kind: "added", id: "n1", day: "2026-11-22" }))} onUndo={vi.fn(async () => true)} onRemove={vi.fn(async () => true)} {...(liveScan === undefined ? {} : { liveScan })} /></TProvider>);
+    return r;
+  };
+  it("a tablet in the new app (wide + live scanner): 'Scan sticker QR', no 'Upload sticker photo', no 'No camera?' line", () => {
+    setWidth(1280);
+    show(true);
+    expect(screen.getByTestId("bl-scan").textContent).toBe("Scan sticker QR");
+    expect(document.body.textContent).not.toContain("Upload sticker photo");
+    expect(document.body.textContent).not.toContain(NO_CAM);
+  });
+  it("laptop / older app build / switch off (no live scanner): the wide screen is the same as without the prop", () => {
+    setWidth(1280);
+    const off = show(false);
+    expect(screen.getByTestId("bl-scan").textContent).toBe("Upload sticker photo");
+    expect(document.body.textContent).toContain(NO_CAM);
+    const offHtml = off.container.innerHTML;
+    off.unmount();
+    const none = show(undefined);
+    expect(none.container.innerHTML).toBe(offHtml);
+  });
+  it("the phone width says 'Scan sticker QR' with or without the live scanner — the same screen", () => {
+    setWidth(390);
+    const a = show(true); const liveHtml = a.container.innerHTML;
+    expect(screen.getByTestId("bl-scan").textContent).toBe("Scan sticker QR");
+    a.unmount();
+    expect(show(false).container.innerHTML).toBe(liveHtml);
+  });
+  it("RedesignApp gives Blacklist the same rule as Orders: the app build has the scanner AND the switch is on", () => {
+    const app = readFileSync(resolve(__dirname, "../../RedesignApp.tsx"), "utf8");
+    expect(app).toContain("onAdd={blacklist.add} onUndo={blacklist.undo} onRemove={blacklist.remove} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} />");
+    expect(app.split("<Blacklist ").length - 1).toBe(1);
+  });
+});
 
 describe("Blacklist — Scan sticker QR", () => {
   it("new app build: the live read adds the buyer (strict parser unchanged)", async () => {

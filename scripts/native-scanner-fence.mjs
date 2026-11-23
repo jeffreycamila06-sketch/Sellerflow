@@ -9,7 +9,8 @@
 //
 // What it pins: every file under mobile/ that the scanner must NOT change (printer code, Niimbot libraries,
 // Swift packages, gradle files …) has the base's exact bytes; the five files the scanner DOES edit equal the
-// base's once the scanner lines are taken out and the version numbers are blanked; no other file is added.
+// base's once the EXACT expected scanner lines are taken out — each one the expected number of times, never
+// "any line that names the scanner" — and the version numbers are blanked; no other file is added.
 // The base = the fixture (main 3dfb26b8), or --base <commit> (the gate passes the newest main commit that
 // has no scanner). Git LFS files are compared by their LFS id (= sha256 of the real file), so it reads the
 // same with the real libraries and with pointer files.
@@ -55,35 +56,96 @@ const GRADLE_DEPS = `    // Live "Scan sticker QR" (SellerFlowScannerPlugin): Ca
     implementation "com.google.guava:listenablefuture:1.0"
     implementation "com.google.mlkit:barcode-scanning:17.3.0"
 `;
-/** Exact scanner text in a file: each piece must be found exactly `n` times on the branch (0 on main). */
-const dropText = (piece) => (t) => t.split(piece).join("");
-const dropLines = (re) => (t) => t.split("\n").filter((l) => !re.test(l)).join("\n");
+/**
+ * Exact scanner text in a file. `lines` = whole lines, each found EXACTLY `n` times on the branch (0 on the base)
+ * and removed exactly `n` times; `blocks` = multi-line text, the same. Nothing else is removed: a second
+ * registration line, another line naming a scanner file, or one more copy of an expected line stays in the text
+ * → "changed beyond the scanner lines" (and the `marker` count names it).
+ */
+const dropLinesExact = (expected) => (t) => {
+  const left = new Map(expected.map(([l, n]) => [l, n]));
+  return t.split("\n").filter((l) => {
+    const n = left.get(l);
+    if (n > 0) { left.set(l, n - 1); return false; }
+    return true;
+  }).join("\n");
+};
+const dropBlockExact = (expected) => (t) => {
+  let s = t;
+  for (const [piece, n] of expected) {
+    for (let i = 0; i < n; i++) {
+      const k = s.indexOf(piece);
+      if (k < 0) break;
+      s = s.slice(0, k) + s.slice(k + piece.length);
+    }
+  }
+  return s;
+};
 const versions = (t) => t
   .replace(/CURRENT_PROJECT_VERSION = \d+;/g, "CURRENT_PROJECT_VERSION = ?;")
   .replace(/MARKETING_VERSION = [\d.]+;/g, "MARKETING_VERSION = ?;")
   .replace(/versionCode \d+/g, "versionCode ?")
   .replace(/versionName "[^"]*"/g, 'versionName "?"');
 
-/** The five files the scanner edits: what is taken out, and how often it must be there on the branch. */
+const MAIN_LINES = [["        registerPlugin(SellerFlowScannerPlugin.class); // live \"Scan sticker QR\" (CameraX + ML Kit)", 1]];
+const BRIDGE_LINES = [["        bridge?.registerPluginInstance(SellerFlowScannerPlugin()) // live \"Scan sticker QR\" (SellerFlowScannerPlugin.swift)", 1]];
+const PBX_LINES = [
+  ["\t\t9F00001000000000000000A4 /* SellerFlowScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F00002000000000000000A4 /* SellerFlowScannerPlugin.swift */; };", 1],
+  ["\t\t9FA000000000000000000016 /* QrCentrePickTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000007 /* QrCentrePickTests.swift */; };", 1],
+  ["\t\t9FA000000000000000000017 /* QrCentrePickCases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000008 /* QrCentrePickCases.swift */; };", 1],
+  ["\t\t9F00002000000000000000A4 /* SellerFlowScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerFlowScannerPlugin.swift; sourceTree = \"<group>\"; };", 1],
+  ["\t\t9FA000000000000000000007 /* QrCentrePickTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrCentrePickTests.swift; sourceTree = \"<group>\"; };", 1],
+  ["\t\t9FA000000000000000000008 /* QrCentrePickCases.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrCentrePickCases.swift; sourceTree = \"<group>\"; };", 1],
+  ["\t\t\t\t9FA000000000000000000007 /* QrCentrePickTests.swift */,", 1],
+  ["\t\t\t\t9FA000000000000000000008 /* QrCentrePickCases.swift */,", 1],
+  ["\t\t\t\t9F00002000000000000000A4 /* SellerFlowScannerPlugin.swift */,", 1],
+  ["\t\t\t\t9F00001000000000000000A4 /* SellerFlowScannerPlugin.swift in Sources */,", 1],
+  ["\t\t\t\t9FA000000000000000000016 /* QrCentrePickTests.swift in Sources */,", 1],
+  ["\t\t\t\t9FA000000000000000000017 /* QrCentrePickCases.swift in Sources */,", 1],
+];
+const GRADLE_BLOCKS = [[GRADLE_NDK, 1], [GRADLE_DEPS, 1]];
+const PLIST_BLOCKS = [["<string>SellerFlowLive uses the camera to scan the QR code on your order stickers and to scan your parcel slips.</string>", 1]];
+
+/**
+ * The five files the scanner edits: the exact scanner lines / blocks, how often each must be there on the
+ * branch, the marker that names any scanner line (its line count must equal the expected lines), and `norm`
+ * = the file with exactly those lines taken out (+ the version numbers blanked).
+ */
 export const EDITED = {
-  "mobile/android/app/build.gradle": { pieces: [[GRADLE_NDK, 1], [GRADLE_DEPS, 1]], norm: (t) => versions(dropText(GRADLE_DEPS)(dropText(GRADLE_NDK)(t))) },
+  "mobile/android/app/build.gradle": { lines: [], blocks: GRADLE_BLOCKS, marker: null, norm: (t) => versions(dropBlockExact(GRADLE_BLOCKS)(t)) },
   "mobile/android/app/src/main/java/com/sellerflow/live/MainActivity.java": {
-    pieces: [["        registerPlugin(SellerFlowScannerPlugin.class); // live \"Scan sticker QR\" (CameraX + ML Kit)\n", 1]],
-    norm: dropLines(/registerPlugin\(SellerFlowScannerPlugin\.class\)/),
+    lines: MAIN_LINES, blocks: [], marker: /SellerFlowScanner|QrScanner|QrCentrePick/, norm: dropLinesExact(MAIN_LINES),
   },
   "mobile/ios/App/App/SellerFlowBridgeViewController.swift": {
-    pieces: [["        bridge?.registerPluginInstance(SellerFlowScannerPlugin()) // live \"Scan sticker QR\" (SellerFlowScannerPlugin.swift)\n", 1]],
-    norm: dropLines(/SellerFlowScannerPlugin\(\)/),
+    lines: BRIDGE_LINES, blocks: [], marker: /SellerFlowScanner|QrScanner|QrCentrePick/, norm: dropLinesExact(BRIDGE_LINES),
   },
   "mobile/ios/App/App/Info.plist": {
-    pieces: [["<string>SellerFlowLive uses the camera to scan the QR code on your order stickers and to scan your parcel slips.</string>", 1]],
+    lines: [], blocks: PLIST_BLOCKS, marker: null,
     norm: (t) => t.replace(/(<key>NSCameraUsageDescription<\/key>\s*)<string>[^<]*<\/string>/, "$1<string>?</string>"),
   },
   "mobile/ios/App/App.xcodeproj/project.pbxproj": {
-    pieces: [["SellerFlowScannerPlugin.swift", 6], ["QrCentrePickTests.swift", 6], ["QrCentrePickCases.swift", 6]],
-    norm: (t) => versions(dropLines(/SellerFlowScannerPlugin\.swift|QrCentrePick(Tests|Cases)\.swift/)(t)),
+    lines: PBX_LINES, blocks: [], marker: /SellerFlowScanner|QrCentrePick/, norm: (t) => versions(dropLinesExact(PBX_LINES)(t)),
   },
 };
+/** Every check of one edited file's scanner text (empty = as expected). */
+export function scannerLineProblems(p, t) {
+  const e = EDITED[p], out = [];
+  const all = t.split("\n");
+  for (const [line, n] of e.lines) {
+    const got = all.filter((l) => l === line).length;
+    if (got !== n) out.push(`scanner lines in ${p}: "${line.trim().slice(0, 60)}" ${got}× (expected ${n}×)`);
+  }
+  for (const [block, n] of e.blocks) {
+    const got = t.split(block).length - 1;
+    if (got !== n) out.push(`scanner lines in ${p}: "${block.trim().slice(0, 60)}" ${got}× (expected ${n}×)`);
+  }
+  if (e.marker) {
+    const want = e.lines.reduce((s, [, n]) => s + n, 0);
+    const got = all.filter((l) => e.marker.test(l)).length;
+    if (got !== want) out.push(`scanner lines in ${p}: ${got} line(s) name the scanner (expected ${want})`);
+  }
+  return out;
+}
 
 export const sha = (b) => createHash("sha256").update(b).digest("hex");
 /** sha256 of a file's real content; a Git LFS pointer gives its LFS id (the same number). */
@@ -111,6 +173,13 @@ export function fixtureFrom(ref, root = ROOT) {
   return { from: gitIn(root, "rev-parse", ref).toString().trim(), unchanged, edited };
 }
 
+/** One edited file's text against the base's id: the exact scanner lines, each the expected number of times, and nothing else changed. */
+export function editedFileProblems(p, t, id) {
+  const out = scannerLineProblems(p, t);
+  if (normId(p, t) !== id) out.push(`changed beyond the scanner lines: ${p}`);
+  return out;
+}
+
 /**
  * Check a checkout against a fixture. Returns the problems (empty = PASS). `tracked` = the files git tracks
  * under mobile/ (null = not a git checkout: the "no other file" check is skipped, said in a problem-free note).
@@ -125,12 +194,7 @@ export function checkTree(root, fx, tracked) {
   for (const [p, id] of Object.entries(fx.edited)) {
     if (!EDITED[p]) { problems.push(`no rule for edited file: ${p}`); continue; }
     if (!existsSync(resolve(root, p))) { problems.push(`missing: ${p}`); continue; }
-    const t = read(p).toString("utf8");
-    for (const [piece, n] of EDITED[p].pieces) {
-      const got = t.split(piece).length - 1;
-      if (got !== n) problems.push(`scanner lines in ${p}: "${piece.trim().slice(0, 60)}" ${got}× (expected ${n}×)`);
-    }
-    if (normId(p, t) !== id) problems.push(`changed beyond the scanner lines: ${p}`);
+    problems.push(...editedFileProblems(p, read(p).toString("utf8"), id));
   }
   for (const p of Object.keys(EDITED)) if (!fx.edited[p]) problems.push(`edited file missing from the base: ${p}`);
   if (tracked) {

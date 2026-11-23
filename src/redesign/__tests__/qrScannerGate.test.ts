@@ -11,7 +11,7 @@ import {
   readZip, nativeLibs, abisOf, checkAbis, checkSoHashes, elfLoadAlign, checkNewSoAlignment, checkSize,
   parseDexdump, printerClosure, mainActivityOnlyRegistration, libClassDescriptors,
   parseGradleDeps, checkDeps, parseBlame, checkManifest, runGate, parseXml, canonXml,
-  pbFields, pbCanon, resourceEntries, checkBundleEntries, rootFileOf,
+  pbFields, pbCanon, resourceEntries, checkBundleEntries, rootFileOf, EXPECTED_DIFF,
 } from "../../../mobile/android/qr-scanner-gate-check.mjs";
 
 const ROOT = resolve(__dirname, "../../..");
@@ -334,8 +334,12 @@ describe("the whole gate", () => {
     expect(all(r)).toMatch(/FAIL removed or changed: <uses-permission android\.permission\.BLUETOOTH> \(printer \/ Bluetooth\)/);
   });
   it("a new service that is not CameraX / ML Kit → FAIL e", () => {
-    const r = gate({ newManifest: MANIFEST_SCANNER.replace("    </application>", '        <service android:name="com.example.Tracker" />\n    </application>') });
-    expect(all(r)).toMatch(/FAIL NEW service com\.example\.Tracker \(from name only — no merge report line\) — not a CameraX \/ ML Kit part/);
+    const r = gate({
+      newManifest: MANIFEST_SCANNER.replace("    </application>", '        <service android:name="com.example.Tracker" />\n    </application>'),
+      newBlame: BLAME + '60        <service android:name="com.example.Tracker" />\n60-->[com.example:spy:1.0] /x/AndroidManifest.xml:3:9-60\n',
+    });
+    expect(all(r)).toMatch(/FAIL NEW service com\.example\.Tracker \(from com\.example:spy\) — not a CameraX \/ ML Kit part/);
+    expect(r.status).toBe("fail");
   });
   it("a new uses-feature → FAIL e", () => {
     const r = gate({ newManifest: MANIFEST_SCANNER.replace('android:required="false" />', 'android:required="false" />\n    <uses-feature android:name="android.hardware.camera.any" android:required="true" />') });
@@ -475,6 +479,101 @@ describe("Fix Round 3 rules — each one turns FAIL / CANNOT MEASURE", () => {
 });
 
 
+describe("Fix Round 4 rules — each one turns FAIL / CANNOT MEASURE", () => {
+  // a) the ONLY files that may differ without being compared
+  it("the baseline profile and version-control-info differ in every build: not compared — these exact files only", () => {
+    expect([...EXPECTED_DIFF].sort()).toEqual([
+      "BUNDLE-METADATA/com.android.tools.build.profiles/baseline.prof",
+      "BUNDLE-METADATA/com.android.tools.build.profiles/baseline.profm",
+      "META-INF/version-control-info.textproto",
+      "base/root/META-INF/version-control-info.textproto",
+    ]);
+    for (const f of EXPECTED_DIFF) {
+      const r = gate({ mainZip: aab(LIBS_MAIN, "main", { [f]: "made by the base build" }), newZip: aab(NEW_LIBS, "new", { [f]: "made by the new build" }) });
+      expect(r.pass, `${f}\n${all(r)}`).toBe(true);
+      expect(r.lines, f).toContain(`    not compared (differs in every build): ${f}`);
+      // only in the new build (the base had none) = the same: not compared
+      expect(gate({ newZip: aab(NEW_LIBS, "new", { [f]: "x" }) }).pass, f).toBe(true);
+    }
+  });
+  it("…and nothing next to them: another file in the same folders that changed or is new → FAIL g, named", () => {
+    const changed = ["BUNDLE-METADATA/com.android.tools.build.profiles/other.prof", "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map", "base/root/META-INF/services/x.Provider", "base/assets/dexopt/baseline.prof"];
+    for (const f of changed) {
+      const r = gate({ mainZip: aab(LIBS_MAIN, "main", { [f]: "base" }), newZip: aab(NEW_LIBS, "new", { [f]: "new" }) });
+      expect(r.lines, f).toContain(`  FAIL changed: ${f}`);
+      expect(r.status).toBe("fail");
+    }
+    const r = gate({ newZip: aab(NEW_LIBS, "new", { "META-INF/version-control-info.textproto.bak": "x" }) });
+    expect(r.lines).toContain("  FAIL NEW file not from CameraX / ML Kit: META-INF/version-control-info.textproto.bak");
+  });
+  // b) size: a table that says nothing is not a PASS
+  it("a size table with no rows, a value that is not a number, or a missing table → CANNOT MEASURE f", () => {
+    const ok = "ABI,MIN,MAX\narm64-v8a,20000000,20000000\narmeabi-v7a,18000000,18000000\n";
+    const bad: [string, { mainSizeCsv?: string; newSizeCsv?: string }, RegExp][] = [
+      ["new table: header only", { newSizeCsv: "ABI,MIN,MAX\n" }, /the size table of the new build has no rows/],
+      ["base table: header only", { mainSizeCsv: "ABI,MIN,MAX\n" }, /the size table of the base build has no rows/],
+      ["new table: an error text instead of a table", { newSizeCsv: "Error: device spec not found\n" }, /the size table of the new build has no rows/],
+      ["a word where a number belongs", { newSizeCsv: "ABI,MIN,MAX\narm64-v8a,1,abc\narmeabi-v7a,1,21000000\n" }, /the size of arm64-v8a in the new table is not a number/],
+      ["an empty value", { mainSizeCsv: "ABI,MIN,MAX\narm64-v8a,1,\narmeabi-v7a,1,18000000\n" }, /the size of arm64-v8a in the base table is not a number/],
+      ["a negative value", { newSizeCsv: "ABI,MIN,MAX\narm64-v8a,1,-5\narmeabi-v7a,1,21000000\n" }, /is not a number/],
+      ["only one of the two tables", { newSizeCsv: "" }, /no size table for the new build/],
+      ["a chip type with no row in the base table", { mainSizeCsv: "ABI,MIN,MAX\narm64-v8a,20000000,20000000\n" }, /no row for armeabi-v7a in the base size table/],
+    ];
+    for (const [name, over, why] of bad) {
+      const r = gate({ mainSizeCsv: ok, ...over });
+      expect(firstLine(r, "f) size"), name).toMatch(/^CANNOT MEASURE f\) size: /);
+      expect(firstLine(r, "f) size"), name).toMatch(why);
+      expect(r.status, name).toBe("cannot");
+      expect(r.pass, name).toBe(false);
+    }
+    // without bundletool: the two .aab sizes must be real numbers too
+    for (const over of [{ newAabBytes: NaN }, { mainAabBytes: 0 }, { newAabBytes: undefined as unknown as number }]) {
+      const r = gate({ mainSizeCsv: "", newSizeCsv: "", ...over });
+      expect(firstLine(r, "f) size")).toMatch(/^CANNOT MEASURE f\) size: the \.aab sizes are not numbers/);
+      expect(r.status).toBe("cannot");
+    }
+    expect(checkSize({ mainCsv: ok, newCsv: ok, mainAab: 1, newAab: 1, maxMb: NaN }).cannot).toBe(true);
+  });
+  // c) under base/lib/ only <chip>/<name>.so belongs to checks a / b
+  it("a file under base/lib/ that is not a chip's .so (wrap.sh …) is compared like every other file; new → FAIL g", () => {
+    const added = gate({ newZip: aab(NEW_LIBS, "new", { "base/lib/arm64-v8a/wrap.sh": "#!/system/bin/sh\nexec \"$@\"\n" }) });
+    expect(added.lines).toContain("  FAIL NEW file not from CameraX / ML Kit: base/lib/arm64-v8a/wrap.sh");
+    expect(added.status).toBe("fail");
+    for (const f of ["base/lib/arm64-v8a/wrap.sh", "base/lib/arm64-v8a/gdbserver", "base/lib/notes.txt", "base/lib/arm64-v8a/deep/libx.so"]) {
+      const r = gate({ mainZip: aab(LIBS_MAIN, "main", { [f]: "base" }), newZip: aab(NEW_LIBS, "new", { [f]: "new" }) });
+      expect(r.lines, f).toContain(`  FAIL changed: ${f}`);
+      const gone = gate({ mainZip: aab(LIBS_MAIN, "main", { [f]: "base" }) });
+      expect(gone.lines, f).toContain(`  FAIL removed: ${f}`);
+      // the same bytes in both = fine
+      expect(gate({ mainZip: aab(LIBS_MAIN, "main", { [f]: "same" }), newZip: aab(NEW_LIBS, "new", { [f]: "same" }) }).pass, f).toBe(true);
+    }
+  });
+  // d) the merge report is the only proof of where a new manifest part comes from
+  it("no merge report → CANNOT MEASURE e (a CameraX-looking name allows nothing)", () => {
+    for (const newBlame of ["", "   \n", undefined as unknown as string, "this is not a merge report\n"]) {
+      const r = gate({ newBlame });
+      expect(firstLine(r, "e)")).toMatch(/^CANNOT MEASURE e\) manifest: no merge report/);
+      expect(r.status).toBe("cannot");
+      expect(r.pass).toBe(false);
+      expect(all(r)).not.toMatch(/RESULT: PASS/);
+    }
+    expect(checkManifest(MANIFEST_MAIN, MANIFEST_SCANNER, "").cannot).toBe(true);
+    expect(checkManifest(MANIFEST_MAIN, MANIFEST_SCANNER, BLAME).ok).toBe(true);
+  });
+  it("a new part with no line in the merge report → CANNOT MEASURE e, also when its name starts with androidx.camera", () => {
+    for (const name of ["androidx.camera.fake.Spy", "com.google.mlkit.fake.Spy", "com.example.Tracker"]) {
+      const r = gate({ newManifest: MANIFEST_SCANNER.replace("    </application>", `        <service android:name="${name}" />\n    </application>`) });
+      expect(firstLine(r, "e)"), name).toMatch(/^CANNOT MEASURE e\) manifest: NEW service .* has no line in the merge report/);
+      expect(r.status, name).toBe("cannot");
+    }
+  });
+  it("a real change is still a FAIL with the report missing in the list of reasons (LAUNCHER removed + no report)", () => {
+    const r = gate({ newBlame: "", newManifest: MANIFEST_SCANNER.replace('                <category android:name="android.intent.category.LAUNCHER" />\n', "") });
+    expect(r.status).toBe("cannot");
+    expect(all(r)).toMatch(/FAIL removed or changed in <application>: <activity com\.sellerflow\.live\.MainActivity>/);
+  });
+});
+
 describe("the pieces", () => {
   it("zip reader: stored + deflated entries", () => {
     const z = readZip(makeZip({ a: "hello", b: "world world world" }));
@@ -561,7 +660,7 @@ describe("the checker program", () => {
   writeFileSync(fakeDexdump, '#!/bin/sh\n[ "$1" = "-d" ] && [ "$2" = "-a" ] || { echo "called without -d -a" >&2; exit 9; }\ncat "$3"\n');
   chmodSync(fakeDexdump, 0o755);
   const jar = makeZip({ "com/gengcon/print/draw/PrintBuilder.class": "x" });
-  function setup(name: string, o: { newText?: string; lfs?: boolean; newLibs?: Record<string, Buffer>; newDeps?: string; newOver?: Record<string, Buffer | string | null> } = {}) {
+  function setup(name: string, o: { newText?: string; lfs?: boolean; newLibs?: Record<string, Buffer>; newDeps?: string; newOver?: Record<string, Buffer | string | null>; noBlame?: boolean } = {}) {
     const d = join(dir, name);
     for (const s of ["main", "new"]) {
       mkdirSync(join(d, s, "libs"), { recursive: true });
@@ -574,7 +673,7 @@ describe("the checker program", () => {
     writeFileSync(join(d, "main.deps"), DEPS_MAIN); writeFileSync(join(d, "new.deps"), o.newDeps ?? DEPS_SCANNER);
     writeFileSync(join(d, "main.xml"), MANIFEST_MAIN); writeFileSync(join(d, "new.xml"), MANIFEST_SCANNER); writeFileSync(join(d, "blame.txt"), BLAME);
     return spawnSync("node", [CHECKER, "--main-aab", join(d, "main.aab"), "--new-aab", join(d, "new.aab"), "--main-deps", join(d, "main.deps"), "--new-deps", join(d, "new.deps"),
-      "--main-manifest", join(d, "main.xml"), "--new-manifest", join(d, "new.xml"), "--new-blame", join(d, "blame.txt"),
+      "--main-manifest", join(d, "main.xml"), "--new-manifest", join(d, "new.xml"), ...(o.noBlame ? [] : ["--new-blame", join(d, "blame.txt")]),
       "--main-libs", join(d, "main/libs"), "--new-libs", join(d, "new/libs"), "--dexdump", fakeDexdump, "--max-mb", "6"], { encoding: "utf8" });
   }
   it("only the scanner → exit 0, RESULT: PASS", () => {
@@ -598,6 +697,12 @@ describe("the checker program", () => {
   it("an unreadable dependency line → exit 2, CANNOT MEASURE — STOP", () => {
     const r = setup("deps", { newDeps: DEPS_SCANNER + "+--- a.b:c:{require 1.0} -> 1.2\n" });
     expect(r.stdout).toMatch(/CANNOT MEASURE — STOP/);
+    expect(r.status).toBe(2);
+  });
+  it("no merge report passed → exit 2, CANNOT MEASURE — STOP (Fix Round 4)", () => {
+    const r = setup("noblame", { noBlame: true });
+    expect(r.stdout).toMatch(/CANNOT MEASURE e\) manifest: no merge report/);
+    expect(r.stdout).not.toMatch(/RESULT: PASS/);
     expect(r.status).toBe(2);
   });
   it("a printer library still a Git LFS pointer → exit 2, CANNOT MEASURE — STOP (never a PASS)", () => {

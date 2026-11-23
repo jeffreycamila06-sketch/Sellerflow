@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { checkTree, trackedMobile } from "../../../scripts/native-scanner-fence.mjs";
+import { checkTree, trackedMobile, editedFileProblems } from "../../../scripts/native-scanner-fence.mjs";
 import fenceFixture from "./fixtures/nativeScannerFence.json";
 
 const root = resolve(__dirname, "../../..");
@@ -87,14 +87,59 @@ describe("native QR scanner — fence", () => {
     delete fx.unchanged[extra]; // as if the base did not have this file
     expect(checkTree(root, fx, trackedMobile(root))).toEqual(expect.arrayContaining([`changed: ${tspl}`, `added: ${extra}`]));
   });
+  it("byte pin, the 5 edited files: only the EXACT scanner lines are taken out, each the expected number of times (Fix Round 4)", () => {
+    const fx = fenceFixture as { edited: Record<string, string> };
+    const MAIN = "mobile/android/app/src/main/java/com/sellerflow/live/MainActivity.java";
+    const PBX = "mobile/ios/App/App.xcodeproj/project.pbxproj";
+    const VC = "mobile/ios/App/App/SellerFlowBridgeViewController.swift";
+    const main = read(MAIN), pbx = read(PBX), vc = read(VC);
+    // as they are in this branch: nothing to say
+    for (const [p, t] of [[MAIN, main], [PBX, pbx], [VC, vc]] as const) expect(editedFileProblems(p, t, fx.edited[p]), p).toEqual([]);
+    const after = (t: string, line: string, extra: string) => { expect(t.split(line).length - 1, line).toBe(1); return t.replace(line, line + extra); };
+    const reg = '        registerPlugin(SellerFlowScannerPlugin.class); // live "Scan sticker QR" (CameraX + ML Kit)\n';
+
+    // MainActivity: a second registration (other words), a second copy of the expected line, any other line naming the scanner
+    const mainCases: [string, string][] = [
+      ["a second registration line", after(main, reg, "        registerPlugin(SellerFlowScannerPlugin.class);\n")],
+      ["the expected line twice", after(main, reg, reg)],
+      ["a line that only mentions the scanner", after(main, reg, "        // SellerFlowScannerPlugin also starts the printer\n")],
+      ["scanner code in MainActivity", after(main, reg, "        new QrScannerDialog(this).show();\n")],
+      ["the expected line with other code on it", main.replace(reg, reg.replace("); //", "); registerPlugin(Other.class); //"))],
+    ];
+    for (const [name, text] of mainCases) {
+      const got = editedFileProblems(MAIN, text, fx.edited[MAIN]);
+      expect(got.length, name).toBeGreaterThan(0);
+      expect(got.join("\n"), name).toMatch(/scanner lines in |changed beyond the scanner lines/);
+    }
+    expect(editedFileProblems(MAIN, after(main, reg, "        registerPlugin(SellerFlowScannerPlugin.class);\n"), fx.edited[MAIN])).toContain(`changed beyond the scanner lines: ${MAIN}`);
+
+    // project.pbxproj: one more build-file line for a scanner file, an expected line twice, another line naming a scanner file
+    const src = "\t\t\t\t9F00001000000000000000A4 /* SellerFlowScannerPlugin.swift in Sources */,\n";
+    const pbxCases: [string, string][] = [
+      ["the scanner file compiled twice", after(pbx, src, src)],
+      ["the scanner file in another build phase", after(pbx, src, "\t\t\t\t9F0000100000000000000FFF /* SellerFlowScannerPlugin.swift in Resources */,\n")],
+      ["another file reference that names a scanner test", after(pbx, src, "\t\t\t\t9FA0000000000000000000FF /* QrCentrePickTests.swift */,\n")],
+      ["a framework on a scanner line", pbx.replace(src, src.replace(" */,", " */, 9F00 /* Extra.framework */,"))],
+    ];
+    for (const [name, text] of pbxCases) {
+      const got = editedFileProblems(PBX, text, fx.edited[PBX]);
+      expect(got.length, name).toBeGreaterThan(0);
+      expect(got, name).toContain(`changed beyond the scanner lines: ${PBX}`);
+    }
+    // the iPhone bridge file: the same rule
+    const vcReg = '        bridge?.registerPluginInstance(SellerFlowScannerPlugin()) // live "Scan sticker QR" (SellerFlowScannerPlugin.swift)\n';
+    expect(editedFileProblems(VC, after(vc, vcReg, "        bridge?.registerPluginInstance(SellerFlowScannerPlugin())\n"), fx.edited[VC])).toContain(`changed beyond the scanner lines: ${VC}`);
+  });
   it("the iPhone camera text names the sticker QR and parcel slips", () => {
     const plist = read("mobile/ios/App/App/Info.plist");
     expect(plist).toContain("<string>SellerFlowLive uses the camera to scan the QR code on your order stickers and to scan your parcel slips.</string>");
   });
-  it("Orders gets its Scan button only from nativeScannerAvailable(the switch) — RedesignApp", () => {
+  it("Orders gets its Scan button — and Blacklist its wide-screen wording — only from nativeScannerAvailable(the switch) — RedesignApp", () => {
     const app = read("src/redesign/RedesignApp.tsx");
-    expect(count(app, "liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}")).toBe(1);
-    expect(count(app, "liveScan=")).toBe(1);
+    expect(count(app, "liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}")).toBe(2); // Orders + Blacklist
+    expect(count(app, "liveScan=")).toBe(2);
+    expect(app).toContain("initialQuery={ordersInitialQuery} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}");
+    expect(app).toContain("onRemove={blacklist.remove} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} />");
   });
   it("Android: the scanner screen is portrait while open; the app's orientation comes back on every close path", () => {
     const d = read("mobile/android/app/src/main/java/com/sellerflow/live/QrScannerDialog.java");
@@ -117,7 +162,42 @@ describe("native QR scanner — fence", () => {
     expect(sw).toContain("(object as? UIImage).map { Picked.image($0) } ?? Picked.unreadable"); // iCloud-only photo offline
     expect(sw).toContain("self.onDone?(b64.map { Outcome.photo($0) } ?? Outcome.unreadable)");
     const a = read("mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowScannerPlugin.java");
-    expect(a.match(/finish\(error\("photo_unreadable"\)\);/g)).toHaveLength(2); // no picture back + a file that can't be opened
+    expect(a.match(/finish\(error\("photo_unreadable"\)\);/g)).toHaveLength(3); // no picture back + a file that can't be opened + the screen gone meanwhile
+  });
+  it("iPhone: something already on top of the app → answered at once as an error, never left pending (Fix Round 4)", () => {
+    const sw = read("mobile/ios/App/App/SellerFlowScannerPlugin.swift");
+    const fn = /@objc func scanStickerQr\(_ call: CAPPluginCall\) \{([\s\S]*?)\n {4}\}\n/.exec(sw)?.[1] ?? "";
+    const guard = fn.indexOf("if host.presentedViewController != nil {");
+    expect(guard).toBeGreaterThan(0);
+    expect(fn.slice(guard)).toMatch(/^if host\.presentedViewController != nil \{\n\s*call\.resolve\(\["status": "error", "code": "view_busy"\]\)\n\s*return\n\s*\}/);
+    // the check comes BEFORE the call is kept and before anything is presented
+    expect(guard).toBeLessThan(fn.indexOf("self.pending = call"));
+    expect(guard).toBeLessThan(fn.indexOf("host.present(vc, animated: true)"));
+    expect(guard).toBeLessThan(fn.indexOf("self.startPhoto(texts: texts, from: host, allowCamera: false)"));
+    expect(fn.split("self.pending = call").length - 1).toBe(1);
+  });
+  it("iPhone: a closed scanner never starts the camera again (Fix Round 4)", () => {
+    const sw = read("mobile/ios/App/App/SellerFlowScannerPlugin.swift");
+    // ONE place starts the camera, and it refuses once the scanner is finished
+    expect(sw.match(/startRunning\(\)/g)).toHaveLength(1);
+    expect(sw).toMatch(/private func startSessionIfOpen\(\) \{\n\s*if finished \{ return \}\n\s*sessionQueue\.async \{ \[session\] in if !session\.isRunning \{ session\.startRunning\(\) \} \}\n {4}\}/);
+    // the camera's own error / restart notice: back on the main thread, nothing after a close
+    const rt = /@objc private func runtimeError\(_ n: Notification\) \{([\s\S]*?)\n {4}\}\n/.exec(sw)?.[1] ?? "";
+    expect(rt).toMatch(/DispatchQueue\.main\.async \{ \[weak self\] in\n\s*guard let self = self, !self\.finished else \{ return \}/);
+    expect(rt.indexOf("!self.finished")).toBeLessThan(rt.indexOf("self.startSessionIfOpen()"));
+    expect(rt.indexOf("!self.finished")).toBeLessThan(rt.indexOf("self.showPanel("));
+    expect(rt).not.toMatch(/sessionQueue|startRunning/);
+    // coming back to the app and the permission answer use the same guarded start
+    expect(sw).toMatch(/@objc private func becameActive\(\) \{\n\s*if finished \{ return \}/);
+    expect(sw).toMatch(/private func checkPermissionAndStart\(\) \{\n\s*if finished \{ return \}/);
+  });
+  it("Android: the picture is read on its own thread — no screen left = answered once, there (Fix Round 4)", () => {
+    const a = read("mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowScannerPlugin.java");
+    const fn = /private void photoResult\(PluginCall call, ActivityResult result\) \{([\s\S]*?)\n {4}\}\n/.exec(a)?.[1] ?? "";
+    expect(fn).toMatch(/String b64 = jpegBase64\(src\);\n\s*Activity activity = getActivity\(\);\n\s*if \(activity == null\) \{[^\n]*\n\s*finish\(error\("photo_unreadable"\)\);\n\s*return;\n\s*\}\n\s*activity\.runOnUiThread\(/);
+    expect(fn).not.toContain("getActivity().runOnUiThread");
+    // one answer per call, also when two threads reach it
+    expect(a).toMatch(/private synchronized void finish\(JSObject r\) \{\n\s*PluginCall c = pending;\n\s*pending = null;\n\s*if \(c != null\) c\.resolve\(r\);/);
   });
   it("iPhone photo library: no swipe-down dismiss (the scan always finishes); Cancel still finishes it", () => {
     const sw = read("mobile/ios/App/App/SellerFlowScannerPlugin.swift");

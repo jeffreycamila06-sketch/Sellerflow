@@ -6438,6 +6438,22 @@ Blacklist and a NEW **Scan** button next to the Orders search box. Not Pickup St
   Orders header: row = main's height with the Scan button (26 px button, margin -5/-6/-5/0, 44 px tap via
   `.sfl-tap44 .sfl-tap44-up`, started 6 px higher → ≥ 44 px at a 33 px row with ✕ / tabs / chips / Sessions
   unchanged), `docs/design/native-qr-scanner/header-check.cjs` (natural row + a forced 33 px row).
+- **Fix Round 4 (2026-11-23):** scanner SQL renumbered to **sql/210** (switch) + **sql/211** (guide) —
+  main took 208/209 for the free account cap; script `scripts/sql210-native-behaviour.mjs`, test helper
+  `guideSql211.ts`. Gate: the ONLY files not compared = `baseline.prof`, `baseline.profm`,
+  `version-control-info.textproto` (`EXPECTED_DIFF`, exact paths) + the .aab's signature files + the
+  library list (check d); a size table with no rows / a value that is not a number → CANNOT MEASURE; under
+  `base/lib/` only `<chip>/<name>.so` belongs to checks a / b, any other file there is compared (new =
+  FAIL); no merge report, or a new manifest part without a line in it → CANNOT MEASURE (a name alone allows
+  nothing). Byte pin: the 5 edited files lose only the EXACT expected scanner lines, each the expected
+  number of times (`scannerLineProblems` / `editedFileProblems`) — a second registration line or one more
+  line naming a scanner file = FAIL. iPhone: something already on top of the app → answer
+  `{status:"error", code:"view_busy"}` at once (the web shows `rd_qrs_failed`), never pending; ONE place
+  starts the camera (`startSessionIfOpen`, refuses once `finished`), the camera-error notice goes to the
+  main thread and does nothing after a close. Android: the photo thread null-checks `getActivity()` (no
+  screen → `photo_unreadable`, once; `finish` is synchronized). Blacklist: prop `liveScan` (same rule as
+  Orders, from RedesignApp) → a wide screen WITH the live scanner (a tablet in the app) says "Scan sticker
+  QR" and has no "No camera?" line; without it the screen = main's (`proof/blacklist-same-as-main.txt`).
 
 ## 2026-11-23 — FREE PLAN: FREE ORDERS PER LIVE ACCOUNT (branch `claude/free-account-cap`, NOT merged; sql/208 + sql/209 NOT applied; server half needs a Render deploy)
 Stops "used all free orders → new login with the same live account". FREE plan only: a paid login returns at the
