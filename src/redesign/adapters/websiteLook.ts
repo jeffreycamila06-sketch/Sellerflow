@@ -2,7 +2,8 @@
 // The editor always shows a full look; an existing shop keeps none until the seller changes a look setting
 // (then the whole look is saved and the shop switches to it). Text or product edits never add a look.
 import type { ShopDesign } from "../../website/shopApi";
-import { NEW_SHOP_LOOK, LOOK_PRESETS, type ShopLook } from "../../website/v3/look";
+import { NEW_SHOP_LOOK, LOOK_PRESETS, type LookShape, type ShopLook } from "../../website/v3/look";
+import { NEUTRAL_LOOK } from "../../website/v4/look4";
 import { themeOf, type ThemeKey } from "../../website/v2/theme";
 
 /** Item 8 (approved mapping): a shop without a look shows in the editor as Marketplace with its Build 1 theme's
@@ -23,9 +24,17 @@ export function legacyLook(draft: ShopDesign): ShopLook {
 export function editorLook(draft: ShopDesign): ShopLook {
   return draft.look ?? legacyLook(draft);
 }
-/** A seller who has no website yet starts on Brand store + Ocean (saved with the first Save). */
-export function newWebsiteDraft(): ShopDesign {
-  return { look: { ...NEW_SHOP_LOOK } };
+/** A seller who has no website yet starts on Brand store + Ocean (saved with the first Save).
+ *  `newLook` (sql/203 says this seller is on the new look): Brand store + neutral colours instead, so the
+ *  seller's own logo and photos lead until they pick a colour. Websites that exist are never changed. */
+export function newWebsiteDraft(newLook = false): ShopDesign {
+  return { look: { ...(newLook ? NEUTRAL_LOOK : NEW_SHOP_LOOK) } };
+}
+/** The photo shape (new look only): square is saved as `shape: "square"`, tall as no key at all. */
+export function shapePatch(draft: ShopDesign, shape: LookShape): Partial<ShopDesign> {
+  const next = { ...editorLook(draft) };
+  if (shape === "square") next.shape = "square"; else delete next.shape;
+  return { look: next };
 }
 /** The draft change for one look setting: the whole look is saved (so the shop shows exactly what the editor shows). */
 export function lookPatch(draft: ShopDesign, p: Partial<ShopLook>): Partial<ShopDesign> {

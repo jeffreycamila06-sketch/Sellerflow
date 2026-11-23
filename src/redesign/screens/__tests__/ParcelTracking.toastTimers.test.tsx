@@ -197,6 +197,9 @@ describe("while the screen is open nothing changed for the seller", () => {
     expect(toastOf(r)).toBe("Copied");
     await tick(200);
     expect(toastOf(r)).toBeNull();
+    // The shared copy pattern (adapters/buttonFeedback.ts) keeps its own 2 s timer; it ends at 2 s.
+    expect(vi.getTimerCount()).toBe(1);
+    await tick(400);
     expect(vi.getTimerCount()).toBe(0); // a timer that has done its work is forgotten
     r.unmount();
   });

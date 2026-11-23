@@ -1,0 +1,76 @@
+ok   baseline account_seat_vacate = the live text (md5 b0f29842)
+ok   baseline my_account_list = the live text (md5 9a1825fc)
+ok   baseline account_total_guard = the live text (md5 2651114c)
+ok   baseline account_total_run = the live text (md5 0f5511cb)
+ok   baseline account_total_used = the live text (md5 6ed04c28)
+ok   baseline account_quota = the live text (md5 408aca29)
+ok   baseline account_locked_seats = the live text (md5 e61fe2ed)
+ok   baseline account_lock_length = the live text (md5 73f4cb92)
+ok   baseline account_total_del_trg = the live text (md5 17b7f0fe)
+ok   baseline admin_downgrade_remove = the live text (md5 f92c42ad)
+ok   baseline account_limits_v2_on = the live text (md5 1a8c570f)
+ok   sql/205 applies
+ok   sql/205 applies a second time
+ok   sql/205 + rollback name account_seat_vacate's new md5 (c7df6579) in their guards
+ok   sql/205 + rollback name my_account_list's new md5 (e58b41f6) in their guards
+ok   account_seat_vacate is sql/84's text again, word for word (md5 c7df6579)
+ok   every other function is untouched (28 compared, none added or removed)
+ok   grants as before: a seller calls my_account_list, nobody outside the database calls account_seat_vacate
+ok   the switch is untouched ('false')
+ok   the story has 67 answers on both databases
+ok   switch off: every answer for sellers not in the preview is identical to production (67/67)
+ok   my_account_list for a seller not in the preview: v2 false (the app never shows them the popup)
+ok   v2 on for the preview login, off for seller A
+ok   preview Pro: TikTok name + Page + Shopee shop = 3 of 3
+ok   nothing is locked yet (every lock_until null)
+ok   TikTok: the FIRST swap (seller_r_tt → seller_r_new) on a full plan is immediate
+ok   TikTok: the new name is locked ~4 hours (lock_until), no place is held, 3 used
+ok   only the account that took the place is locked
+ok   TikTok: a SECOND swap inside the 4 hours is refused (account_limit)
+ok   TikTok: the refused swap changed nothing
+ok   TikTok: removing the locked name is not refused by the database …
+ok   … but its place stays used until its 4 hours end (used 3, 1 held, next_free_at ≈ +4 h)
+ok   TikTok: a different name while the place is held → refused
+ok   the held place is held for every platform (a Page → refused, a Shopee shop → locked)
+ok   TikTok: the SAME name back is immediate
+ok   TikTok: after the 4 hours a different name is added
+ok   Facebook: a removal starts no wait (no place held)
+ok   Facebook: the FIRST swap (page_r1 → page_r2) is immediate
+ok   Facebook: the new Page is locked ~4 hours
+ok   Facebook: a SECOND swap inside the 4 hours is refused
+ok   Facebook: the SAME Page back is immediate
+ok   Facebook: after the 4 hours a different Page is added
+ok   Instagram: taking a removed Page's place is immediate (the first swap, across platforms)
+ok   Instagram: the new account is locked ~4 hours
+ok   Instagram: a SECOND swap inside the 4 hours is refused
+ok   Instagram: the SAME account back is immediate
+ok   Shopee: the FIRST swap (shop 900001 → 900002) is immediate
+ok   Shopee: the new shop is locked ~4 hours
+ok   Shopee: a SECOND swap inside the 4 hours → locked, with the time it ends and the server's clock
+ok   Shopee: the SAME shop back is immediate
+ok   Shopee: after the 4 hours a different shop is added
+ok   1-account preview seller with a TikTok name: a Shopee shop → full
+ok   they remove the TikTok name
+ok   … and the Shopee shop is added AT ONCE (under rule (b) this answered 'locked' for 4 hours)
+ok   the shop is their one account, locked ~4 hours
+ok   moving again inside the 4 hours (another TikTok name) → refused
+ok   the same shop back → immediate
+ok   after the 4 hours they are back on TikTok
+ok   an admin downgrades the preview seller to 2 accounts, removing the shop
+ok   the admin's removal started no wait
+ok   the seller adds a different account right after
+ok   an admin: 7 shops, swaps and adds are never refused
+ok   an admin's own list: unlimited, no lock_until on any account
+ok   an exempt seller: no lock_until, a second swap right away
+ok   (the seller removed a locked account: 1 place held)
+ok   (the seller cannot add a different account while it is held)
+ok   an admin adding an account for the seller is not refused by the held place
+ok   a changed live text: sql/205 refuses and changes nothing
+ok   the rollback runs (twice)
+ok   rollback: both functions are sql/199's live texts again (md5)
+ok   rollback: rule (b) is back (the first swap waits)
+ok   sql/205 applies again after its rollback
+ok   sql/199's own rollback still runs with sql/205 applied
+ok   … and leaves production as it was before sql/199
+
+74 PASS, 0 FAIL

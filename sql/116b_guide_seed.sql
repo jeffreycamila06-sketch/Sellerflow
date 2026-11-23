@@ -65,7 +65,7 @@ When your plan is full, a **Plan full** window shows your accounts:
 - Tap **Remove** next to one, then **Remove** again to confirm. Your orders and stickers stay.
 - An account that is live right now shows **End your live first** — end that live, then remove it.
 - Or tap **Upgrade plan** (on iPhone: **Contact Admin**).
-- After you remove an account, a **different** new account can be added only **4 hours** later ("Wait a little" shows the time left). Adding the same account back works right away.
+- After you remove an account you can add a **different** one right away. That new account then can''t be removed or changed again for **4 hours** ("Wait a little" shows the time left). Adding the same account back works right away.
 
 Messages you may see:
 - "Accounts used: 2 of 3" — your count.
@@ -188,7 +188,7 @@ Messages:
 - "Shopee only on your plan — upgrade to use TikTok/Facebook." On a free plan you can use Shopee only. Message Admin to upgrade.
 - "Shopee access ended — contact Admin." Your 30 days are over. Message Admin to continue.
 - "No room for this Shopee shop. Remove an account in Settings to add it." Your plan is full — remove an account or upgrade.
-- "You removed an account. A new Shopee shop can be added 4 hours after the removal." Wait until the time shown, then tap **Connect** again.
+- "An account was changed less than 4 hours ago. A new Shopee shop can be added when the 4 hours are over." Wait until the time shown, then tap **Connect** again.
 - "This Shopee shop is outside your account limit. Remove an account in Settings to go live with it." Only your oldest accounts within your plan can go live.'),
   ('other-platforms', 'Instagram', '2026-11-22'::date, 'instagram, ig, other platform, coming soon, wala pa, kailan, ig直播, 即将推出', 'On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
 
@@ -587,13 +587,15 @@ In the app: **Settings → Need help? Contact us**, or **Settings → General Se
 Paid plans (Basic, Plus, Pro, Master) also have a **help chat**: a round chat bubble on the **Settings** screen. Tap it (or the "Do you have a question?" hint next to it) and type your question. You can drag the bubble to the left or right edge.
 
 When you message, include your account email, your TikTok username, what you were doing, and the exact message you saw. A screenshot helps.'),
-  ('website', 'Your shop website (preview)', '2026-11-16'::date, 'website, shop page, online shop, publish, website orders, checkout, store link, theme, layout, brand store, marketplace, colours, font, banner, flash sale, shipping options, payment methods, tracking number, 網站, 商店網頁, 网站', 'Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
+  ('website', 'Your shop website (preview)', '2026-11-22'::date, 'website, shop page, online shop, publish, website orders, checkout, store link, theme, layout, brand store, marketplace, colours, font, banner, flash sale, shipping options, payment methods, tracking number, 網站, 商店網頁, 网站', 'Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
 
 - **Website address** — type your address, then **Save**. Tap **Copy** to share it.
+- **Save** shows **Saved** when there is nothing new to save. If it says **Couldn''t save — tap to try again**, tap it again; what you typed is still there.
 - **Look** — the live preview at the top shows your shop as you change it.
   - **Shop layout**: **Brand store** (a colour band at the top, big category tiles, product rows that scroll sideways) or **Marketplace**.
   - **Ready combinations** (Ocean, Midnight, Blush, Forest, Sunset) fill in the settings below; you can still change each one.
   - Pick **Top colours** (two colours blend), **Buttons**, **Sale / old price** (Brand store only), a **Light** or **Dark** page, the **Font** (Modern, Friendly, Classic) and **Corners** (Sharp or Round).
+  - If you see **Photo shape** in the editor, your shop has the new look: top colour 1 is the bar with your logo and shop name, top colour 2 is a thin line under it, and **Photo shape** (Tall or Square) sets the shape of every product photo.
   - In the Brand store, tap up to 2 categories for the **Big tiles at the top**, or keep **Automatic**.
   - If a colour would be hard to read, buyers see a clearer one and a line under the preview tells you.
   - Add your logo and cover photo.

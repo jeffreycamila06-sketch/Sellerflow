@@ -3,10 +3,14 @@
 // old price (Brand store only — kept, just hidden, on Marketplace); light or dark page body; font; corners;
 // and, in the Brand store, which two categories are the big tiles. The live preview sits on top and follows
 // every change.
+// `newLook` (sql/203 says this seller's shop is drawn in the new look): the same settings, shown as the new look
+// uses them — top colour 1 = the bar with the logo and name, top colour 2 = a thin line under it (no blend) —
+// plus one more choice, the photo shape. Without it this editor is exactly the one of before.
 import type { CSSProperties, ReactNode } from "react";
 import type { ShopDesign } from "../../website/shopApi";
 import { LOOK_PRESETS, guardLook, type ShopLook } from "../../website/v3/look";
-import { editorLook, lookPatch, presetPatch, presetOf, tileChoices, tileTogglePatch } from "../adapters/websiteLook";
+import { editorLook, lookPatch, presetPatch, presetOf, shapePatch, tileChoices, tileTogglePatch } from "../adapters/websiteLook";
+import { btnSwapped, shapeOf } from "../../website/v4/look4";
 
 type T = Record<string, string>;
 // the live preview: under the screen header, at most 42% of the screen height so the settings stay in reach
@@ -31,10 +35,15 @@ function Colour({ label, value, onPick, testid }: { label: string; value: string
   return <input type="color" aria-label={label} data-testid={testid} value={value} onChange={(e) => onPick(e.target.value.toLowerCase())} style={colorInput} />;
 }
 
-export default function WebsiteLookEditor({ draft, set, t, cats, preview }: {
+/** The new look's small picture of the top: the bar (colour 1) with the thin line (colour 2) under it. */
+const signSwatch = (top1: string, top2: string): CSSProperties => ({ background: top1, borderBottom: `4px solid ${top2}`, boxSizing: "border-box" });
+
+export default function WebsiteLookEditor({ draft, set, t, cats, preview, newLook = false }: {
   draft: ShopDesign; set: (p: Partial<ShopDesign>) => void; t: T; cats: string[];
   /** the live preview (the shop with this draft) */
   preview: ReactNode;
+  /** this seller's shop is drawn in the new look (sql/203) */
+  newLook?: boolean;
 }) {
   const l = editorLook(draft);
   const put = (p: Partial<ShopLook>) => set(lookPatch(draft, p));
@@ -43,7 +52,7 @@ export default function WebsiteLookEditor({ draft, set, t, cats, preview }: {
   const tiles = tileChoices(draft, cats);
   // item 7: the contrast guard — buyers always get readable colours; one line says what was swapped
   const g = guardLook(l);
-  const notes = g.swapped.map((k) => (k === "btn" ? (l.dark ? t.rd_wed_guard_btn_white : t.rd_wed_guard_btn_black) : k === "sale" ? t.rd_wed_guard_sale : t.rd_wed_guard_top));
+  const notes = newLook ? (btnSwapped(l) ? [l.dark ? t.rd_wed_guard_btn_white : t.rd_wed_guard_btn_black] : []) : g.swapped.map((k) => (k === "btn" ? (l.dark ? t.rd_wed_guard_btn_white : t.rd_wed_guard_btn_black) : k === "sale" ? t.rd_wed_guard_sale : t.rd_wed_guard_top));
   return (
     <div data-testid="wed-look">
       {/* a setting scrolled into view (focus, tap) lands below the sticky preview and above the Save bar */}
@@ -63,7 +72,9 @@ export default function WebsiteLookEditor({ draft, set, t, cats, preview }: {
         {LOOK_PRESETS.map((p) => (
           <button key={p.key} type="button" role="radio" aria-checked={pre === p.key} data-testid={`wed-preset-${p.key}`} onClick={() => set(presetPatch(draft, p.key))}
             style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 6px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, color: "var(--text)", background: "var(--surface)", border: pre === p.key ? "2px solid var(--accent)" : "1px solid var(--border)" }}>
-            <i aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 999, background: `linear-gradient(120deg, ${p.look.top1}, ${p.look.top2})`, boxShadow: `inset 0 0 0 3px ${p.look.btn}` }} />
+            {newLook
+              ? <i aria-hidden="true" data-testid="wed-preset-sign" style={{ width: 30, height: 30, borderRadius: 999, display: "grid", placeItems: "center", ...signSwatch(p.look.top1, p.look.top2) }}><b style={{ width: 10, height: 10, borderRadius: 999, background: p.look.btn, boxShadow: "0 0 0 2px rgba(255,255,255,.85)" }} /></i>
+              : <i aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 999, background: `linear-gradient(120deg, ${p.look.top1}, ${p.look.top2})`, boxShadow: `inset 0 0 0 3px ${p.look.btn}` }} />}
             {t[`rd_wed_pre_${p.key}`]}{pre === p.key ? " ✓" : ""}
           </button>
         ))}
@@ -73,9 +84,11 @@ export default function WebsiteLookEditor({ draft, set, t, cats, preview }: {
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <Colour label={t.rd_wed_top1} value={l.top1} testid="wed-top1" onPick={(v) => put({ top1: v })} />
         <Colour label={t.rd_wed_top2} value={l.top2} testid="wed-top2" onPick={(v) => put({ top2: v })} />
-        <span aria-hidden="true" style={{ flex: "1 1 80px", minWidth: 60, height: 30, borderRadius: 8, background: `linear-gradient(120deg, ${l.top1}, ${l.top2})` }} />
+        {newLook
+          ? <span aria-hidden="true" data-testid="wed-top-sign" style={{ flex: "1 1 80px", minWidth: 60, height: 30, borderRadius: 8, ...signSwatch(l.top1, l.top2) }} />
+          : <span aria-hidden="true" style={{ flex: "1 1 80px", minWidth: 60, height: 30, borderRadius: 8, background: `linear-gradient(120deg, ${l.top1}, ${l.top2})` }} />}
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{t.rd_wed_top_hint}</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }} data-testid="wed-top-hint">{newLook ? t.rd_wed_top_hint4 : t.rd_wed_top_hint}</div>
 
       <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
         <div><div style={lbl}>{t.rd_wed_btn_color}</div><Colour label={t.rd_wed_btn_color} value={l.btn} testid="wed-btn" onPick={(v) => put({ btn: v })} /></div>
@@ -88,6 +101,13 @@ export default function WebsiteLookEditor({ draft, set, t, cats, preview }: {
         options={[["modern", t.rd_wed_font_modern], ["friendly", t.rd_wed_font_friendly], ["classic", t.rd_wed_font_classic]]} />
       <Seg label={t.rd_wed_corners} value={l.corners} testid="wed-corners" onPick={(v) => put({ corners: v })}
         options={[["sharp", t.rd_wed_corners_sharp], ["round", t.rd_wed_corners_round]]} />
+      {newLook && (
+        <>
+          <Seg label={t.rd_wed_shape} value={shapeOf(l)} testid="wed-shape" onPick={(v) => set(shapePatch(draft, v))}
+            options={[["tall", t.rd_wed_shape_tall], ["square", t.rd_wed_shape_square]]} />
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{t.rd_wed_shape_hint}</div>
+        </>
+      )}
 
       {brand && (
         <div data-testid="wed-tiles">

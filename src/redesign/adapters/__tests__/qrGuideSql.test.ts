@@ -1,9 +1,9 @@
-// sql/192 — ONE help-guide row (Parcel Scan): Scan QR shows only one sticker. Its row + sql/204's
+// sql/192 — ONE help-guide row (Parcel Scan): Scan QR shows only one sticker. Its row + sql/207's
 // phrase swap (native scanner, 2026-11-22) = the parcel-scan row of sql/116b (= docs/support/sfl-guide.md);
 // the rollback = the live row before it. sql/191 (Blacklist) carries the same "2 stickers" line in its own row.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { after204, rowOfFile } from "./guideSql204";
+import { after207, rowOfFile } from "./guideSql207";
 
 const seed = readFileSync("sql/116b_guide_seed.sql", "utf8");
 const tupleOf = (id: string) => { const a = seed.indexOf(`  ('${id}',`); return seed.slice(a, seed.indexOf("\n  ('", a + 5) > 0 ? seed.indexOf("),\n  ('", a) + 1 : seed.indexOf(")\non conflict", a) + 1); };
@@ -12,12 +12,12 @@ const code = (s: string) => s.split("\n").filter((l) => !l.trim().startsWith("--
 describe("sql/192 — the Parcel Scan guide row", () => {
   const up = readFileSync("sql/192_guide_scan_one_sticker.sql", "utf8");
   const down = readFileSync("sql/192_guide_scan_one_sticker_rollback.sql", "utf8");
-  it("its row + sql/204's swap = the parcel-scan row of sql/116b; one row only, safe to run twice", () => {
+  it("its row + sql/207's swap = the parcel-scan row of sql/116b; one row only, safe to run twice", () => {
     const row = tupleOf("parcel-scan");
     expect(row.length).toBeGreaterThan(2000);
     const own = rowOfFile(up, "parcel-scan");
-    expect(own).not.toBe(row); // sql/204 really changes it
-    expect(after204("parcel-scan", own)).toBe(row);
+    expect(own).not.toBe(row); // sql/207 really changes it
+    expect(after207("parcel-scan", own)).toBe(row);
     expect(up).toContain(`${own}\non conflict (id) do update set`);
     expect(up.match(/^ {2}\('/gm)).toHaveLength(1);
     expect(up).toContain("is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body)");
@@ -37,9 +37,9 @@ describe("sql/192 — the Parcel Scan guide row", () => {
 });
 
 describe("sql/191 (Blacklist, not applied yet) — the same line", () => {
-  it("its row + sql/204's swap = sql/116b's blacklist row, which has the '2 stickers' line", () => {
+  it("its row + sql/207's swap = sql/116b's blacklist row, which has the '2 stickers' line", () => {
     const row = tupleOf("blacklist");
     expect(row).toContain("**2 stickers in the photo — show only one**: take the photo again with only one sticker in it.");
-    expect(after204("blacklist", rowOfFile(readFileSync("sql/191_guide_blacklist.sql", "utf8"), "blacklist"))).toBe(row);
+    expect(after207("blacklist", rowOfFile(readFileSync("sql/191_guide_blacklist.sql", "utf8"), "blacklist"))).toBe(row);
   });
 });

@@ -1,7 +1,7 @@
 // BLACKLIST — the SQL files (contract). Behaviour on a real Postgres: scripts/sql190-behaviour.mjs (PGlite).
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { after204, rowOfFile } from "./guideSql204";
+import { after207, rowOfFile } from "./guideSql207";
 
 const up = readFileSync("sql/190_buyer_blacklist.sql", "utf8");
 const down = readFileSync("sql/190_buyer_blacklist_rollback.sql", "utf8");
@@ -60,12 +60,12 @@ describe("sql/191 — ONE help-guide row", () => {
   const g = readFileSync("sql/191_guide_blacklist.sql", "utf8");
   const seed = readFileSync("sql/116b_guide_seed.sql", "utf8");
   const tupleOf = (id: string, next: string) => { const a = seed.indexOf(`  ('${id}',`); return seed.slice(a, seed.indexOf(`),\n  ('${next}'`, a) + 1); };
-  it("its row + sql/204's swap (native scanner, 2026-11-22) = the blacklist row of sql/116b (= the guide file), and nothing else", () => {
+  it("its row + sql/207's swap (native scanner, 2026-11-22) = the blacklist row of sql/116b (= the guide file), and nothing else", () => {
     const row = tupleOf("blacklist", "raffle-games");
     expect(row.length).toBeGreaterThan(500);
     const own = rowOfFile(g, "blacklist");
-    expect(own).not.toBe(row); // sql/204 really changes it
-    expect(after204("blacklist", own)).toBe(row);
+    expect(own).not.toBe(row); // sql/207 really changes it
+    expect(after207("blacklist", own)).toBe(row);
     expect(g).toContain(`${own}\non conflict (id) do update set`);
     expect(g.match(/^ {2}\('/gm)).toHaveLength(1);
     expect(code(g)).not.toMatch(/delete from/);

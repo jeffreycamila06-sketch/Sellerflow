@@ -27,7 +27,7 @@ Android SDK). They are checked on Jeff's Mac and phones — see the branch repor
 ## On-purpose breaks
 `proof/breaks.py` makes 16 small wrong changes one at a time (photo picker always, no strict parser,
 7-day load on scan, case-sensitive match, Facebook buyers matched, rule margin / frames drift in web,
-Java and Swift, switch accepting any value, a second registration line, a VIBRATE permission, sql/204
+Java and Swift, switch accepting any value, a second registration line, a VIBRATE permission, sql/207
 words drifting from the guide, a bare timer) and runs the test that should catch it; each file is put
 back after. `proof/breaks.txt` = the result: 16/16 red (one was missed on the first run; a test was added).
 Run from the repo folder: `python3 docs/design/native-qr-scanner/proof/breaks.py`.

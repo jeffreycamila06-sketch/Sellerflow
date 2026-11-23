@@ -17,6 +17,8 @@ import type { ShopFilter } from "../shopFilter";
 import { homeTrust, homeSteps, bestSellers, newArrivals } from "../pages/homeData";
 import { brandBand, brandCategories, brandTiles, onSale } from "./brandData";
 import type { ShopLook } from "./look";
+import { VIcon, type IconName } from "../v2/icons";
+import { useNewLook } from "../v4/ctx";
 
 type T = Record<string, string>;
 export interface BrandHomeProps {
@@ -27,6 +29,8 @@ export interface BrandHomeProps {
 }
 export default function BrandHome({ shop, look, cur, nowMs, saved, onSave, onOpen, onQuick, onShop, renderCard }: BrandHomeProps) {
   const t = useT() as unknown as T;
+  const k4 = useNewLook(); // v4: drawn icons where the older looks have an emoji; nothing else differs here
+  const TRUST4: IconName[] = ["truck", "cash", "check", "clock"];
   const d = shop.shop;
   const on = (k: SectionKey) => d.sections?.[k] !== false;
   const ck = checkoutOf(shop);
@@ -63,7 +67,7 @@ export default function BrandHome({ shop, look, cur, nowMs, saved, onSave, onOpe
       </div>
 
       <div className="v-wrap">
-        {on("trust") && trust.length > 0 && <div className="v-tline" data-testid="brand-trust">{trust.map((x, i) => <span key={i}>{["🚚", "💵", "✓", "⚡"][i]} {x.title}</span>)}</div>}
+        {on("trust") && trust.length > 0 && <div className="v-tline" data-testid="brand-trust">{trust.map((x, i) => <span key={i}>{k4 ? <VIcon n={TRUST4[i] || "check"} size={19} /> : ["🚚", "💵", "✓", "⚡"][i]} {x.title}</span>)}</div>}
 
         {on("best") && best.length > 0 && <Row id="best" title={t.rd_shop_best_sellers} t={t} onAll={() => onShop({ sort: "best" })} testid="brand-best">{best.map((p) => card(p))}</Row>}
         {on("flash") && sale.length > 0 && <Row id="sale" title={t.rd_shop_on_sale} t={t} onAll={() => onShop({ sale: true })} testid="brand-sale">{sale.map((p) => card(p))}</Row>}
@@ -94,7 +98,7 @@ export default function BrandHome({ shop, look, cur, nowMs, saved, onSave, onOpe
         {on("live") && d.live && (
           <div className="v-sec">
             <div className="v-live" data-testid="shop-live">
-              <div className="v-tx"><span className="v-pill">● LIVE</span><b>{tpl(t.rd_home_next_live, { when: d.live })}</b><span>{t.rd_home_live_sub}</span></div>
+              <div className="v-tx"><span className="v-pill">{k4 ? <><i aria-hidden="true" />LIVE</> : "● LIVE"}</span><b>{tpl(t.rd_home_next_live, { when: d.live })}</b><span>{t.rd_home_live_sub}</span></div>
               {liveUrl && <a className="v-btn" href={liveUrl} target="_blank" rel="noreferrer noopener" data-testid="shop-live-go" style={{ textDecoration: "none" }}>{t.rd_home_live_go}</a>}
             </div>
           </div>
@@ -106,7 +110,7 @@ export default function BrandHome({ shop, look, cur, nowMs, saved, onSave, onOpe
         {on("about") && (d.about || shop.stats.orders > 0) && (
           <div className="v-sec">
             <div className="v-about" data-testid="shop-about">
-              <h3 style={{ fontSize: 19 }}>{tpl(t.rd_home_about, { shop: d.name || "" })} {shop.verified && <span data-testid="shop-verified" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--s-ok)", fontFamily: "var(--s-font)", whiteSpace: "nowrap" }}>✓ {t.rd_shop_verified}</span>}</h3>
+              <h3 style={{ fontSize: 19 }}>{tpl(t.rd_home_about, { shop: d.name || "" })} {shop.verified && <span data-testid="shop-verified" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--s-ok)", fontFamily: "var(--s-font)", whiteSpace: "nowrap" }}>{k4 ? <VIcon n="check" size={14} /> : "✓"} {t.rd_shop_verified}</span>}</h3>
               {d.about && <p style={{ whiteSpace: "pre-wrap" }}>{d.about}</p>}
               <div className="v-stats" data-testid="shop-stats">
                 <div><b>{compact(shop.stats.orders)}</b><span>{t.rd_shop_orders_done}</span></div>
@@ -140,6 +144,7 @@ export default function BrandHome({ shop, look, cur, nowMs, saved, onSave, onOpe
 
 /** A product row that scrolls sideways; on laptop two arrows scroll it by most of its width. */
 function Row({ id, title, t, onAll, testid, children }: { id: string; title: string; t: T; onAll: () => void; testid: string; children: ReactNode }) {
+  const k4 = useNewLook();
   const ref = useRef<HTMLDivElement | null>(null);
   const by = (dir: number) => { const el = ref.current; if (el) el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: "smooth" }); };
   return (
@@ -149,8 +154,8 @@ function Row({ id, title, t, onAll, testid, children }: { id: string; title: str
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button type="button" className="v-va" data-testid={`${testid}-all`} onClick={onAll}>{t.rd_home_see_all}</button>
           <span className="v-arrows">
-            <button type="button" data-testid={`${testid}-prev`} aria-label={t.rd_shop_back} onClick={() => by(-1)}>‹</button>
-            <button type="button" data-testid={`${testid}-next`} aria-label={t.rd_brand_next} onClick={() => by(1)}>›</button>
+            <button type="button" data-testid={`${testid}-prev`} aria-label={t.rd_shop_back} onClick={() => by(-1)}>{k4 ? <VIcon n="back" size={18} /> : "‹"}</button>
+            <button type="button" data-testid={`${testid}-next`} aria-label={t.rd_brand_next} onClick={() => by(1)}>{k4 ? <VIcon n="back" size={18} /> : "›"}</button>
           </span>
         </span>
       </div>

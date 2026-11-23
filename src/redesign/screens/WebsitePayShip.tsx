@@ -1,6 +1,9 @@
 // Seller Website — Payment & shipping (Website → Payment & shipping). Saved in seller_websites.settings;
 // buyers see only what website_checkout_public lets through (fees, free-over, bank details, QR, COD).
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import SaveButton from "../components/SaveButton";
+import type { SaveOutcome } from "../adapters/buttonFeedback";
+import { useScreenTimers } from "../adapters/useScreenTimers";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
@@ -21,6 +24,10 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
   const [exists, setExists] = useState(false);
   const [busy, setBusy] = useState<"" | "save" | "qr">("");
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "bad" } | null>(null);
+  // what was last saved (the same shape the Save sends) — the Save button says "Saved" while the form equals it
+  const [savedKey, setSavedKey] = useState("");
+  const msgAt = useRef<HTMLDivElement | null>(null);
+  const later = useScreenTimers();
   useEffect(() => {
     let live = true;
     void api.load().then((w) => {
@@ -29,8 +36,10 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
       setExists(!!w);
       const merged = { ...DEFAULT_SETTINGS, ...(w?.settings || {}), ship: { ...DEFAULT_SETTINGS.ship, ...(w?.settings?.ship || {}) } };
       setSt(merged);
-      setShips(editorShipOptions(merged, country));
-      setPays(editorPayMethods(merged, country));
+      const ships0 = editorShipOptions(merged, country), pays0 = editorPayMethods(merged, country);
+      setShips(ships0);
+      setPays(pays0);
+      setSavedKey(JSON.stringify(withPayMethods(withShipOptions(merged, ships0), pays0)));
     });
     return () => { live = false; };
   }, [api, country]);
@@ -41,18 +50,30 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
   const setPay = (id: string, p: Partial<PaySetting>) => setPays((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
   const full = withPayMethods(withShipOptions(s, ships), pays);
   const problems = settingsProblems(full, country);
-  const save = async () => {
+  const fullKey = JSON.stringify(full);
+  // "Saved" (not tappable) only when the form is what was last saved AND has nothing left to fix — a form that
+  // still needs a delivery or a payment keeps its Save so the tap can say what is missing
+  const dirty = !exists || fullKey !== savedKey || problems.length > 0 || shipProblems(ships).length > 0 || payProblems(pays).length > 0;
+  // nothing was sent: the message says what to fix and is brought into view (components/SaveButton.tsx "blocked")
+  const blocked = (text: string): SaveOutcome => {
+    setMsg({ text, tone: "bad" });
+    later(() => { try { msgAt.current?.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* no scrolling here */ } }, 0);
+    return "blocked";
+  };
+  const save = async (): Promise<SaveOutcome> => {
     setMsg(null);
-    if (!exists) { setMsg({ text: t.rd_wed_need_name, tone: "bad" }); return; }
-    if (shipProblems(ships).includes("name")) { setMsg({ text: t.rd_wps_ship_need_name, tone: "bad" }); return; }
+    if (!exists) return blocked(t.rd_wed_need_name);
+    if (shipProblems(ships).includes("name")) return blocked(t.rd_wps_ship_need_name);
     const pp = payProblems(pays);
-    if (pp.includes("name")) { setMsg({ text: t.rd_wps_pay_need_name, tone: "bad" }); return; }
-    if (pp.includes("empty")) { setMsg({ text: t.rd_wps_pay_need_info, tone: "bad" }); return; }
-    if (problems.length) { setMsg({ text: problems.includes("ship") ? t.rd_wps_need_ship : t.rd_wps_need_pay, tone: "bad" }); return; }
+    if (pp.includes("name")) return blocked(t.rd_wps_pay_need_name);
+    if (pp.includes("empty")) return blocked(t.rd_wps_pay_need_info);
+    if (problems.length) return blocked(problems.includes("ship") ? t.rd_wps_need_ship : t.rd_wps_need_pay);
     setBusy("save");
     const ok = await api.save(full);
     setBusy("");
     setMsg(ok ? { text: t.rd_wed_saved, tone: "ok" } : { text: t.rd_wed_save_failed, tone: "bad" });
+    if (ok) setSavedKey(fullKey);
+    return ok;
   };
   const qr = async (id: string, f: File | undefined) => {
     if (!f) return;
@@ -182,11 +203,11 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_wps_tax_hint}</div>
         </section>
-        {msg && <div role="status" data-testid="wps-msg" style={{ fontSize: 13, fontWeight: 700, color: msg.tone === "ok" ? "var(--ok)" : "var(--danger)", textAlign: "center" }}>{msg.text}</div>}
+        {msg && <div role="status" data-testid="wps-msg" ref={msgAt} style={{ fontSize: 13, fontWeight: 700, color: msg.tone === "ok" ? "var(--ok)" : "var(--danger)", textAlign: "center" }}>{msg.text}</div>}
       </div>
       <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, padding: "10px 14px calc(10px + env(safe-area-inset-bottom))", background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
         <div style={{ maxWidth: 720, margin: "0 auto" }}>
-          <button type="button" data-testid="wps-save" disabled={!!busy} onClick={() => void save()} style={{ width: "100%", minHeight: 46, borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontWeight: 800, fontSize: 14.5, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{busy === "save" ? t.rd_wed_saving : t.rd_wed_save}</button>
+          <SaveButton testid="wps-save" label={t.rd_wed_save} t={t} dirty={dirty} disabled={!!busy} onSave={save} style={{ width: "100%", minHeight: 46, borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontWeight: 800, fontSize: 14.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} />
         </div>
       </div>
     </Frame>

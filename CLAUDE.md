@@ -6200,7 +6200,124 @@ Jeff's approved designs: Channels 2×2 claude.ai/artifact/AegK5uxSUv6ajQSbx2YbRu
   `docs/design/shopee-no-beta/` (pictures, main-vs-branch 360 px ×8 languages, 8/8 breaks).
 - **Order:** merge (Vercel) → sql/202.
 
-## 2026-11-22 — NATIVE "SCAN STICKER QR" (branch `claude/native-qr-scanner`, NOT merged; sql/203 + sql/204 NOT applied; needs NEW app builds: iOS 2.0 build 15, Android 2.0 versionCode 11)
+## 2026-11-22 — SELLER WEBSITE: NEW LOOK "CATALOGUE AND SLIP" (branch `claude/website-catalogue`, NOT merged; sql/203 + sql/204 NOT applied; web only, no Render)
+Jeff approved the direction in `docs/design/website-redesign/PROPOSAL.md`. LOOK ONLY: cart, checkout, payment, order page,
+pricing, shipping and seller data are the same steps, fields, buttons and functions.
+- **How it is built:** an add-on style layer `V4_CSS` (`src/website/v4/styles.ts`, every rule under `.sfl-v2.k4`) + a React
+  flag `useNewLook()` (`v4/ctx.ts`) for the few places that draw an icon instead of an emoji. Same components, same
+  testids, same handlers. The old look's render branch in `ShopApp.tsx` is untouched (`frame()` holds the shared children).
+- **Who sees it — ONE database answer:** `website_new_look(p_sub)` (sql/203) = switch
+  `app_settings.website_new_look_enabled` exactly 'true' (created 'false') OR the shop is on the JSON list
+  `app_settings.website_new_look_shops` (created `["live"]` — the only website that exists; there is no "budgetukay"
+  address in the database) OR the person looking is a signed-in admin. App: `loadNewLook(sub)` (`v4/gate.ts`) — false on
+  an error, a missing function or no answer in 2.5 s. The shop asks ONCE before it shows (never a change of look in front
+  of the buyer). `ShopApp` prop `newLook` (tests, the editor preview) skips the question.
+  **Add a test shop = one UPDATE of `website_new_look_shops` (no deploy). Release = the switch 'true'.**
+- **The seller's settings, drawn the new way (`v4/look4.ts`, pure):** top colour 1 = the flat sign (logo + shop name on
+  every page), top colour 2 = a thin stripe under it (never a blend); button colour; sale colour; light / dark; font
+  (Modern = Archivo · Friendly = Bricolage Grotesque + Figtree · Classic = Newsreader + Archivo — only the picked one is
+  loaded); corners; **photo shape tall / square**. A shop that never set a look (Pop / Boutique / Bold) is drawn from the
+  same mapping the editor shows (`lookFor` = `legacyLook`, test-pinned). Text on a seller colour = white or pure black,
+  whichever reads better (`textOn4`, never under 4.5 : 1); a colour used as text is stepped until it reads (`readable`).
+- **Photo shape needs NO table column:** it is one key in the look JSON (`look.shape: "square"`; tall = no key).
+  sql/203 adds that one key to the whitelist function `website_public_look` (= sql/168's text + one line; a guard
+  refuses to run if the live function is not sql/168's text, md5 checked 2026-11-22). The older looks never read it.
+- **Editor (only when the answer is yes; else exactly the editor of before):** `WebsiteEditor` asks the same function
+  (prop `newLook` for tests) → `WebsiteLookEditor newLook`: **Photo shape** control, sign + stripe previews instead of
+  blend chips, hint `rd_wed_top_hint4`, live preview in the new look. A seller with NO website yet starts on
+  `NEUTRAL_LOOK` (`newWebsiteDraft(true)`) — only if they have not changed anything when the answer arrives. Existing
+  websites are never rewritten. New i18n: `rd_wed_shape`, `_tall`, `_square`, `_hint`, `rd_wed_top_hint4` (8 languages).
+- **Phones, new look:** inner pages show a search ICON (`shop-search-open`) that opens the same search box, so the shop
+  name fits. The round chat button is not drawn on phones (Chat is in the bottom bar and opens the same sheet); on
+  laptops it sits in a lane the page column stays out of. Measured: `harness/fab-check.cjs` (104 page × width cases, 0
+  covered; goes red when the lane rule is removed).
+- **Fixes for EVERYONE (not behind the switch, one commit each):** (a) checkout: a missing / wrong field gets its error
+  next to it, `aria-invalid`, and the page scrolls to the first one (`BAD_FIELD`, `checkoutPages.tsx`); (b) the red LIVE
+  tag's text is white (4.70 : 1); (c) cart panel, size sheet and every bottom sheet stay above the phone keyboard
+  (`v2/useAboveKeyboard.ts`, visualViewport — ⚠️ tested with a simulated keyboard, not on a real phone).
+- **Proof that nothing else changed:** `sameAsMain.pages.test.tsx` (66 pages, switch off = main's fingerprints in
+  `fixtures/pagesOnMain.json`; the only allowed difference is the LIVE tag rule) · `sameAsMain.flow.test.tsx` (a 20-step
+  buyer journey: paths, device storage, every order-service call incl. the whole `place` payload, totals — main = off =
+  on, 6 shop kinds, `fixtures/flowOnMain.json`). ⚠️ When the shop changes ON PURPOSE later, retake both fixtures on main:
+  `SFL_SHOP_DUMP=<file>` / `SFL_FLOW_DUMP=<file>` with the two test files + `fixtures/proofShops.ts` copied to a main checkout.
+  Also `v4.newLook.test.tsx`, `v4.editor.test.tsx`, `v4.sql203.test.ts`, `scripts/sql203-behaviour.mjs` (PGlite, 59).
+- **Pictures of the real build:** `docs/design/website-redesign/built/` (home / product / cart / checkout / order ×
+  390 / 412 / 1280 × clothes + food in the new look, + the clothes shop with the switch off). Stand-in drawings, demo buyer.
+- **Order:** sql/203 (switch stays 'false'; the listed shop + admins see the new look once the web is live) → merge
+  (Vercel) → Jeff tests → switch 'true' → sql/204 (guide line). Web before sql/203 = safe: nobody sees the new look.
+  Rollback: switch 'false' / list '[]' (instant), or `sql/203_website_new_look_rollback.sql`.
+- **Not done / known:** no real-phone test; the first load (517 KB) is unchanged (options in the report); admins see the
+  new look on every shop while signed in (buyers of an unlisted shop still see the old one); the five ready
+  combinations are unchanged (no "Neutral" chip to go back to — pick the colours by hand).
+
+## 2026-11-22 — BUTTON FEEDBACK: ONE COPY / SAVE PATTERN (branch `claude/button-feedback`, NOT merged; web only — no SQL to apply, no Render)
+Jeff: in Settings → Website, Copy changed nothing and Save went back to "Save" → he tapped many times.
+- **The pattern (`adapters/buttonFeedback.ts`, `components/CopyButton.tsx`, `CopyFailNote.tsx`, `SaveButton.tsx`):**
+  - **Copy** → "✓ Copied" (green) 2 s → Copy. Clipboard refused → the button stays "Copy" and `CopyFailNote` shows
+    "Couldn't copy — press and hold the link to copy" + the text itself in a box, already selected (stays until ×).
+    `floating` = drawn above the bottom bar (a portal into `[data-redesign]`) for Copy buttons inside a list.
+  - **Save** → "Saving…" (off) → "✓ Saved" (green) 2 s → Save. `dirty={false}` (nothing changed since the last
+    save) → "Saved", off. Failed → "Couldn't save — tap to try again" (red, stays, tappable); the form is not touched.
+    `onSave` answers `true` | `false` | `"blocked"` (nothing was sent — the screen shows its own message and brings
+    it into view; the button goes back to Save, not red). An edit while "✓ Saved" shows brings Save back at once.
+    One request for a double tap (the button is off + `flying` ref in `useSaveFeedback`).
+  - Colours `FB_GREEN #047857` / `FB_RED #be123c` (white text ≥ 4.5 : 1 in both themes). Timers = `useScreenTimers`.
+  - Texts `rd_fb_copied`, `rd_fb_copy_failed_link`, `rd_fb_copy_failed_text`, `rd_fb_saving`, `rd_fb_saved`,
+    `rd_fb_save_failed` (8 languages). 🔑 **A new Copy or Save button in the seller app uses these components.**
+- **Where it is applied:** Settings → Website (`wed-copy`, `wed-save`), Website → Payment & shipping (`wps-save`),
+  Orders → Website order link (`wor-link`), Settings profile (`set-profile-save`), laptop auto-print command
+  (`kiosk-copy`), Pickup Status copies (toast only when it really copied + the floating note when refused).
+  "Saving…" word on forms that close or clear after a save: Shipping ×2, Parcel Scan, FamilyMart Parcel Scan,
+  Customers edit ×2, Posts price edit (+ a line when that save fails — it used to stay silent).
+- **`dirty` per form:** Website = no website yet, or address / draft differ from the saved ones (JSON); Payment &
+  shipping = differs from `savedKey` OR something still needs fixing (so the tap can say what is missing); profile =
+  differs from the stored profile and from what the last Save sent (`savedForm`).
+- **Only `components/inviteShare.ts` `copyText` writes to the clipboard** (test-pinned); it answers true / false.
+  Website and Website orders used to call `navigator.clipboard?.writeText(...).catch(() => {})` and toast "Copied"
+  whatever happened.
+- **NOT changed (listed in the report):** printing files (0-lines rule — Receipt format ×3 already says
+  Saving… / Saved / failed; "Save settings" and "Save size" answer with a toast), Admin-only screens, Manage
+  channels (the button exists only while something changed + "✓ Saved" line), invite code, password reset, Products.
+- Tests: `adapters/__tests__/buttonFeedback.test.tsx` · `screens/__tests__/buttonFeedback.screens.test.tsx` ·
+  18/18 on-purpose breaks (`docs/design/button-feedback/proof/`). Pictures: `docs/design/button-feedback/shots/`
+  (7 states × 390 / 412 / 1280 + dark). Guide: one line in the website section + 116b regenerated (the live guide
+  table has no website row yet, so there is no separate SQL file).
+- Seen while measuring, old, not changed: the Website screen's title pulse (`sfl-anim-beat` on a full-width div)
+  makes the page a few px wider for a split second (up to ~60 px at 1280).
+
+## 2026-11-22 — ACCOUNT LIMITS v2: THE 4-HOUR RULE = "THE FIRST SWAP IS FREE" (branch `claude/account-swap-rule`, NOT merged; sql/205 NOT applied; web only, no Render)
+Jeff's decision (replaces rule (b) of the block above): with (b) even the FIRST swap waited 4 hours — a seller who
+must move platform right now (TikTok restricted → Shopee / Facebook) could not go live.
+- **Rule (v2 sellers, every platform):** remove an account + add a DIFFERENT one = immediate. The account that
+  took the place is locked 4 hours (`account_seats.lock_until`, set by sql/84's `account_total_guard` — NOT changed).
+  Removed inside the 4 hours → its place stays used until they end (a different new one is refused: `account_limit`
+  / Shopee `locked`). Same account back = immediate. A removal never starts a wait (an admin's neither). Admins /
+  exempt sellers: no limit, no lock. = the rule every seller already has since sql/84.
+- **Found first (read-only, production 2026-11-22):** sql/199 IS applied (switch `shopee_account_enforce` 'false');
+  sql/201 (guide) is NOT. Production's `shopee_link_register` = the repo's statements without its two trailing
+  `--` comments (md5 602ee3c9… ≠ the repo file's) — not touched here.
+- **sql/205 (+ rollback), two functions, md5 guard like sql/199:** `account_seat_vacate` = sql/84's text word for
+  word (md5 c7df6579…; for a seller not in v2 the live function already did exactly this). `my_account_list` =
+  sql/199's + ONE key per account `'lock_until'` (own registered account, `lock_until > now()`; null for an
+  admin / exempt seller). Rollback = sql/199's two texts. Either order with the web is safe: old app + new SQL =
+  the extra key is ignored; new app + old SQL = no `lock_until` → Remove asks as before and rule (b) still waits.
+- **App:** `adapters/planFull.ts` `AccountRow.lockUntil` + `lockMs(a, list, deviceNow)` (server clock, null when
+  unlimited). `PlanFullPopup` + `ShopeeShops`: Remove on a locked account → the existing "Wait a little" sheet with
+  `rd_pf_wait_locked` + the countdown; nothing is removed. After a normal removal: "Removed. You can add the new
+  account now." Texts (8 languages): `rd_pf_rm_body` (Jeff's words), `rd_pf_lock_note`, `rd_pf_wait_*` ×5,
+  `rd_sh_err_shop_locked`, new `rd_pf_wait_locked`. `server/` = 0 lines.
+- ⚠️ The DATABASE does not refuse removing a locked account (as before sql/199) — it keeps the place used; the two
+  v2 screens are what stop the tap. Facebook / Instagram Remove on their own Settings screens is unchanged.
+- ⚠️ An account removed and added back while NOT locked takes its own old place and gets the 4-hour lock
+  (sql/84's step (c), unchanged).
+- **Guide:** account-limit + connect-shopee lines, 116b regenerated, sql/201 (not applied) kept equal — no new guide SQL.
+- **Proof:** `scripts/sql205-behaviour.mjs` (PGlite, 74: not-in-preview story 67/67 identical to production, first
+  swap on TikTok / Facebook / Instagram / Shopee / TikTok→Shopee, second refused, same back, admin, guard, rollback) ·
+  `accountSwapRuleSql.test.ts` (CI) · `PlanFullPopup.test.tsx` · `ShopeeShops.test.tsx` · `planFull.test.ts` ·
+  `planFull.app.test.tsx` · `docs/design/account-swap-rule/` (README, same-as-main, breaks, 76 pictures).
+- **Order:** sql/205 → merge (Vercel). To release v2 later: sql/200 → switch 'true' → sql/201 (unchanged order).
+
+## 2026-11-22 — NATIVE "SCAN STICKER QR" (branch `claude/native-qr-scanner`, NOT merged; sql/206 + sql/207 NOT applied; needs NEW app builds: iOS 1.10 build 15, Android 1.10 versionCode 11)
 A live camera scanner in the phone app for every Scan button: 7-11 Parcel Scan, FamilyMart Parcel Scan,
 Blacklist and a NEW **Scan** button next to the Orders search box. Not Pickup Status. Printing untouched.
 - **Web (`adapters/nativeQrScanner.ts`):** `nativeQrScanner()` = the kill switch (`setNativeQrScannerOn`,
@@ -6245,9 +6362,9 @@ Blacklist and a NEW **Scan** button next to the Orders search box. Not Pickup St
   **Gate before upload:** `bash mobile/android/qr-scanner-gate.sh` (builds main + this checkout; PASS/FAIL
   for size ≤ 6 MB per phone, 16 KB alignment of every new 64-bit .so, no new permission / required
   feature, same minSdk). FAIL → stop, ZXing is the fallback.
-- **SQL:** sql/203 = the switch row 'true' (rollback deletes it → photo flow). sql/204 = help-guide phrase
+- **SQL:** sql/206 = the switch row 'true' (rollback deletes it → photo flow). sql/207 = help-guide phrase
   swaps (parcel-scan, blacklist, orders-search; anchors checked on the live rows 2026-11-22) — apply after
-  the store builds are live. Proof `scripts/sql203-behaviour.mjs` (PGlite, 20).
+  the store builds are live. Proof `scripts/sql206-behaviour.mjs` (PGlite, 20).
 - **native-version.json NOT raised** — raise `ios.latest` → 15 and `android.latest` → 11 only after each
   store version is LIVE (Android already has `getBuildNumber` since versionCode 6).
 - Tests: `qrCentrePick.test.ts`, `nativeQrScanner.test.ts`, `nativeScan.screens.test.tsx` (new build vs

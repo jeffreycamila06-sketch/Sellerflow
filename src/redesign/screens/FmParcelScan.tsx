@@ -552,7 +552,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
               )}
               {saveErr && <div style={errTxt} data-testid="fms-save-err">{t.rd_ps2_err_save}</div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
-                <button onClick={() => void (editing ? onEditSave() : onManualSave())} disabled={saveBlocked} style={{ ...btnFull(!saveBlocked), flex: 2 }} data-testid="fms-save">{t.rd_ps2_save}</button>
+                <button onClick={() => void (editing ? onEditSave() : onManualSave())} disabled={saveBlocked} style={{ ...btnFull(!saveBlocked), flex: 2 }} data-testid="fms-save">{saving ? t.rd_fb_saving : t.rd_ps2_save}</button>
                 {editing
                   ? <button onClick={cancelEdit} style={btnGhost} data-testid="fms-edit-cancel">{t.rd_ps2_cancel}</button>
                   : <button onClick={cancelManual} style={btnGhost} data-testid="fms-manual-cancel">{manualCount > 0 ? t.rd_ps2_done : t.rd_ps2_cancel}</button>}

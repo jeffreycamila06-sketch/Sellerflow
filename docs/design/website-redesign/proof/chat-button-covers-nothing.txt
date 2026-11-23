@@ -1,0 +1,105 @@
+clothes home          360px  button=hidden  chat-in-bottom-bar=yes  stops=10  covered=0
+clothes home          390px  button=hidden  chat-in-bottom-bar=yes  stops= 9  covered=0
+clothes home          412px  button=hidden  chat-in-bottom-bar=yes  stops= 8  covered=0
+clothes home          430px  button=hidden  chat-in-bottom-bar=yes  stops= 8  covered=0
+clothes home          820px  button=hidden  chat-in-bottom-bar=yes  stops= 7  covered=0
+clothes home          860px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+clothes home          900px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+clothes home         1024px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+clothes home         1180px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+clothes home         1280px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+clothes home         1366px  button=shown  chat-in-bottom-bar=no   stops= 9  covered=0  gap-to-page-column=53px
+clothes home         1440px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=90px
+clothes home         1920px  button=shown  chat-in-bottom-bar=no   stops= 6  covered=0  gap-to-page-column=330px
+clothes all products  360px  button=hidden  chat-in-bottom-bar=yes  stops= 7  covered=0
+clothes all products  390px  button=hidden  chat-in-bottom-bar=yes  stops= 6  covered=0
+clothes all products  412px  button=hidden  chat-in-bottom-bar=yes  stops= 6  covered=0
+clothes all products  430px  button=hidden  chat-in-bottom-bar=yes  stops= 6  covered=0
+clothes all products  820px  button=hidden  chat-in-bottom-bar=yes  stops= 7  covered=0
+clothes all products  860px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=16px
+clothes all products  900px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=16px
+clothes all products 1024px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=16px
+clothes all products 1180px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=16px
+clothes all products 1280px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=16px
+clothes all products 1366px  button=shown  chat-in-bottom-bar=no   stops= 4  covered=0  gap-to-page-column=53px
+clothes all products 1440px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=90px
+clothes all products 1920px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=330px
+clothes saved         360px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes saved         390px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes saved         412px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes saved         430px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes saved         820px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes saved         860px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes saved         900px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes saved        1024px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes saved        1180px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes saved        1280px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes saved        1366px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=53px
+clothes saved        1440px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=90px
+clothes saved        1920px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=330px
+clothes orders        360px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes orders        390px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes orders        412px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes orders        430px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes orders        820px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+clothes orders        860px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes orders        900px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes orders       1024px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes orders       1180px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes orders       1280px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+clothes orders       1366px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=53px
+clothes orders       1440px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=90px
+clothes orders       1920px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=330px
+food    home          360px  button=hidden  chat-in-bottom-bar=yes  stops=10  covered=0
+food    home          390px  button=hidden  chat-in-bottom-bar=yes  stops= 8  covered=0
+food    home          412px  button=hidden  chat-in-bottom-bar=yes  stops= 8  covered=0
+food    home          430px  button=hidden  chat-in-bottom-bar=yes  stops= 7  covered=0
+food    home          820px  button=hidden  chat-in-bottom-bar=yes  stops= 6  covered=0
+food    home          860px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+food    home          900px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+food    home         1024px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+food    home         1180px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=16px
+food    home         1280px  button=shown  chat-in-bottom-bar=no   stops= 7  covered=0  gap-to-page-column=16px
+food    home         1366px  button=shown  chat-in-bottom-bar=no   stops= 8  covered=0  gap-to-page-column=53px
+food    home         1440px  button=shown  chat-in-bottom-bar=no   stops= 7  covered=0  gap-to-page-column=90px
+food    home         1920px  button=shown  chat-in-bottom-bar=no   stops= 6  covered=0  gap-to-page-column=330px
+food    all products  360px  button=hidden  chat-in-bottom-bar=yes  stops= 5  covered=0
+food    all products  390px  button=hidden  chat-in-bottom-bar=yes  stops= 5  covered=0
+food    all products  412px  button=hidden  chat-in-bottom-bar=yes  stops= 4  covered=0
+food    all products  430px  button=hidden  chat-in-bottom-bar=yes  stops= 4  covered=0
+food    all products  820px  button=hidden  chat-in-bottom-bar=yes  stops= 4  covered=0
+food    all products  860px  button=shown  chat-in-bottom-bar=no   stops= 2  covered=0  gap-to-page-column=16px
+food    all products  900px  button=shown  chat-in-bottom-bar=no   stops= 2  covered=0  gap-to-page-column=16px
+food    all products 1024px  button=shown  chat-in-bottom-bar=no   stops= 2  covered=0  gap-to-page-column=16px
+food    all products 1180px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=16px
+food    all products 1280px  button=shown  chat-in-bottom-bar=no   stops= 2  covered=0  gap-to-page-column=16px
+food    all products 1366px  button=shown  chat-in-bottom-bar=no   stops= 3  covered=0  gap-to-page-column=53px
+food    all products 1440px  button=shown  chat-in-bottom-bar=no   stops= 2  covered=0  gap-to-page-column=90px
+food    all products 1920px  button=shown  chat-in-bottom-bar=no   stops= 2  covered=0  gap-to-page-column=330px
+food    saved         360px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    saved         390px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    saved         412px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    saved         430px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    saved         820px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    saved         860px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    saved         900px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    saved        1024px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    saved        1180px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    saved        1280px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    saved        1366px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=53px
+food    saved        1440px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=90px
+food    saved        1920px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=330px
+food    orders        360px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    orders        390px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    orders        412px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    orders        430px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    orders        820px  button=hidden  chat-in-bottom-bar=yes  stops= 1  covered=0
+food    orders        860px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    orders        900px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    orders       1024px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    orders       1180px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    orders       1280px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=16px
+food    orders       1366px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=53px
+food    orders       1440px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=90px
+food    orders       1920px  button=shown  chat-in-bottom-bar=no   stops= 1  covered=0  gap-to-page-column=330px
+OK: the chat button covers nothing in 104 page × width cases

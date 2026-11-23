@@ -15,6 +15,7 @@ import { Card } from "../v2/Card";
 import { Sheet } from "../v2/Shell";
 import { VIcon } from "../v2/icons";
 import { cheapestDelivery, relatedProducts } from "./productData";
+import { useNewLook } from "../v4/ctx";
 
 type T = Record<string, string>;
 export interface ProductProps {
@@ -24,6 +25,7 @@ export interface ProductProps {
 export default function Product(p: ProductProps) {
   const { shop, product, cur, nowMs } = p;
   const t = useT() as unknown as T;
+  const k4 = useNewLook(); // v4: drawn icons where the older looks have an emoji
   const groups = product.groups?.length && product.variants?.length ? product.groups : [];
   const [pick, setPick] = useState<(string | null)[]>(() => groups.map(() => null));
   const [qty, setQty] = useState(1);
@@ -79,7 +81,7 @@ export default function Product(p: ProductProps) {
             <div className="v-pr"><b data-testid="pd-price">{money(cur, price)}</b>{was && <s data-testid="pd-was">{money(cur, was)}</s>}{off > 0 && <span className="v-off">-{off}%</span>}</div>
             {ck.taxIncluded && <div data-testid="pd-tax" className="v-sub" style={{ marginTop: 2 }}>{t.rd_shop_tax_incl}</div>}
           </div>
-          {flashOn(product, nowMs) && <div className="v-note" data-testid="pd-flash">⚡ {t.rd_pd_flash} · <Cd end={product.flashEnd} startMs={nowMs} label={t.rd_home_ends_in} /></div>}
+          {flashOn(product, nowMs) && <div className="v-note" data-testid="pd-flash">{k4 ? <VIcon n="clock" size={18} /> : "⚡"} {t.rd_pd_flash} · <Cd end={product.flashEnd} startMs={nowMs} label={t.rd_home_ends_in} /></div>}
 
           {groups.map((g, gi) => (
             <div key={g.name} data-testid="pd-group">
@@ -111,7 +113,7 @@ export default function Product(p: ProductProps) {
               <span data-testid="pd-qty">{qty}</span>
               <button type="button" aria-label="+" data-testid="pd-plus" disabled={qty >= maxQty} onClick={() => setQty((q) => Math.min(maxQty, q + 1))}>+</button>
             </div>
-            <button type="button" className={`v-chip${saved ? " v-on" : ""}`} data-testid="pd-save" aria-pressed={saved} onClick={() => p.onSave(product.id)}>{saved ? `♥ ${t.rd_shop_saved}` : `♡ ${t.rd_shop_save}`}</button>
+            <button type="button" className={`v-chip${saved ? " v-on" : ""}`} data-testid="pd-save" aria-pressed={saved} onClick={() => p.onSave(product.id)}>{k4 ? <><VIcon n="heart" size={17} filled={saved} />{saved ? t.rd_shop_saved : t.rd_shop_save}</> : saved ? `♥ ${t.rd_shop_saved}` : `♡ ${t.rd_shop_save}`}</button>
           </div>
           <div className="v-dbuy">
             <button type="button" className="v-btn v-o" data-testid="pd-add-wide" disabled={!canBuy} onClick={() => p.onAdd(variant?.id ?? null, qty)}>{t.rd_shop_add_cart}</button>

@@ -22,7 +22,8 @@ import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
 import { useLang } from "../i18n/langContext";
 import { taipeiDayId } from "../../lib/dateHelpers";
-import { copyText } from "../components/inviteShare";
+import CopyFailNote from "../components/CopyFailNote";
+import { useCopyFeedback } from "../adapters/buttonFeedback";
 import { syncFromExport, type SyncResult } from "../adapters/parcelExportRead";
 import { uploadFmExport, type FmUploadResult } from "../adapters/fmPickup";
 import { keepTogetherPieces, keepTogetherBalanced } from "../adapters/keepTogether";
@@ -711,8 +712,11 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
     void loadBuyerContacts(req).then((m) => { if (live) setContacts(m); }, () => { /* fail open */ });
     return () => { live = false; };
   }, [carriersKey, namesNonce]);
+  // Copy taps (username, tracking number, message): the toast says "Copied" only when it really copied; a
+  // refused clipboard shows the text selected with the press-and-hold line (adapters/buttonFeedback.ts).
+  const copyFb = useCopyFeedback();
   const onCopyMsg = async (msg: string) => {
-    const ok = await copyText(msg);
+    const ok = await copyFb.copy(msg);
     if (ok) showToast(t.rd_pt_msg_copied, 1500);
   };
   const extras: RowExtras = { contacts, contactOn, onCopyMsg: (m) => void onCopyMsg(m) };
@@ -794,7 +798,7 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
   };
 
   const onCopy = async (handle: string) => {
-    const ok = await copyText(handle);
+    const ok = await copyFb.copy(handle);
     if (ok) showToast(t.rd_pt_copied, 1500);
   };
 
@@ -1031,6 +1035,7 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
       {/* The screen's own drag bar (right edge, under the sticky header); re-measured on every list change. */}
       <DragBar headerRef={headerRef} dep={`${state}|${tab}|${store}|${searchQ}|${page}|${rows.length}`} label={t.rd_pt_dragbar} />
 
+      <CopyFailNote fb={copyFb} t={t} what="text" floating testid="pt-copy-fail" />
       {toast && (
         <div style={{ position: "fixed", left: "50%", bottom: 30, transform: "translateX(-50%)", width: "max-content", maxWidth: "calc(100vw - 32px)", textAlign: "center", background: "var(--text)", color: "var(--surface)", padding: "9px 16px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, zIndex: 60 }} data-testid="pt-toast">
           {toast}

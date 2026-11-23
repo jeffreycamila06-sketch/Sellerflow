@@ -1,6 +1,6 @@
 -- ============================================================================
 -- sql/201 — help guide, FIVE rows of support_guide (2026-11-22): a Shopee shop counts as one account,
---   the "Plan full" window (Remove / End your live first / Upgrade plan or Contact Admin / the 4-hour wait),
+--   the "Plan full" window (Remove / End your live first / Upgrade plan or Contact Admin / the 4-hour rule),
 --   Settings → Channels as four boxes, the Shopee shops screen.
 --   Rows: general-settings, account-limit, connect-shopee, manage-accounts, other-platforms.
 -- Same text as docs/support/sfl-guide.md / sql/116b. Only these rows; every other row stays as it is.
@@ -25,7 +25,7 @@ When your plan is full, a **Plan full** window shows your accounts:
 - Tap **Remove** next to one, then **Remove** again to confirm. Your orders and stickers stay.
 - An account that is live right now shows **End your live first** — end that live, then remove it.
 - Or tap **Upgrade plan** (on iPhone: **Contact Admin**).
-- After you remove an account, a **different** new account can be added only **4 hours** later ("Wait a little" shows the time left). Adding the same account back works right away.
+- After you remove an account you can add a **different** one right away. That new account then can''t be removed or changed again for **4 hours** ("Wait a little" shows the time left). Adding the same account back works right away.
 
 Messages you may see:
 - "Accounts used: 2 of 3" — your count.
@@ -61,7 +61,7 @@ Messages:
 - "Shopee only on your plan — upgrade to use TikTok/Facebook." On a free plan you can use Shopee only. Message Admin to upgrade.
 - "Shopee access ended — contact Admin." Your 30 days are over. Message Admin to continue.
 - "No room for this Shopee shop. Remove an account in Settings to add it." Your plan is full — remove an account or upgrade.
-- "You removed an account. A new Shopee shop can be added 4 hours after the removal." Wait until the time shown, then tap **Connect** again.
+- "An account was changed less than 4 hours ago. A new Shopee shop can be added when the 4 hours are over." Wait until the time shown, then tap **Connect** again.
 - "This Shopee shop is outside your account limit. Remove an account in Settings to go live with it." Only your oldest accounts within your plan can go live.'),
   ('manage-accounts', 'Manage TikTok accounts (4-hour lock)', '2026-11-22'::date, 'manage accounts, change username, tiktok username, locked, unlock, 4 hours, palitan account, naka-lock, 更改账号, 換帳號, 锁定', 'Go to **Settings → General Settings → TikTok Live** (or **Manage / add accounts** on the Live screen). This opens **Manage TikTok channels**.
 

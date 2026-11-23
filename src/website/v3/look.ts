@@ -9,9 +9,12 @@
 export type LookLayout = "brand" | "market";
 export type LookFont = "modern" | "friendly" | "classic";
 export type LookCorners = "sharp" | "round";
+/** The new look only (v4): the frame every product photo sits in. Absent = tall. The older looks never read it. */
+export type LookShape = "tall" | "square";
 export interface ShopLook {
   layout: LookLayout; top1: string; top2: string; btn: string; sale: string; dark: boolean; font: LookFont; corners: LookCorners;
   tiles?: string[];
+  shape?: LookShape;
 }
 export type LookColours = Pick<ShopLook, "top1" | "top2" | "btn" | "sale" | "dark" | "font" | "corners">;
 
@@ -38,7 +41,7 @@ export function cleanLook(raw: unknown): ShopLook | undefined {
   const top1 = hex("top1"), top2 = hex("top2"), btn = hex("btn"), sale = hex("sale");
   if (!layout || !font || !corners || !top1 || !top2 || !btn || !sale || typeof o.dark !== "boolean") return undefined;
   const tiles = Array.isArray(o.tiles) ? o.tiles.filter((x): x is string => typeof x === "string").map((x) => x.trim().slice(0, MAX_TILE)).filter(Boolean).slice(0, 2) : [];
-  return { layout, top1, top2, btn, sale, dark: o.dark, font, corners, ...(tiles.length ? { tiles } : {}) };
+  return { layout, top1, top2, btn, sale, dark: o.dark, font, corners, ...(tiles.length ? { tiles } : {}), ...(o.shape === "square" ? { shape: "square" as const } : {}) };
 }
 
 // ── contrast (WCAG relative luminance), as the preview's lum / ratio / onCol ──

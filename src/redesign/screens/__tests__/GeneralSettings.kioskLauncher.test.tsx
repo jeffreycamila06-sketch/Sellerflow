@@ -89,13 +89,13 @@ describe("GeneralSettings — laptop auto-print card (admin + allowlist only)", 
     expect(screen.queryByText(BTN)).toBeNull();
   });
 
-  it("clicking Copy writes the exact Windows command to the clipboard + shows 'Copied ✓'", async () => {
+  it("clicking Copy writes the exact Windows command to the clipboard + shows '✓ Copied'", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     renderGS(acct({ role: "admin" }));
     fireEvent.click(screen.getByText(BTN));
     expect(writeText).toHaveBeenCalledWith(KIOSK_COMMAND_WINDOWS);
-    expect(await screen.findByText("Copied ✓")).toBeTruthy();
+    expect(await screen.findByText("✓ Copied")).toBeTruthy();
   });
 
   it("the read-only command input is present as the manual-copy fallback", () => {
