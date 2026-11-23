@@ -24,20 +24,20 @@ RED  Blacklist clears the note before the scanner opens
 RED  Android: no portrait lock
 RED  Android: close() does not restore
 RED  iPhone: unreadable photo reported as cancelled
-RED  version name back to 2.0
+RED  Android versionCode back to 10
 RED  batchLimit: shutter checked before the rows are in
 RED  Android: chip-type filter removed
 RED  Android: x86_64 chip type added
-RED  Android: one more library in build.gradle
+RED  Android: one more library in build.gradle [SCANNER_GATE=1]
 RED  iPhone: photo library can be swiped away
 RED  iPhone: Cancel in the photo library does not finish the scan
-RED  Android printer code changed (TsplBuilder)
-RED  iPhone printer code changed (NiimbotKitDriver)
-RED  iPhone Swift package version changed (Package.swift)
-RED  iPhone Package.resolved changed
-RED  iPhone: a second line in SellerFlowBridgeViewController
-RED  iPhone: a framework added to the Xcode project
-RED  iPhone: the Bluetooth sentence in Info.plist changed
+RED  Android printer code changed (TsplBuilder) [SCANNER_GATE=1]
+RED  iPhone printer code changed (NiimbotKitDriver) [SCANNER_GATE=1]
+RED  iPhone Swift package version changed (Package.swift) [SCANNER_GATE=1]
+RED  iPhone Package.resolved changed [SCANNER_GATE=1]
+RED  iPhone: a second line in SellerFlowBridgeViewController [SCANNER_GATE=1]
+RED  iPhone: a framework added to the Xcode project [SCANNER_GATE=1]
+RED  iPhone: the Bluetooth sentence in Info.plist changed [SCANNER_GATE=1]
 RED  Orders: Scan button back to minHeight (row taller)
 RED  Orders: Scan button not pulled into the row padding
 RED  gate a: a new chip type passes
@@ -52,4 +52,36 @@ RED  gate e: a new permission passes
 RED  gate f: too big passes
 RED  gate f: unaligned .so passes
 RED  gate script: builds the branch in this checkout
-54/54 breaks caught
+RED  byte pin runs without SCANNER_GATE (would block later mobile/ work)
+RED  byte pin test always on in CI
+RED  byte pin has no teeth (changed files ignored)
+RED  byte pin: added mobile/ files ignored
+RED  gate script: base = origin/main tip even after the merge
+RED  gate script: runs from a commit without the scanner
+RED  gate script: byte pin without SCANNER_GATE=1
+RED  gate script: git worktree prune back
+RED  gate c: dexdump without -a (annotations not compared)
+RED  gate c: annotations not attached to their class
+RED  gate c: annotation method numbers kept (false FAIL)
+RED  gate d: FAILED line ignored
+RED  gate d: {require/reject} line ignored
+RED  gate d: (n) line ignored
+RED  gate d: empty dependency list passes
+RED  gate e: empty manifest passes
+RED  gate e: missing BLUETOOTH_CONNECT passes
+RED  gate e: LAUNCHER / intent-filter removed passes
+RED  gate e: new uses-library passes
+RED  gate e: application setting change passes
+RED  gate e: <manifest> package change passes
+RED  gate g: changed asset passes
+RED  gate g: removed file passes
+RED  gate g: any new file passes
+RED  gate g: resource numbers compared (false FAIL on a shift)
+RED  gate g: changed resource value passes
+RED  gate g: removed resource passes
+RED  gate g: changed res XML passes
+RED  gate g: style entries compared in order (false FAIL)
+RED  gate g: unreadable resources.pb not CANNOT MEASURE
+RED  gate CLI: CANNOT MEASURE exits 1 like a FAIL
+RED  Orders: Scan tap area back to 4px higher (43px at a 33px row)
+86/86 breaks caught

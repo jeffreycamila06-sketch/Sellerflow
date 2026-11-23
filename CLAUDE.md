@@ -6401,24 +6401,40 @@ Blacklist and a NEW **Scan** button next to the Orders search box. Not Pickup St
   `ndk { abiFilters "armeabi-v7a", "arm64-v8a" }` in defaultConfig = today's two chip types only (the
   Niimbot .aar files are ARM-only; CameraX / ML Kit's x86 copies are left out).
   **PRINTER-SAFETY GATE before upload (Mac, once):** `bash mobile/android/qr-scanner-gate.sh` from a
-  worktree of the branch (never ~/Sellerflow). Builds the RELEASE .aab of origin/main and of the branch in two
-  throw-away worktrees, then `qr-scanner-gate-check.mjs` prints PASS/FAIL: a) chip types = main's;
-  b) every .so of main with the same sha256; c) printer library files + every dex class the printer code
-  reaches (SellerFlowPrinterPlugin, MainActivity, the 3 printer libraries, transitively; offsets / index
-  numbers / line numbers removed) identical — MainActivity may differ only by the one registerPlugin line;
-  d) every library of main's releaseRuntimeClasspath keeps its version; e) merged manifest: no new
-  permission / feature, new components only from CameraX / ML Kit (merge report), nothing Bluetooth
-  changed; f) ≤ 6 MB per phone, new 64-bit .so 16 KB aligned. Any FAIL → "STOP — do not release".
-  Logic tested on made-up inputs: `qrScannerGate.test.ts`. A real-build FAIL → ask Claude (may be a
-  false FAIL, never release on it).
+  worktree of the branch (never ~/Sellerflow — commands in the script header). BASE = the newest origin/main
+  commit WITHOUT `SellerFlowScannerPlugin.java` (first-parent log), NEW = HEAD (the exact commit to upload);
+  both ids printed (`--commits` prints only them). It first runs the mobile/ byte pin vs BASE
+  (`SCANNER_GATE=1 node scripts/native-scanner-fence.mjs --check --base <id>`), then builds both RELEASE
+  .aab files in throw-away worktrees and `qr-scanner-gate-check.mjs` checks: a) chip types; b) every .so of
+  the base, same sha256; c) printer library files + every dex class the printer code reaches
+  (`dexdump -d -a`: code AND annotations, offsets / index numbers removed) — MainActivity may differ only by
+  the one registerPlugin line; d) every library keeps its version (an unreadable dependency line =
+  CANNOT MEASURE); e) the WHOLE merged manifest: only new CameraX / ML Kit elements (merge report);
+  anything else added / removed / changed, a missing `<application>` / BLUETOOTH_CONNECT or an empty
+  manifest = FAIL; g) every other .aab file hashed (assets incl. capacitor.config.json, res, root, META-INF;
+  resources.pb + compiled XML compared BY NAME with ids dropped) — only the 3 `sfl_qr_*` drawables and
+  CameraX / ML Kit files may be new, anything else changed = FAIL with the file name; f) ≤ 6 MB per phone,
+  new 64-bit .so 16 KB aligned. Exit 0 PASS · 1 "STOP — do not release" · 2 "CANNOT MEASURE — STOP".
+  Writes in ~/Sellerflow's .git only: fetch of origin/main, two `git worktree add` entries it removes again,
+  `git lfs pull` objects; never `git worktree prune`; the keystore is only read.
+  Logic tested on made-up inputs: `qrScannerGate.test.ts`. ⚠️ resources.pb / compiled-XML decoding follows
+  aapt2's Resources.proto but was never run on a real .aab here. A real-build FAIL or CANNOT MEASURE →
+  ask Claude (may be a false alarm, never release on it).
 - **SQL:** sql/208 = the switch row 'true' (rollback deletes it → photo flow). sql/209 = help-guide phrase
   swaps (parcel-scan, blacklist, orders-search; anchors checked on the live rows 2026-11-22) — apply after
   the store builds are live. Proof `scripts/sql208-behaviour.mjs` (PGlite, 20).
 - **native-version.json NOT raised** — raise `ios.latest` → 15 and `android.latest` → 11 only after each
   store version is LIVE (Android already has `getBuildNumber` since versionCode 6).
+- 🔴 **Do NOT apply `sql/116b` until 1.10 is LIVE in BOTH stores** — 116b (regenerated from the guide) holds the
+  scanner wording. Until then ship any other guide change as its own phrase-swap SQL (like sql/209), never 116b.
 - Tests: `qrCentrePick.test.ts`, `nativeQrScanner.test.ts`, `nativeScan.screens.test.tsx` (new build vs
   laptop/old build/switch off per screen), `Orders.scan.test.tsx`, `nativeScanner.fence.test.ts`,
-  `nativeScannerMain.fence.test.ts` (every file under mobile/ = main's bytes except the scanner's; the 5 edited
-  files = main's minus the scanner lines; fixture from `node scripts/native-scanner-fence.mjs` — ⚠️ a later
-  branch that changes a mobile/ file on purpose regenerates it). Orders header: row = main's height with the
-  Scan button (26 px button, margin -5/-6/-5/0, 44 px tap via .sfl-tap44), `docs/design/native-qr-scanner/header-check.cjs`.
+  `nativeScannerMain.fence.test.ts` = the mobile/ BYTE PIN (every file under mobile/ = the base's bytes except
+  the scanner's; the 5 edited files = the base's minus the scanner lines) — runs ONLY with `SCANNER_GATE=1`
+  (the gate script); normal CI skips it, so later mobile/ work never turns CI red. The always-on CI checks
+  (`nativeScanner.fence.test.ts`): one registration line each, scanner files never use printer code,
+  `includePlugins: []`, ARM-only abiFilters, no npm scanner plugin, no new permission, iOS build ≥ 15 and
+  versionCode ≥ 11 ("at least" — later releases only raise them). Proof: `docs/design/native-qr-scanner/proof/fence-scope.txt`.
+  Orders header: row = main's height with the Scan button (26 px button, margin -5/-6/-5/0, 44 px tap via
+  `.sfl-tap44 .sfl-tap44-up`, started 6 px higher → ≥ 44 px at a 33 px row with ✕ / tabs / chips / Sessions
+  unchanged), `docs/design/native-qr-scanner/header-check.cjs` (natural row + a forced 33 px row).

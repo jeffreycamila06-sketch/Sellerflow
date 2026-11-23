@@ -6,6 +6,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { checkTree, trackedMobile } from "../../../scripts/native-scanner-fence.mjs";
+import fenceFixture from "./fixtures/nativeScannerFence.json";
 
 const root = resolve(__dirname, "../../..");
 const read = (p: string) => readFileSync(resolve(root, p), "utf8");
@@ -64,6 +67,25 @@ describe("native QR scanner — fence", () => {
     const code = /versionCode (\d+)/.exec(read("mobile/android/app/build.gradle"));
     expect(code).not.toBeNull();
     expect(Number(code![1])).toBeGreaterThanOrEqual(11);
+  });
+  it("the mobile/ byte pin is skipped in normal CI (only SCANNER_GATE=1 runs it — the Mac gate)", () => {
+    const env = { ...process.env };
+    delete env.SCANNER_GATE;
+    const r = spawnSync(process.execPath, [resolve(root, "scripts/native-scanner-fence.mjs"), "--check"], { cwd: root, env, encoding: "utf8" });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("mobile/ byte pin: skipped (set SCANNER_GATE=1");
+    const pin = read("src/redesign/__tests__/nativeScannerMain.fence.test.ts");
+    expect(pin).toContain('const ON = process.env.SCANNER_GATE === "1";');
+    expect(pin).toMatch(/if \(!ON\) \{\s*describe\([^)]*\) => \{\s*it\.skip\(/);
+  });
+  it("…and when it runs it still catches a changed printer file and an added mobile/ file", () => {
+    type Fx = { from: string; unchanged: Record<string, string>; edited: Record<string, string> };
+    const fx = JSON.parse(JSON.stringify(fenceFixture)) as Fx;
+    const tspl = "mobile/android/app/src/main/java/com/sellerflow/live/TsplBuilder.java";
+    const extra = "mobile/android/variables.gradle";
+    fx.unchanged[tspl] = "0".repeat(64); // as if the base had other bytes
+    delete fx.unchanged[extra]; // as if the base did not have this file
+    expect(checkTree(root, fx, trackedMobile(root))).toEqual(expect.arrayContaining([`changed: ${tspl}`, `added: ${extra}`]));
   });
   it("the iPhone camera text names the sticker QR and parcel slips", () => {
     const plist = read("mobile/ios/App/App/Info.plist");

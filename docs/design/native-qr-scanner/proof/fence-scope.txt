@@ -1,0 +1,30 @@
+Scratch copy of commit d903532e with four later-style changes (git diff --cached --stat):
+ mobile/android/app/build.gradle                                       | 2 +-
+ mobile/android/app/src/main/java/com/sellerflow/live/TsplBuilder.java | 2 +-
+ mobile/android/app/src/main/res/raw_note.txt                          | 1 +
+ public/native-version.json                                            | 4 ++--
+ 4 files changed, 5 insertions(+), 4 deletions(-)
+
+== 1. Normal CI (no SCANNER_GATE): the tests that read these files ==
+ Test Files  12 passed | 1 skipped (13)
+      Tests  300 passed | 1 skipped (301)
+
+== 2. SCANNER_GATE=1: the mobile/ byte pin ==
+     × printer code, printer libraries, Swift packages, gradle and every other file: the base's exact bytes; the 5 edited files: only the scanner lines; nothing added 25ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/redesign/__tests__/nativeScannerMain.fence.test.ts > native QR scanner — mobile/ byte pin vs 3dfb26b8 (SCANNER_GATE=1) > printer code, printer libraries, Swift packages, gradle and every other file: the base's exact bytes; the 5 edited files: only the scanner lines; nothing added
+AssertionError: expected [ …(2) ] to deeply equal []
++   "changed: mobile/android/app/src/main/java/com/sellerflow/live/TsplBuilder.java",
++   "added: mobile/android/app/src/main/res/raw_note.txt",
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+
+== 3. The gate's own step (SCANNER_GATE=1 node scripts/native-scanner-fence.mjs --check) ==
+FAIL mobile/ byte pin vs base 3dfb26b8: 2 problem(s)
+  changed: mobile/android/app/src/main/java/com/sellerflow/live/TsplBuilder.java
+  added: mobile/android/app/src/main/res/raw_note.txt
+exit 1
+
+== 3b. same command without SCANNER_GATE ==
+mobile/ byte pin: skipped (set SCANNER_GATE=1 — qr-scanner-gate.sh does)
+exit 0
