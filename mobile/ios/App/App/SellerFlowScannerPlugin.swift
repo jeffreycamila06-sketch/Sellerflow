@@ -670,6 +670,8 @@ final class StickerPhotoFlow: NSObject, UIImagePickerControllerDelegate, UINavig
         config.selectionLimit = 1
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
+        // No swipe-down dismiss: the picker closes only through Cancel or a pick, so the scan always finishes.
+        picker.isModalInPresentation = true
         host.present(picker, animated: true)
     }
 

@@ -6398,13 +6398,27 @@ Blacklist and a NEW **Scan** button next to the Orders search box. Not Pickup St
   notification volume). Photo = Take photo (FileProvider cache path) / Choose from photos
   (`ACTION_GET_CONTENT`), re-encoded JPEG ≤ 4032 px. `QrCentrePickTest` (JUnit) passes on plain Java here;
   the plugin/dialog were NOT compiled in the cloud (no Android SDK / Google Maven).
-  **Gate before upload:** `bash mobile/android/qr-scanner-gate.sh` (builds main + this checkout; PASS/FAIL
-  for size ≤ 6 MB per phone, 16 KB alignment of every new 64-bit .so, no new permission / required
-  feature, same minSdk). FAIL → stop, ZXing is the fallback.
+  `ndk { abiFilters "armeabi-v7a", "arm64-v8a" }` in defaultConfig = today's two chip types only (the
+  Niimbot .aar files are ARM-only; CameraX / ML Kit's x86 copies are left out).
+  **PRINTER-SAFETY GATE before upload (Mac, once):** `bash mobile/android/qr-scanner-gate.sh` from a
+  worktree of the branch (never ~/Sellerflow). Builds the RELEASE .aab of origin/main and of the branch in two
+  throw-away worktrees, then `qr-scanner-gate-check.mjs` prints PASS/FAIL: a) chip types = main's;
+  b) every .so of main with the same sha256; c) printer library files + every dex class the printer code
+  reaches (SellerFlowPrinterPlugin, MainActivity, the 3 printer libraries, transitively; offsets / index
+  numbers / line numbers removed) identical — MainActivity may differ only by the one registerPlugin line;
+  d) every library of main's releaseRuntimeClasspath keeps its version; e) merged manifest: no new
+  permission / feature, new components only from CameraX / ML Kit (merge report), nothing Bluetooth
+  changed; f) ≤ 6 MB per phone, new 64-bit .so 16 KB aligned. Any FAIL → "STOP — do not release".
+  Logic tested on made-up inputs: `qrScannerGate.test.ts`. A real-build FAIL → ask Claude (may be a
+  false FAIL, never release on it).
 - **SQL:** sql/208 = the switch row 'true' (rollback deletes it → photo flow). sql/209 = help-guide phrase
   swaps (parcel-scan, blacklist, orders-search; anchors checked on the live rows 2026-11-22) — apply after
   the store builds are live. Proof `scripts/sql208-behaviour.mjs` (PGlite, 20).
 - **native-version.json NOT raised** — raise `ios.latest` → 15 and `android.latest` → 11 only after each
   store version is LIVE (Android already has `getBuildNumber` since versionCode 6).
 - Tests: `qrCentrePick.test.ts`, `nativeQrScanner.test.ts`, `nativeScan.screens.test.tsx` (new build vs
-  laptop/old build/switch off per screen), `Orders.scan.test.tsx`, `nativeScanner.fence.test.ts`.
+  laptop/old build/switch off per screen), `Orders.scan.test.tsx`, `nativeScanner.fence.test.ts`,
+  `nativeScannerMain.fence.test.ts` (every file under mobile/ = main's bytes except the scanner's; the 5 edited
+  files = main's minus the scanner lines; fixture from `node scripts/native-scanner-fence.mjs` — ⚠️ a later
+  branch that changes a mobile/ file on purpose regenerates it). Orders header: row = main's height with the
+  Scan button (26 px button, margin -5/-6/-5/0, 44 px tap via .sfl-tap44), `docs/design/native-qr-scanner/header-check.cjs`.

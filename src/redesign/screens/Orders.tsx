@@ -447,7 +447,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           )}
           {liveScan && (
             <button type="button" className="sfl-tap44 sfl-tap44-up" onClick={onScanTap} disabled={scanBusy} data-testid="ord-scan" aria-label={t.rd_qrs_title} title={t.rd_qrs_title}
-              style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, minHeight: 30, padding: "4px 10px", margin: "-4px -6px -4px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", background: "rgba(255,255,255,.16)", color: "var(--on-header)", fontSize: 12, fontWeight: 800, cursor: scanBusy ? "default" : "pointer", opacity: scanBusy ? 0.6 : 1, fontFamily: "var(--font-ui)", whiteSpace: "nowrap" }}>
+              style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, height: 26, boxSizing: "border-box", lineHeight: 1, padding: "0 10px", margin: "-5px -6px -5px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", background: "rgba(255,255,255,.16)", color: "var(--on-header)", fontSize: 12, fontWeight: 800, cursor: scanBusy ? "default" : "pointer", opacity: scanBusy ? 0.6 : 1, fontFamily: "var(--font-ui)", whiteSpace: "nowrap" }}>
               <span aria-hidden="true">▣</span>{t.rd_ord_scan}
             </button>
           )}

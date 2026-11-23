@@ -26,4 +26,30 @@ RED  Android: close() does not restore
 RED  iPhone: unreadable photo reported as cancelled
 RED  version name back to 2.0
 RED  batchLimit: shutter checked before the rows are in
-28/28 breaks caught
+RED  Android: chip-type filter removed
+RED  Android: x86_64 chip type added
+RED  Android: one more library in build.gradle
+RED  iPhone: photo library can be swiped away
+RED  iPhone: Cancel in the photo library does not finish the scan
+RED  Android printer code changed (TsplBuilder)
+RED  iPhone printer code changed (NiimbotKitDriver)
+RED  iPhone Swift package version changed (Package.swift)
+RED  iPhone Package.resolved changed
+RED  iPhone: a second line in SellerFlowBridgeViewController
+RED  iPhone: a framework added to the Xcode project
+RED  iPhone: the Bluetooth sentence in Info.plist changed
+RED  Orders: Scan button back to minHeight (row taller)
+RED  Orders: Scan button not pulled into the row padding
+RED  gate a: a new chip type passes
+RED  gate b: a changed .so passes
+RED  gate c: changed printer class passes
+RED  gate c: only the roots, not what they use
+RED  gate c: MainActivity may have more than the one line
+RED  gate c: line-number tables not removed
+RED  gate c: an LFS pointer in the new build is not noticed
+RED  gate d: a bumped version passes
+RED  gate e: a new permission passes
+RED  gate f: too big passes
+RED  gate f: unaligned .so passes
+RED  gate script: builds the branch in this checkout
+54/54 breaks caught

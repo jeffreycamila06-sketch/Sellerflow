@@ -95,6 +95,18 @@ describe("native QR scanner — fence", () => {
     const a = read("mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowScannerPlugin.java");
     expect(a.match(/finish\(error\("photo_unreadable"\)\);/g)).toHaveLength(2); // no picture back + a file that can't be opened
   });
+  it("iPhone photo library: no swipe-down dismiss (the scan always finishes); Cancel still finishes it", () => {
+    const sw = read("mobile/ios/App/App/SellerFlowScannerPlugin.swift");
+    const lib = /private func openLibrary\(from host: UIViewController\) \{([\s\S]*?)\n {4}\}/.exec(sw)?.[1] ?? "";
+    expect(lib).toMatch(/picker\.delegate = self\n[\s\S]*picker\.isModalInPresentation = true\n\s*host\.present\(picker, animated: true\)/);
+    expect(sw.match(/isModalInPresentation = true/g)).toHaveLength(1); // the library picker only
+    // Cancel in the photo library = no result → the scan ends as cancelled
+    expect(sw).toMatch(/didFinishPicking results: \[PHPickerResult\]\) \{\n\s*picker\.dismiss\(animated: true\)\n\s*guard let provider = results\.first\?\.itemProvider else \{ \/\/ Cancel in the photo library\n\s*complete\(\.cancelled\)/);
+  });
+  it("Android ships today's two chip types only (ARM — the Niimbot libraries have nothing else)", () => {
+    const g = read("mobile/android/app/build.gradle");
+    expect(g).toMatch(/defaultConfig \{[\s\S]*?ndk \{\n\s+abiFilters "armeabi-v7a", "arm64-v8a"\n\s+\}[\s\S]*?\n {4}\}/);
+  });
   it("the web reaches the scanner only through adapters/nativeQrScanner", () => {
     for (const f of ["src/redesign/screens/ParcelScan.tsx", "src/redesign/screens/FmParcelScan.tsx", "src/redesign/screens/Blacklist.tsx", "src/redesign/screens/Orders.tsx"]) {
       const s = read(f);

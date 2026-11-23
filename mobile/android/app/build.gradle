@@ -16,6 +16,11 @@ android {
         versionCode 11
         versionName "1.10"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Ship exactly the chip types the app ships today (the Niimbot printer AARs are ARM-only);
+        // CameraX / ML Kit's other chip types are left out. Checked by mobile/android/qr-scanner-gate.sh.
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

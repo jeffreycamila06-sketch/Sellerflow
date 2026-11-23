@@ -1,194 +1,132 @@
 #!/usr/bin/env bash
-# ML Kit gate for the native "Scan sticker QR" (Android versionCode 11). Run on the Mac BEFORE the
-# Play upload, from the checkout that holds the scanner branch:
+# PRINTER-SAFETY GATE for the native "Scan sticker QR" (Android versionCode 11). Run ONCE on the Mac,
+# before the Play upload, from a checkout of the scanner branch (NOT from ~/Sellerflow, which stays on main):
 #
-#   bash mobile/android/qr-scanner-gate.sh
+#   git -C ~/Sellerflow fetch origin
+#   git -C ~/Sellerflow worktree add ~/sfl-wt/qr-gate origin/claude/native-qr-scanner
+#   bash ~/sfl-wt/qr-gate/mobile/android/qr-scanner-gate.sh
 #
-# It builds the app twice — main (before) and this checkout (after) — and prints PASS/FAIL for:
-#   1. size       per-phone download growth (bundletool) ≤ QR_GATE_MAX_MB (default 6 MB);
-#                 without bundletool: the .aab file growth
-#   2. 16 KB      every NEW 64-bit native library (.so) has 16 KB-aligned load segments
-#                 (Google Play's rule for Android 15+ apps); old libraries are listed as INFO
-#   3. perms      the merged manifest gains NO permission, and no camera feature becomes required
-#   4. minSdk     stays the same
-# Then the merged-manifest permission list and every new .so, so the numbers can be read.
-# Exit code 0 = all PASS, 1 = a FAIL, 2 = could not build/measure.
+# It builds the release .aab TWICE, each in its own throw-away worktree under $TMPDIR:
+#   main = origin/main      new = the commit this script was run from
+# It never checks out, builds or writes anything in ~/Sellerflow or in the checkout it was run from
+# (it only READS the signing key file and the Android SDK path from there). Then it prints PASS/FAIL for
+#   a) chip types   b) native libraries (sha256 each)   c) printer code in the dex
+#   d) library versions   e) merged manifest   f) size + 16 KB pages
+# (details in qr-scanner-gate-check.mjs). Any FAIL → "STOP — do not release" + the reason.
+# The report is saved to ~/Desktop/qr-scanner-gate-report.txt (or ~/ when there is no Desktop).
+# Exit code 0 = PASS, 1 = FAIL, 2 = could not build or measure.
 #
-# Needs: Android Studio's SDK (ANDROID_HOME or mobile/android/local.properties), Node + npm,
-# python3. Optional: bundletool (brew install bundletool) for the download sizes.
-# Release signing is used when mobile/android/keystore.properties exists (else debug bundles are
-# compared — the same libraries, the same growth). Nothing is uploaded; the worktree is removed.
+# Needs: git + git-lfs, Node + npm, Android Studio's SDK (build-tools for dexdump), Java.
+# Optional: bundletool (brew install bundletool) for the per-phone download sizes.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MAX_MB="${QR_GATE_MAX_MB:-6}"
 BASE_REF="${QR_GATE_BASE:-origin/main}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/sfl-qr-gate.XXXXXX")"
-BEFORE="$WORK/before"
 REPORT="$WORK/report.txt"
-fail=0
+SAVE_DIR="$HOME/Desktop"; [ -d "$SAVE_DIR" ] || SAVE_DIR="$HOME"
 
 say() { printf '%s\n' "$*" | tee -a "$REPORT"; }
-die() { say "CANNOT MEASURE: $*"; exit 2; }
-cleanup() { git -C "$ROOT" worktree remove --force "$BEFORE" >/dev/null 2>&1 || true; }
+save_report() { cp "$REPORT" "$SAVE_DIR/qr-scanner-gate-report.txt" 2>/dev/null && echo "(report saved to $SAVE_DIR/qr-scanner-gate-report.txt)"; }
+die() { say "CANNOT MEASURE: $*"; save_report; exit 2; }
+cleanup() {
+  for wt in "$WORK/main" "$WORK/new"; do git -C "$ROOT" worktree remove --force "$wt" >/dev/null 2>&1 || true; done
+  git -C "$ROOT" worktree prune >/dev/null 2>&1 || true
+}
 trap cleanup EXIT
 
-command -v python3 >/dev/null || die "python3 not found"
+command -v node >/dev/null || die "node not found"
 command -v npm >/dev/null || die "npm not found"
+command -v git >/dev/null || die "git not found"
 
-if [ -f "$ROOT/mobile/android/keystore.properties" ]; then TASK=bundleRelease; VARIANT=release; else TASK=bundleDebug; VARIANT=debug; fi
-say "SellerFlowLive — native QR scanner gate ($(date '+%Y-%m-%d %H:%M'))"
-say "after  = $(git -C "$ROOT" rev-parse --short HEAD) ($(git -C "$ROOT" rev-parse --abbrev-ref HEAD))"
-git -C "$ROOT" fetch -q origin main || say "(git fetch failed — using the local $BASE_REF)"
-say "before = $(git -C "$ROOT" rev-parse --short "$BASE_REF") ($BASE_REF)"
-say "build  = $TASK"
-say ""
-
-prepare() { # $1 = repo checkout
-  local repo="$1"
-  (cd "$repo/mobile" && { [ -d node_modules/@capacitor/android ] || npm ci --silent; }) || return 1
-  if [ ! -d "$repo/mobile/android/capacitor-cordova-android-plugins" ]; then
-    (cd "$repo/mobile" && npx cap sync android >/dev/null) || return 1
-  fi
-  if [ ! -f "$repo/mobile/android/local.properties" ] && [ -f "$ROOT/mobile/android/local.properties" ]; then
-    cp "$ROOT/mobile/android/local.properties" "$repo/mobile/android/local.properties"
-  fi
-}
-
-build() { # $1 = repo checkout → prints the .aab path
-  local repo="$1"
-  (cd "$repo/mobile/android" && ./gradlew -q clean "$TASK" >"$WORK/gradle-$(basename "$repo").log" 2>&1) || return 1
-  ls "$repo/mobile/android/app/build/outputs/bundle/$VARIANT/"*.aab 2>/dev/null | head -1
-}
-
-git -C "$ROOT" worktree add -q --detach "$BEFORE" "$BASE_REF" || die "git worktree add failed"
-if [ "$TASK" = bundleRelease ]; then
-  ln -s "$ROOT/mobile/android/keystore.properties" "$BEFORE/mobile/android/keystore.properties"
-  [ -e "$ROOT/keystore" ] && ln -s "$ROOT/keystore" "$BEFORE/keystore"
-fi
-[ -d "$ROOT/mobile/node_modules" ] && ln -s "$ROOT/mobile/node_modules" "$BEFORE/mobile/node_modules"
-
-prepare "$ROOT" || die "could not prepare this checkout (npm ci / cap sync)"
-prepare "$BEFORE" || die "could not prepare main (npm ci / cap sync)"
-say "building main…";      AAB_BEFORE="$(build "$BEFORE")" || die "main did not build — see $WORK/gradle-before.log"
-say "building scanner…";   AAB_AFTER="$(build "$ROOT")"    || die "this checkout did not build — see $WORK/gradle-$(basename "$ROOT").log"
-[ -f "$AAB_BEFORE" ] && [ -f "$AAB_AFTER" ] || die "no .aab found"
-cp "$AAB_BEFORE" "$WORK/before.aab"; cp "$AAB_AFTER" "$WORK/after.aab"
-
-merged_manifest() { # $1 = repo
-  find "$1/mobile/android/app/build/intermediates" -path "*merged_manifest*" -path "*$VARIANT*" -name AndroidManifest.xml 2>/dev/null | head -1
-}
-cp "$(merged_manifest "$BEFORE")" "$WORK/before-manifest.xml" 2>/dev/null || die "merged manifest (main) not found"
-cp "$(merged_manifest "$ROOT")" "$WORK/after-manifest.xml" 2>/dev/null || die "merged manifest (scanner) not found"
-
-# ── sizes ──────────────────────────────────────────────────────────────────────────────────
-SIZE_LINE=""
-SIZES_OK=0
-if command -v bundletool >/dev/null; then
-  SIZES_OK=1
-  for k in before after; do
-    bundletool build-apks --bundle="$WORK/$k.aab" --output="$WORK/$k.apks" --overwrite >/dev/null 2>&1 || SIZES_OK=0
-    [ "$SIZES_OK" = 1 ] && { bundletool get-size total --apks="$WORK/$k.apks" --dimensions=ABI > "$WORK/$k-size.csv" 2>/dev/null || SIZES_OK=0; }
+# ── where things are (read only) ────────────────────────────────────────────────────────────
+sdk_dir() {
+  for d in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do [ -n "$d" ] && [ -d "$d" ] && { echo "$d"; return; }; done
+  for f in "$ROOT/mobile/android/local.properties" "$HOME/Sellerflow/mobile/android/local.properties"; do
+    [ -f "$f" ] && { sed -n 's/^sdk\.dir=//p' "$f" | head -1; return; }
   done
-fi
-if [ "$SIZES_OK" = 1 ]; then
-  SIZE_LINE="$(python3 - "$WORK/before-size.csv" "$WORK/after-size.csv" "$MAX_MB" <<'PY'
-import csv, sys
-def read(p):
-    rows = list(csv.reader(open(p)))
-    head = rows[0]; out = {}
-    for r in rows[1:]:
-        d = dict(zip(head, r)); out[d.get("ABI", "all")] = int(d["MAX"])
-    return out
-b, a, limit = read(sys.argv[1]), read(sys.argv[2]), float(sys.argv[3])
-worst = 0
-parts = []
-for abi in sorted(a):
-    grow = (a[abi] - b.get(abi, 0)) / 1e6
-    worst = max(worst, grow)
-    parts.append(f"{abi}: {b.get(abi, 0)/1e6:.1f} → {a[abi]/1e6:.1f} MB (+{grow:.1f})")
-print(("PASS" if worst <= limit else "FAIL") + f" size: per-phone download +{worst:.1f} MB at most (limit {limit:g} MB) — " + "; ".join(parts))
-PY
-)"
-else
-  SIZE_LINE="$(python3 - "$WORK/before.aab" "$WORK/after.aab" "$MAX_MB" <<'PY'
-import os, sys
-b, a, limit = os.path.getsize(sys.argv[1]), os.path.getsize(sys.argv[2]), float(sys.argv[3])
-grow = (a - b) / 1e6
-print(("PASS" if grow <= limit else "FAIL") + f" size: .aab {b/1e6:.1f} → {a/1e6:.1f} MB (+{grow:.1f}, limit {limit:g} MB; install bundletool for per-phone sizes)")
-PY
-)"
-fi
+  [ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk"
+}
+SDK="$(sdk_dir)"
+[ -n "$SDK" ] && [ -d "$SDK" ] || die "Android SDK not found (set ANDROID_HOME)"
+DEXDUMP="$(ls -d "$SDK"/build-tools/*/dexdump 2>/dev/null | (sort -V 2>/dev/null || sort) | tail -1)"
+[ -x "$DEXDUMP" ] || die "dexdump not found in $SDK/build-tools (install build-tools in Android Studio)"
 
-# ── 16 KB pages, permissions, minSdk ───────────────────────────────────────────────────────
-CHECKS="$(python3 - "$WORK" <<'PY'
-import re, struct, sys, zipfile
-work = sys.argv[1]
-PT_LOAD = 1
-def so_list(aab):
-    with zipfile.ZipFile(aab) as z:
-        return {n: z.read(n) for n in z.namelist() if n.endswith(".so")}
-def load_aligns(data):
-    if data[:4] != b"\x7fELF": return None
-    is64 = data[4] == 2
-    end = "<" if data[5] == 1 else ">"
-    if is64:
-        phoff, = struct.unpack_from(end + "Q", data, 0x20); phentsize, phnum = struct.unpack_from(end + "HH", data, 0x36)
-    else:
-        phoff, = struct.unpack_from(end + "I", data, 0x1C); phentsize, phnum = struct.unpack_from(end + "HH", data, 0x2A)
-    out = []
-    for i in range(phnum):
-        o = phoff + i * phentsize
-        p_type, = struct.unpack_from(end + "I", data, o)
-        if p_type != PT_LOAD: continue
-        align, = struct.unpack_from(end + "Q", data, o + 0x30) if is64 else struct.unpack_from(end + "I", data, o + 0x1C)
-        out.append(align)
-    return is64, out
-before, after = so_list(f"{work}/before.aab"), so_list(f"{work}/after.aab")
-new = sorted(n for n in after if n not in before)
-bad_new, info = [], []
-for n in sorted(after):
-    r = load_aligns(after[n])
-    if r is None: continue
-    is64, aligns = r
-    ok = all(a >= 16384 for a in aligns)
-    line = f"{n} ({len(after[n])/1e6:.2f} MB) align={min(aligns) if aligns else 0} {'ok' if ok else 'NOT 16 KB'}"
-    if n in new:
-        info.append("  NEW  " + line)
-        if is64 and not ok: bad_new.append(n)
-    elif is64 and not ok:
-        info.append("  old  " + line + " (was already in main)")
-print(("PASS" if not bad_new else "FAIL") + f" 16 KB: {len(new)} new native librar{'y' if len(new)==1 else 'ies'}, " + (f"{len(bad_new)} not aligned: {', '.join(bad_new)}" if bad_new else "all 64-bit ones aligned"))
-def manifest(p):
-    x = open(p, encoding="utf-8").read()
-    perms = sorted(set(re.findall(r'<uses-permission(?:-sdk-23)?[^>]*android:name="([^"]+)"', x)))
-    feats = {}
-    for m in re.finditer(r'<uses-feature([^>]*)>', x):
-        attrs = m.group(1)
-        name = re.search(r'android:name="([^"]+)"', attrs)
-        if not name: continue
-        req = re.search(r'android:required="([^"]+)"', attrs)
-        feats[name.group(1)] = (req.group(1) if req else "true")
-    sdk = re.search(r'android:minSdkVersion="(\d+)"', x)
-    return perms, feats, sdk.group(1) if sdk else "?"
-pb, fb, sb = manifest(f"{work}/before-manifest.xml")
-pa, fa, sa = manifest(f"{work}/after-manifest.xml")
-added = [p for p in pa if p not in pb]
-required = [f for f, r in fa.items() if r == "true" and fb.get(f) != "true"]
-print(("PASS" if not added and not required else "FAIL") + " perms: " + (f"new permissions {added}" if added else "no new permission") + ("; newly REQUIRED features " + str(required) if required else ""))
-print(("PASS" if sa == sb else "FAIL") + f" minSdk: {sb} → {sa}")
-print("---")
-print("permissions after: " + ", ".join(pa))
-print("features after: " + ", ".join(f"{k} (required={v})" for k, v in sorted(fa.items())))
-print("native libraries (new + old misaligned):")
-print("\n".join(info) if info else "  (none)")
-PY
-)"
+KEYPROPS=""
+for f in "$ROOT/mobile/android/keystore.properties" "$HOME/Sellerflow/mobile/android/keystore.properties"; do
+  [ -f "$f" ] && { KEYPROPS="$f"; break; }
+done
+[ -n "$KEYPROPS" ] || die "keystore.properties not found (needed for the RELEASE build) — looked in this checkout and ~/Sellerflow/mobile/android"
 
-say "$SIZE_LINE"
-printf '%s\n' "$CHECKS" | tee -a "$REPORT"
+say "SellerFlowLive — printer-safety gate for the native QR scanner ($(date '+%Y-%m-%d %H:%M'))"
+git -C "$ROOT" fetch -q origin main || say "(git fetch failed — using the local $BASE_REF)"
+MAIN_SHA="$(git -C "$ROOT" rev-parse "$BASE_REF")" || die "cannot read $BASE_REF"
+NEW_SHA="$(git -C "$ROOT" rev-parse HEAD)" || die "cannot read this checkout's commit"
+[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ] && say "NOTE: this checkout has uncommitted changes — the gate builds the COMMIT $NEW_SHA, not them."
+say "main = ${MAIN_SHA:0:8} ($BASE_REF)"
+say "new  = ${NEW_SHA:0:8} ($(git -C "$ROOT" rev-parse --abbrev-ref HEAD))"
+say "build = bundleRelease (signed with $(basename "$KEYPROPS")) · dexdump = $DEXDUMP"
 say ""
-if printf '%s\n%s\n' "$SIZE_LINE" "$CHECKS" | grep -q '^FAIL'; then fail=1; fi
-if [ "$fail" = 0 ]; then say "RESULT: PASS — ML Kit is fine for this upload."; else say "RESULT: FAIL — do not upload; send this report back (ZXing is the fallback)."; fi
-cp "$REPORT" "$ROOT/qr-scanner-gate-report.txt" 2>/dev/null && say "(report saved to qr-scanner-gate-report.txt in the repo folder — not committed)"
-exit "$fail"
+
+# ── two throw-away worktrees ────────────────────────────────────────────────────────────────
+git -C "$ROOT" worktree add -q --detach "$WORK/main" "$MAIN_SHA" || die "git worktree add (main) failed"
+git -C "$ROOT" worktree add -q --detach "$WORK/new" "$NEW_SHA" || die "git worktree add (new) failed"
+
+prepare() { # $1 = worktree
+  local wt="$1" lib
+  if command -v git-lfs >/dev/null || git lfs version >/dev/null 2>&1; then git -C "$wt" lfs pull >/dev/null 2>&1 || true; fi
+  for lib in "$wt"/mobile/android/app/libs/*.aar; do
+    head -c 40 "$lib" | grep -q "git-lfs" && { echo "printer library $(basename "$lib") is a Git LFS pointer (git lfs pull failed)"; return 1; }
+  done
+  printf 'sdk.dir=%s\n' "$SDK" > "$wt/mobile/android/local.properties"
+  # keystore.properties: same values, storeFile made absolute (it is read relative to mobile/android)
+  local src_dir store
+  src_dir="$(cd "$(dirname "$KEYPROPS")" && pwd)"
+  store="$(sed -n 's/^storeFile=//p' "$KEYPROPS" | head -1)"
+  case "$store" in /*) ;; *) store="$(cd "$src_dir" && cd "$(dirname "$store")" && pwd)/$(basename "$store")";; esac
+  sed "s#^storeFile=.*#storeFile=$store#" "$KEYPROPS" > "$wt/mobile/android/keystore.properties"
+  (cd "$wt/mobile" && npm ci --silent >/dev/null 2>&1 && npx cap sync android >/dev/null 2>&1) || { echo "npm ci / cap sync failed in $wt"; return 1; }
+}
+build() { # $1 = worktree, $2 = name → .aab, dependencies, manifest, merge report into $WORK/$2.*
+  local wt="$1" n="$2" log="$WORK/gradle-$2.log"
+  (cd "$wt/mobile/android" && ./gradlew --no-daemon -q clean bundleRelease >"$log" 2>&1) || { echo "bundleRelease failed — see $log"; return 1; }
+  (cd "$wt/mobile/android" && ./gradlew --no-daemon -q :app:dependencies --configuration releaseRuntimeClasspath >"$WORK/$n.deps.txt" 2>>"$log") || { echo "dependencies failed — see $log"; return 1; }
+  cp "$(ls "$wt"/mobile/android/app/build/outputs/bundle/release/*.aab | head -1)" "$WORK/$n.aab" || return 1
+  cp "$(find "$wt/mobile/android/app/build/intermediates" -path '*merged_manifest*' -path '*release*' -name AndroidManifest.xml | head -1)" "$WORK/$n.manifest.xml" || { echo "merged manifest not found"; return 1; }
+  local blame; blame="$(find "$wt/mobile/android/app/build" -name 'manifest-merger-blame-release-report.txt' | head -1)"
+  [ -n "$blame" ] && cp "$blame" "$WORK/$n.blame.txt"
+  return 0
+}
+step() { # $1 = what, rest = command; its messages go to the screen and the report
+  local what="$1"; shift
+  say "$what…"
+  "$@" 2>&1 | tee -a "$REPORT"
+  [ "${PIPESTATUS[0]}" = 0 ] || die "$what failed (see the line above)"
+}
+step "preparing main" prepare "$WORK/main"
+step "preparing new" prepare "$WORK/new"
+step "building main (release)" build "$WORK/main" main
+step "building new (release)" build "$WORK/new" new
+
+SIZE_ARGS=()
+if command -v bundletool >/dev/null; then
+  ok=1
+  for k in main new; do
+    bundletool build-apks --bundle="$WORK/$k.aab" --output="$WORK/$k.apks" --overwrite >/dev/null 2>&1 || ok=0
+    [ "$ok" = 1 ] && { bundletool get-size total --apks="$WORK/$k.apks" --dimensions=ABI > "$WORK/$k.size.csv" 2>/dev/null || ok=0; }
+  done
+  [ "$ok" = 1 ] && SIZE_ARGS=(--main-size "$WORK/main.size.csv" --new-size "$WORK/new.size.csv")
+fi
+BLAME_ARGS=(); [ -f "$WORK/new.blame.txt" ] && BLAME_ARGS=(--new-blame "$WORK/new.blame.txt")
+
+say ""
+node "$ROOT/mobile/android/qr-scanner-gate-check.mjs" \
+  --main-aab "$WORK/main.aab" --new-aab "$WORK/new.aab" \
+  --main-deps "$WORK/main.deps.txt" --new-deps "$WORK/new.deps.txt" \
+  --main-manifest "$WORK/main.manifest.xml" --new-manifest "$WORK/new.manifest.xml" \
+  --main-libs "$WORK/main/mobile/android/app/libs" --new-libs "$WORK/new/mobile/android/app/libs" \
+  --dexdump "$DEXDUMP" --max-mb "$MAX_MB" ${SIZE_ARGS[@]+"${SIZE_ARGS[@]}"} ${BLAME_ARGS[@]+"${BLAME_ARGS[@]}"} 2>&1 | tee -a "$REPORT"
+code=${PIPESTATUS[0]}
+save_report
+exit "$code"

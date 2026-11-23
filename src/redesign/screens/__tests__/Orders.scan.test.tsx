@@ -103,6 +103,12 @@ describe("Orders Scan — live scanner (new app build, switch on)", () => {
     const btn = r.getByTestId("ord-scan");
     expect(btn.textContent).toContain("Scan");
     expect(btn.parentElement).toBe(search(r.container).parentElement);
+    // the row keeps today's height: a 26 px button pulled into the row's padding, the 44 px tap area from .sfl-tap44
+    expect(btn.style.height).toBe("26px");
+    expect(btn.style.boxSizing).toBe("border-box");
+    expect(btn.style.margin).toBe("-5px -6px -5px 0px");
+    expect(btn.style.minHeight).toBe("");
+    expect(btn.className).toBe("sfl-tap44 sfl-tap44-up");
     expect(r.queryByTestId("ord-scan-file")).toBeNull();
     fireEvent.click(btn);
     await flush();
