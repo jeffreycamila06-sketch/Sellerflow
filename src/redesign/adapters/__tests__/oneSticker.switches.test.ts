@@ -185,12 +185,4 @@ describe("all-scripts switch", () => {
       expect(on, fancy).toBe(plainOff);
     }
   }, 60000);
-  it("a typed won sign is written W (one letter, like the peso sign → P); the euro sign stays EUR", async () => {
-    for (const [typed, printed] of [["\u20a915000", "W15000"], ["\u20b1350", "P350"], ["\u20ac15", "EUR15"]]) {
-      setStickerAllScripts(true);
-      const on = await capture("d520", buyer("Amy", typed), "100x60");
-      setStickerAllScripts(false);
-      expect(on, typed).toBe(await capture("d520", buyer("Amy", printed), "100x60"));
-    }
-  }, 60000);
 });

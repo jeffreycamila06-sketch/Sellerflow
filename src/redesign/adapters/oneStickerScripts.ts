@@ -37,7 +37,7 @@ const isOneCell = (cp: number) => (cp >= 0x3000 && cp <= 0x30ff) || (cp >= 0x31f
 const PUNCT_FOLD: Record<string, string> = {
   "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'", "\u2032": "'", "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u2033": '"',
   "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-", "\u2026": "...", "\u2022": "\u00b7",
-  "\u20ac": "EUR", "\u20a9": "W", "\u20b1": "P", "\u20ab": "d", "\u0e3f": "THB",
+  "\u20ac": "EUR", "\u20b1": "P", "\u20ab": "d", "\u0e3f": "THB",
 };
 function foldFancy(ch: string): string {
   const cp = ch.codePointAt(0) ?? 0;
