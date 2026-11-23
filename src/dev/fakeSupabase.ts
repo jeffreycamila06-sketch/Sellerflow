@@ -142,6 +142,28 @@ const RPC: Record<string, unknown> = {
   parcel_tracking_status: { enabled: true, last_manual_check_at: null, last_completed_at: iso(0.2), job: null },
 };
 
+// Shopee for every seller previews (sql/206, docs/design/shopee-public):
+//   ?shp=<on|off>,<none|active|ended>,<basic|free|expired>,<PH|TW|VN>[,shop]
+//   = the switch shopee_public_enabled, the seller's beta row, the plan, the market, and (shop) one registered
+//   Shopee shop. Account limits v2 is on (as in production). Absent = nothing below is touched.
+const SHP = (/[?&]shp=([\w,]+)/.exec(Q) || [])[1] || "";
+if (SHP) {
+  const [pub, beta, plan, country, shop] = SHP.split(",");
+  tables.app_settings.push({ key: "shopee_account_enforce", value: "true" }, { key: "shopee_public_enabled", value: pub === "on" ? "true" : "false" });
+  Object.assign(tables.seller_profiles[0], {
+    plan: plan === "free" ? "free" : "plus", plan_status: plan === "expired" ? "expired" : "active",
+    plan_expiry: plan === "expired" ? iso(3) : plan === "free" ? null : "2027-12-31", country: country || "PH", tiktok: "budgetukay.ph",
+  });
+  RPC.my_shopee_beta = beta === "active" ? [{ expires_at: new Date(now + 12 * 86_400_000 - 60_000).toISOString(), shopee_uid: null }]
+    : beta === "ended" ? [{ expires_at: iso(2), shopee_uid: null }] : null;
+  RPC.session_status = { running: true, session_id: "preview-session", session_platform: null };
+  const accounts: Row[] = [{ platform: "tiktok", key: "budgetukay.ph", id: null, name: null, link: false, rank: 1, covered: true, added_at: iso(40), lock_until: null }];
+  if (shop) accounts.push({ platform: "shopee", key: "ph:000000005678", id: "s5678", name: null, link: true, rank: 2, covered: true, added_at: iso(1), lock_until: null });
+  const limit = plan === "free" ? 1 : 2;
+  RPC.my_account_list = { v2: true, plan: plan === "free" ? "free" : "plus", limit, unlimited: false, used: accounts.length, locked: 0, next_free_at: null, now: new Date(now).toISOString(), accounts };
+  RPC.account_quota = { used: accounts.length, limit, unlimited: false, locked: 0, next_free_at: null };
+}
+
 type Filter = (r: Row) => boolean;
 const cmp = (a: unknown, b: unknown): number => (a == null && b == null ? 0 : a == null ? 1 : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0);
 

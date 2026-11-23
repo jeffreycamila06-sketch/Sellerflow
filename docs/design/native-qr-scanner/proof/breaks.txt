@@ -12,7 +12,7 @@ RED  switch accepts any truthy value
 RED  photo answer skips readQrFromFile
 RED  a second scanner registration line
 RED  VIBRATE permission added
-RED  sql/207 changes the Blacklist step to other words than the guide
+RED  sql/209 changes the Blacklist step to other words than the guide
 RED  Orders scan toast timer is a bare setTimeout
 RED  Orders shows Scan without the live scanner
 RED  RedesignApp always passes liveScan

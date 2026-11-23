@@ -1,18 +1,18 @@
-// sql/207 (help guide for the native "Scan sticker QR", 2026-11-22) changes 3 guide rows with phrase
+// sql/209 (help guide for the native "Scan sticker QR", 2026-11-22) changes 3 guide rows with phrase
 // swaps. The older one-row guide files (sql/191 Blacklist, sql/192 Parcel Scan) keep the words they
-// had; with this a test checks "that old row + sql/207's swaps = today's row in sql/116b (the guide)".
+// had; with this a test checks "that old row + sql/209's swaps = today's row in sql/116b (the guide)".
 // Works on SQL text as written in the files (quotes doubled, real line breaks), like the database does:
 // a swap is made only where the old words are found and the new ones are not, and then "checked"
 // becomes at least 2026-11-22.
 import { readFileSync } from "node:fs";
 
-const SQL207 = readFileSync("sql/207_guide_native_qr_scanner.sql", "utf8");
+const SQL209 = readFileSync("sql/209_guide_native_qr_scanner.sql", "utf8");
 const SQL_TEXT = "'((?:[^']|'')*)'";
 
-/** The [old, new] phrase pairs sql/207 applies to the row with this id. */
-export function swaps207(id: string): Array<[string, string]> {
+/** The [old, new] phrase pairs sql/209 applies to the row with this id. */
+export function swaps209(id: string): Array<[string, string]> {
   const out: Array<[string, string]> = [];
-  for (const block of SQL207.split("update public.support_guide").slice(1)) {
+  for (const block of SQL209.split("update public.support_guide").slice(1)) {
     const where = block.match(/where id = '([\w-]+)'/);
     const swap = block.match(new RegExp(`replace\\(body, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"));
     if (where && swap && where[1] === id) out.push([swap[1], swap[2]]);
@@ -20,11 +20,11 @@ export function swaps207(id: string): Array<[string, string]> {
   return out;
 }
 
-/** The row (SQL tuple text) after sql/207 ran on it. */
-export function after207(id: string, row: string): string {
+/** The row (SQL tuple text) after sql/209 ran on it. */
+export function after209(id: string, row: string): string {
   let out = row;
   let changed = false;
-  for (const [from, to] of swaps207(id)) {
+  for (const [from, to] of swaps209(id)) {
     if (out.includes(from) && !out.includes(to)) { out = out.replace(from, () => to); changed = true; }
   }
   if (changed) out = out.replace(/'(\d{4}-\d{2}-\d{2})'::date/, (m, d: string) => (d < "2026-11-22" ? "'2026-11-22'::date" : m));

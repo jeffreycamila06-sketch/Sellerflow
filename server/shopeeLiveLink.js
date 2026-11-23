@@ -302,9 +302,16 @@ export function createShopeeLinkRuntime(deps) {
   function listPollers() { return [...pollers.values()].map((e) => ({ sellerId: e.sellerId, region: e.region, liveSessionId: e.liveSessionId, scopeKey: e.scopeKey })); }
 
   /** The whole connect decision, HTTP-free (so it is testable): returns { status, json }. */
-  async function connect({ sellerId, userId, email, shareLink, sessionId, gate = null }) {
+  async function connect({ sellerId, userId, email, shareLink, sessionId, gate = null, access = null }) {
     if (!(await enabled().catch(() => false))) return { status: 503, json: { ok: false, error: "shopee_off" } };
-    if (!(await betaAllowed(userId, email).catch(() => false))) return { status: 403, json: { ok: false, error: "no_beta" } };
+    if (!(await betaAllowed(userId, email).catch(() => false))) {
+      // sql/206 — not in the beta: `access` says whether Shopee is open for this seller and whether the plan
+      // may connect. No `access`, a throw or "not open" = the answer of before (403 no_beta).
+      let a = null;
+      if (access) { try { a = await access(); } catch { a = null; } }
+      if (!a) return { status: 403, json: { ok: false, error: "no_beta" } };
+      if (a.ok !== true) return { status: Number(a.status) || 403, json: { ok: false, error: String(a.code || "no_beta") } };
+    }
     const link = await resolveLink(shareLink);
     if (!link.ok) return { status: link.error === "unreachable" ? 502 : 400, json: { ok: false, error: link.error } };
     if (!link.shareUserId) return { status: 400, json: { ok: false, error: "not_own" } }; // no sharer id = not a seller's own share link
@@ -326,10 +333,10 @@ export function createShopeeLinkRuntime(deps) {
     return { status: 200, json: { ok: true, region: link.region, session_id: v.sessionId, uid: v.uid } };
   }
   function registerRoutes(app, requireAuth, extra = {}) {
-    const { requireConnectRate = (_req, _res, next) => next(), accountGate = null } = extra;
+    const { requireConnectRate = (_req, _res, next) => next(), accountGate = null, publicGate = null } = extra;
     app.post("/shopee/live/connect", requireAuth, requireConnectRate, async (req, res) => {
       const body = req.body || {};
-      const r = await connect({ sellerId: req.sellerId, userId: req.authUserId, email: req.userEmail || "", shareLink: String(body.shareLink || ""), sessionId: String(body.sessionId || ""), gate: accountGate ? (a) => accountGate(req, a) : null });
+      const r = await connect({ sellerId: req.sellerId, userId: req.authUserId, email: req.userEmail || "", shareLink: String(body.shareLink || ""), sessionId: String(body.sessionId || ""), gate: accountGate ? (a) => accountGate(req, a) : null, access: publicGate ? () => publicGate(req) : null });
       return res.status(r.status).json(r.json);
     });
     if (removeShop) {

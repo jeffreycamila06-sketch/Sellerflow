@@ -49,7 +49,7 @@ const users = accountUsersToRedesign(RAW);
 const acct = (platform: string, key: string, name: string, rank: number, added: string) => ({ platform, key, name, rank, added_at: added });
 const actions = () => ({
   changePlan: vi.fn(async () => ({ ok: true })), expire: vi.fn(async () => ({ ok: true })), downgradeRemove: vi.fn(async () => ({ ok: true, liveStopped: true })),
-  shopeeBetaList: vi.fn(async () => ({})), editAccounts: vi.fn(async () => ({ ok: true })),
+  editAccounts: vi.fn(async () => ({ ok: true })),
 } as unknown as AdminActions & { changePlan: ReturnType<typeof vi.fn>; expire: ReturnType<typeof vi.fn>; downgradeRemove: ReturnType<typeof vi.fn> });
 
 const toasts: { msg: string; kind: string }[] = [];

@@ -6,7 +6,7 @@
 // readQrFromFile as today's photo flow (same "2 stickers" / "No QR found" messages).
 //
 // Off = today's photo flow, byte for byte: a laptop, an older app build (no plugin), or the kill
-// switch app_settings.native_qr_scanner_enabled not exactly 'true' (sql/206). The switch is set
+// switch app_settings.native_qr_scanner_enabled not exactly 'true' (sql/208). The switch is set
 // once per sign-in by RedesignApp (setNativeQrScannerOn) — the screens only ask nativeQrScanner()
 // at tap time, so nothing about a screen changes while it is off.
 //

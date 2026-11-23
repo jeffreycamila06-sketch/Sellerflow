@@ -25,8 +25,13 @@ describe("sql/201 — the account-limits guide rows", () => {
     }
   });
   it("each row = sql/116b's row (= docs/support/sfl-guide.md), checked 2026-11-22", () => {
+    // connect-shopee moved on after this file (sql/207, 2026-11-23 — Shopee for every plan): its sql/201 row is
+    // the text production has today, kept word for word as sql/207's rollback.
+    const s207down = readFileSync("sql/207_guide_shopee_public_rollback.sql", "utf8");
+    const one = (s: string) => { const a = s.indexOf("  ('connect-shopee',"); return s.slice(a, s.indexOf(")\non conflict", a) + 1); };
     for (const id of IDS) {
-      expect(rowOf(up, id)).toBe(rowOf(seed, id));
+      if (id === "connect-shopee") expect(rowOf(up, id)).toBe(one(s207down));
+      else expect(rowOf(up, id)).toBe(rowOf(seed, id));
       expect(rowOf(up, id)).toContain("'2026-11-22'::date");
     }
   });

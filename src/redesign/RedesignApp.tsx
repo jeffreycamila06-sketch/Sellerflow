@@ -53,8 +53,8 @@ import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, removeShopeeShop, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
-import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo, type LockPlatform } from "./adapters/shopeeBeta";
-import { shopeeLinkConnect, shopeeLinkRemove, isShopeeLimitFail, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
+import { useShopeeBeta, shopeeBetaAccess, shopeeBetaMarketOk, freeCapAppliesTo, shopeePublicVisible, shopeeSellerView, type LockPlatform } from "./adapters/shopeeBeta";
+import { shopeeLinkConnect, shopeeLinkRemove, isShopeeLimitFail, shopeeLinkErrKey } from "./adapters/shopeeLink";
 import PlanFullPopup, { type RemoveResult } from "./components/PlanFullPopup";
 import { accountLimitsV2Visible, tiktokKey, loadMyAccountList, accountName as planAccountName, type PlanFullTarget, type AccountRow, type AccountList, type LiveAccounts } from "./adapters/planFull";
 import ShopeeShops from "./screens/ShopeeShops";
@@ -300,8 +300,6 @@ export default function RedesignApp() {
   // locked; beta ended → Shopee locked). Admin: always allowed, never locked.
   const shopeeBetaRow = useShopeeBeta(authed, auth.profile?.authUserId ?? "");
   const shopeeBetaAcc = shopeeBetaAccess({ isAdmin, row: shopeeBetaRow });
-  const shopeeLinkOn = shopeeBetaAcc.allowed && shopeeBetaMarketOk(market);
-  const platformLocks = shopeeBetaLocks({ isAdmin, access: shopeeBetaAcc, paidActive: isShopeeEligible(auth.profile) });
   // sql/136: the free cap skips Shopee orders while the beta ROW is active (row-based like the trigger, not the admin bypass).
   const shopeeBetaRowActive = shopeeBetaAccess({ isAdmin: false, row: shopeeBetaRow }).allowed;
   const hideParcelScan = marketHides("parcelScan", market);
@@ -1004,6 +1002,13 @@ export default function RedesignApp() {
   const accountLimitsV2 = accountLimitsV2Visible({ isAdmin, previewKey: hasFeature("account_limits_v2"), switchOn: featureSw.accountLimitsV2 });
   // Open the popup instead of today's message (true) — or false = the caller shows today's message.
   const openPlanFull = useCallback((t: PlanFullTarget): boolean => { if (!accountLimitsV2) return false; setPlanFull(t); return true; }, [accountLimitsV2, setPlanFull]);
+  // SHOPEE FOR EVERY SELLER (sql/206): the switch, the preview key, or an admin. Off = the beta rules (the Shopee
+  // box only with an allowed beta row; an ended row locks Shopee). On = the box for every seller; an ACTIVE beta
+  // row keeps what it gives today until it ends, an ENDED row locks nothing.
+  const shopeePublic = shopeePublicVisible({ isAdmin, previewKey: hasFeature("shopee_public"), switchOn: featureSw.shopeePublic });
+  const shopeeView = shopeeSellerView({ isAdmin, access: shopeeBetaAcc, paidActive: isShopeeEligible(auth.profile), marketOk: shopeeBetaMarketOk(market), publicOn: shopeePublic });
+  const shopeeLinkOn = shopeeView.linkOn;
+  const platformLocks = shopeeView.locks;
   const blacklistOn = blacklistVisible({ country: market.market.country, adminUnion: market.adminUnion, switchOn: featureSw.blacklist, isAdmin, hasKey: hasFeature("blacklist") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
@@ -1692,7 +1697,10 @@ export default function RedesignApp() {
       const r = await shopeeLinkConnect(shareLink);
       if (r.ok === false) {
         const code = r.error;
-        setShopeeLinkErr(SHOPEE_LINK_ERR_KEY[code]);
+        // sql/206 — the plan has ended (the TikTok connect's answer): the same text as TikTok; on the iPhone app
+        // the neutral popup and no line in the box (no plan words there).
+        if (code === "plan_expired" && ios) { setShopeeLinkErr(null); setIosExpired(true); }
+        else setShopeeLinkErr(shopeeLinkErrKey(code, shopeePublic));
         // sql/199: the "Plan full" popup (the server sends these codes only for the preview / after the switch)
         if (isShopeeLimitFail(code)) {
           if (code === "not_covered") openPlanFull({ kind: "live", name: tApp.rd_pf_plat_shopee });
@@ -3057,7 +3065,7 @@ export default function RedesignApp() {
               onConnectShopee={onConnectShopee}
               onManageShopee={() => { setShopeeOpen(false); setScreen("shopeechannels"); }}
               /* Shopee Live BETA — paste-link connect + the beta locks (sql/135). */
-              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, connectedLink: shopeeConnectedLink, initialLink: shopeeBoxLink || shopeeLast.link, savedLink: shopeeLast.link, notice: shopeeNotice, onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); } } : undefined}
+              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeView.daysLeft, error: shopeeLinkErr, connectedLink: shopeeConnectedLink, initialLink: shopeeBoxLink || shopeeLast.link, savedLink: shopeeLast.link, notice: shopeeNotice, onConnect: (shareLink: string) => { void connectShopeeLink(shareLink); } } : undefined}
               platformLocks={lockTexts}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */
