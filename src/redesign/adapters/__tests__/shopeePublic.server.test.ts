@@ -106,7 +106,7 @@ describe("A — OFF = MAIN (frozen copy of main 8a237c68)", () => {
 const open = (plan: unknown, log: (l: string) => void = () => {}) => {
   const planCheck = vi.fn(async () => plan);
   const publicOn = vi.fn(async () => ({ data: true, error: null }));
-  return { planCheck, publicOn, access: () => createShopeePublicGate({ publicOn, planCheck, log })(REQ) };
+  return { planCheck, publicOn, access: () => createShopeePublicGate({ publicOn, planCheck, log: log as () => void })(REQ) };
 };
 
 describe("B — ON: a seller with no beta row", () => {
