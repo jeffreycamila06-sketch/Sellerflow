@@ -6355,3 +6355,52 @@ row is REMOVED now, switch on or off (table, rows and RPCs stay).
   RedesignApp) · `shopeePublicSql.test.ts` (16) · `docs/design/shopee-public/` (pictures, on-purpose breaks).
 - ⚠️ Known, not changed: `rd_sh_lock_beta_only` ("…upgrade to use TikTok/Facebook") is shown as it is on the iPhone
   app to a seller with an active beta row on a free plan (today's text, kept by decision 3).
+
+## 2026-11-23 — FREE PLAN: FREE ORDERS PER LIVE ACCOUNT (branch `claude/free-account-cap`, NOT merged; sql/208 + sql/209 NOT applied; server half needs a Render deploy)
+Stops "used all free orders → new login with the same live account". FREE plan only: a paid login returns at the
+same first line as before in every function and is never checked, counted or logged.
+- **Switch `app_settings.free_account_cap_enforce`** (sql/208 creates it 'false' = LOG ONLY; exact 'true' = on).
+  Off: orders and saves answer exactly as before (PGlite: 31 answers of the same story identical with and without
+  sql/208); the per-account count is kept and `free_account_log` records what WOULD have been refused (ids + counts).
+- **sql/208 (+ rollback):** `free_account_orders (platform, account_key, orders…)` — NO link to a login, so the count
+  survives removing the account, deleting the login, a new email. Keys: tiktok = username lower case · facebook =
+  Page id · instagram = account id · shopee = shop id or '<region>:<uid>'. `public.orders` has no account column →
+  an order's account = the login's first account of the order's platform (`free_account_key_for`; no platform on the
+  order = the login's only account; nothing found = today's rule alone).
+  - `check_and_increment_free_order` = the live text + two marked blocks (guard: live md5 fc48e158…): refused with
+    the SAME error `free_tier_cap_reached` when the login's count OR the account's count reached the cap (switch on).
+    Every new step sits in its own exception block: an error = today's rule; counting never fails an order.
+    The Shopee-beta early return (sql/136) is before it, unchanged.
+  - `free_tier_status_for_user` (guard aed3e6ba…; keeps `default null`): with the switch on `count` = the higher of
+    the login's and the account's — so the app's own popup shows for the new login. Off = today's answer.
+  - Save: `free_account_save_check` raised as **`free_account_used`** by new triggers
+    `trg_seller_profiles_zz_free_account` (TikTok names; only NEW names) and `trg_{fb_pages,ig_accounts,shopee_shops,
+    shopee_link_shops}_free_account` (BEFORE INSERT; a row already on the login = re-authorize → passes). Never for
+    a paid login, an admin's own save or an admin editing a seller; **sign-up is never refused** (logged 'signup' —
+    the order rule covers it); any error = allowed.
+  - Start count (once, only while the table is empty): a login with ONE account → all its `free_orders_count`
+    (paid-now logins too); a free login with several → its stored orders per platform, never more than its count.
+    A deleted login's orders cannot be counted.
+  - `login_devices` + `note_my_device(text)` (free logins only, log only) · `admin_free_sharing()` ·
+    `admin_free_account_reset(platform, key)` (account count → 0; the logins' own counts stay).
+  - Proof: `scripts/sql208-behaviour.mjs` (PGlite, 89 checks) · `freeAccountCapSql.test.ts` (CI).
+- **App:** `adapters/freeAccountCap.ts` — the one line `rd_free_acct_used` / iPhone `rd_free_acct_used_ios` (8 langs)
+  on the TikTok save (`saveChannels` → `{ freeAccountUsed: true }` → `useChannelEditor`), the Facebook / Instagram /
+  Shopee returns (`code=free_account_used`: fb.ts, ig.ts, RedesignApp Shopee return, shopeeLink.ts 409);
+  `noteMyDevice()` once per app open for a free login (`browserSessionId()`); Admin → Controls → **Free sharing**
+  (`components/AdminFreeSharing.tsx`, panel kind `freeshare`): accounts on 2+ logins, devices on 2+ free logins,
+  **Reset free orders** (asks first).
+- **Server (Render):** `accountSaveRefusal()` in `server/shopeeAccount.js` names the database's refusal
+  (`account_limit` | `free_account_used`) for the three stores in server.js; fbLive / igLive / shopeeLive redirect
+  `code=free_account_used`; the Shopee paste-link gate answers 409 `free_account_used`. Before the deploy those three
+  platforms show their generic "couldn't save" text (the database still refuses). TikTok needs no server.
+- **Rule 4 (TikTok rename):** NOT keyed on a permanent id. The username is saved in Settings before any connect,
+  and at connect the server reads only `roomInfo.status` — it never reads or stores an owner id, and what a real
+  connect returns could not be checked from the session. A renamed account starts a new count.
+- **Known limits:** a non-v2 login's Shopee paste-link shop is not registered in the database → Shopee orders of such
+  a login follow the login's count only. An order is placed on the login's FIRST account of its platform (a free
+  login has one account).
+- **Guide:** free-order-limit section + 116b; `sql/209` = that ONE row (rollback = the live row, md5 checked).
+- **Order:** sql/208 (log only) → merge (Vercel) → Render deploy → read Admin → Free sharing for some days →
+  switch 'true' → sql/209. Rollback: switch 'false' (instant) or `sql/208_free_account_cap_rollback.sql`.
+- Pictures: `docs/design/free-account-cap/` (refused save, iPhone wording, Admin list; 360 / 390 / 430 / 1280).

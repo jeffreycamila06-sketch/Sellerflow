@@ -2,7 +2,7 @@
 // are all used; the database answers "free_account_used" and the editor shows ONE line (Android / web: upgrade;
 // iPhone app: the neutral contact-support wording). Also: the device id is noted once for a free login only.
 import { describe, it, expect, vi, beforeEach, beforeAll, type Mock } from "vitest";
-import { render, act, screen, fireEvent, within } from "@testing-library/react";
+import { render, act, screen, fireEvent } from "@testing-library/react";
 import { buildT } from "../i18n";
 
 beforeAll(() => { (HTMLElement.prototype as unknown as { scrollTo: () => void }).scrollTo = () => {}; });

@@ -22,6 +22,7 @@ import type { AccountUser } from "../../accountDb";
 import { useT } from "../i18n";
 import { useLang } from "../i18n/langContext";
 import { accountLimitMessage } from "./accountQuota";
+import { freeAccountUsedText } from "./freeAccountCap";
 import { planLabel } from "./useAuthSession";
 import { isIOS } from "./platform";
 import { useAccountCoverage, overLimitView, isCovered } from "./accountLive";
@@ -30,7 +31,7 @@ import { useAccountCoverage, overLimitView, isCovered } from "./accountLive";
 // show a "Change" button when canChange (≥4h / never changed, cooldown loaded), else a
 // bare 🔒 (admin-bypassed OR fail-closed); "unlocked" = editable input now.
 export type SavedSlotView = { editable: boolean; note: "cooling" | "locked" | "unlocked"; unlockMs: number; canChange: boolean };
-export type ChannelSaveFn = (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string; accountLimit?: boolean; planFull?: boolean }>;
+export type ChannelSaveFn = (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string; accountLimit?: boolean; planFull?: boolean; freeAccountUsed?: boolean }>;
 
 export function useChannelEditor(account: AccountUser | null | undefined, platform: "tiktok" | "facebook", onSaveChannels?: ChannelSaveFn) {
   const t = useT();
@@ -145,7 +146,8 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
     if (r.planFull) { setState("idle"); return; }
     // Combined account limit (sql/84): the database refused a NEW username. Show the
     // localized reason; `slots` is untouched, so the typed value stays.
-    const msg = r.accountLimit ? await accountLimitMessage(t, { ios: isIOS(), planName: planLabel(account?.plan), lang }) : r.error;
+    // sql/208: a free login adding a live account whose free orders are all used → the one line.
+    const msg = r.freeAccountUsed ? freeAccountUsedText(t, isIOS()) : r.accountLimit ? await accountLimitMessage(t, { ios: isIOS(), planName: planLabel(account?.plan), lang }) : r.error;
     setState("error"); setErr(msg || t.rd_ch_save_failed);
   };
 

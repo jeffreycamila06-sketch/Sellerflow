@@ -111,7 +111,7 @@ describe("Admin: the list and Reset", () => {
     expect(screen.getAllByTestId("fs-count").map((n) => n.textContent)).toEqual(["190 / 150 free orders", "12 / 150 free orders"]);
     expect(screen.getAllByTestId("fs-account")[0].textContent).toContain("@usedshop");
     expect(screen.getAllByTestId("fs-account")[0].textContent).toContain("second@example.com");
-    expect(screen.getAllByTestId("fs-account")[0].textContent).toContain("40 free");
+    expect(screen.getAllByTestId("fs-account")[0].textContent).toContain("40 orders");
     expect(screen.getAllByTestId("fs-device").length).toBe(1);
     fireEvent.click(screen.getAllByTestId("fs-reset")[0]);
     expect(calls.some((c) => c[0] === "admin_free_account_reset")).toBe(false);          // nothing yet: it asks first

@@ -459,7 +459,7 @@ export default function RedesignApp() {
       return { ok: true };
     } catch (e) {
       // sql/208: a free login adding a live account whose free orders are all used → the one line.
-      if (isFreeAccountUsedError(e)) return { ok: false, error: freeAccountUsedText(tApp, isIOS()) };
+      if (isFreeAccountUsedError(e)) return { ok: false, freeAccountUsed: true };
       // The database refused a NEW username (combined account limit, sql/84): the editor
       // shows the localized reason and keeps the typed value.
       if (isAccountLimitError(e)) {

@@ -1,7 +1,7 @@
 // Admin → Controls → "Free sharing" (sql/208): free logins that share a live account or a device,
 // with their free order counts, and "Reset free orders" per live account (a mistake, or a victim).
 // The confirm is a step inside the page (no confirm()).
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import { mono } from "../ui";
 import { loadFreeSharing, resetFreeAccount, type FreeSharing, type SharedAccount, type SharingLogin } from "../adapters/freeAccountCap";
@@ -32,14 +32,18 @@ export function FreeSharingPanel({ onToast }: { onToast?: (m: string, k: "ok" | 
   const [data, setData] = useState<FreeSharing | null | "error">(null);
   const [ask, setAsk] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => { const r = await loadFreeSharing(); setData(r ?? "error"); }, []);
-  useEffect(() => { void load(); }, [load]);
+  const [tick, setTick] = useState(0);            // +1 = read the list again (after a Reset)
+  useEffect(() => {
+    let live = true;
+    void loadFreeSharing().then((r) => { if (live) setData(r ?? "error"); });
+    return () => { live = false; };
+  }, [tick]);
   const idOf = (a: SharedAccount) => `${a.platform}:${a.key}`;
   const reset = async (a: SharedAccount) => {
     setBusy(true);
     const r = await resetFreeAccount(a.platform, a.key);
     setBusy(false); setAsk("");
-    if (r.ok) { onToast?.(tpl(t.rd_adm_fs_reset_done, { n: r.was ?? 0 }), "ok"); void load(); }
+    if (r.ok) { onToast?.(tpl(t.rd_adm_fs_reset_done, { n: r.was ?? 0 }), "ok"); setTick((n) => n + 1); }
     else onToast?.(t.rd_adm_fs_reset_failed, "err");
   };
   if (data === null) return <div style={small} data-testid="fs-loading">{t.rd_ref_loading}</div>;
