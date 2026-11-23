@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createShopeeLinkRuntime } from "../../../../server/shopeeLiveLink.js";
 import { createShopeeLinkRuntime as createMain } from "./fixtures/shopeeLiveLink.main199.js";
-import { createShopeeAccountGate, isMissingFunctionError } from "../../../../server/shopeeAccount.js";
+import { createShopeeAccountGate, isMissingFunctionError, accountSaveRefusal } from "../../../../server/shopeeAccount.js";
 
 const TW_LINK = "https://live.shopee.tw/share?from=live&session=8092367&share_user_id=254298659";
 const PH_LINK = "https://live.shopee.ph/share?from=live&session=777&share_user_id=42";
@@ -193,6 +193,19 @@ describe("the account step (server/shopeeAccount.js)", () => {
       expect(g.lines.join("\n")).not.toContain("987654321");
     }
   });
+  it("sql/208: a free login's used-up shop → 409 free_account_used; every other database error is still try_again", async () => {
+    const g = gateWith(null, { error: { code: "P0001", message: "free_account_used" } });
+    expect(await g.gate(req, { region: "ph", uid: "42" })).toEqual({ ok: false, status: 409, code: "free_account_used" });
+    expect(g.liveCheck).not.toHaveBeenCalled();
+    expect(g.lines.join(" ")).not.toMatch(/42|ph:/);                       // the log line names no shop
+    expect(await gateWith(null, { error: { code: "P0001", message: "account_limit" } }).gate(req, { region: "ph", uid: "42" })).toEqual({ ok: false, status: 503, code: "try_again" });
+    expect(await gateWith(null, { error: { message: "boom" } }).gate(req, { region: "ph", uid: "42" })).toEqual({ ok: false, status: 503, code: "try_again" });
+  });
+  it("accountSaveRefusal names the database's two refusals of a new account and nothing else", () => {
+    expect(accountSaveRefusal({ message: "free_account_used" })).toBe("free_account_used");
+    expect(accountSaveRefusal({ message: "account_limit" })).toBe("account_limit");
+    for (const e of [null, undefined, {}, { message: "duplicate key" }, { message: "" }]) expect(accountSaveRefusal(e)).toBe("");
+  });
   it("a live check that throws is treated as allowed (the same fail-open as every live check)", async () => {
     const register = vi.fn(async () => ({ data: { result: "existing", key: "ph:42" }, error: null }));
     const gate = createShopeeAccountGate({ register, liveCheck: async () => { throw new Error("x"); } });
@@ -204,7 +217,7 @@ describe("server.js wiring (source pins — server.js has no test harness)", () 
   it("the account step and the remove route are wired with the service-role register and the seller's live check", async () => {
     const { readFileSync } = await import("node:fs");
     const s = readFileSync("server.js", "utf8");
-    expect(s).toContain('import { createShopeeAccountGate } from "./server/shopeeAccount.js";');
+    expect(s).toContain('import { createShopeeAccountGate, accountSaveRefusal } from "./server/shopeeAccount.js";');
     expect(s).toContain('register: (userId, region, uid) => serviceSb.rpc("shopee_link_register", { p_user: String(userId || ""), p_region: region, p_uid: String(uid || "") }),');
     expect(s).toContain("liveCheck: accountLiveCheck,");
     expect(s).toContain("shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate, accountGate, publicGate });");

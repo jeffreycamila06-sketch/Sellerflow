@@ -13,6 +13,7 @@ import { isAdminRole } from "../../lib/roles";
 import { fbPreviewEnabled } from "./fbPreview";
 import { tpl, type RedesignT } from "../i18n";
 import { isIOS } from "./platform";
+import { FREE_ACCOUNT_USED, freeAccountUsedText } from "./freeAccountCap";
 import { liveRefusedText, ACCOUNT_NOT_COVERED } from "./accountLive";
 import { log } from "../../lib/log";
 import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
@@ -231,6 +232,7 @@ export function fbReturnText(ret: FbReturn, t: RedesignT, maxPages: number, poli
     if (ret.code === "save_failed" || ret.code === "read_failed" || ret.code === "exception") return t.rd_fb_ret_save_failed;
   }
   if (ret.code === "cap") return tpl(t.rd_fb_cap, { max: maxPages });
+  if (ret.code === FREE_ACCOUNT_USED) return freeAccountUsedText(t, isIOS()); // sql/208
   // Combined account limit (sql/84). Callers with the seller's numbers use accountLimitMessage.
   if (ret.code === "account_limit") return isIOS() ? t.rd_acct_limit_generic_ios : t.rd_acct_limit_generic;
   return t.rd_fb_auth_error_toast;

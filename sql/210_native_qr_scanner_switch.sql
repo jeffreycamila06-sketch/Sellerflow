@@ -1,5 +1,5 @@
 -- ============================================================================
--- sql/208 — Native QR scanner kill switch (Jeff 2026-11-22).
+-- sql/210 — Native QR scanner kill switch (Jeff 2026-11-22).
 -- ============================================================================
 -- NOT APPLIED. Jeff / chat applies via Supabase MCP after review. NO schema change, NO new table,
 -- NO function, NO policy. ONE app_settings row:
@@ -16,7 +16,7 @@
 -- Turn on again: same update with 'true'.
 -- Apply check:
 --   select value from public.app_settings where key = 'native_qr_scanner_enabled';   -- true
--- Rollback: sql/208_native_qr_scanner_switch_rollback.sql.
+-- Rollback: sql/210_native_qr_scanner_switch_rollback.sql.
 -- ============================================================================
 begin;
 

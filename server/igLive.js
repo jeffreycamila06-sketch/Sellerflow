@@ -192,7 +192,7 @@ export function createIgRuntime(deps) {
       try { plan = await store.getPlan(userId); count = await store.countAccounts(userId); }
       catch (e) { log(`[IG] callback read_failed user=${userId}: ${e && e.message}`); return { redirect: back("error", "read_failed") }; }
       const max = plan ? maxAccountsForPlan(plan) : Infinity;
-      let saved = 0, capped = 0, failed = 0, limited = 0;
+      let saved = 0, capped = 0, failed = 0, limited = 0, freeUsed = 0;
       for (const a of accounts) {
         let existing = null;
         try { existing = await store.getAccount(userId, a.igUserId); } catch { existing = null; }
@@ -202,11 +202,12 @@ export function createIgRuntime(deps) {
             user_id: userId, ig_user_id: a.igUserId, ig_username: a.igUsername || null, page_id: a.pageId, page_name: a.pageName || null,
             access_token: encryptToken(a.pageToken, config.tokenKey), token_expires_at: null, active: true,
           });
-        } catch (e) { if (e && e.message === "account_limit") limited++; else failed++; continue; }
+        } catch (e) { if (e && e.message === "account_limit") limited++; else if (e && e.message === "free_account_used") freeUsed++; else failed++; continue; }
         saved++;
         if (!existing) count++;
       }
       if (saved === 0 && limited > 0) return { redirect: back("error", "account_limit") };
+      if (saved === 0 && freeUsed > 0) return { redirect: back("error", "free_account_used") };
       if (saved === 0 && failed > 0) return { redirect: back("error", "save_failed") };
       if (saved === 0) return { redirect: back("error", "cap") };
       log(`[IG] callback ok user=${userId} accounts=${saved} capped=${capped} failed=${failed}`);

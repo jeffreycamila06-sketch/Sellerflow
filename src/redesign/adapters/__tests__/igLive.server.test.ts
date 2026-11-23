@@ -95,6 +95,12 @@ describe("OAuth", () => {
     const b = rt({ store: makeStore(seed, "basic"), fetchImpl: exchange([page("1", { id: "17841", username: "same" })]) });
     expect((await b.runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) })).redirect).toBe("https://app.test/?ig=connected");
   });
+  it("a free login's used-up account (sql/208) → free_account_used, nothing saved", async () => {
+    const s = makeStore(); s.failUpsert = "free_account_used";
+    const { runtime } = rt({ store: s, fetchImpl: exchange([page("1", { id: "1", username: "x" })]) });
+    expect((await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) })).redirect).toBe("https://app.test/?ig=error&code=free_account_used");
+    expect(s.upserts.length).toBe(0);
+  });
   it("the database account limit (sql/87 trigger) → account_limit", async () => {
     const s = makeStore(); s.failUpsert = "account_limit";
     const { runtime } = rt({ store: s, fetchImpl: exchange([page("1", { id: "1", username: "x" })]) });

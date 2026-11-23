@@ -76,12 +76,14 @@ What to do:
 1. Remove an account you no longer use, or
 2. Upgrade your plan: message Admin on Telegram @SellerFlowLive.
 3. To add an extra TikTok account beyond your plan, tap **Add TikTok — Multi Account** and message Admin on Telegram.'),
-  ('free-order-limit', 'Free plan order limit', '2026-11-10'::date, 'free, free plan, 150 orders, order limit, cap, limit reached, reset, upgrade, libre, naubos, 免费, 免費額度, 订单上限', 'On the **Free** plan you can create **150 orders in total**. They **do not reset** — there is no monthly refill. Upgrade for unlimited orders. Paid plans do not have this limit.
+  ('free-order-limit', 'Free plan order limit', '2026-11-23'::date, 'free, free plan, 150 orders, order limit, cap, limit reached, reset, upgrade, libre, naubos, 免费, 免費額度, 订单上限', 'On the **Free** plan you can create **150 orders in total**. They **do not reset** — there is no monthly refill. Upgrade for unlimited orders. Paid plans do not have this limit.
 
 - When you have 20 orders left, a popup says "You''re almost there!" — tap **Upgrade plan** or **Maybe later**.
 - When you reach it, the popup says you''ve used all your free orders. New orders are not created after this.
 - At the limit, tap **Upgrade plan** or **View my orders**.
 - To upgrade, message Admin on Telegram @SellerFlowLive. On iPhone the popup says "Free limit reached… Please contact support."
+- The free orders are counted for your live account too (your TikTok username, Facebook Page, Instagram account or Shopee shop). When a live account''s free orders are used, it needs a paid plan to continue, also on a new login.
+- "This account''s free orders are used — upgrade to continue." You see this when you add a live account with no free orders left. Message Admin to upgrade. On iPhone it says "This account can''t be added right now. Contact support to continue."
 
 You can see "Free orders used" on **Settings → General Settings → Subscription** (not shown on iPhone — message Admin).'),
   ('plan-expired', 'Plan expired or expiring', '2026-10-15'::date, 'expired, expire, plan ended, renew, renewal, inactive, nag-expire, tapos na plan, 过期, 到期, 續費', 'Before your plan ends, the app shows "Your plan expires in N days" or "Your plan expires today". After it ends: "Your plan has expired. Renew to keep your live sessions and printing running." Tap **Renew now**.

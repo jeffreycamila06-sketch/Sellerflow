@@ -9,6 +9,8 @@ import { supabase, isSupabaseConfigured } from "../../supabase";
 import { SERVER, browserSessionId } from "./serverIdentity";
 import { tpl, type RedesignT } from "../i18n";
 import { liveRefusedText, ACCOUNT_NOT_COVERED } from "./accountLive";
+import { isIOS } from "./platform";
+import { FREE_ACCOUNT_USED, freeAccountUsedText } from "./freeAccountCap";
 import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export const IG_PLATFORM = "Instagram" as const;
@@ -152,6 +154,7 @@ export function igReturnText(ret: { status: "connected" | "error"; code?: string
   if (ret.code === "cancelled") return null;
   if (ret.code === "no_ig_account") return t.rd_ig_no_account;
   if (ret.code === "cap") return tpl(t.rd_ig_cap, { max });
+  if (ret.code === FREE_ACCOUNT_USED) return freeAccountUsedText(t, isIOS()); // sql/208
   if (ret.code === "account_limit") return t.rd_acct_limit_generic_ios; // neutral wording on every platform
   return t.rd_ig_auth_error_toast;
 }

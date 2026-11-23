@@ -1,5 +1,5 @@
 -- ============================================================================
--- sql/209 — help guide: the native "Scan sticker QR" camera + the Orders Scan button (2026-11-22).
+-- sql/211 — help guide: the native "Scan sticker QR" camera + the Orders Scan button (2026-11-22).
 --   Same words as docs/support/sfl-guide.md / sql/116b. Rows touched: parcel-scan (the Scan QR line),
 --   blacklist (step 2), orders-search (one new line about Scan, after the buyer-number line).
 -- PHRASE REPLACEMENTS, not whole rows: each update runs only where the old words are found and the new
@@ -8,7 +8,7 @@
 -- No Render deploy (the help bot re-reads the guide every 5 minutes).
 -- NOT APPLIED. Apply after the web merge AND after the new app builds are in the stores (the guide talks
 -- about the camera that only the new app builds have).
--- Rollback: sql/209_guide_native_qr_scanner_rollback.sql
+-- Rollback: sql/211_guide_native_qr_scanner_rollback.sql
 -- ============================================================================
 begin;
 

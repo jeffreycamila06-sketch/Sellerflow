@@ -47,7 +47,7 @@ import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbDiagHandler, FB_DIAG_PATH } from "./server/fbDiag.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
-import { createShopeeAccountGate } from "./server/shopeeAccount.js";
+import { createShopeeAccountGate, accountSaveRefusal } from "./server/shopeeAccount.js";
 import { createShopeePublicGate } from "./server/shopeePublic.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
 import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
@@ -2420,7 +2420,7 @@ try {
       async upsertShop(row) {
         // Throws on a database error; the combined account limit (sql/84) → "account_limit".
         const { error } = await serviceSb.from("shopee_shops").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,shop_id" });
-        if (error) throw new Error(/account_limit/.test(String(error.message || "")) ? "account_limit" : "shop_save_failed");
+        if (error) throw new Error(accountSaveRefusal(error) || "shop_save_failed");
       },
       async listActiveShops() {
         const { data } = await serviceSb.from("shopee_shops").select("*").eq("active", true);
@@ -2637,7 +2637,7 @@ try {
       // was not (handleCallback counts it as failed → ?fb=error&code=save_failed).
       async upsertPage(row) {
         const { error } = await serviceSb.from("fb_pages").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,page_id" });
-        if (error) throw new Error(/account_limit/.test(String(error.message || "")) ? "account_limit" : "fb_page_save_failed");
+        if (error) throw new Error(accountSaveRefusal(error) || "fb_page_save_failed");
       },
       async listActivePages() {
         const { data } = await serviceSb.from("fb_pages").select("*").eq("active", true);
@@ -3002,7 +3002,7 @@ try {
       },
       async upsertAccount(row) {
         const { error } = await serviceSb.from("ig_accounts").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,ig_user_id" });
-        if (error) throw new Error(/account_limit/.test(String(error.message || "")) ? "account_limit" : "ig_account_save_failed");
+        if (error) throw new Error(accountSaveRefusal(error) || "ig_account_save_failed");
       },
       async setActive(userId, igUserId, active) {
         await serviceSb.from("ig_accounts").update({ active, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("ig_user_id", String(igUserId));

@@ -81,6 +81,7 @@ import { settingsChannelScreen } from "./adapters/channelRoute";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthSession";
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
+import { FREE_ACCOUNT_USED, freeAccountUsedText, isFreeAccountUsedError, noteMyDevice } from "./adapters/freeAccountCap";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
 import { useFeatureSwitches, switchesLoaded, switchesOk } from "./adapters/featureSwitches";
 import { helpBotVisible, helpBotPaid, useHelpBotSwitch } from "./adapters/helpBot";
@@ -181,7 +182,7 @@ import { useBtOffModal } from "./adapters/btOff";
 import PrinterGuideModal from "./components/PrinterGuideModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
-import { planDaysLeft } from "../lib/planWindow";
+import { planDaysLeft, isFreePlan } from "../lib/planWindow";
 import { FREE_TIER_CAP, freeOrdersLeft } from "../lib/freeTier";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
@@ -458,6 +459,8 @@ export default function RedesignApp() {
       await auth.reloadProfile();
       return { ok: true };
     } catch (e) {
+      // sql/208: a free login adding a live account whose free orders are all used → the one line.
+      if (isFreeAccountUsedError(e)) return { ok: false, freeAccountUsed: true };
       // The database refused a NEW username (combined account limit, sql/84): the editor
       // shows the localized reason and keeps the typed value.
       if (isAccountLimitError(e)) {
@@ -803,6 +806,9 @@ export default function RedesignApp() {
   useEffect(() => { autoDupRef.current = new Set(); setAutoBadges({}); }, [sessionInstance.currentSessionId]); // eslint-disable-line react-hooks/set-state-in-effect -- fresh session resets Rule-1 dedup + its feed badges
   // Phase 5f — free-tier cap status + popups (M2 visibility-guarded poll).
   const freeCap = useFreeCap(authed, auth.profile?.plan);
+  // sql/208: the device id of a FREE login, once per app open and login. Log only — nothing reads it to refuse.
+  const deviceNoteFor = authed && isFreePlan(auth.profile?.plan) ? authUserId || "" : "";
+  useEffect(() => { if (deviceNoteFor) void noteMyDevice(); }, [deviceNoteFor]);
   // Phase 5g — print config snapshot (filled after print-pattern/printer state is
   // declared below), read by the stable onPrint callback at order-create time.
   const printCfgRef = useRef<{ cur: string; storeName: string; settings: PrintSettings } | null>(null);
@@ -1116,6 +1122,7 @@ export default function RedesignApp() {
     if (!ret) return;
     if (ret.status === "connected") { setToast({ msg: tApp.rd_shp_authorized_toast, kind: "ok" }); void reloadShopeeShops(); }
     else if (ret.code === "account_limit") void accountLimitMessage(tApp, { ios, planName: planLabel(auth.profile?.plan), lang }).then((msg) => setToast({ msg, kind: "err" }));
+    else if (ret.code === FREE_ACCOUNT_USED) setToast({ msg: freeAccountUsedText(tApp, ios), kind: "err" }); // sql/208
     else setToast({ msg: tApp.rd_shp_auth_error_toast, kind: "err" });
     try {
       const url = new URL(window.location.href);

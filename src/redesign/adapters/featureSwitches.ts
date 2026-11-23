@@ -40,7 +40,7 @@ export const FEATURE_SWITCH_KEYS = {
   blacklist: "blacklist_enabled", // Blacklist for every seller OUTSIDE Taiwan, all plans (sql/190, seeded 'false'); admins + feature "blacklist" before
   accountLimitsV2: "shopee_account_enforce", // Shopee shop = one account + the "Plan full" popup + Channels 2×2 for every seller (sql/199, seeded 'false'); admins + feature "account_limits_v2" before
   shopeePublic: "shopee_public_enabled", // Shopee Live for every seller, no beta row needed (sql/206, seeded 'false'); admins + feature "shopee_public" before
-  nativeQrScanner: "native_qr_scanner_enabled", // phone app live QR scanner (iOS build 15+, Android 11+) for every seller (sql/208, seeded 'true'); off = today's photo flow
+  nativeQrScanner: "native_qr_scanner_enabled", // phone app live QR scanner (iOS build 15+, Android 11+) for every seller (sql/210, seeded 'true'); off = today's photo flow
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;

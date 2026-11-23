@@ -1,4 +1,4 @@
--- Rollback of sql/209: the three phrases back to their old words (only where the new words are found).
+-- Rollback of sql/211: the three phrases back to their old words (only where the new words are found).
 -- "checked" is left as it is.
 begin;
 

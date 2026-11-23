@@ -103,7 +103,7 @@ What to do:
 3. To add an extra TikTok account beyond your plan, tap **Add TikTok — Multi Account** and message Admin on Telegram.
 
 ## free-order-limit — Free plan order limit
-Last checked: 2026-11-10
+Last checked: 2026-11-23
 Keywords: free, free plan, 150 orders, order limit, cap, limit reached, reset, upgrade, libre, naubos, 免费, 免費額度, 订单上限
 
 On the **Free** plan you can create **150 orders in total**. They **do not reset** — there is no monthly refill. Upgrade for unlimited orders. Paid plans do not have this limit.
@@ -112,6 +112,8 @@ On the **Free** plan you can create **150 orders in total**. They **do not reset
 - When you reach it, the popup says you've used all your free orders. New orders are not created after this.
 - At the limit, tap **Upgrade plan** or **View my orders**.
 - To upgrade, message Admin on Telegram @SellerFlowLive. On iPhone the popup says "Free limit reached… Please contact support."
+- The free orders are counted for your live account too (your TikTok username, Facebook Page, Instagram account or Shopee shop). When a live account's free orders are used, it needs a paid plan to continue, also on a new login.
+- "This account's free orders are used — upgrade to continue." You see this when you add a live account with no free orders left. Message Admin to upgrade. On iPhone it says "This account can't be added right now. Contact support to continue."
 
 You can see "Free orders used" on **Settings → General Settings → Subscription** (not shown on iPhone — message Admin).
 

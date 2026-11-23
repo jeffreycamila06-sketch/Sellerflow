@@ -40,6 +40,7 @@ import { confirmEmailMatches } from "../adapters/adminDelete";
 import { loadConnectedAccounts, loadSellerAccounts, accountsTotal, extraAccounts, isLowerPlan, removalSummary, fmtAcctDate, PLATFORM_LABEL, type ConnectedAccount, type SellerAccount } from "../adapters/adminAccounts";
 import DowngradeDialog from "../components/DowngradeDialog";
 import { SellerInviteRow, InviteRewardsPanel, InviteHistoryPanel } from "../components/AdminInvite";
+import { FreeSharingPanel } from "../components/AdminFreeSharing";
 import { loadReferralOverview, type ReferralPreview } from "../adapters/invite";
 import Pc711Panel from "../components/Pc711Panel";
 import PrinterTestersPanel from "../components/PrinterTestersPanel";
@@ -52,7 +53,7 @@ const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 
 
 export type AdminPanelKind =
   | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee" | "parcelsw"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711" | "printertesters" | "invrewards" | "invhistory";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711" | "printertesters" | "invrewards" | "invhistory" | "freeshare";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -174,6 +175,7 @@ export default function Admin({ onBack, onOpenPanel, counts, live = false, userB
               top stat card; System was a fabricated assign-amount tool). */}
           <Ctrl icon={cic.gift} label={t.rd_adm_ctrl_invrewards} onClick={() => onOpenPanel("invrewards")} testId="admin-ctrl-invrewards" />
           <Ctrl icon={cic.invhist} label={t.rd_adm_ctrl_invhistory} onClick={() => onOpenPanel("invhistory")} testId="admin-ctrl-invhistory" />
+          <Ctrl icon={cic.invhist} label={t.rd_adm_ctrl_freeshare} onClick={() => onOpenPanel("freeshare")} testId="admin-ctrl-freeshare" />
           <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.parcelmon} label={t.rd_adm_ctrl_parcel} onClick={() => onOpenPanel("parcelmon")} />
@@ -196,7 +198,7 @@ const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
   pulse: t.rd_pulse_title, helpchat: t.rd_adm_ctrl_helpchat, pc711: t.rd_pc711_title, printertesters: t.rd_prt_tile,
-  invrewards: t.rd_adm_ctrl_invrewards, invhistory: t.rd_adm_ctrl_invhistory,
+  invrewards: t.rd_adm_ctrl_invrewards, invhistory: t.rd_adm_ctrl_invhistory, freeshare: t.rd_adm_ctrl_freeshare,
 } as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const miniStat: CSSProperties = { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
@@ -1468,6 +1470,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           {panel === "helpchat" && <AdminHelpChat />}
           {panel === "invrewards" && <InviteRewardsPanel />}
           {panel === "invhistory" && <InviteHistoryPanel onToast={notify} />}
+          {panel === "freeshare" && <FreeSharingPanel onToast={notify} />}
 
           {panel === "broadcast" && (
             <div>

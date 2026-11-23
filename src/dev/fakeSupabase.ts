@@ -28,7 +28,7 @@ const tables: Record<string, Row[]> = {
     // Parcel Scan: Scan QR → fill from Customers (sql/149) — previews in docs/design/scan-qr-lookup/built.
     // Open the preview with ?qlookup=off to see the screen with the switch off.
     { key: "scan_qr_lookup_enabled", value: typeof location !== "undefined" && /[?&]qlookup=off\b/.test(location.search) ? "false" : "true" },
-    // Native "Scan sticker QR" switch (sql/208) — the Orders Scan button shows only with it AND the phone
+    // Native "Scan sticker QR" switch (sql/210) — the Orders Scan button shows only with it AND the phone
     // app's scanner (docs/design/native-qr-scanner/header-check.cjs fakes that plugin).
     { key: "native_qr_scanner_enabled", value: "true" },
   ],
@@ -164,6 +164,25 @@ if (SHP) {
   RPC.account_quota = { used: accounts.length, limit, unlimited: false, locked: 0, next_free_at: null };
 }
 
+// Free orders per live account previews (sql/208, docs/design/free-account-cap):
+//   ?fac=1          a FREE login with no TikTok name; saving the username "usedshop" is refused by the
+//                   "database" (free_account_used) — any other name saves.
+//   ?fac=1&admin=1  the Admin list "Free sharing" with made-up logins.
+const FAC = /[?&]fac=1\b/.test(Q);
+if (FAC && !/[?&]admin=1\b/.test(Q)) Object.assign(tables.seller_profiles[0], { plan: "free", plan_expiry: null, tiktok: "", country: "PH" });
+if (FAC) {
+  const login = (n: number, email: string, plan: string, free: number) => ({ user_id: `fs-${n}`, email, plan, free_orders: free, created_at: iso(60 - n) });
+  RPC.admin_free_sharing = { cap: 150, enforce: false,
+    accounts: [
+      { platform: "tiktok", account_key: "usedshop", label: "usedshop", account_orders: 193, logins: [login(1, "first.login@example.com", "free", 150), login(2, "second.login@example.com", "free", 38), login(3, "third.login@example.com", "free", 5)] },
+      { platform: "tiktok", account_key: "ukay.daily", label: "ukay.daily", account_orders: 64, logins: [login(4, "owner@example.com", "pro", 22), login(5, "helper@example.com", "free", 42)] },
+      { platform: "facebook", account_key: "100200300", label: "Budget Ukay Page", account_orders: 17, logins: [login(6, "page.one@example.com", "free", 9), login(7, "page.two@example.com", "free", 8)] },
+    ],
+    devices: [{ device: "sf-17322", logins: [login(1, "first.login@example.com", "free", 150), login(2, "second.login@example.com", "free", 38)] }],
+    would_refuse: [{}, {}, {}, {}] };
+  RPC.admin_free_account_reset = { ok: true, was: 193 };
+}
+
 type Filter = (r: Row) => boolean;
 const cmp = (a: unknown, b: unknown): number => (a == null && b == null ? 0 : a == null ? 1 : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0);
 
@@ -201,6 +220,10 @@ class Query implements PromiseLike<Res> {
   delete() { this.mode = "delete"; return this; }
   private run(): Res {
     const all = tables[this.table] ?? (tables[this.table] = []);
+    if (FAC && this.table === "seller_profiles" && this.mode !== "select" && this.mode !== "delete"
+      && [this.payload].flat().some((r) => /usedshop/i.test(String((r as Row | null)?.tiktok ?? "")))) {
+      return { data: null, error: { message: "free_account_used" }, count: null } as unknown as Res;
+    }
     if (this.mode === "insert") {
       const rows = (Array.isArray(this.payload) ? this.payload : [this.payload ?? {}]).map((r) => ({ id: `n${Math.random().toString(36).slice(2, 8)}`, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...r }));
       all.unshift(...rows);
