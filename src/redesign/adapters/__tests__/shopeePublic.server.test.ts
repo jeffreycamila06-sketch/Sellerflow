@@ -279,5 +279,7 @@ describe("E — the wiring in server.js", () => {
     for (const l of [...onlyHere, ...onlyMain]) expect(l).not.toMatch(/pollOnce|startPoller\(|stopPoller|emitComment|seen|cursor|dedupe/i);
     const a = hereLines.indexOf(onlyHere[0]), b = hereLines.indexOf(onlyHere[onlyHere.length - 1]);
     expect(hereLines.slice(0, a)).toEqual(mainLines.slice(0, a));                 // everything above the connect decision
+    expect(b - a).toBeLessThan(40);                                               // …and the changed lines sit together, inside connect + the route
+    expect(hereLines.slice(a, b + 1).join("\n")).toContain("async function connect(");
   });
 });
