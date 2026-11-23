@@ -1,0 +1,12 @@
+hero-a_iphone-390              | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 14643px | first load before scrolling: 7 files, 292 KB
+hero-a_iphone-390_dark         | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 14643px | first load before scrolling: 7 files, 274 KB
+hero-a_android-360             | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 15166px | first load before scrolling: 7 files, 292 KB
+hero-a_android-360_dark        | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 15166px | first load before scrolling: 7 files, 274 KB
+hero-a_laptop-1280             | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 9788px | first load before scrolling: 8 files, 359 KB
+hero-a_laptop-1280_dark        | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 9788px | first load before scrolling: 8 files, 335 KB
+hero-b_iphone-390              | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 14407px | first load before scrolling: 8 files, 302 KB
+hero-b_iphone-390_dark         | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 14407px | first load before scrolling: 8 files, 284 KB
+hero-b_android-360             | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 14981px | first load before scrolling: 8 files, 302 KB
+hero-b_android-360_dark        | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 14981px | first load before scrolling: 8 files, 284 KB
+hero-b_laptop-1280             | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 9685px | first load before scrolling: 9 files, 369 KB
+hero-b_laptop-1280_dark        | sideways scroll: no | tap targets under 44 px: none | pictures not loaded: 0 | page height 9685px | first load before scrolling: 9 files, 345 KB
