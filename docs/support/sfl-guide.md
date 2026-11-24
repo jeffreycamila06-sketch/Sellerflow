@@ -186,7 +186,7 @@ Common messages:
 - "Facebook needs you to connect your Page again. Go to Settings → Facebook." Authorize the Page again in Facebook pages.
 - "This Page was connected on another phone, so this one stopped receiving."
 
-**Messenger receipt:** in **Orders**, tap **Receipt** on a Facebook buyer. Type a **Shipping fee** if you charge one (optional) — it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer's chat with your Page right now…", nothing was sent to the buyer and the buyer's comment was not used up.
+**Messenger receipt:** in **Orders**, tap **Receipt** on a Facebook buyer. Type a **Shipping fee** if you charge one (optional) — it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer's chat with your Page right now…", nothing was sent to the buyer.
 
 ## post-sales — Posts: sell on a Facebook post
 Last checked: 2026-11-20

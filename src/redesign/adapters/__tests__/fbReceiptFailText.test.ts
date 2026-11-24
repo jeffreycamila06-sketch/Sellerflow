@@ -21,7 +21,7 @@ describe("receiptFailText", () => {
   });
   it("10/2018300 (another app holds the buyer's chat) → its own line, with or without the polish switch; no other code gets it", () => {
     expect(FB_THREAD_OWNED_CODE).toBe("10/2018300");
-    const line = "Not sent. Facebook says another app is handling this buyer's chat with your Page right now, so it refused the message. The buyer's comment was not used up.";
+    const line = "Not sent. Facebook says another app is handling this buyer's chat with your Page right now, so it refused the message.";
     expect(receiptFailText({ code: 10, fbCode: "10/2018300" }, t)).toBe(line);
     expect(receiptFailText({ code: 10, fbCode: "10/2018300" }, t, true)).toBe(line);
     expect(receiptFailText({ fbCode: "10/2018300" }, t, true)).toBe(line);

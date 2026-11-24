@@ -12,10 +12,10 @@
 begin;
 
 update public.support_guide
-   set body = replace(body, 'it is shown on the receipt and added to the total. It starts empty each time.', 'it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer''s chat with your Page right now…", nothing was sent to the buyer and the buyer''s comment was not used up.'),
+   set body = replace(body, 'it is shown on the receipt and added to the total. It starts empty each time.', 'it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer''s chat with your Page right now…", nothing was sent to the buyer.'),
        checked = greatest(checked, '2026-11-24'::date)
  where id = 'connect-facebook'
    and position('it is shown on the receipt and added to the total. It starts empty each time.' in body) > 0
-   and position('it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer''s chat with your Page right now…", nothing was sent to the buyer and the buyer''s comment was not used up.' in body) = 0;
+   and position('it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer''s chat with your Page right now…", nothing was sent to the buyer.' in body) = 0;
 
 commit;

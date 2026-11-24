@@ -33,8 +33,9 @@ export const RECEIPT_BUCKET = "fb-receipts";
 export const RECEIPT_RETRYABLE_CODES = new Set([1, 2, 4, 17, 32, 190, 613, 80001, 80006]);
 // 10/2018300 "another app is controlling this thread now": nothing was delivered and the comment
 // is not at fault (the buyer's conversation is held by another responder). The failed row is KEPT
-// (it is the record of what happened) but it does not count toward RECEIPT_MAX_FAILS — so the
-// comment stays usable, and rows of this kind saved before this rule count for nothing either.
+// (it is the record of what happened) but it does not count toward RECEIPT_MAX_FAILS on the MANUAL
+// Send — so the comment stays usable, and rows of this kind saved before this rule count for
+// nothing either. The automatic receipt counts it as before (pickReceiptCandidates countEveryFail).
 export const RECEIPT_THREAD_OWNED = "10/2018300";
 export const RECEIPT_NO_FAULT_ERRORS = new Set([RECEIPT_THREAD_OWNED]);
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -82,14 +83,17 @@ export function isMixedBuyer(orders) {
 // orders: [{ comment_msg_id, platform_meta, handle, created_at }]; rows: fb_receipts rows for those
 // comment ids (any user). → candidates [{ commentId, pageId, createdAt, fails }]: no
 // pending/sent row, fewer than RECEIPT_MAX_FAILS failed rows, a known handle; never-failed
-// first, then newest. A failed row whose error_code is in RECEIPT_NO_FAULT_ERRORS is not counted.
-export function pickReceiptCandidates(orders, rows) {
+// first, then newest. A failed row whose error_code is in RECEIPT_NO_FAULT_ERRORS is not counted —
+// except with opts.countEveryFail (the AUTOMATIC receipt: it keeps main's counting, so a buyer who
+// keeps being refused is given up after RECEIPT_MAX_FAILS tries and never holds up the others).
+export function pickReceiptCandidates(orders, rows, opts = {}) {
+  const countEveryFail = opts && opts.countEveryFail === true;
   const busy = new Set();
   const fails = new Map();
   for (const r of rows || []) {
     const id = String(r.comment_id || "");
     if (r.status === "failed") {
-      if (!RECEIPT_NO_FAULT_ERRORS.has(String(r.error_code || ""))) fails.set(id, (fails.get(id) || 0) + 1);
+      if (countEveryFail || !RECEIPT_NO_FAULT_ERRORS.has(String(r.error_code || ""))) fails.set(id, (fails.get(id) || 0) + 1);
     } else busy.add(id);
   }
   const seen = new Set();
@@ -229,47 +233,49 @@ export function createFbReceipt(deps) {
     randomHex = () => randomBytes(32).toString("hex"),
     makeJsonParser = (limit) => express.json({ limit }),
     graphTimeoutMs = RECEIPT_GRAPH_TIMEOUT_MS,
-    // LOG ONLY: the "who holds this conversation" read after a 10/2018300 failure. Render env
-    // FB_RECEIPT_OWNER_READ=0 turns it off (no deploy needed beyond the env change + restart).
-    ownerRead = process.env.FB_RECEIPT_OWNER_READ !== "0",
   } = deps;
   const fetchImpl = withAppSecretProof(rawFetch, config && config.appSecret); // Build 8: appsecret_proof
   const sendAttempts = new Map(); // userId → timestamps (in memory; a restart clears it)
   const sending = new Set();      // user|session|buyer — one send at a time per buyer (in memory)
   // LOG ONLY (server/fbThreadOwner.js): after a 10/2018300 failure, who holds that conversation.
-  // Never awaited by the send; every error is swallowed.
-  const ownerReadOn = ownerRead !== false;
+  // SWITCH: store.ownerReadEnabled() = app_settings.fb_receipt_owner_read_enabled (sql/214, created
+  // 'false'). Off, missing, unreadable or never answering = nothing is asked of Facebook. The switch
+  // itself is read only here — after a 10/2018300 failed row was written and logged — so a sent
+  // receipt and every other failure never reach any of this. Never awaited by the send; every
+  // error is swallowed.
   const ownerReadGate = makeOwnerReadGate({ now });
   let ownerReadDone = Promise.resolve();
   function startOwnerRead(userId, claim, orders, detail) {
     try {
-      if (!ownerReadOn) return;
-      const order = (orders || []).find((o) => String(o.comment_msg_id || "").trim() === claim.commentId);
-      const meta = order && order.platform_meta && typeof order.platform_meta === "object" ? order.platform_meta : {};
-      const buyerId = typeof meta.commenter_id === "string" ? meta.commenter_id.trim() : "";
-      if (!isBuyerId(buyerId)) { log(`[FB] receipt owner user=${String(userId).slice(0, 8)} page=${claim.page.pageId} skipped=no_buyer_id`); return; }
-      if (!ownerReadGate(claim.page.pageId)) return;
+      if (typeof store.ownerReadEnabled !== "function") return;
       ownerReadDone = (async () => {
         try {
+          if ((await store.ownerReadEnabled()) !== true) return;
+          const order = (orders || []).find((o) => String(o.comment_msg_id || "").trim() === claim.commentId);
+          const meta = order && order.platform_meta && typeof order.platform_meta === "object" ? order.platform_meta : {};
+          const buyerId = typeof meta.commenter_id === "string" ? meta.commenter_id.trim() : "";
+          if (!isBuyerId(buyerId)) { log(`[FB] receipt owner user=${String(userId).slice(0, 8)} page=${claim.page.pageId} skipped=no_buyer_id`); return; }
+          if (!ownerReadGate(claim.page.pageId)) return;
           const r = await readThreadOwner({ fetchImpl, pageId: claim.page.pageId, buyerId, pageToken: claim.page.token, now });
           log(ownerLogLine(userId, claim.page.pageId, r, config && config.appId));
           // Kept next to the failed row too (app id + counts only), so it can be read without the server log.
           const note = ` | ${ownerNote(r, config && config.appId)}`;
-          const text = `${String(detail || "").slice(0, Math.max(0, RECEIPT_ERROR_DETAIL_MAX - note.length))}${note}`.slice(0, RECEIPT_ERROR_DETAIL_MAX);
+          const text = `${String(detail || "").slice(0, Math.max(0, RECEIPT_ERROR_DETAIL_MAX - note.length))}${note}`;
           await store.updateReceipt(claim.id, { error_detail: text });
         } catch { /* log only: never matters to the send */ }
       })();
     } catch { /* log only */ }
   }
 
-  async function gather(userId, sessionId, buyerNumber) {
+  // auto = the automatic receipt (autoSend): every failed try counts, as on main.
+  async function gather(userId, sessionId, buyerNumber, auto = false) {
     const since = new Date(now() - RECEIPT_WINDOW_MS).toISOString();
     const orders = await store.listReceiptOrders(userId, sessionId, buyerNumber, since);
     const ids = [...new Set((orders || []).map((o) => String(o.comment_msg_id || "").trim()).filter(Boolean))];
     const rows = ids.length ? await store.listReceiptRows(ids) : [];
     const mine = (rows || []).filter((r) => r.user_id === userId && r.status === "sent");
     const lastSentAt = mine.map((r) => String(r.sent_at || "")).filter(Boolean).sort().pop() || null;
-    return { orders: orders || [], rows: rows || [], candidates: pickReceiptCandidates(orders, rows), mixed: isMixedBuyer(orders), sentCount: mine.length, lastSentAt };
+    return { orders: orders || [], rows: rows || [], candidates: pickReceiptCandidates(orders, rows, { countEveryFail: auto === true }), mixed: isMixedBuyer(orders), sentCount: mine.length, lastSentAt };
   }
 
   // A page that can send: exists, active, can_message, token decrypts. Else null.
@@ -330,7 +336,8 @@ export function createFbReceipt(deps) {
   // says the comment cannot take a private reply; the claim is then marked failed with
   // AUTO_NO_PRIVATE_REPLY and nothing is uploaded or sent. The manual send passes no opts.
   async function sendLocked(userId, target, png, opts = {}) {
-    const g = await gather(userId, target.sessionId, target.buyerNumber);
+    const auto = opts.auto === true;
+    const g = await gather(userId, target.sessionId, target.buyerNumber, auto);
     if (g.mixed) return { status: 409, json: { ok: false, error: "mixed_buyer" } };
     if (g.candidates.length === 0) return { status: 409, json: { ok: false, error: "none_left" } };
 
@@ -396,7 +403,7 @@ export function createFbReceipt(deps) {
     if (answer.kind === "sent") {
       await updateSentReceipt(store, claim.id, { status: "sent", message_id: answer.messageId, sent_at: new Date(now()).toISOString(), image_path: imagePath }, answer.recipientId);
       logAttempt(userId, claim.page.pageId, "sent");
-      const after = await gather(userId, target.sessionId, target.buyerNumber);
+      const after = await gather(userId, target.sessionId, target.buyerNumber, auto);
       return { status: 200, json: { ok: true, sentCount: after.sentCount, remaining: after.candidates.length, lastSentAt: after.lastSentAt } };
     }
     if (answer.kind === "failed" && RECEIPT_RETRYABLE_CODES.has(answer.code)) {
@@ -468,13 +475,13 @@ export function createFbReceipt(deps) {
     if (sending.has(lockKey)) return { status: 409, json: { ok: false, error: "busy" } };
     sending.add(lockKey);
     try {
-      const g = await gather(userId, target.sessionId, target.buyerNumber);
+      const g = await gather(userId, target.sessionId, target.buyerNumber, true);
       if (hasAutoBlockingRow(g.rows, userId)) return { status: 200, json: { ok: false, skipped: "has_receipt" } };
       if (g.orders.length === 0) return { status: 200, json: { ok: false, skipped: "no_orders" } };
       if (g.mixed) return { status: 200, json: { ok: false, skipped: "mixed_buyer" } };
       if (g.candidates.length === 0) return { status: 200, json: { ok: false, skipped: "none_left" } };
       const png = await makePng();
-      return await sendLocked(userId, target, png, { preflight });
+      return await sendLocked(userId, target, png, { preflight, auto: true });
     } finally {
       sending.delete(lockKey);
     }

@@ -5,15 +5,16 @@
 -- Why: with that error nothing was sent to the buyer, yet each failed try was counted against the
 --   comment (2 failed tries = the comment is used up, and a buyer whose comments are all used up has
 --   no Send button). The server fix on branch claude/fb-receipt-thread-owner stops counting these
---   failed tries — the ones already saved too — so AFTER that Render deploy this file changes nothing
---   a seller can see. Run it only to give the comments back BEFORE the deploy.
+--   failed tries on the Send button — the ones already saved too — so AFTER that Render deploy this
+--   file changes nothing a seller can see. Run it only to give the comments back BEFORE the deploy.
+--   (It also deletes the history of those tries from fb_receipts; the copy stays in the keeping table.)
 --
 -- What it does: deletes the failed tries of exactly that error. Nothing else: a sent or waiting
 --   receipt, and a failed try with any other error, are not touched. The deleted rows are copied to
 --   fb_receipts_given_back_212 first (no browser access), so the rollback can put them back.
 --   Rule only — no ids, no names.
 --
--- Preview (read only, run it first; on 2026-11-24: 13 tries, 12 comments, 1 seller, 1 comment used up):
+-- Preview (read only, run it first; late on 2026-11-24: 18 tries, 1 seller):
 --   select count(*) as tries, count(distinct comment_id) as comments, count(distinct user_id) as sellers
 --     from public.fb_receipts where status = 'failed' and error_code = '10/2018300';
 --

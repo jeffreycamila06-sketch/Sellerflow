@@ -30,10 +30,11 @@ type Order = { comment_msg_id: string; platform_meta: Record<string, unknown>; h
 const order = (commentId: string, meta: Record<string, unknown> = { commenter_id: BUYER }, at = "2026-11-24T12:00:00Z"): Order =>
   ({ comment_msg_id: commentId, platform_meta: { page_id: "P1", live_video_id: "LV1", ...meta }, handle: "Secret Buyer", created_at: at });
 
-function makeStore(orders: Order[] = [order("701_1")]) {
+function makeStore(orders: Order[] = [order("701_1")], sw: unknown = true) {
   const rows: Row[] = [];
   const store = {
     rows,
+    ownerReadEnabled: vi.fn(async () => sw) as unknown as (() => Promise<unknown>) | undefined, // the switch (app_settings.fb_receipt_owner_read_enabled)
     hasReceiptAccess: async () => true,
     listReceiptOrders: async () => orders,
     listReceiptRows: async (ids: string[]) => rows.filter((r) => ids.includes(String(r.comment_id))),
@@ -44,6 +45,14 @@ function makeStore(orders: Order[] = [order("701_1")]) {
     getPage: async () => ({ user_id: U, page_id: "P1", active: true, can_message: true, access_token: encryptToken(TOKEN, CONFIG.tokenKey) }),
     setActive: vi.fn(),
   };
+  return store;
+}
+
+// The switch as the store answers it: a value, "throw" (the settings read fails) or "absent" (no reader).
+function withSwitch(store: ReturnType<typeof makeStore>, sw: unknown) {
+  if (sw === "absent") store.ownerReadEnabled = undefined;
+  else if (sw === "throw") store.ownerReadEnabled = vi.fn(async () => { throw new Error("settings read failed"); });
+  else store.ownerReadEnabled = vi.fn(async () => (sw === "undefined" ? undefined : sw));
   return store;
 }
 
@@ -68,7 +77,7 @@ function fakeFacebook(o: { send?: Record<string, unknown>; owner?: Reply; conv?:
 }
 function rt(store: ReturnType<typeof makeStore>, fb: ReturnType<typeof fakeFacebook>, extra: Record<string, unknown> = {}) {
   const logs: string[] = [];
-  const r = createFbReceipt({ config: CONFIG, store, fetchImpl: fb.fetchImpl, now: () => NOW, log: (l: string) => logs.push(l), randomHex: () => "f".repeat(64), ownerRead: true, ...extra });
+  const r = createFbReceipt({ config: CONFIG, store, fetchImpl: fb.fetchImpl, now: () => NOW, log: (l: string) => logs.push(l), randomHex: () => "f".repeat(64), ...extra });
   return { r, logs };
 }
 const body = () => ({ sessionId: S, buyerNumber: 3, imagePngBase64: PNG_B64 });
@@ -104,8 +113,11 @@ describe("A. who holds the conversation — log only", () => {
   });
 
   it("the send's answer and the row a seller's next tap sees are the same with the read on, off, broken, slow or of another shape", async () => {
-    const cases: Record<string, { fb: Parameters<typeof fakeFacebook>[0]; extra?: Record<string, unknown> }> = {
-      off: { fb: {}, extra: { ownerRead: false } },
+    const cases: Record<string, { fb: Parameters<typeof fakeFacebook>[0]; sw?: unknown }> = {
+      off: { fb: {}, sw: false },
+      "switch row missing": { fb: {}, sw: null },
+      "switch read fails": { fb: {}, sw: "throw" },
+      "no switch reader at all": { fb: {}, sw: "absent" },
       on: { fb: {} },
       "both reads throw": { fb: { owner: "throw", conv: "throw" } },
       "Facebook refuses both": { fb: { owner: { status: 400, body: { error: { code: 200, error_subcode: 0, message: "(#200) Requires pages_manage_metadata" } } }, conv: { status: 403, body: { error: { code: 10, error_subcode: 0 } } } } },
@@ -114,8 +126,8 @@ describe("A. who holds the conversation — log only", () => {
     };
     const seen: string[] = [];
     for (const [name, c] of Object.entries(cases)) {
-      const store = makeStore();
-      const { r } = rt(store, fakeFacebook(c.fb), c.extra);
+      const store = withSwitch(makeStore(), "sw" in c ? c.sw : true);
+      const { r } = rt(store, fakeFacebook(c.fb));
       const answer = await r.send(U, body());
       const atAnswer = JSON.stringify({ answer, row: { status: store.rows[0].status, error_code: store.rows[0].error_code, image_path: store.rows[0].image_path, error_detail: store.rows[0].error_detail }, rows: store.rows.length });
       await r._ownerReadDone();
@@ -171,29 +183,50 @@ describe("A. who holds the conversation — log only", () => {
   });
 
   it("no read at all: switch off · another error code · a sent receipt · an order without a usable buyer id", async () => {
-    const noReads = async (fbOpts: Parameters<typeof fakeFacebook>[0], extra: Record<string, unknown> = {}, orders?: Order[]) => {
-      const store = makeStore(orders);
+    const noReads = async (fbOpts: Parameters<typeof fakeFacebook>[0], sw: unknown = true, orders?: Order[]) => {
+      const store = withSwitch(makeStore(orders), sw);
       const fb = fakeFacebook(fbOpts);
-      const { r, logs } = rt(store, fb, extra);
+      const { r, logs } = rt(store, fb);
       await r.send(U, body());
       await r._ownerReadDone();
       expect(fb.reads()).toHaveLength(0);
       return logs;
     };
-    await noReads({}, { ownerRead: false });
+    // the switch: only the exact answer `true` turns the read on
+    for (const sw of [false, null, "undefined", "true", "false", 1, 0, "", {}, "throw", "absent"]) {
+      const logs = await noReads({}, sw);
+      expect(logs.filter((l) => l.includes("receipt owner")), String(sw)).toEqual([]);
+    }
     await noReads({ send: { code: 10, error_subcode: 0, message: "x" } });
     await noReads({ send: { code: 100, error_subcode: 1893060, message: "x" } });
     await noReads({ send: { code: 10903, error_subcode: 2018300, message: "x" } });
     await noReads({ send: { code: 613, message: "x" } });
     for (const meta of [{}, { commenter_id: "" }, { commenter_id: "abc" }, { commenter_id: 24681357902468 }, { commenter_id: "12 34" }]) {
-      const logs = await noReads({}, {}, [order("701_1", { commenter_id: undefined, ...meta })]);
+      const logs = await noReads({}, true, [order("701_1", { commenter_id: undefined, ...meta })]);
       expect(logs).toContain(`[FB] receipt owner user=${U.slice(0, 8)} page=P1 skipped=no_buyer_id`);
     }
     const store = makeStore();
     const fetchImpl = vi.fn(async () => ({ status: 200, json: async () => ({ message_id: "m1", recipient_id: BUYER }) }));
-    const r = createFbReceipt({ config: CONFIG, store, fetchImpl, now: () => NOW, log: () => {}, randomHex: () => "f".repeat(64), ownerRead: true });
+    const r = createFbReceipt({ config: CONFIG, store, fetchImpl, now: () => NOW, log: () => {}, randomHex: () => "f".repeat(64) });
     expect((await r.send(U, body())).status).toBe(200);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("the switch is read only after a 10/2018300 failure — never for a sent receipt, another refusal, or info", async () => {
+    const reads = async (send: Record<string, unknown> | "sent", step: "send" | "info" = "send") => {
+      const store = makeStore();
+      const fetchImpl = send === "sent" ? vi.fn(async () => ({ status: 200, json: async () => ({ message_id: "m1", recipient_id: BUYER }) })) : fakeFacebook({ send }).fetchImpl;
+      const r = createFbReceipt({ config: CONFIG, store, fetchImpl, now: () => NOW, log: () => {}, randomHex: () => "f".repeat(64) });
+      await (step === "send" ? r.send(U, body()) : r.info(U, body()));
+      await r._ownerReadDone();
+      return (store.ownerReadEnabled as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    };
+    expect(await reads(OWNED)).toBe(1);
+    expect(await reads("sent")).toBe(0);
+    expect(await reads(OWNED, "info")).toBe(0);
+    for (const e of [{ code: 10, message: "x" }, { code: 10, error_subcode: 2018301 }, { code: 10903, error_subcode: 2018300 }, { code: 100, error_subcode: 1893060 }, { code: 613 }, { code: 190 }, { code: 551, error_subcode: 1545041 }]) {
+      expect(await reads(e), JSON.stringify(e)).toBe(0);
+    }
   });
 
   it(`at most ${OWNER_READ_MAX_PER_HOUR} reads per Page per hour`, () => {
@@ -287,7 +320,7 @@ describe("B. a 10/2018300 failure does not use up the comment", () => {
     const store = makeStore();
     store.rows.push({ id: 1, user_id: U, comment_id: "701_1", status: "failed", error_code: "10/2018300" }, { id: 2, user_id: U, comment_id: "701_1", status: "failed", error_code: "10/2018300" });
     const fetchImpl = vi.fn(async () => ({ status: 200, json: async () => ({ message_id: "m1", recipient_id: BUYER }) }));
-    const r = createFbReceipt({ config: CONFIG, store, fetchImpl, now: () => NOW, log: () => {}, randomHex: () => "f".repeat(64), ownerRead: true });
+    const r = createFbReceipt({ config: CONFIG, store, fetchImpl, now: () => NOW, log: () => {}, randomHex: () => "f".repeat(64) });
     expect((await r.info(U, body())).json).toMatchObject({ ok: true, canSend: true, remaining: 1 });
     expect((await r.send(U, body())).json).toMatchObject({ ok: true, sentCount: 1 });
   });

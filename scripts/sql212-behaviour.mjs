@@ -1,4 +1,5 @@
 // sql/212 (give back the comments used up by Facebook error 10/2018300) + sql/213 (help guide line)
+// + sql/214 (the owner-read switch: created 'false', an existing row is never changed)
 // on a real Postgres (PGlite). Stand-in fb_receipts = sql/75's columns + sql/80 + sql/99.
 //   212: only failed tries of exactly 10/2018300 leave; every other row is byte-for-byte the same;
 //        twice = no change; the rollback puts the same rows back (same ids) and a new row still gets a new id.
@@ -109,6 +110,28 @@ const ok = (c, m) => { if (c) { pass++; console.log("ok  ", m); } else { fail++;
   ok((await snap())["connect-facebook"] === start["connect-facebook"].replace("|2026-11-14", "|2026-11-24"), "rollback: main's words again (checked left as it is)");
   await db.exec(DOWN);
   ok((await snap())["connect-facebook"].startsWith(row(mainRows, "connect-facebook").body), "rollback twice: no change");
+}
+
+// ── sql/214 ───────────────────────────────────────────────────────────────────
+{
+  const UP = read("sql/214_fb_receipt_owner_read_switch.sql"), DOWN = read("sql/214_fb_receipt_owner_read_switch_rollback.sql");
+  const db = new PGlite();
+  await db.exec("create table public.app_settings (key text primary key, value text not null, updated_at timestamptz default now(), updated_by uuid); insert into public.app_settings (key, value) values ('fb_auto_receipt_enabled','false'), ('fb_polish_v2','true');");
+  const val = async () => (await db.query("select value from public.app_settings where key = 'fb_receipt_owner_read_enabled'")).rows.map((r) => r.value);
+  const others = async () => JSON.stringify((await db.query("select key, value from public.app_settings where key <> 'fb_receipt_owner_read_enabled' order by key")).rows);
+  const before = await others();
+  await db.exec(UP);
+  ok(JSON.stringify(await val()) === '["false"]', "214: the switch row is created 'false'");
+  await db.exec(UP);
+  ok(JSON.stringify(await val()) === '["false"]', "214 twice: still one row, 'false'");
+  await db.exec("update public.app_settings set value = 'true' where key = 'fb_receipt_owner_read_enabled'");
+  await db.exec(UP);
+  ok(JSON.stringify(await val()) === '["true"]', "214 again after the switch was turned on: it stays 'true'");
+  ok((await others()) === before, "214: no other setting is touched");
+  await db.exec(DOWN);
+  ok((await val()).length === 0 && (await others()) === before, "rollback: the row is gone, nothing else changes");
+  await db.exec(DOWN);
+  ok((await val()).length === 0, "rollback twice: no error, no change");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
