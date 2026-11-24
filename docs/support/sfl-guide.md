@@ -170,7 +170,7 @@ Messages:
 Tip: tap **Connect** once and wait. Tapping many times can cause the wait message.
 
 ## connect-facebook — Facebook live (activation required)
-Last checked: 2026-11-14
+Last checked: 2026-11-24
 Keywords: facebook, fb, facebook page, facebook live, activation, activate, hindi ma-connect fb, 脸书, 臉書, 粉丝页, 啟用
 
 Facebook live **needs activation**. If it is not activated for you, the Facebook tile shows "Advanced feature — activation required" and a **Contact us** button. To ask for it, message Admin on Telegram @SellerFlowLive.
@@ -186,7 +186,7 @@ Common messages:
 - "Facebook needs you to connect your Page again. Go to Settings → Facebook." Authorize the Page again in Facebook pages.
 - "This Page was connected on another phone, so this one stopped receiving."
 
-**Messenger receipt:** in **Orders**, tap **Receipt** on a Facebook buyer. Type a **Shipping fee** if you charge one (optional) — it is shown on the receipt and added to the total. It starts empty each time.
+**Messenger receipt:** in **Orders**, tap **Receipt** on a Facebook buyer. Type a **Shipping fee** if you charge one (optional) — it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer's chat with your Page right now…", nothing was sent to the buyer.
 
 ## post-sales — Posts: sell on a Facebook post
 Last checked: 2026-11-20

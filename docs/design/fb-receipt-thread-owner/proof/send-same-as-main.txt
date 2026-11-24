@@ -1,0 +1,7 @@
+sent: posts same · uploads same · answer same · row same  (message requests: 1, picture 4104 bytes 43efd8efc323)
+refused 10/2018300 (another app holds the chat): posts same · uploads same · answer same · row same  (message requests: 1, picture 4104 bytes 43efd8efc323)
+refused 100/1893060: posts same · uploads same · answer same · row same  (message requests: 1, picture 4104 bytes 43efd8efc323)
+refused 10903 (no private reply): posts same · uploads same · answer same · row same  (message requests: 1, picture 4104 bytes 43efd8efc323)
+rate limit 613 (comment given back): posts same · uploads same · answer same · row same  (message requests: 1, picture 4104 bytes 43efd8efc323)
+
+all 5 cases: the request to Facebook, the stored picture, the answer to the app and the saved row are the same as main

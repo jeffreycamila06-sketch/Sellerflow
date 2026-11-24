@@ -1,0 +1,23 @@
+caught  switch ignored: read runs with the switch off
+caught  switch: any truthy answer turns it on
+caught  switch read for every failed send
+caught  read keyed on the subcode alone
+caught  switch read before the row is written (awaited by the send)
+caught  the send waits for the read
+caught  a switch-read error escapes into the send
+caught  switch read also on a sent receipt
+caught  answer changes with the read
+caught  row status changed by the note
+caught  the fix removed
+caught  the fix widened to every 10/x error
+caught  the fix widened to every x/2018300
+caught  the fix also on the automatic receipt (gather)
+caught  the fix also on the automatic receipt (send)
+caught  manual send uses the automatic counting
+caught  buyer id not checked
+caught  note cut instead of Facebook text
+caught  buyer id in the log line
+caught  hourly cap removed
+caught  app line for another code
+caught  give-back deletes every failed row
+22 of 22 on-purpose breaks caught

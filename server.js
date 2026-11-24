@@ -2480,7 +2480,17 @@ try {
         return data ? data.value : null;
       },
     });
+    // sql/214: the "who holds this buyer's chat" read after a refused receipt (10/2018300), log only.
+    // Exact 'true' = on; a missing row or a failed read = off. Read at most once a minute.
+    const ownerReadFlag = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_receipt_owner_read_enabled").maybeSingle();
+        if (error) throw new Error("fb_receipt_owner_read_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
     const store = {
+      ownerReadEnabled: () => ownerReadFlag(),
       // Throws on a database error: the authorize callback shows an error, never "no limit".
       async getPlan(userId) {
         const { data, error } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
