@@ -27,7 +27,8 @@ import { checkAccountLive, createLiveAdmissions } from "./server/accountLive.js"
 import { parseStopItems, stopRemovedAccounts } from "./server/adminLiveStop.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
-import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
+import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS, resolveMemoryLimitMb } from "./server/observability.js";
+import { createCapacityAlarm, createRunStore, countPollers } from "./server/capacityAlarm.js";
 import { shopeeConfig } from "./server/shopeeConfig.js";
 import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
@@ -870,7 +871,7 @@ function tiktokHealthDetail() {
       eulerUsage: eulerUsageToday,
     },
     // Quick memory read so Jeff can eyeball RAM without opening Render.
-    memory: memorySnapshot(process.memoryUsage()),
+    memory: memorySnapshot(process.memoryUsage(), MEMORY_LIMIT.limitMb),
     recentFailureRate,
     lastFailReason,
     warnings,
@@ -3098,11 +3099,35 @@ app.use(finalErrorHandler());
 // at every restart (server/versionAlert.js). Render's env RENDER_GIT_COMMIT; missing = no alert.
 const versionAnnouncer = createVersionAnnouncer({ env: process.env, store: serviceSb ? createVersionStore(serviceSb) : null, alert: adminAlert });
 
+// Server-capacity alarms to the Admin's Telegram (server/capacityAlarm.js, Jeff 2026-11-24): memory at 60 % /
+// 75 % of the limit, back to normal, and "the run before this one did not end cleanly". One message per
+// change of level. Off while the Telegram env is not set; app_settings.server_alarms_enabled = 'false'
+// silences them. Reads only: process memory + the sizes of the live maps. Never awaited by anything.
+const MEMORY_LIMIT = resolveMemoryLimitMb({
+  env: process.env,
+  constrainedBytes: typeof process.constrainedMemory === "function" ? process.constrainedMemory() : 0,
+});
+console.log(`[CAPACITY] memory limit=${MEMORY_LIMIT.limitMb}MB source=${MEMORY_LIMIT.source}`);
+const capacityAlarm = createCapacityAlarm({
+  alert: adminAlert,
+  store: serviceSb ? createRunStore(serviceSb) : null,
+  limitMb: MEMORY_LIMIT.limitMb,
+  lives: () => ({
+    tiktok: tiktokConnections.size,
+    facebook: countPollers(fbRuntime),
+    instagram: countPollers(igRuntime),
+    shopee: countPollers(shopeeLinkRuntime) + countPollers(shopeeRuntime),
+  }),
+  commit: /^[0-9a-f]{7,64}$/i.test(String(process.env.RENDER_GIT_COMMIT || "").trim()) ? String(process.env.RENDER_GIT_COMMIT).trim().toLowerCase().slice(0, 7) : "",
+});
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
   versionAnnouncer.start();   // never awaited, never throws
 });
+// the capacity alarm starts when the server is listening too (its own listener: never awaited, never throws)
+server.once("listening", () => { try { void capacityAlarm.start(); } catch { /* an alarm never stops the server */ } });
 
 // Parcel tracking job worker (Stage 2) — needs the service role; one job at a time.
 if (serviceSb) {
@@ -3126,7 +3151,7 @@ if (serviceSb) {
 // Past ~75% it becomes [MEM-WARN] so Jeff sees pressure BEFORE an OOM. .unref()
 // so this timer never keeps the process alive during shutdown.
 const memoryLogTimer = setInterval(() => {
-  const line = formatMemoryLine(process.memoryUsage(), tiktokConnections.size);
+  const line = formatMemoryLine(process.memoryUsage(), tiktokConnections.size, MEMORY_LIMIT.limitMb);
   if (line.startsWith("[MEM-WARN]")) console.warn(line);
   else console.log(line);
 }, MEMORY_LOG_INTERVAL_MS);
@@ -3157,6 +3182,9 @@ process.on("SIGTERM", () => {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(shutdownLogLine(tiktokConnections.size));
+  // the capacity alarm notes "this run ended cleanly" (so the next start stays silent); at most 3 s, never rejects
+  let cleanEnd = Promise.resolve(false);
+  try { cleanEnd = capacityAlarm.markCleanExit(); } catch { cleanEnd = Promise.resolve(false); }
   if (keepAliveTimer) clearInterval(keepAliveTimer);
   clearInterval(memoryLogTimer);
   if (shopeeRuntime) { try { shopeeRuntime.stopAll(); } catch { /* best effort */ } }
@@ -3167,6 +3195,6 @@ process.on("SIGTERM", () => {
   const forceExit = setTimeout(() => process.exit(0), 5000);
   if (typeof forceExit.unref === "function") forceExit.unref();
   try { io.close(); } catch { /* best effort */ }
-  server.close(() => { clearTimeout(forceExit); process.exit(0); });
+  server.close(() => { cleanEnd.then(() => { clearTimeout(forceExit); process.exit(0); }); });
 });
 

@@ -6547,3 +6547,49 @@ Page automations off and "mark Done" did not help. WHO holds the conversation is
 - Tests: `fbReceiptSameAsMain.server.test.ts` (19) · `fbThreadOwner.server.test.ts` (17) · `fbReceiptFailText.test.ts` ·
   `fbReceiptGiveBackSql.test.ts` · `scripts/sql212-behaviour.mjs` (PGlite, 24) · 22 on-purpose breaks caught
   (`docs/design/fb-receipt-thread-owner/proof/`).
+
+## 2026-11-24 — SERVER-CAPACITY ALARMS ON TELEGRAM (branch `claude/server-capacity-alarms`, NOT merged; sql/215 NOT applied; server half needs a Render deploy)
+Jeff's how-to: `docs/ops/server-alarms.md`. Taglish texts, numbers only.
+- **Memory (server, `server/capacityAlarm.js` + texts `server/capacityTexts.js`):** read once a minute (rss ÷ limit).
+  ⚠️ warning ≥ 60 %, 🔴 DELIKADO ≥ 75 % — each after 2 readings in a row. Danger → warning after 10 readings under
+  70 % (NO message). ✅ ok after 15 readings under 55 %, only if a warning / danger was really delivered. One message
+  per change: the Admin is "told" a level only when Telegram accepted it; while the level is above what he was told it
+  is tried again every 15 min (and only while that reading still holds it). Constants `MEM_*` at the top of the file.
+- **The limit is read, not written:** `resolveMemoryLimitMb` (observability.js) = env `MEMORY_LIMIT_MB` → the
+  container's own (`process.constrainedMemory()`, 128 MB–32 GB) → the constant 512. Start log
+  `[CAPACITY] memory limit=<n>MB source=env|container|default`. The `[MEM]` line and `/health/tiktok` use it too.
+  ⚠️ NOT checked on Render that the container reports the plan's memory — read that log line after the deploy; if wrong,
+  set `MEMORY_LIMIT_MB`. `parcelTrackingWorker.js` still uses the constant (not touched).
+- **Lives in the text:** TikTok (`tiktokConnections.size`) always; Facebook / Instagram / Shopee only when not 0
+  (`countPollers(runtime)` = entries of `_pollers` not stopped). The restart text counts all of them as "live".
+- **Unexpected restart:** table `public.server_runs` (sql/215) — one row per run: heartbeat a minute (time, lives,
+  memory %, told level) + `ended_clean_at`, written by the SIGTERM handler (`capacityAlarm.markCleanExit()`, ≤ 3 s,
+  awaited before `process.exit(0)`; the 5 s forced exit still bounds it). A new run judges the runs BEFORE it
+  (`judgeRuns`): clean end → silent; no clean end + heartbeat older than 150 s → 🔴 NAG-RESTART (lives summed, last
+  memory % of the newest); no clean end + heartbeat still moving → the old instance is still up (zero-downtime deploy)
+  → look again each minute for 20 min. `alarmed_at` is claimed first (two runs never report one death); ≤ 1 restart
+  alarm per 15 min (a crash loop is summed); an unclean end older than 6 h is not news. The told level is carried over
+  a restart (the new run STARTS at that level, so ✅ needs its 15 calm readings).
+  Cannot tell: crash vs killed for memory; a Render "unhealthy" restart (SIGTERM = clean = silent); a server that never
+  comes back; a clean stop whose database write did not finish in 3 s (= a false alarm).
+- **Switch `app_settings.server_alarms_enabled`:** exactly 'false' = nothing sent (server AND database alarm); missing /
+  anything else / unreadable = on (fail open — it is an alarm). Read at most once a minute. Telegram env not set →
+  nothing starts (no timer, no read, no write).
+- **Telegram sender:** `alertText` now also takes `ALERT_BUILDERS` (= `CAPACITY_TEXTS`): texts built from checked whole
+  numbers; any other value = "" = nothing sent. Fixed texts and `new_version` unchanged.
+- **Database connections (sql/215, from the DATABASE — sql/195 is live, so this reuses `parcel_silence_send` + the Vault
+  secrets; the server has no way to count connections without a new function, and this also works when the server is
+  down):** cron `db-capacity-alarm` `1-59/5 * * * *` → `db_capacity_check()`: client backends ÷ `max_connections`
+  (90 today, 21 in use on 2026-11-24). Warning ≥ 70 % on 2 checks in a row, ok < 60 % on 3 in a row (only after a
+  delivered warning), 3 tries with " (sent again)", a warning only while the reading is still ≥ 60 %, told again hourly
+  while it holds. State `db_capacity_state` (no browser access).
+- **server.js:** add-only except two lines — the SIGTERM handler waits for the clean-end write, and the memory log /
+  health snapshot take the resolved limit. The alarm starts from its own `server.once("listening")` (the pinned
+  `server.listen` block of the version alert is untouched). Nothing in comment delivery, orders, printing, extension.
+- **Order:** any. Server before sql/215 → memory alarms work, restart alarm off with ONE log line
+  (`runs table not ready`), it starts by itself once the table exists. sql/215 before the server → the database alarm
+  works alone. Rollback: switch 'false' (instant) or `sql/215_server_capacity_alarms_rollback.sql`.
+- The memory readings never wait for the database: its part of a reading (heartbeat + look back) runs one at a
+  time and is given up on after 10 s (`DB_WORK_LIMIT_MS`).
+- Tests: `capacityAlarm.server.test.ts` (44) · `capacityAlarmSql.test.ts` (5) · `scripts/sql215-behaviour.mjs`
+  (PGlite, 78) · 29 of 29 on-purpose breaks caught (`docs/design/server-capacity-alarms/proof/`).
