@@ -6503,3 +6503,35 @@ same first line as before in every function and is never checked, counted or log
 - **Order:** sql/208 (log only) → merge (Vercel) → Render deploy → read Admin → Free sharing for some days →
   switch 'true' → sql/209. Rollback: switch 'false' (instant) or `sql/208_free_account_cap_rollback.sql`.
 - Pictures: `docs/design/free-account-cap/` (refused save, iPhone wording, Admin list; 360 / 390 / 430 / 1280).
+
+## 2026-11-24 — MESSENGER RECEIPT + FACEBOOK ERROR 10 / 2018300 "another app is controlling this thread" (branch `claude/fb-receipt-thread-owner`, NOT merged; sql/212 + sql/213 NOT applied; server half needs a Render deploy)
+One Page (1 seller) on Nov 24: 13 failed tries on 12 comments of 10 buyers, 6 sent the same evening; no other Page
+has this error in 30 days. It is per conversation, not Page-wide; turning the Page automations off and "mark Done"
+did not help. WHO holds the conversation is NOT known yet — this branch only measures it.
+- **Log only (`server/fbThreadOwner.js`, called from `fbReceipt.js` `startOwnerRead`):** after a send fails with exactly
+  `10/2018300`, two read-only Graph GETs with the Page token, never awaited by the send, every error swallowed:
+  `/{page}/thread_owner?recipient=<buyer id>` and `/{page}/conversations?platform=messenger&user_id=<buyer id>&fields=id,updated_time`.
+  Buyer id = the order's `platform_meta.commenter_id` (134 of 134 sent receipts: equal to Facebook's recipient id).
+  Result = ONE log line `[FB] receipt owner user=<8> page=<page id> owner=<app id|none|err|shape> who=<ours|inbox|other|->
+  owner_http= owner_err=<code/subcode> conv=<count|err|shape> conv_age_min= conv_http= conv_err= keys=<field NAMES> ms=`
+  + the same words appended to that failed row's `fb_receipts.error_detail` (` | owner=… who=… conv=… conv_age_min=…`)
+  so it can be read from the database. Never a name, buyer id, message text, token or link (test-pinned).
+  `who=inbox` = Facebook's own Page Inbox app `263902037430900`. ≤ 30 reads per Page per hour; 6 s limit.
+  Off without a code change: Render env `FB_RECEIPT_OWNER_READ=0`. The send's answer to the app is unchanged.
+  ⚠️ Both Graph answer shapes are from memory (Meta's docs cannot be opened from the session) and the reads may need
+  a permission the app does not have — then the line says `owner=err owner_err=<code/subcode>`; an unknown shape says
+  `shape` + the field names.
+- **Fix (`RECEIPT_NO_FAULT_ERRORS` = `10/2018300`, `pickReceiptCandidates`):** a failed row with that error is KEPT but
+  not counted toward `RECEIPT_MAX_FAILS` — rows saved before the deploy too, so used-up comments come back by
+  themselves at the deploy. Every other failure counts as before; a sent / waiting row still holds its comment.
+  The per-seller send limit per minute is unchanged (it is what bounds repeated taps).
+- **sql/212 (+ rollback), ONE TIME, OPTIONAL:** only to give the comments back BEFORE the Render deploy — deletes failed
+  rows of exactly that error (kept in `fb_receipts_given_back_212`, no browser access). After the deploy it changes
+  nothing a seller sees. `scripts/sql212-behaviour.mjs` (PGlite, 18).
+- **App (Vercel):** `receiptFailText` → `rd_rs_thread_owned` for `fbCode === "10/2018300"`, with or without the polish
+  switch: "Not sent. Facebook says another app is handling this buyer's chat with your Page right now, so it refused
+  the message. The buyer's comment was not used up." **English in all 8 languages for now — wording is provisional**
+  until the log says who the owner is. Guide: one sentence in connect-facebook + 116b; sql/213 = that phrase (+ rollback).
+- **Order:** merge → Vercel (message) → Render deploy (read + fix) → read the log lines / `error_detail` → decide the
+  real fix and the final wording → sql/213. sql/212 only if the comments must come back before the Render deploy.
+- Tests: `fbThreadOwner.server.test.ts` (16) · `fbReceiptFailText.test.ts` · `fbReceiptGiveBackSql.test.ts`; 18 on-purpose breaks caught.

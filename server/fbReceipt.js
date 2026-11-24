@@ -17,6 +17,7 @@ import { GRAPH_VERSION } from "./fbConfig.js";
 import { GRAPH_HOST } from "./fbLive.js";
 import { decryptToken } from "./fbTokens.js";
 import { withAppSecretProof, maskSecretText, makeRateGate, isFbCommentId } from "./fbHardening.js";
+import { readThreadOwner, ownerLogLine, ownerNote, makeOwnerReadGate, isBuyerId } from "./fbThreadOwner.js";
 
 export const RECEIPT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000; // 7 days minus 1 hour
 export const RECEIPT_MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -30,6 +31,12 @@ export const RECEIPT_BUCKET = "fb-receipts";
 // service errors, throttling, invalid token). They do not use up the comment: the claim is
 // deleted like an upload failure. 190 → the seller must re-authorize; the rest → try later.
 export const RECEIPT_RETRYABLE_CODES = new Set([1, 2, 4, 17, 32, 190, 613, 80001, 80006]);
+// 10/2018300 "another app is controlling this thread now": nothing was delivered and the comment
+// is not at fault (the buyer's conversation is held by another responder). The failed row is KEPT
+// (it is the record of what happened) but it does not count toward RECEIPT_MAX_FAILS — so the
+// comment stays usable, and rows of this kind saved before this rule count for nothing either.
+export const RECEIPT_THREAD_OWNED = "10/2018300";
+export const RECEIPT_NO_FAULT_ERRORS = new Set([RECEIPT_THREAD_OWNED]);
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 // base64 (optionally a data:image/png;base64, URL) → Buffer, only when it really is a PNG
@@ -75,14 +82,15 @@ export function isMixedBuyer(orders) {
 // orders: [{ comment_msg_id, platform_meta, handle, created_at }]; rows: fb_receipts rows for those
 // comment ids (any user). → candidates [{ commentId, pageId, createdAt, fails }]: no
 // pending/sent row, fewer than RECEIPT_MAX_FAILS failed rows, a known handle; never-failed
-// first, then newest.
+// first, then newest. A failed row whose error_code is in RECEIPT_NO_FAULT_ERRORS is not counted.
 export function pickReceiptCandidates(orders, rows) {
   const busy = new Set();
   const fails = new Map();
   for (const r of rows || []) {
     const id = String(r.comment_id || "");
-    if (r.status === "failed") fails.set(id, (fails.get(id) || 0) + 1);
-    else busy.add(id);
+    if (r.status === "failed") {
+      if (!RECEIPT_NO_FAULT_ERRORS.has(String(r.error_code || ""))) fails.set(id, (fails.get(id) || 0) + 1);
+    } else busy.add(id);
   }
   const seen = new Set();
   const out = [];
@@ -221,10 +229,38 @@ export function createFbReceipt(deps) {
     randomHex = () => randomBytes(32).toString("hex"),
     makeJsonParser = (limit) => express.json({ limit }),
     graphTimeoutMs = RECEIPT_GRAPH_TIMEOUT_MS,
+    // LOG ONLY: the "who holds this conversation" read after a 10/2018300 failure. Render env
+    // FB_RECEIPT_OWNER_READ=0 turns it off (no deploy needed beyond the env change + restart).
+    ownerRead = process.env.FB_RECEIPT_OWNER_READ !== "0",
   } = deps;
   const fetchImpl = withAppSecretProof(rawFetch, config && config.appSecret); // Build 8: appsecret_proof
   const sendAttempts = new Map(); // userId → timestamps (in memory; a restart clears it)
   const sending = new Set();      // user|session|buyer — one send at a time per buyer (in memory)
+  // LOG ONLY (server/fbThreadOwner.js): after a 10/2018300 failure, who holds that conversation.
+  // Never awaited by the send; every error is swallowed.
+  const ownerReadOn = ownerRead !== false;
+  const ownerReadGate = makeOwnerReadGate({ now });
+  let ownerReadDone = Promise.resolve();
+  function startOwnerRead(userId, claim, orders, detail) {
+    try {
+      if (!ownerReadOn) return;
+      const order = (orders || []).find((o) => String(o.comment_msg_id || "").trim() === claim.commentId);
+      const meta = order && order.platform_meta && typeof order.platform_meta === "object" ? order.platform_meta : {};
+      const buyerId = typeof meta.commenter_id === "string" ? meta.commenter_id.trim() : "";
+      if (!isBuyerId(buyerId)) { log(`[FB] receipt owner user=${String(userId).slice(0, 8)} page=${claim.page.pageId} skipped=no_buyer_id`); return; }
+      if (!ownerReadGate(claim.page.pageId)) return;
+      ownerReadDone = (async () => {
+        try {
+          const r = await readThreadOwner({ fetchImpl, pageId: claim.page.pageId, buyerId, pageToken: claim.page.token, now });
+          log(ownerLogLine(userId, claim.page.pageId, r, config && config.appId));
+          // Kept next to the failed row too (app id + counts only), so it can be read without the server log.
+          const note = ` | ${ownerNote(r, config && config.appId)}`;
+          const text = `${String(detail || "").slice(0, Math.max(0, RECEIPT_ERROR_DETAIL_MAX - note.length))}${note}`.slice(0, RECEIPT_ERROR_DETAIL_MAX);
+          await store.updateReceipt(claim.id, { error_detail: text });
+        } catch { /* log only: never matters to the send */ }
+      })();
+    } catch { /* log only */ }
+  }
 
   async function gather(userId, sessionId, buyerNumber) {
     const since = new Date(now() - RECEIPT_WINDOW_MS).toISOString();
@@ -375,6 +411,7 @@ export function createFbReceipt(deps) {
     if (answer.kind === "failed") {
       await updateFailed(claim.id, { status: "failed", error_code: `${answer.code}/${answer.subcode}`, image_path: imagePath }, answer.detail);
       logAttempt(userId, claim.page.pageId, "failed", answer.code, answer.subcode, answer.detail);
+      if (`${answer.code}/${answer.subcode}` === RECEIPT_THREAD_OWNED) startOwnerRead(userId, claim, g.orders, answer.detail);
       return { status: 502, json: { ok: false, error: "send_failed", code: answer.code, fb_code: `${answer.code}/${answer.subcode}` } };
     }
     // Delivery unknown: leave the row 'pending' so this comment is never reused.
@@ -443,5 +480,5 @@ export function createFbReceipt(deps) {
     }
   }
 
-  return { info, send, autoSend, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts, _sending: sending };
+  return { info, send, autoSend, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts, _sending: sending, _ownerReadDone: () => ownerReadDone };
 }

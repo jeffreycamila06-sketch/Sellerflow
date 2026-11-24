@@ -123,7 +123,7 @@ Messages:
 - "Your plan has ended. Renew to connect again." See "Plan expired"
 
 Tip: tap **Connect** once and wait. Tapping many times can cause the wait message.'),
-  ('connect-facebook', 'Facebook live (activation required)', '2026-11-14'::date, 'facebook, fb, facebook page, facebook live, activation, activate, hindi ma-connect fb, 脸书, 臉書, 粉丝页, 啟用', 'Facebook live **needs activation**. If it is not activated for you, the Facebook tile shows "Advanced feature — activation required" and a **Contact us** button. To ask for it, message Admin on Telegram @SellerFlowLive.
+  ('connect-facebook', 'Facebook live (activation required)', '2026-11-24'::date, 'facebook, fb, facebook page, facebook live, activation, activate, hindi ma-connect fb, 脸书, 臉書, 粉丝页, 啟用', 'Facebook live **needs activation**. If it is not activated for you, the Facebook tile shows "Advanced feature — activation required" and a **Contact us** button. To ask for it, message Admin on Telegram @SellerFlowLive.
 
 When Facebook is activated for you:
 1. Go to **Settings → General Settings → Facebook Live → Manage Facebook pages**.
@@ -136,7 +136,7 @@ Common messages:
 - "Facebook needs you to connect your Page again. Go to Settings → Facebook." Authorize the Page again in Facebook pages.
 - "This Page was connected on another phone, so this one stopped receiving."
 
-**Messenger receipt:** in **Orders**, tap **Receipt** on a Facebook buyer. Type a **Shipping fee** if you charge one (optional) — it is shown on the receipt and added to the total. It starts empty each time.'),
+**Messenger receipt:** in **Orders**, tap **Receipt** on a Facebook buyer. Type a **Shipping fee** if you charge one (optional) — it is shown on the receipt and added to the total. It starts empty each time. If you see "Not sent. Facebook says another app is handling this buyer''s chat with your Page right now…", nothing was sent to the buyer and the buyer''s comment was not used up.'),
   ('post-sales', 'Posts: sell on a Facebook post', '2026-11-20'::date, 'post, posts, posts tab, facebook post, sell on a post, comment code, +1, +2, post orders, print new, my posts, end date, 14 days, locked, magbenta sa post, 帖子, 貼文, 留言下单, 貼文賣貨', 'If your Facebook Page is connected, the **Orders** screen has a **Live | Posts** switch at the top. **Posts** is for selling on a normal Facebook post: buyers comment under your post and the order is made for you.
 
 Posts is on the **Plus**, **Pro** and **Master** plans. On Free or Basic, Posts shows a 🔒 — tap it to contact support.
