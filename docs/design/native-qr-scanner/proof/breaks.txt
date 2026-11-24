@@ -1,0 +1,110 @@
+RED  ParcelScan always uses the photo picker
+RED  Blacklist native read skips the strict parser
+RED  Orders scan triggers the 7-day load
+RED  Orders matches case-sensitively
+RED  Orders matches Facebook buyers too
+RED  Orders shows 'no orders' while the past session loads
+RED  Web rule margin 0.1
+RED  Web rule reads after 1 frame
+RED  Java margin drifts
+RED  Swift frames drift
+RED  switch accepts any truthy value
+RED  photo answer skips readQrFromFile
+RED  a second scanner registration line
+RED  VIBRATE permission added
+RED  sql/211 changes the Blacklist step to other words than the guide
+RED  Orders scan toast timer is a bare setTimeout
+RED  Orders shows Scan without the live scanner
+RED  RedesignApp always passes liveScan
+RED  availability ignores the switch
+RED  unreadable photo treated as a scanner failure
+RED  broken photo data = failed again
+RED  chooser count back to 0
+RED  Blacklist clears the note before the scanner opens
+RED  Android: no portrait lock
+RED  Android: close() does not restore
+RED  iPhone: unreadable photo reported as cancelled
+RED  Android versionCode back to 10
+RED  batchLimit: shutter checked before the rows are in
+RED  Android: chip-type filter removed
+RED  Android: x86_64 chip type added
+RED  Android: one more library in build.gradle [SCANNER_GATE=1]
+RED  iPhone: photo library can be swiped away
+RED  iPhone: Cancel in the photo library does not finish the scan
+RED  Android printer code changed (TsplBuilder) [SCANNER_GATE=1]
+RED  iPhone printer code changed (NiimbotKitDriver) [SCANNER_GATE=1]
+RED  iPhone Swift package version changed (Package.swift) [SCANNER_GATE=1]
+RED  iPhone Package.resolved changed [SCANNER_GATE=1]
+RED  iPhone: a second line in SellerFlowBridgeViewController [SCANNER_GATE=1]
+RED  iPhone: a framework added to the Xcode project [SCANNER_GATE=1]
+RED  iPhone: the Bluetooth sentence in Info.plist changed [SCANNER_GATE=1]
+RED  Orders: Scan button back to minHeight (row taller)
+RED  Orders: Scan button not pulled into the row padding
+RED  gate a: a new chip type passes
+RED  gate b: a changed .so passes
+RED  gate c: changed printer class passes
+RED  gate c: only the roots, not what they use
+RED  gate c: MainActivity may have more than the one line
+RED  gate c: line-number tables not removed
+RED  gate c: an LFS pointer in the new build is not noticed
+RED  gate d: a bumped version passes
+RED  gate e: a new permission passes
+RED  gate f: too big passes
+RED  gate f: unaligned .so passes
+RED  gate script: builds the branch in this checkout
+RED  byte pin runs without SCANNER_GATE (would block later mobile/ work)
+RED  byte pin test always on in CI
+RED  byte pin has no teeth (changed files ignored)
+RED  byte pin: added mobile/ files ignored
+RED  gate script: base = origin/main tip even after the merge
+RED  gate script: runs from a commit without the scanner
+RED  gate script: byte pin without SCANNER_GATE=1
+RED  gate script: git worktree prune back
+RED  gate c: dexdump without -a (annotations not compared)
+RED  gate c: annotations not attached to their class
+RED  gate c: annotation method numbers kept (false FAIL)
+RED  gate d: FAILED line ignored
+RED  gate d: {require/reject} line ignored
+RED  gate d: (n) line ignored
+RED  gate d: empty dependency list passes
+RED  gate e: empty manifest passes
+RED  gate e: missing BLUETOOTH_CONNECT passes
+RED  gate e: LAUNCHER / intent-filter removed passes
+RED  gate e: new uses-library passes
+RED  gate e: application setting change passes
+RED  gate e: <manifest> package change passes
+RED  gate g: changed asset passes
+RED  gate g: removed file passes
+RED  gate g: any new file passes
+RED  gate g: resource numbers compared (false FAIL on a shift)
+RED  gate g: changed resource value passes
+RED  gate g: removed resource passes
+RED  gate g: changed res XML passes
+RED  gate g: style entries compared in order (false FAIL)
+RED  gate g: unreadable resources.pb not CANNOT MEASURE
+RED  gate CLI: CANNOT MEASURE exits 1 like a FAIL
+RED  Orders: Scan tap area back to 4px higher (43px at a 33px row)
+RED  gate a: baseline.prof compared again
+RED  gate a: baseline.profm compared again
+RED  gate a: version-control-info compared again
+RED  gate a: every BUNDLE-METADATA file skipped (too wide)
+RED  gate b: a size table with no rows passes
+RED  gate b: a value that is not a number is not CANNOT MEASURE
+RED  gate b: only one size table is accepted
+RED  gate b: .aab sizes that are not numbers pass
+RED  gate c: everything under base/lib/ skipped again (wrap.sh not compared)
+RED  gate d: no merge report still passes
+RED  gate d: a new part allowed by its name alone
+RED  byte pin e: any line naming the scanner is taken out (old rule)
+RED  byte pin e: an expected line is taken out every time it appears
+RED  iPhone: no check for something already on top of the app
+RED  iPhone: the camera error restarts a closed scanner
+RED  iPhone: the one camera start has no closed check
+RED  Android: the photo thread uses the screen without checking it is there
+RED  Android: finish can answer twice (not synchronized)
+RED  Blacklist: a tablet with the live scanner still says Upload sticker photo
+RED  Blacklist: the No camera line stays with the live scanner
+RED  Blacklist: the laptop wording changes too (live by default)
+RED  Blacklist: RedesignApp does not tell it about the live scanner
+RED  web: an iPhone 'view busy' answer is silent instead of 'try again'
+109/109 breaks caught

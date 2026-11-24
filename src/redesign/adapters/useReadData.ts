@@ -115,6 +115,16 @@ export function buyerReceipt(buyers: Buyer[], num: number): BuyerReceipt | null 
 export function buyerReceipts(buyers: Buyer[], num: number): BuyerReceipt[] {
   return buyers.filter((x) => x.num === num).map(toReceipt);
 }
+// Orders Scan (native QR scanner, 2026-11-22): the TikTok buyer(s) of a session whose @username is the
+// scanned one — capitals and one leading "@" ignored. Normally one; two only when the same name was
+// saved in different capitals (Orders then shows its usual chooser). Pure.
+export function buyerReceiptsByHandle(buyers: Buyer[], handle: string): BuyerReceipt[] {
+  const key = String(handle || "").trim().replace(/^@/, "").toLowerCase();
+  if (!key) return [];
+  return buyers
+    .filter((b) => String(b.platform || "").toLowerCase() === "tiktok" && String(b.handle || "").trim().replace(/^@/, "").toLowerCase() === key)
+    .map(toReceipt);
+}
 function toReceipt(b: Buyer): BuyerReceipt {
   return {
     num: b.num,

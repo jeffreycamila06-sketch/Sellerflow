@@ -13,9 +13,14 @@ android {
         applicationId "com.sellerflow.live"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10
-        versionName "1.9"
+        versionCode 11
+        versionName "1.10"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Ship exactly the chip types the app ships today (the Niimbot printer AARs are ARM-only);
+        // CameraX / ML Kit's other chip types are left out. Checked by mobile/android/qr-scanner-gate.sh.
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -55,6 +60,15 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation "androidx.browser:browser:1.8.0" // Custom Tabs — in-app Facebook sign-in (SellerFlowAuthPlugin)
+    // Live "Scan sticker QR" (SellerFlowScannerPlugin): CameraX + Google ML Kit barcode scanning with the
+    // BUNDLED model (no Google Play services, works offline the first time). Check with
+    // mobile/android/qr-scanner-gate.sh before an upload (size, 16 KB pages, permissions).
+    implementation "androidx.camera:camera-core:1.5.2"
+    implementation "androidx.camera:camera-camera2:1.5.2"
+    implementation "androidx.camera:camera-lifecycle:1.5.2"
+    implementation "androidx.camera:camera-view:1.5.2"
+    implementation "com.google.guava:listenablefuture:1.0"
+    implementation "com.google.mlkit:barcode-scanning:17.3.0"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

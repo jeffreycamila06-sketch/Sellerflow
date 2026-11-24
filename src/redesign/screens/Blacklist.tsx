@@ -9,7 +9,8 @@ import { headerBar, headerTitle } from "../ui";
 import { HeaderWithBack } from "../components/BackButton";
 import { tpl, useT } from "../i18n";
 import { useLang } from "../i18n/langContext";
-import { readQrFromFile, warmQrReader } from "../adapters/qrDecode";
+import { readQrFromFile, warmQrReader, type QrOutcome } from "../adapters/qrDecode";
+import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
 import {
   blacklistChipText, blacklistHandleFromQr, blacklistInputProblem, blacklistLabel, displayBuyer, filterBlacklist, formatBlacklistDay, groupBlacklist,
   type BlAddResult, type BlEntry, type BlPlatform, type BlReason, type BlRow,
@@ -37,7 +38,7 @@ type Note =
   | { kind: "added"; id: string; buyer: string; reason: BlReason }
   | { kind: "already"; buyer: string; reason: BlReason }
   | { kind: "undone"; buyer: string }
-  | { kind: "noqr" } | { kind: "noqrfound" } | { kind: "many"; count: number } | { kind: "err" };
+  | { kind: "noqr" } | { kind: "noqrfound" } | { kind: "many"; count: number } | { kind: "err" } | { kind: "failed" };
 
 function ReasonButton({ on, text, icon, onClick, testid }: { on: boolean; text: string; icon: ReactNode; onClick: () => void; testid: string }) {
   return (
@@ -53,8 +54,12 @@ function NoteBox({ tone, children, testid }: { tone: "ok" | "warn" | "bad"; chil
 }
 
 export default function Blacklist({
-  onBack, rows, error = false, onReload, onAdd, onUndo, onRemove,
+  onBack, rows, error = false, onReload, onAdd, onUndo, onRemove, liveScan = false,
 }: {
+  /** The phone app's live scanner can be opened here (the app build has it AND the switch is on). A wide
+   *  screen (a tablet in the app) then says "Scan sticker QR" like the phone, with no "No camera?" line.
+   *  false / absent (laptop, older app build, switch off) = the screen as before. */
+  liveScan?: boolean;
   onBack: () => void;
   rows: BlRow[] | null;          // null = not read yet (shows "Loading…")
   error?: boolean;
@@ -105,11 +110,30 @@ export default function Blacklist({
     const read = await readQrFromFile(f);
     if (!alive.current) return;
     setReading(false);
+    await applyRead(read);
+  };
+  const applyRead = async (read: QrOutcome) => {
     if (read.kind === "many") { setNote({ kind: "many", count: read.count }); return; } // 2+ stickers: never a guess
     if (read.kind === "none") { setNote({ kind: "noqrfound" }); return; }
     const handle = blacklistHandleFromQr(read.text);
     if (!handle) { setNote({ kind: "noqr" }); return; }
     await save("tiktok", handle);
+  };
+  // The Scan tap: the phone app's live scanner when this build has one (adapters/nativeQrScanner),
+  // else today's photo picker, unchanged. The live read goes through the SAME applyRead.
+  const onScanTap = () => {
+    const native = nativeQrScanner();
+    if (!native) { warmQrReader(); fileRef.current?.click(); return; }
+    if (!reason) return;
+    setReading(true); // the "Added — Undo" note stays until a real read (a closed scanner keeps it)
+    void runStickerScan(native, scannerTexts(t)).then(async (out) => {
+      if (!alive.current) return;
+      setReading(false);
+      if (out.kind === "cancelled") return;
+      setNote(null);
+      if (out.kind === "failed") { setNote({ kind: "failed" }); return; }
+      await applyRead(out);
+    });
   };
   const undo = async (n: Extract<Note, { kind: "added" }>) => {
     setBusy(true);
@@ -140,9 +164,9 @@ export default function Blacklist({
         <div style={label}>{t.rd_bl_step2}</div>
         {!on && <div data-testid="bl-pick-first" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-dim)", margin: "-2px 2px 10px" }}>{t.rd_bl_pick_first}</div>}
         <input ref={fileRef} type="file" accept="image/*" hidden data-testid="bl-file" onChange={(e) => void onScanFile(e.target.files)} />
-        <button type="button" disabled={!on || reading || busy} onClick={() => { warmQrReader(); fileRef.current?.click(); }} data-testid="bl-scan"
+        <button type="button" disabled={!on || reading || busy} onClick={onScanTap} data-testid="bl-scan"
           style={{ ...btnPrimary, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: reading ? 0.75 : 1, cursor: on ? "pointer" : "default" }}>
-          {camIcon}{reading ? t.rd_bl_reading : wide ? t.rd_bl_upload : t.rd_bl_scan}
+          {camIcon}{reading ? t.rd_bl_reading : wide && !liveScan ? t.rd_bl_upload : t.rd_bl_scan}
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 2px 10px", color: "var(--text-muted)", fontSize: 11.5, fontWeight: 700 }}>
           <span style={{ flex: 1, height: 1, background: "var(--border)" }} />{t.rd_bl_or}<span style={{ flex: 1, height: 1, background: "var(--border)" }} />
@@ -165,7 +189,7 @@ export default function Blacklist({
         {on && text.trim() !== "" && (problem === "space" || problem === "long") && (
           <div data-testid="bl-type-problem" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginTop: 7 }}>{problem === "space" ? t.rd_bl_tt_space : t.rd_bl_too_long}</div>
         )}
-        {wide && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 9, lineHeight: 1.4 }}>{t.rd_bl_no_cam}</div>}
+        {wide && !liveScan && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 9, lineHeight: 1.4 }}>{t.rd_bl_no_cam}</div>}
       </div>
       {note?.kind === "added" && (
         <NoteBox tone="ok" testid="bl-added">
@@ -177,6 +201,7 @@ export default function Blacklist({
       {note?.kind === "undone" && <NoteBox tone="ok" testid="bl-undone"><span style={{ overflowWrap: "anywhere" }}>↩ {tpl(t.rd_bl_undone, { buyer: note.buyer })}</span></NoteBox>}
       {note?.kind === "noqr" && <NoteBox tone="bad" testid="bl-noqr"><span><b style={{ display: "block" }}>✕ {t.rd_bl_no_qr}</b><span style={{ fontWeight: 600 }}>{t.rd_bl_no_qr_sub}</span></span></NoteBox>}
       {note?.kind === "noqrfound" && <NoteBox tone="bad" testid="bl-noqr-found"><span>✕ {t.rd_bl_no_qr_found}</span></NoteBox>}
+      {note?.kind === "failed" && <NoteBox tone="bad" testid="bl-scan-failed"><span>✕ {t.rd_qrs_failed}</span></NoteBox>}
       {note?.kind === "many" && <NoteBox tone="bad" testid="bl-qr-many"><span>✕ {tpl(t.rd_qr_many, { n: String(note.count) })}</span></NoteBox>}
       {note?.kind === "err" && <NoteBox tone="bad" testid="bl-err"><span>✕ {t.rd_bl_save_err}</span></NoteBox>}
     </div>

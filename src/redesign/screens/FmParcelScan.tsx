@@ -12,7 +12,8 @@ import { HeaderWithBack } from "../components/BackButton";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { isAndroid } from "../adapters/platform";
-import { readQrFromFile, warmQrReader } from "../adapters/qrDecode";
+import { readQrFromFile, warmQrReader, type QrOutcome } from "../adapters/qrDecode";
+import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import { validHandle, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import {
@@ -248,22 +249,37 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(false); };
 
   // "Scan QR" — same as 7-11: read the buyer @username off the printed sticker.
+  const applyQrRead = (read: QrOutcome) => {
+    const handle = read.kind === "one" ? handleFromQrPayload(read.text) : null;
+    if (handle) {
+      F({ username: handle.slice(0, 50) }); setNoHandle(false); if (contactOn) setPlatform("tiktok"); flash(t.rd_ps2_qr_filled);
+      if (lookupOn && !editing) lookup.scanned(handle.slice(0, 50)); // then look this username up in Customers
+    }
+    else if (read.kind === "many") flash(tpl(t.rd_qr_many, { n: String(read.count) })); // 2+ stickers: never a guess
+    else flash(t.rd_ps2_qr_none);
+  };
   const onScanQr = async (files: FileList | null) => {
     const file = files && files[0];
     if (qrRef.current) qrRef.current.value = "";
     if (!file) return;
     setQrBusy(true);
     try {
-      const read = await readQrFromFile(file);
-      const handle = read.kind === "one" ? handleFromQrPayload(read.text) : null;
-      if (handle) {
-        F({ username: handle.slice(0, 50) }); setNoHandle(false); if (contactOn) setPlatform("tiktok"); flash(t.rd_ps2_qr_filled);
-        if (lookupOn && !editing) lookup.scanned(handle.slice(0, 50)); // then look this username up in Customers
-      }
-      else if (read.kind === "many") flash(tpl(t.rd_qr_many, { n: String(read.count) })); // 2+ stickers: never a guess
-      else flash(t.rd_ps2_qr_none);
+      applyQrRead(await readQrFromFile(file));
     } catch { flash(t.rd_ps2_qr_none); }
     finally { if (aliveRef.current) setQrBusy(false); }
+  };
+  // Same as 7-11: the phone app's live scanner when this build has one, else today's photo picker.
+  const onScanQrTap = () => {
+    const native = nativeQrScanner();
+    if (!native) { warmQrReader(); qrRef.current?.click(); return; }
+    setQrBusy(true);
+    void runStickerScan(native, scannerTexts(t)).then((out) => {
+      if (!aliveRef.current) return;
+      setQrBusy(false);
+      if (out.kind === "cancelled") return;
+      if (out.kind === "failed") { flash(t.rd_qrs_failed); return; }
+      try { applyQrRead(out); } catch { flash(t.rd_ps2_qr_none); }
+    });
   };
 
   // ── Export (好賣+ 大量匯單). Ready = not exported and passes FamilyMart's rules. ─────────────
@@ -473,7 +489,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>{editing ? t.rd_ps2_edit_title : t.rd_ps2_manual_title}</div>
               {contactOn ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <button type="button" onClick={() => { warmQrReader(); qrRef.current?.click(); }} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
+                  <button type="button" onClick={onScanQrTap} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                   {manual && (
@@ -518,7 +534,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }} htmlFor="fms-handle">{t.rd_ps2_handle}</label>
-                  <button type="button" onClick={() => { warmQrReader(); qrRef.current?.click(); }} disabled={qrBusy} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: qrBusy ? "default" : "pointer", whiteSpace: "nowrap", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
+                  <button type="button" onClick={onScanQrTap} disabled={qrBusy} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: qrBusy ? "default" : "pointer", whiteSpace: "nowrap", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                 </div>

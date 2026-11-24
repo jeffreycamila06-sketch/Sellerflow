@@ -12,9 +12,9 @@
 // from here. Every result row gets ↻ Reprint (the audited zero-write path) so
 // the workflow is type → find → reprint → stick.
 import type { WaitlistRow } from "../adapters/fbWaitlist";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ORDERS, avColor, initials, fmt, statusColor, type Order } from "../data";
-import { filterOrders, buyerReceipts, type ReadState } from "../adapters/useReadData";
+import { filterOrders, buyerReceipts, buyerReceiptsByHandle, type ReadState } from "../adapters/useReadData";
 import {
   filterByPlatform, dedupeByOrderNum, inDateRange, rangeBounds, orderSummary,
   type PlatformFilter, type DateRange,
@@ -40,6 +40,9 @@ import PostsBody, { type PostsUi } from "./PostSales";
 import { markPostsSeen, postsSeen } from "../adapters/fbPostSales";
 import { useScreenTimers } from "../adapters/useScreenTimers";
 import { isFreeOrder } from "../../lib/freeOrder";
+import type { QrOutcome } from "../adapters/qrDecode";
+import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
+import { blacklistHandleFromQr } from "../adapters/blacklist";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -55,8 +58,13 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
   tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow, posts, postsLocked = false, onPostsLocked,
+  liveScan = false,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
+  // Scan button (2026-11-22): ONLY when the phone app's live scanner is there (the app build has it AND
+  // native_qr_scanner_enabled is on — RedesignApp: nativeScannerAvailable). Absent/false = no Scan button
+  // (laptop, older app build, switch off: today's Orders).
+  liveScan?: boolean;
   shippingSoon?: boolean; // Build 16: non-admin seller → the 🚚 button shows "Coming soon" and never opens Shipping
   // 7-day search reach (display-only lane — see ordersSearch.ts)
   historyOrders?: Order[]; historyState?: HistoryState; onEnsureHistory?: () => void;
@@ -107,6 +115,14 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
+  // Scan (2026-11-22): a sticker QR put "@username" in the box → that buyer's card for the session
+  // open here. Active only while the box still holds exactly that text; typing = normal search.
+  const [scanned, setScanned] = useState<{ handle: string; query: string } | null>(null);
+  const scanActive = !!scanned && query === scanned.query;
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
+  const aliveRef = useRef(true);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
   // Live | Posts (post sales). A red dot sits on "Posts" until it is opened once on this device.
   const [postsView, setPostsView] = useState<"live" | "posts">("live");
   const [postsDot, setPostsDot] = useState(() => !postsSeen());
@@ -153,7 +169,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const pastShow = pastSel && pastLimit?.id === pastSel.id ? pastLimit.n : PAST_PAGE;
   const receiptBuyers = pastSel ? past.buyers : buyers;
   const numeric = /^\d+$/.test(trimmed);
-  const matches = numeric ? buyerReceipts(receiptBuyers, Number(trimmed)) : [];
+  const matches = scanActive ? buyerReceiptsByHandle(receiptBuyers, scanned!.handle) : numeric ? buyerReceipts(receiptBuyers, Number(trimmed)) : [];
   // Two or more buyers with the same # (shared account / two phones): the seller picks one first.
   // One match = the card exactly as before.
   const dupKey = `${pastSel?.id ?? "current"}:${trimmed}`;
@@ -211,10 +227,37 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // Sessions mode counts by session ("Session · N"); everyone else keeps "Today · N".
   const badgeWord = sessionsMode ? t.rd_ord_badge_session : t.rd_ord_today;
   const badge = state === "loading" ? `${badgeWord} · …`
-    : searching ? `${receipt ? receipt.count : matchCount}` : `${badgeWord} · ${orders.length}`;
+    : searching ? `${receipt ? receipt.count : scanActive ? matches.reduce((n, m) => n + m.count, 0) : matchCount}` : `${badgeWord} · ${orders.length}`;
 
+  // Scan: the phone app's live scanner (adapters/nativeQrScanner) — the button exists only when it is
+  // there (liveScan). Its "Take a photo instead" goes through the same reader as Parcel Scan's Scan QR.
+  // STRICT parser (a TikTok profile link or @name). No 7-day history load (setQuery directly, not onQuery).
+  const showScanMsg = (m: string) => { setScanMsg(m); later(() => setScanMsg(""), 2800); };
+  const applyScan = (read: QrOutcome) => {
+    if (read.kind === "many") { showScanMsg(tpl(t.rd_qr_many, { n: String(read.count) })); return; }
+    if (read.kind === "none") { showScanMsg(t.rd_bl_no_qr_found); return; }
+    const handle = blacklistHandleFromQr(read.text);
+    if (!handle) { showScanMsg(t.rd_bl_no_qr); return; }
+    const q = `@${handle}`;
+    setTtSendOpen(false); setReceiptSheetOpen(false); setDupPick(null);
+    setQuery(q);
+    setScanned({ handle, query: q });
+  };
+  const onScanTap = () => {
+    const native = nativeQrScanner();
+    if (!native) return; // only reachable if the switch went off after the button was drawn
+    setScanBusy(true);
+    void runStickerScan(native, scannerTexts(t)).then((out) => {
+      if (!aliveRef.current) return;
+      setScanBusy(false);
+      if (out.kind === "cancelled") return;
+      if (out.kind === "failed") { showScanMsg(t.rd_qrs_failed); return; }
+      applyScan(out);
+    });
+  };
   const onQuery = (v: string) => {
     setQuery(v);
+    setScanned(null); // typing after a scan = the normal search
     if (v.trim() && !pastSel) onEnsureHistory?.(); // lazy 7-day fetch — first search only (hook no-ops after)
   };
   const pickRange = (r: DateRange) => {
@@ -389,7 +432,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
                 )}
               </div>
             )}
-            {defaultView && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>}
+            {defaultView && <div data-testid="ord-badge" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>}
           </div>
         </div>
         {topTabs}
@@ -401,6 +444,12 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--on-header)", fontFamily: "var(--font-ui)" }} />
           {searching && (
             <button onClick={() => setQuery("")} aria-label={t.rd_ord_search_clear} style={{ background: "transparent", border: "none", color: "var(--on-header)", fontSize: 14, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+          )}
+          {liveScan && (
+            <button type="button" className="sfl-tap44 sfl-tap44-up" onClick={onScanTap} disabled={scanBusy} data-testid="ord-scan" aria-label={t.rd_qrs_title} title={t.rd_qrs_title}
+              style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, height: 26, boxSizing: "border-box", lineHeight: 1, padding: "0 10px", margin: "-5px -6px -5px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", background: "rgba(255,255,255,.16)", color: "var(--on-header)", fontSize: 12, fontWeight: 800, cursor: scanBusy ? "default" : "pointer", opacity: scanBusy ? 0.6 : 1, fontFamily: "var(--font-ui)", whiteSpace: "nowrap" }}>
+              <span aria-hidden="true">▣</span>{t.rd_ord_scan}
+            </button>
           )}
         </div>
         {/* F2 platform pills + F4 date range — additive controls; default = All + This session. */}
@@ -503,7 +552,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
       {!showPosts && <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
         {waitlist && !pastSel && <WaitlistSection w={waitlist} />}
         {/* F3 summary bar — count · total · unique buyers · AOV over the visible set. */}
-        {live && !receipt && !chooser && (
+        {live && !receipt && !chooser && !scanActive && (
           <div data-testid="orders-summary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
             {[[t.rd_ord_sum_orders, `${summary.count}`], [t.rd_ord_sum_total, `${cur}${fmt(summary.total)}`], [t.rd_ord_sum_buyers, `${summary.uniqueBuyers}`], [t.rd_ord_sum_aov, `${cur}${fmt(summary.aov)}`]].map(([l, v], i) => (
               <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "8px 9px", textAlign: "center", boxShadow: "var(--shadow)" }}>
@@ -531,7 +580,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             {matches.length > 1 && (
               <button type="button" data-testid="dup-back" onClick={() => pickDup(null)}
                 style={{ display: "block", marginBottom: 9, padding: 0, border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
-                ‹ {tpl(t.rd_ord_dup_back, { n: matches.length, num: receipt.num })}
+                ‹ {scanActive ? tpl(t.rd_ord_scan_dup_back, { n: matches.length, u: scanned!.handle }) : tpl(t.rd_ord_dup_back, { n: matches.length, num: receipt.num })}
               </button>
             )}
             <div style={{ display: "flex", alignItems: "center", gap: 11, paddingBottom: 11, borderBottom: "1px solid var(--border)" }}>
@@ -586,7 +635,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </div>
         ) : chooser ? (
           <div key="dup-chooser" data-testid="dup-chooser" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "12px 14px", boxShadow: "var(--shadow)" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{tpl(t.rd_ord_dup_title, { n: matches.length, num: matches[0].num })}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{scanActive ? tpl(t.rd_ord_scan_dup, { n: matches.length, u: scanned!.handle }) : tpl(t.rd_ord_dup_title, { n: matches.length, num: matches[0].num })}</div>
             {matches.map((m, i) => (
               <button key={i} type="button" data-testid="dup-option" onClick={() => pickDup(i)}
                 style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "10px 4px", border: "none", borderTop: i ? "1px solid var(--border)" : "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
@@ -599,6 +648,14 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               </button>
             ))}
           </div>
+        ) : scanActive ? (
+          pastSel && past.buyersState !== "ready"
+            ? (past.buyersState === "error"
+              ? <div role="alert" style={{ ...noteStyle, color: "var(--danger)" }}>{t.rd_psn_failed}</div>
+              : <div data-testid="ord-scan-wait" style={noteStyle}>{t.rd_psn_buyers_loading}</div>)
+            : !pastSel && state === "loading"
+              ? <div data-testid="ord-scan-wait" style={noteStyle}>{t.rd_ord_loading}</div>
+              : <div data-testid="ord-scan-none" style={noteStyle}>{tpl(t.rd_ord_scan_none, { u: scanned!.handle })}</div>
         ) : pastSel ? (
           <>
             {past.buyersState === "loading" && <div style={noteStyle}>{t.rd_psn_buyers_loading}</div>}
@@ -629,6 +686,11 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         )}
       </div>}
       <ExportToast message={exp.message} />
+      {scanMsg && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 90, display: "flex", justifyContent: "center", padding: "0 16px", zIndex: 1200, pointerEvents: "none", animation: "none" }}>
+          <div key={scanMsg} role="status" className="sfl-toast-in" data-testid="ord-scan-toast" style={{ maxWidth: "100%", background: "var(--danger)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>⚠ {scanMsg}</div>
+        </div>
+      )}
     </div>
   );
 }

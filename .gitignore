@@ -57,3 +57,6 @@ mobile/www/
 mobile/ios/App/golden
 mobile/ios/App/manifest.json
 mobile/ios/App/payloads
+
+# Native QR scanner gate output (mobile/android/qr-scanner-gate.sh)
+qr-scanner-gate-report.txt

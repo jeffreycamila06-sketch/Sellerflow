@@ -800,6 +800,8 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
 /* 44px tap area around a small pill without changing its size or the header height. */
 [data-redesign] .sfl-tap44 { position: relative; }
 [data-redesign] .sfl-tap44::after { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; height: 44px; transform: translateY(-50%); }
+/* Orders Scan button: the Sessions button sits right under it, so its 44px area starts a little higher (room above). */
+[data-redesign] .sfl-tap44.sfl-tap44-up::after { transform: translateY(calc(-50% - 6px)); }
 
 /* Admin-only country picker (components/AdminCountry.tsx). Bottom sheet on phones,
    small centered dialog on wider screens. .sfl-cty-hit grows a small pill's tap area to

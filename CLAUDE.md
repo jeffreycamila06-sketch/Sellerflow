@@ -6356,6 +6356,105 @@ row is REMOVED now, switch on or off (table, rows and RPCs stay).
 - ⚠️ Known, not changed: `rd_sh_lock_beta_only` ("…upgrade to use TikTok/Facebook") is shown as it is on the iPhone
   app to a seller with an active beta row on a free plan (today's text, kept by decision 3).
 
+## 2026-11-22 — NATIVE "SCAN STICKER QR" (branch `claude/native-qr-scanner`, NOT merged; sql/210 + sql/211 NOT applied; needs NEW app builds: iOS 1.10 build 15, Android 1.10 versionCode 11)
+A live camera scanner in the phone app for every Scan button: 7-11 Parcel Scan, FamilyMart Parcel Scan,
+Blacklist and a NEW **Scan** button next to the Orders search box. Not Pickup Status. Printing untouched.
+- **Web (`adapters/nativeQrScanner.ts`):** `nativeQrScanner()` = the kill switch (`setNativeQrScannerOn`,
+  set by RedesignApp from `featureSw.nativeQrScanner` = `app_settings.native_qr_scanner_enabled`, exact
+  'true') AND `window.Capacitor.Plugins.SellerFlowScanner.scanStickerQr` exists. Otherwise (laptop, older
+  app build, switch off, not read yet) every Scan = today's photo picker, unchanged (the tap still calls
+  `warmQrReader(); input.click()` synchronously). `runStickerScan` → `read` (text VERBATIM) / `photo`
+  (base64 → File → the SAME `readQrFromFile`) / `cancelled` / `failed` (toast `rd_qrs_failed`). Each screen's
+  old photo handler was split into `apply…Read(read)` + the file wrapper — the photo path is byte-equal.
+  Event `qr_native` {result, ms} (never the text). Texts `rd_qrs_*` (14, passed to the native screen) ×8.
+- **Orders Scan:** STRICT parser `blacklistHandleFromQr`; "@username" goes into the box with `setQuery`
+  (NOT `onQuery` → no 7-day history load); `scanned` state is active only while the box still holds
+  exactly that text (typing = normal search). Buyer = `buyerReceiptsByHandle(receiptBuyers, handle)`
+  (useReadData; TikTok only, capitals and one "@" ignored; the open session or the picked past session).
+  2+ hits → the usual chooser (`rd_ord_scan_dup` texts). None → `ord-scan-none` "No orders for @{u} in
+  this session"; past session still loading / this session loading → `ord-scan-wait`. No rows or history
+  rows in scan mode. Button `ord-scan` (`.sfl-tap44`) + hidden `ord-scan-file`.
+- **Centre pick (ONE rule, `src/lib/qrCentrePick.ts`, mirrored in Swift `QrCentrePick` and Java
+  `QrCentrePick.java`):** only QRs whose centre is inside the frame; same text = one; nearest wins only
+  when ≥ 0.15 × frame side nearer than the next different QR, else tie → "Point at one QR"; same winner
+  2 frames in a row. Shared examples `src/lib/__tests__/fixtures/qrCentrePick.examples.json` →
+  `node scripts/gen-qr-pick-cases.mjs` writes `QrCentrePickCases.swift` / `.java`; the CI test fails when
+  they are stale or the constants differ. ⚠️ Change the rule = change the JSON + all three + regenerate.
+- **iOS (`SellerFlowScannerPlugin.swift`, own plugin, one line in SellerFlowBridgeViewController):**
+  AVFoundation metadata reader (.qr), presented `.overFullScreen` (the web keeps running under it);
+  flashlight (bolt icons) only when the device has a torch; denied → "Camera is off" + native Open
+  Settings; Split View → "Use SellerFlowLive full screen to scan" (multitasking camera enabled where
+  supported); background pauses / resumes with the light restored; front-only camera used; no camera →
+  the photo choice. Beep = a 0.12 s WAV made at run time as a system sound (follows the silent switch, no
+  audio-session change) + `UINotificationFeedbackGenerator`. Photo = action sheet Take photo / Choose
+  from photos (`UIImagePickerController` / `PHPickerViewController`, no photo permission), ≤ 4032 px JPEG.
+  Info.plist camera text reworded. Tests `AppTests/QrCentrePickTests.swift` (+ generated cases) in the
+  existing xcodebuild gate. ⚠️ No Swift compiler in the cloud session — first compile = Jeff's Mac.
+- **Android (`SellerFlowScannerPlugin.java` + `QrScannerDialog.java` + `QrCentrePick.java`, one line in
+  MainActivity):** CameraX 1.5.2 + ML Kit `barcode-scanning:17.3.0` (BUNDLED, no Play services) in a
+  full-screen Dialog over MainActivity (no 2nd Activity → the WebView is never paused); CameraX bound to
+  MainActivity's lifecycle; torch restored on resume; Capacitor permission alias "camera" (CAMERA was
+  already declared; no VIBRATE — haptic via `performHapticFeedback`, beep via `ToneGenerator` on
+  notification volume). Photo = Take photo (FileProvider cache path) / Choose from photos
+  (`ACTION_GET_CONTENT`), re-encoded JPEG ≤ 4032 px. `QrCentrePickTest` (JUnit) passes on plain Java here;
+  the plugin/dialog were NOT compiled in the cloud (no Android SDK / Google Maven).
+  `ndk { abiFilters "armeabi-v7a", "arm64-v8a" }` in defaultConfig = today's two chip types only (the
+  Niimbot .aar files are ARM-only; CameraX / ML Kit's x86 copies are left out).
+  **PRINTER-SAFETY GATE before upload (Mac, once):** `bash mobile/android/qr-scanner-gate.sh` from a
+  worktree of the branch (never ~/Sellerflow — commands in the script header). BASE = the newest origin/main
+  commit WITHOUT `SellerFlowScannerPlugin.java` (first-parent log), NEW = HEAD (the exact commit to upload);
+  both ids printed (`--commits` prints only them). It first runs the mobile/ byte pin vs BASE
+  (`SCANNER_GATE=1 node scripts/native-scanner-fence.mjs --check --base <id>`), then builds both RELEASE
+  .aab files in throw-away worktrees and `qr-scanner-gate-check.mjs` checks: a) chip types; b) every .so of
+  the base, same sha256; c) printer library files + every dex class the printer code reaches
+  (`dexdump -d -a`: code AND annotations, offsets / index numbers removed) — MainActivity may differ only by
+  the one registerPlugin line; d) every library keeps its version (an unreadable dependency line =
+  CANNOT MEASURE); e) the WHOLE merged manifest: only new CameraX / ML Kit elements (merge report);
+  anything else added / removed / changed, a missing `<application>` / BLUETOOTH_CONNECT or an empty
+  manifest = FAIL; g) every other .aab file hashed (assets incl. capacitor.config.json, res, root, META-INF;
+  resources.pb + compiled XML compared BY NAME with ids dropped) — only the 3 `sfl_qr_*` drawables and
+  CameraX / ML Kit files may be new, anything else changed = FAIL with the file name; f) ≤ 6 MB per phone,
+  new 64-bit .so 16 KB aligned. Exit 0 PASS · 1 "STOP — do not release" · 2 "CANNOT MEASURE — STOP".
+  Writes in ~/Sellerflow's .git only: fetch of origin/main, two `git worktree add` entries it removes again,
+  `git lfs pull` objects; never `git worktree prune`; the keystore is only read.
+  Logic tested on made-up inputs: `qrScannerGate.test.ts`. ⚠️ resources.pb / compiled-XML decoding follows
+  aapt2's Resources.proto but was never run on a real .aab here. A real-build FAIL or CANNOT MEASURE →
+  ask Claude (may be a false alarm, never release on it).
+- **SQL:** sql/210 = the switch row 'true' (rollback deletes it → photo flow). sql/211 = help-guide phrase
+  swaps (parcel-scan, blacklist, orders-search; anchors checked on the live rows 2026-11-22) — apply after
+  the store builds are live. Proof `scripts/sql210-native-behaviour.mjs` (PGlite, 20).
+- **native-version.json NOT raised** — raise `ios.latest` → 15 and `android.latest` → 11 only after each
+  store version is LIVE (Android already has `getBuildNumber` since versionCode 6).
+- 🔴 **Do NOT apply `sql/116b` until 1.10 is LIVE in BOTH stores** — 116b (regenerated from the guide) holds the
+  scanner wording. Until then ship any other guide change as its own phrase-swap SQL (like sql/211), never 116b.
+- Tests: `qrCentrePick.test.ts`, `nativeQrScanner.test.ts`, `nativeScan.screens.test.tsx` (new build vs
+  laptop/old build/switch off per screen), `Orders.scan.test.tsx`, `nativeScanner.fence.test.ts`,
+  `nativeScannerMain.fence.test.ts` = the mobile/ BYTE PIN (every file under mobile/ = the base's bytes except
+  the scanner's; the 5 edited files = the base's minus the scanner lines) — runs ONLY with `SCANNER_GATE=1`
+  (the gate script); normal CI skips it, so later mobile/ work never turns CI red. The always-on CI checks
+  (`nativeScanner.fence.test.ts`): one registration line each, scanner files never use printer code,
+  `includePlugins: []`, ARM-only abiFilters, no npm scanner plugin, no new permission, iOS build ≥ 15 and
+  versionCode ≥ 11 ("at least" — later releases only raise them). Proof: `docs/design/native-qr-scanner/proof/fence-scope.txt`.
+  Orders header: row = main's height with the Scan button (26 px button, margin -5/-6/-5/0, 44 px tap via
+  `.sfl-tap44 .sfl-tap44-up`, started 6 px higher → ≥ 44 px at a 33 px row with ✕ / tabs / chips / Sessions
+  unchanged), `docs/design/native-qr-scanner/header-check.cjs` (natural row + a forced 33 px row).
+- **Fix Round 4 (2026-11-23):** scanner SQL renumbered to **sql/210** (switch) + **sql/211** (guide) —
+  main took 208/209 for the free account cap; script `scripts/sql210-native-behaviour.mjs`, test helper
+  `guideSql211.ts`. Gate: the ONLY files not compared = `baseline.prof`, `baseline.profm`,
+  `version-control-info.textproto` (`EXPECTED_DIFF`, exact paths) + the .aab's signature files + the
+  library list (check d); a size table with no rows / a value that is not a number → CANNOT MEASURE; under
+  `base/lib/` only `<chip>/<name>.so` belongs to checks a / b, any other file there is compared (new =
+  FAIL); no merge report, or a new manifest part without a line in it → CANNOT MEASURE (a name alone allows
+  nothing). Byte pin: the 5 edited files lose only the EXACT expected scanner lines, each the expected
+  number of times (`scannerLineProblems` / `editedFileProblems`) — a second registration line or one more
+  line naming a scanner file = FAIL. iPhone: something already on top of the app → answer
+  `{status:"error", code:"view_busy"}` at once (the web shows `rd_qrs_failed`), never pending; ONE place
+  starts the camera (`startSessionIfOpen`, refuses once `finished`), the camera-error notice goes to the
+  main thread and does nothing after a close. Android: the photo thread null-checks `getActivity()` (no
+  screen → `photo_unreadable`, once; `finish` is synchronized). Blacklist: prop `liveScan` (same rule as
+  Orders, from RedesignApp) → a wide screen WITH the live scanner (a tablet in the app) says "Scan sticker
+  QR" and has no "No camera?" line; without it the screen = main's (`proof/blacklist-same-as-main.txt`).
+
 ## 2026-11-23 — FREE PLAN: FREE ORDERS PER LIVE ACCOUNT (branch `claude/free-account-cap`, NOT merged; sql/208 + sql/209 NOT applied; server half needs a Render deploy)
 Stops "used all free orders → new login with the same live account". FREE plan only: a paid login returns at the
 same first line as before in every function and is never checked, counted or logged.

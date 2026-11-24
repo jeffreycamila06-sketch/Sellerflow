@@ -1,0 +1,34 @@
+{
+  "_note": "Shared examples for the native QR scanner's centre pick. Read by src/lib/__tests__/qrCentrePick.test.ts and turned into Swift + Java test cases by scripts/gen-qr-pick-cases.mjs. Frame side 200 → margin 30.",
+  "margin": 0.15,
+  "frames": 2,
+  "pick": [
+    { "id": "one_inside", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 210, "cy": 320 }], "expect": "one:A" },
+    { "id": "one_outside", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 310, "cy": 300 }], "expect": "none" },
+    { "id": "on_the_edge_counts", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 300, "cy": 400 }], "expect": "one:A" },
+    { "id": "just_past_the_edge", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 300.5, "cy": 300 }], "expect": "none" },
+    { "id": "clearly_nearer_wins", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 210, "cy": 300 }, { "text": "B", "cx": 250, "cy": 300 }], "expect": "one:A" },
+    { "id": "too_close_to_call", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 210, "cy": 300 }, { "text": "B", "cx": 239, "cy": 300 }], "expect": "tie" },
+    { "id": "gap_exactly_margin_wins", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 200, "cy": 300 }, { "text": "B", "cx": 200, "cy": 330 }], "expect": "one:A" },
+    { "id": "order_does_not_matter", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "B", "cx": 250, "cy": 300 }, { "text": "A", "cx": 210, "cy": 300 }], "expect": "one:A" },
+    { "id": "same_text_twice_is_one_qr", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 200, "cy": 300 }, { "text": "A", "cx": 260, "cy": 300 }], "expect": "one:A" },
+    { "id": "nearest_copy_counts", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 260, "cy": 300 }, { "text": "A", "cx": 205, "cy": 300 }, { "text": "B", "cx": 220, "cy": 300 }], "expect": "tie" },
+    { "id": "outside_qr_never_competes", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 290, "cy": 390 }, { "text": "B", "cx": 301, "cy": 300 }], "expect": "one:A" },
+    { "id": "three_qrs_nearest_clear", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 200, "cy": 300 }, { "text": "B", "cx": 235, "cy": 300 }, { "text": "C", "cx": 200, "cy": 336 }], "expect": "one:A" },
+    { "id": "three_qrs_second_too_close", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "A", "cx": 200, "cy": 300 }, { "text": "B", "cx": 280, "cy": 300 }, { "text": "C", "cx": 200, "cy": 320 }], "expect": "tie" },
+    { "id": "empty_text_ignored", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "", "cx": 200, "cy": 300 }], "expect": "none" },
+    { "id": "no_hits", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [], "expect": "none" },
+    { "id": "zero_size_frame", "frame": { "cx": 200, "cy": 300, "side": 0 }, "hits": [{ "text": "A", "cx": 200, "cy": 300 }], "expect": "none" },
+    { "id": "small_frame_scales_margin", "frame": { "cx": 50, "cy": 50, "side": 40 }, "hits": [{ "text": "A", "cx": 50, "cy": 50 }, { "text": "B", "cx": 57, "cy": 50 }], "expect": "one:A" },
+    { "id": "small_frame_tie", "frame": { "cx": 50, "cy": 50, "side": 40 }, "hits": [{ "text": "A", "cx": 50, "cy": 50 }, { "text": "B", "cx": 55, "cy": 50 }], "expect": "tie" },
+    { "id": "long_link_text", "frame": { "cx": 200, "cy": 300, "side": 200 }, "hits": [{ "text": "https://tiktok.com/@pedro123", "cx": 190, "cy": 295 }], "expect": "one:https://tiktok.com/@pedro123" }
+  ],
+  "streak": [
+    { "id": "two_frames_read", "steps": ["one:A", "one:A"], "expect": ["-", "A"] },
+    { "id": "winner_changes_restarts", "steps": ["one:A", "one:B", "one:B"], "expect": ["-", "-", "B"] },
+    { "id": "empty_frame_restarts", "steps": ["one:A", "none", "one:A"], "expect": ["-", "-", "-"] },
+    { "id": "tie_shows_hint_and_restarts", "steps": ["one:A", "tie", "one:A", "one:A"], "expect": ["-", "tie", "-", "A"] },
+    { "id": "keeps_reading_after", "steps": ["one:A", "one:A", "one:A"], "expect": ["-", "A", "A"] },
+    { "id": "tie_alone", "steps": ["tie", "tie"], "expect": ["tie", "tie"] }
+  ]
+}
