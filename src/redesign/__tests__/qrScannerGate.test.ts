@@ -880,3 +880,18 @@ describe("c) D8 synthetic helpers", () => {
     expect(r.lines.join("\n")).toMatch(/- .*return v2[\s\S]*\+ .*return v3/);
   });
 });
+
+describe("c) a class that is the last one of a dex file", () => {
+  it("reads the same with or without the blank line before the next dex file's header", () => {
+    const T = "Lkotlin/annotation/Target;";
+    const a = parseDD(dexClass(0, T, [], { off: 0x100, idx: 7611, line: 1 }) + "\n");
+    const b = parseDD(dexClass(5, T, [], { off: 0x900, idx: 5146, line: 1 }) + "\n\n   \nProcessing '/x/classes2.dex'...\nOpened '/x/classes2.dex', DEX version '037'\n");
+    expect((a.get(T) as { text: string }).text).toBe((b.get(T) as { text: string }).text);
+  });
+  it("a real change is still a change", () => {
+    const T = "Lkotlin/annotation/Target;";
+    const a = parseDD(dexClass(0, T, [{ name: "x", type: "()V", insns: ["return-void"] }], { off: 0x100, idx: 1, line: 1 }));
+    const b = parseDD(dexClass(0, T, [{ name: "x", type: "()V", insns: ["nop", "return-void"] }], { off: 0x100, idx: 1, line: 1 }));
+    expect((a.get(T) as { text: string }).text).not.toBe((b.get(T) as { text: string }).text);
+  });
+});

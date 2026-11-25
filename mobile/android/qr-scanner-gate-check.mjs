@@ -184,7 +184,9 @@ export function parseDexdump(text) {
   let cur = null, lines = [], skipDebug = false, anno = null, annoFor = null;
   const flush = () => {
     if (!cur) return;
-    const t = lines.join("\n");
+    // blank lines at the end depend only on where the class sits in the dex file (the last class of a
+    // file is followed by the next file's header), so they are not part of the class
+    const t = lines.join("\n").replace(/(\n[ \t]*)+$/, "");
     const refs = new Set(t.match(/L[A-Za-z0-9_$/\-]+;/g) || []);
     refs.delete(cur);
     const prev = classes.get(cur);
