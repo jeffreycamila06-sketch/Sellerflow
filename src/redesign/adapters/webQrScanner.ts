@@ -7,35 +7,45 @@
 // WHO GETS IT — only when ALL are true (webQrScanner / webScannerAvailable):
 //   • the Android app (Capacitor.getPlatform() === "android");
 //   • the app build has NO SellerFlowScanner plugin (a build that has it keeps the native scanner);
-//   • the kill switch app_settings.web_qr_scanner_enabled is exactly 'true' (sql/218; set once per
-//     sign-in by RedesignApp through setWebQrScannerOn — not read / failed read / anything else = off);
+//   • this login may use it (webQrScannerAllowed — RedesignApp hands the answer to setWebQrScannerOn):
+//       the switch app_settings.web_qr_scanner_enabled is exactly 'true' (sql/218) = EVERY seller, OR
+//       the login is an admin, OR it has the feature key "web_qr_scanner" (testers, before the switch;
+//       sql/219). Not read / a failed read / anything else = no;
 //   • the page can ask for a camera (navigator.mediaDevices.getUserMedia).
 // Otherwise nothing here runs: a laptop, an iPhone, a browser = today's photo flow, unchanged.
 //
 // Camera refused / not there / any error → the scanner closes and the screen opens today's photo flow
-// with one short line. Every camera track is stopped on EVERY way out: a read, Close, "Take a photo
-// instead", the phone's Back, the app going to the background, the screen being left. Never throws.
+// with one short line. "The camera isn't available" is decided from the CAMERA alone: no picture from
+// it 8 seconds after it opened. The QR reader starts loading the moment the scanner opens and is never
+// part of that decision — a reader that loads slowly just reads a little later.
+// Every camera track is stopped on EVERY way out: a read, Close, "Take a photo instead", the phone's
+// Back, the app going to the background, the screen being left. Never throws.
 import { useCallback, useEffect, useRef } from "react";
 import { pickCentreQr, stepPick, type PickStreak, type QrFrame, type QrHit } from "../../lib/qrCentrePick";
 import { cameraSupported, stopStream, triggerHaptic } from "./camera";
 import { isCapacitorAndroid } from "./platform";
 import { nativeScannerAvailable, type ScannerTexts } from "./nativeQrScanner";
-import { readQrHitsFromPixels } from "./qrDecode";
+import { readQrHitsFromPixels, warmQrPixelReader } from "./qrDecode";
 import { track } from "../analytics";
 
 // ── Who gets it ───────────────────────────────────────────────────────────────────────────────
+/** May this login use the in-page scanner? The switch (every seller) OR an admin OR the feature key
+ *  "web_qr_scanner" (testers first). Each one counts only when it is exactly true. */
+export function webQrScannerAllowed(a: { switchOn: boolean; isAdmin: boolean; previewKey: boolean }): boolean {
+  return a?.switchOn === true || a?.isAdmin === true || a?.previewKey === true;
+}
 let switchOn = false;
-/** RedesignApp: the kill switch (featureSw.webQrScanner). Anything but true = off. */
+/** RedesignApp: webQrScannerAllowed(...) for the signed-in login. Anything but true = off. */
 export function setWebQrScannerOn(on: boolean): void { switchOn = on === true; }
 
-// Everything except the switch: the Android app, no built-in scanner in this build, a camera to ask for.
+// Everything except "may this login use it": the Android app, no built-in scanner in this build, a camera to ask for.
 function canWebScan(): boolean {
   try { return isCapacitorAndroid() && !nativeScannerAvailable(true) && cameraSupported(); } catch { return false; }
 }
 /** Asked at tap time by the screens: true → open the in-page scanner; false → today's photo flow. */
 export function webQrScanner(): boolean { return switchOn && canWebScan(); }
-/** For a render (Orders shows its Scan button with it): the switch value is passed in so it is seen at once. */
-export function webScannerAvailable(switchOnNow: boolean): boolean { return switchOnNow === true && canWebScan(); }
+/** For a render (Orders shows its Scan button with it): webQrScannerAllowed(...) is passed in so it is seen at once. */
+export function webScannerAvailable(allowedNow: boolean): boolean { return allowedNow === true && canWebScan(); }
 
 // ── What the screen gets back ─────────────────────────────────────────────────────────────────
 export type WebScanFallback = "denied" | "unavailable";
@@ -133,8 +143,16 @@ const NATIVE_EDGE = 1280;      // the phone's own reader
 const SOFT_EDGE = 960;         // the loaded reader (plain code): smaller keeps every frame quick
 const NATIVE_FAIL_LIMIT = 3;   // the phone's reader failing 3 frames in a row → the loaded reader
 const SOFT_FAIL_LIMIT = 3;     // the loaded reader not there 3 frames in a row → no reader
+const NATIVE_ASK_MS = 2000;    // the phone's reader not saying which codes it reads → the loaded reader
+function answerWithin<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    Promise.resolve(p).then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(null); });
+  });
+}
 /** The real frame reader: the phone's own BarcodeDetector when it reads QR codes, else the reader the
- *  photo flow already uses (loaded only then). */
+ *  photo flow already uses. Which one is settled — and the loaded one starts loading — the moment this
+ *  is made (= when the scanner opens), not at the first camera frame. */
 export function cameraGrabber(video: HTMLVideoElement, view: () => { w: number; h: number }): FrameGrabber {
   let mode: "native" | "loaded" | "dead" = "loaded";
   let detector: DetectorLike | null = null;
@@ -144,12 +162,13 @@ export function cameraGrabber(video: HTMLVideoElement, view: () => { w: number; 
   const ready = (async () => {
     try {
       const BD = (globalThis as { BarcodeDetector?: DetectorCtor }).BarcodeDetector;
-      if (typeof BD !== "function") return;
-      const formats = typeof BD.getSupportedFormats === "function" ? await BD.getSupportedFormats() : ["qr_code"];
-      if (!Array.isArray(formats) || !formats.includes("qr_code")) return;
-      detector = new BD({ formats: ["qr_code"] });
-      mode = "native";
+      if (typeof BD === "function") {
+        const formats = typeof BD.getSupportedFormats === "function" ? await answerWithin(BD.getSupportedFormats(), NATIVE_ASK_MS) : ["qr_code"];
+        if (Array.isArray(formats) && formats.includes("qr_code")) { detector = new BD({ formats: ["qr_code"] }); mode = "native"; }
+      }
     } catch { /* the loaded reader */ }
+    // No reader in the phone → ours starts loading NOW (the phone may still be asking for the camera).
+    if (mode === "loaded") { try { warmQrPixelReader(); } catch { /* it loads at the first frame then */ } }
   })();
   return {
     async grab() {
@@ -305,7 +324,7 @@ function buildUi(texts: ScannerTexts): ScannerUi {
 export interface WebScanDeps {
   grabber?: (video: HTMLVideoElement, view: () => { w: number; h: number }) => FrameGrabber; // tests
   frameMs?: number;   // the pause between two frames
-  startMs?: number;   // no camera picture after this long → the camera isn't usable
+  startMs?: number;   // no picture from the CAMERA this long after it opened → the camera isn't usable
 }
 export interface WebScanHandle { close: (silent?: boolean) => void }
 const HISTORY_MARK = "sflWebQrScanner";
@@ -405,6 +424,16 @@ export function openWebQrScanner(texts: ScannerTexts, onDone: (r: WebScanResult)
     });
   };
 
+  // Has the camera given a picture? Asked of the VIDEO, never of the reader: a reader that is still
+  // loading must not look like a camera that doesn't work.
+  const cameraHasPicture = (): boolean => {
+    try { const v = ui?.video; return !!v && v.videoWidth > 0 && v.videoHeight > 0; } catch { return false; }
+  };
+  const view = () => {
+    const r = ui?.root;
+    return { w: (r && r.clientWidth) || window.innerWidth || 0, h: (r && r.clientHeight) || window.innerHeight || 0 };
+  };
+
   const tick = async () => {
     frameTimer = undefined;
     if (finished || panel || !grabber) return;
@@ -438,16 +467,15 @@ export function openWebQrScanner(texts: ScannerTexts, onDone: (r: WebScanResult)
       ui!.video.srcObject = s;
       const playing = ui!.video.play?.();
       if (playing && typeof (playing as Promise<void>).catch === "function") (playing as Promise<void>).catch(() => undefined);
-    } catch { /* the reader below notices a picture that never comes */ }
+    } catch { /* the timer below notices a picture that never comes */ }
+    if (!grabber) { fail(null); return; }
     if (capsOf(camTrack).focusMode?.includes("continuous")) void applyAdvanced(camTrack, { focusMode: "continuous" });
     refreshLight();
     torchTimer = setTimeout(refreshLight, 700); // some phones only say "this camera has a light" a moment later
-    const view = () => {
-      const r = ui?.root;
-      return { w: (r && r.clientWidth) || window.innerWidth || 0, h: (r && r.clientHeight) || window.innerHeight || 0 };
-    };
-    try { grabber = (deps.grabber ?? cameraGrabber)(ui!.video, view); } catch { fail(null); return; }
-    startTimer = setTimeout(() => { if (!gotFrame) fail(null); }, deps.startMs ?? START_MS);
+    // The camera's own 8 seconds, counted from the moment it opened: still no picture from it → it
+    // isn't usable. Only the camera is asked — the reader (made when the scanner opened, maybe still
+    // loading) never is: a camera that shows a picture is never "not available".
+    startTimer = setTimeout(() => { if (!gotFrame && !cameraHasPicture()) fail(null); }, deps.startMs ?? START_MS);
     void tick();
   };
 
@@ -465,6 +493,9 @@ export function openWebQrScanner(texts: ScannerTexts, onDone: (r: WebScanResult)
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("keydown", onKey);
     try { ui.close.focus({ preventScroll: true }); } catch { /* ignore */ }
+    // The QR reader starts loading NOW — before the camera is even asked for (the permission question
+    // can take long): it is there when the first camera frame comes.
+    try { grabber = (deps.grabber ?? cameraGrabber)(ui.video, view); } catch { fail(null); return handle; }
     const md = (navigator as unknown as { mediaDevices?: { getUserMedia?: (c: MediaStreamConstraints) => Promise<MediaStream> } }).mediaDevices;
     if (!md || typeof md.getUserMedia !== "function") { fail(null); return handle; }
     Promise.resolve(md.getUserMedia(webScanConstraints())).then(start, fail);

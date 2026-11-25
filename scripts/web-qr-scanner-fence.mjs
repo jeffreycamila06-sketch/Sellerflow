@@ -10,9 +10,9 @@
 //   node scripts/web-qr-scanner-fence.mjs --check            (HEAD vs the fixture, + nothing uncommitted there)
 //   node scripts/web-qr-scanner-fence.mjs --write origin/main (make the fixture again from a commit —
 //                                                              only after merging a newer main into the branch)
-// The vitest copy (src/redesign/__tests__/webQrScanner.fence.test.ts) runs this check on the branch
-// claude/web-qr-scanner (also in CI) or with WEB_QR_GATE=1; on any other branch it is skipped, so later
-// work on printing or the app builds is never blocked by it.
+// The vitest copy (src/redesign/__tests__/webQrScanner.fence.test.ts) runs this check on the scanner's
+// own branches (claude/web-qr-scanner, claude/web-qr-scanner-testers — also in CI) or with WEB_QR_GATE=1;
+// on any other branch it is skipped, so later work on printing or the app builds is never blocked by it.
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

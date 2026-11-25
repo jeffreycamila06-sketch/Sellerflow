@@ -46,12 +46,13 @@ export interface FakePhone {
   beeps: { hz: number; start: number; stop: number }[];
   closedAudio: { count: number };
   canvasContext: { current: unknown }; // null → the phone has no drawing surface
+  picture: { current: { w: number; h: number } }; // the camera picture's size; 0 × 0 = the camera gives no picture (yet)
   restore: () => void;
 }
 export interface FakePhoneOptions {
   camera?: "ok" | { reject: string } | "pending";  // what getUserMedia does (default ok)
   caps?: Record<string, unknown>;                  // the camera track's capabilities (torch …)
-  detector?: "qr" | "no_qr_format" | "none" | "throws"; // the phone's own reader (default qr)
+  detector?: "qr" | "no_qr_format" | "none" | "throws" | "never_answers"; // the phone's own reader (default qr); never_answers = it never says which codes it reads
   video?: { w: number; h: number };
 }
 
@@ -76,9 +77,9 @@ export function installFakePhone(o: FakePhoneOptions = {}): FakePhone & { resolv
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   const vw = Object.getOwnPropertyDescriptor(HTMLVideoElement.prototype, "videoWidth");
   const vh = Object.getOwnPropertyDescriptor(HTMLVideoElement.prototype, "videoHeight");
-  const size = o.video ?? { w: 1080, h: 1920 };
-  Object.defineProperty(HTMLVideoElement.prototype, "videoWidth", { configurable: true, get: () => size.w });
-  Object.defineProperty(HTMLVideoElement.prototype, "videoHeight", { configurable: true, get: () => size.h });
+  const picture = { current: o.video ?? { w: 1080, h: 1920 } };
+  Object.defineProperty(HTMLVideoElement.prototype, "videoWidth", { configurable: true, get: () => picture.current.w });
+  Object.defineProperty(HTMLVideoElement.prototype, "videoHeight", { configurable: true, get: () => picture.current.h });
 
   const ctx = {
     drawImage: vi.fn(),
@@ -97,7 +98,7 @@ export function installFakePhone(o: FakePhoneOptions = {}): FakePhone & { resolv
   if (o.detector === "none") delete g.BarcodeDetector;
   else {
     g.BarcodeDetector = class {
-      static getSupportedFormats = async () => (o.detector === "no_qr_format" ? ["ean_13"] : ["qr_code", "ean_13"]);
+      static getSupportedFormats = (): Promise<string[]> => (o.detector === "never_answers" ? new Promise<string[]>(() => undefined) : Promise.resolve(o.detector === "no_qr_format" ? ["ean_13"] : ["qr_code", "ean_13"]));
       detect(c: HTMLCanvasElement) { return detect(c); }
     };
   }
@@ -126,7 +127,7 @@ export function installFakePhone(o: FakePhoneOptions = {}): FakePhone & { resolv
   };
 
   return {
-    tracks, getUserMedia, seen, detect, vibrate, beeps, closedAudio, canvasContext,
+    tracks, getUserMedia, seen, detect, vibrate, beeps, closedAudio, canvasContext, picture,
     resolveCamera: () => { const p = pending.shift(); p?.res(newStream()); },
     rejectCamera: (name: string) => { const p = pending.shift(); p?.rej(err(name)); },
     restore: () => {

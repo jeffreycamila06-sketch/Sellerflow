@@ -27,6 +27,7 @@ export const FEATURE_KEYS = [
   "blacklist", // Blacklist for this account (outside Taiwan) before blacklist_enabled (sql/190)
   "account_limits_v2", // Plan full popup, Channels 2×2, Shopee shop = one account, for this account before shopee_account_enforce (sql/199)
   "shopee_public", // Shopee Live without a beta row, for this account before shopee_public_enabled (sql/206)
+  "web_qr_scanner", // in-page live QR scanner (Android app without the built-in scanner) for this account before web_qr_scanner_enabled (sql/219)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

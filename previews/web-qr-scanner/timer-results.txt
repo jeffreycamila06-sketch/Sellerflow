@@ -1,0 +1,14 @@
+ok   the reader's file was asked for 71 ms after the tap — the camera answered only 2580 ms after the tap (the reader loads from the moment the scanner opens)
+ok   9 s after the first camera picture, reader still loading: scanner open, picture 720×1080, hint "Point at the QR on the sticker", camera on, NO "camera isn't available"
+     a reader was there 11228 ms after the first camera picture → the QR was read
+ok   never a "camera isn't available" while the reader was loading 
+ok   then the QR was read: username "jhun.belle", 13934 ms after the tap (the reader's file was still held back — the smaller reader took over after 10 s)
+ok   after the read: scanner gone, 1 camera track(s), still on: 0
+ok   no page error (0)
+ok   6.5 s after the camera opened, no picture (0×0): still waiting — scanner open, no message yet
+ok   the camera message came 7957 ms after the camera opened (limit 8 s)
+ok   it says: "The camera isn't available right now (line on the screen under the scanner)"
+ok   the camera is off (1 track(s), still on: 0)
+ok   no page error (0)
+
+ALL CHECKS PASSED

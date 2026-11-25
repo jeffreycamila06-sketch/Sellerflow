@@ -32,3 +32,18 @@ npx vite --config vite.preview.config.ts --port 5199
 ```bash
 node previews/web-qr-scanner/make-previews.cjs /tmp/sfl-cam 5199
 ```
+
+## The "camera isn't available" limit (follow-up, 2026-11-25)
+
+`timer-check.cjs` — the same real app and fake camera, two cases:
+
+| case | what is set up | `timer-results.txt` (this branch) | `timer-results-main.txt` (main before the change) |
+|---|---|---|---|
+| A. slow reader | the QR reader's file is held back 14 s; the camera shows a sticker | the reader's file is asked for when the scanner opens (before the camera answers); no camera message; the QR is read once a reader is there | the reader's file is asked for only after the first camera picture; at 8 s the scanner closes with "The camera isn't available right now"; never read |
+| B. no frames at all | the camera opens but never gives one picture | nothing before 8 s; at 8 s the camera message, camera off | the same |
+
+Run (the camera videos and the app as above):
+
+```bash
+node previews/web-qr-scanner/timer-check.cjs <folder with one.y4m> 5199
+```

@@ -34,8 +34,8 @@ describe("sql/199 — account limits v2", () => {
     expect(keys(fnBody(up, "my_feature_access"))).toEqual([...keys(fnBody(down, "my_feature_access")), "account_limits_v2"]);
     expect(keys(fnBody(down, "my_feature_access"))).toHaveLength(26);
     expect(FEATURE_KEYS).toContain("account_limits_v2");
-    // sql/206 added one key after this file ('shopee_public') — the latest list is pinned in parcelBatchCap.test.ts
-    expect([...keys(fnBody(up, "my_feature_access")), "shopee_public"].sort()).toEqual([...FEATURE_KEYS].sort());
+    // sql/206 ('shopee_public') and sql/219 ('web_qr_scanner') each added one key after this file — the latest list is pinned in parcelBatchCap.test.ts
+    expect([...keys(fnBody(up, "my_feature_access")), "shopee_public", "web_qr_scanner"].sort()).toEqual([...FEATURE_KEYS].sort());
   });
   it("v2 = the switch OR the preview key OR an admin; every new counting line is behind it", () => {
     const v2 = fnBody(up, "account_limits_v2_on");

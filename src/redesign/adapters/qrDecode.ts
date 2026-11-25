@@ -381,3 +381,9 @@ export async function readQrHitsFromPixels(px: Pixels): Promise<QrPixelHit[] | n
   }
   return out;
 }
+
+/** The in-page scanner calls this when it OPENS: the reader readQrHitsFromPixels uses starts loading now
+ *  (nothing is read yet), so it is there when the first camera frame comes. Again = nothing new. */
+export function warmQrPixelReader(): void {
+  try { if (!zxLiveGaveUp) void loadZxing(); } catch { /* it loads at the first frame then */ }
+}

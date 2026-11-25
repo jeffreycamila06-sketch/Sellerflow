@@ -4,9 +4,10 @@
 //   • the native scanner's adapter and the centre rule stay byte for byte as they are;
 //   • nothing that is not the website changes (server, the checker extension, the packages).
 // The byte check compares git's content ids with the ids taken from main when the branch was cut
-// (fixtures/webQrScannerFence.json, scripts/web-qr-scanner-fence.mjs). It runs on the branch
-// claude/web-qr-scanner (also in CI) or with WEB_QR_GATE=1; on any other branch it is skipped, so later
-// work on printing or the app builds is never blocked by it. The other checks here always run.
+// (fixtures/webQrScannerFence.json, scripts/web-qr-scanner-fence.mjs). It runs on the scanner's own
+// branches (claude/web-qr-scanner, claude/web-qr-scanner-testers — also in CI) or with WEB_QR_GATE=1; on
+// any other branch it is skipped, so later work on printing or the app builds is never blocked by it.
+// The other checks here always run.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,9 +21,9 @@ const read = (p: string) => readFileSync(resolve(root, p), "utf8");
 const count = (s: string, needle: string) => s.split(needle).length - 1;
 const git = (...args: string[]) => spawnSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
-const BRANCH = "claude/web-qr-scanner";
+const BRANCHES = ["claude/web-qr-scanner", "claude/web-qr-scanner-testers"];
 const branchNow = (): string => process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || git("rev-parse", "--abbrev-ref", "HEAD").stdout.trim();
-const gateOn = process.env.WEB_QR_GATE === "1" || branchNow() === BRANCH;
+const gateOn = process.env.WEB_QR_GATE === "1" || BRANCHES.includes(branchNow());
 
 describe("in-page QR scanner — byte fence (mobile/, printing, Bluetooth, the native scanner, server, packages)", () => {
   (gateOn ? it : it.skip)("the commit is byte-identical to main for every fenced file; nothing added, nothing removed, nothing uncommitted", () => {
@@ -60,6 +61,7 @@ describe("in-page QR scanner — byte fence (mobile/, printing, Bluetooth, the n
       "src/redesign/RedesignApp.tsx", "src/redesign/screens/ParcelScan.tsx", "src/redesign/screens/FmParcelScan.tsx",
       "src/redesign/screens/Blacklist.tsx", "src/redesign/screens/Orders.tsx", "src/dev/fakeSupabase.ts",
       "sql/218_web_qr_scanner_switch.sql", "sql/218_web_qr_scanner_switch_rollback.sql", "scripts/web-qr-scanner-fence.mjs", FIXTURE,
+      "src/redesign/adapters/featureAccess.ts", "sql/219_web_qr_scanner_feature.sql", "sql/219_web_qr_scanner_feature_rollback.sql", "scripts/sql219-behaviour.mjs",
     ]) expect(fenced(p), p).toBe(false);
   });
   it("the check has teeth: a changed, an added and a removed file are each reported", () => {
@@ -131,15 +133,22 @@ describe("in-page QR scanner — the screens ask for it only when there is NO bu
     expect(lines[i + 2]).toBe(todays);
     expect(count(s, "useWebQrScan()")).toBe(1);
   });
-  it("RedesignApp: the native wiring is untouched; the in-page scanner has its own switch and its own prop", () => {
+  it("RedesignApp: the native wiring is untouched; the in-page scanner has its own rule (switch OR admin OR the feature key) and its own prop", () => {
     const app = read("src/redesign/RedesignApp.tsx");
     expect(count(app, "liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}")).toBe(2); // Orders + Blacklist, as before
     expect(count(app, "liveScan=")).toBe(2);
-    expect(count(app, "webScan={webScannerAvailable(featureSw.webQrScanner)}")).toBe(2);
-    expect(count(app, "webScan=")).toBe(2);
     expect(count(app, "useEffect(() => { setNativeQrScannerOn(featureSw.nativeQrScanner); }, [featureSw.nativeQrScanner]);")).toBe(1);
-    expect(count(app, "useEffect(() => { setWebQrScannerOn(featureSw.webQrScanner); }, [featureSw.webQrScanner]);")).toBe(1);
+    // ONE answer for this login, used by the tap gate and by both screens' props
+    expect(count(app, 'const webQrOn = webQrScannerAllowed({ isAdmin, previewKey: hasFeature("web_qr_scanner"), switchOn: featureSw.webQrScanner });')).toBe(1);
+    expect(count(app, "webQrScannerAllowed(")).toBe(1);
+    expect(count(app, "useEffect(() => { setWebQrScannerOn(webQrOn); }, [webQrOn]);")).toBe(1);
     expect(count(app, "setWebQrScannerOn(")).toBe(1);
+    expect(count(app, "webScan={webScannerAvailable(webQrOn)}")).toBe(2);
+    expect(count(app, "webScan=")).toBe(2);
+    expect(count(app, "featureSw.webQrScanner")).toBe(1);           // the switch is read in that one line only
+    expect(count(app, 'hasFeature("web_qr_scanner")')).toBe(1);
+    // the native scanner's rule does not look at the tester key or the admin role
+    expect(app).not.toMatch(/nativeScannerAvailable\([^)]*(webQrOn|web_qr_scanner|isAdmin)/);
   });
   it("only these files use the in-page scanner", () => {
     const users = git("grep", "-l", "-E", "from \"[./]+(adapters/)?webQrScanner\"", "--", "src", ":!src/**/__tests__/**").stdout.split("\n").filter(Boolean).sort();

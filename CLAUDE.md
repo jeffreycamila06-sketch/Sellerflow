@@ -6696,3 +6696,39 @@ opened the photo picker. This draws the SAME live scanner inside the web page. `
   the switch goes on, "In the latest phone app the camera opens" may want a reword — as its own phrase-swap SQL.
 - **Order:** merge (Vercel) and sql/218 in either order (no row = off) → `update … set value = 'true'` to turn it on;
   open apps see it after a full close-open. Rollback: the switch `'false'` (instant) or the rollback file.
+
+## 2026-11-25 — IN-PAGE QR SCANNER: TESTERS FIRST + THE CAMERA LIMIT ASKS THE CAMERA ONLY (branch `claude/web-qr-scanner-testers`, NOT merged; sql/219 NOT applied; web only — no app build, no Render)
+Follow-up of the block above (the scanner itself is on main since `b0927162`). `mobile/`, `server/`, the packages, printing = 0 lines.
+- **Who gets it (ONE answer, `webQrScannerAllowed` in `adapters/webQrScanner.ts`):** RedesignApp
+  `const webQrOn = webQrScannerAllowed({ isAdmin, previewKey: hasFeature("web_qr_scanner"), switchOn: featureSw.webQrScanner })`
+  → `setWebQrScannerOn(webQrOn)` (the tap gate) + `webScan={webScannerAvailable(webQrOn)}` (Orders, Blacklist).
+  The switch (sql/218) = every seller · an admin (role, no SQL needed) · a login with the feature key
+  **`web_qr_scanner`** (testers, before the switch). Each counts only when exactly true. The other conditions are
+  unchanged (Android app, no `SellerFlowScanner` plugin, `getUserMedia`) — an admin on an iPhone / laptop / an
+  Android build with the built-in scanner gets nothing new.
+- **sql/219 (+ rollback, NOT applied):** `my_feature_access` = the live text (sql/206's, md5 c2839ef7… read
+  2026-11-25) + `('web_qr_scanner')` (md5 guard a = live, b = this file). No login is put on the list, no switch row.
+  **Add a tester = one INSERT** (`feature_access_emails`, feature `web_qr_scanner`, lower-case login email) — it
+  answers only after sql/219 is applied; the login sees it after a full close-open. ⚠️ After sql/219, sql/206's
+  rollback refuses (roll 219 back first) and the NEXT file that adds a feature key starts from sql/219's text.
+  ⚠️ There is NO general "per-user features" screen in Admin (only Printer testers, its own functions) — every
+  other key, this one too, is given by SQL. Proof: `scripts/sql219-behaviour.mjs` (PGlite, 39).
+- **The reader loads when the scanner OPENS:** the frame reader (`cameraGrabber`) is made in `openWebQrScanner`
+  before `getUserMedia` is called. No QR reader in the phone (or it does not list `qr_code`, or does not answer
+  within `NATIVE_ASK_MS` 2 s) → `warmQrPixelReader()` (qrDecode.ts, added at the end) starts the load at once.
+- **"The camera isn't available" is decided from the camera alone:** `START_MS` (8 s) counts from the camera
+  opening (never during the permission question) and asks ONLY the video (`cameraHasPicture`: the video has a
+  size). No picture by then → fallback `unavailable`. A camera that shows a picture is never "not available",
+  however long the reader takes (before: the limit waited for the reader's first answer → a slow reader load
+  closed the scanner with the camera message). A reader that never answers = the scanner stays open with the
+  live picture; "Take a photo instead" and Close are there.
+- **Tests:** `webQrScanner.test.ts` (who × switch × phone = 160 combinations, 7 yes; slow reader, no frames at
+  all, late first picture, long permission question, reader made at open) · `webQrScanner.app.test.tsx` (the
+  real RedesignApp + the real scanner: normal seller / admin / tester × switch off / on) ·
+  `webQrScannerFeatureSql.test.ts` · the two pinned key lists (`parcelBatchCap`, `accountLimitsV2Sql`).
+  Real browser: `previews/web-qr-scanner/timer-check.cjs` → `timer-results.txt` (branch: all pass) and
+  `timer-results-main.txt` (main: the reader's file held back 14 s → the scanner closed at 8 s with the camera
+  message; never read).
+- **Fence:** the fixture was remade from main `b0927162` (`--write origin/main`); the vitest byte pin also runs
+  on this branch (`BRANCHES` in `webQrScanner.fence.test.ts`).
+- **Order:** merge (Vercel) → admins have it at once. Testers: sql/219 → INSERT. Everyone: sql/218 → switch 'true'.

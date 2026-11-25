@@ -1,0 +1,13 @@
+# The same check run against main (b0927162) — the behaviour BEFORE this change. Kept for comparison.
+FAIL the reader's file was NOT asked for before the camera answered (2598 ms after the tap)
+FAIL never a "camera isn't available" while the reader was loading at 8 s: open=false panel=false "" toast=true
+FAIL the QR was never read (the scanner had already given up)
+ok   after the read: scanner gone, 1 camera track(s), still on: 0
+ok   no page error (0)
+ok   6.5 s after the camera opened, no picture (0×0): still waiting — scanner open, no message yet
+ok   the camera message came 7991 ms after the camera opened (limit 8 s)
+ok   it says: "The camera isn't available right now (line on the screen under the scanner)"
+ok   the camera is off (1 track(s), still on: 0)
+ok   no page error (0)
+
+3 CHECK(S) FAILED
