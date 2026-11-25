@@ -6623,3 +6623,28 @@ on Free; a live account still can't be changed / removed; the 150-order rules ar
 - Proof: `scripts/sql216-behaviour.mjs` (PGlite, 82) · `freeNoAccountLockSql.test.ts` · `freeNoLock.test.tsx` ·
   `ManageChannels.freeNoLock.test.tsx` · `docs/design/free-no-account-lock/` (54 checked pictures, 19/19 breaks).
 
+
+## 2026-11-25 — MESSENGER OWNER READ: RECORD WHO HOLDS THE THREAD, OR THE ANSWER'S SHAPE (branch `claude/fb-owner-read-shape`, NOT merged; no SQL; no Vercel change; needs a Render deploy)
+Production 2026-11-25: 16 failed rows with `10/2018300` all got `owner=shape who=- conv=1` — the conversations read
+works, the `/thread_owner` answer was not the shape the code expected. Log-only job; nothing about sending changed.
+- **Parser (`server/fbThreadOwner.js` `parseThreadOwner`):** reads the app id from `data[0].thread_owner.app_id`
+  (with or without `expiration`) or from a top-level `thread_owner.app_id` (text or number, 3–24 digits). Words: `owner=app` (an app id was read) ·
+  `hidden` (`thread_owner` with an `expiration` but no app id — held by an app Meta does not name to us) · `none`
+  (empty answer / empty `thread_owner`) · `err` (Graph error, as before) · `shape` (anything else).
+- **Shape (`answerShape`):** whenever no app id was read, ` shape=<…>` is appended to the `[FB] receipt owner` log line
+  and to the failed row's `error_detail` — key names + value types only, 3 levels, ≤ 200 chars, e.g.
+  `data[0]{thread_owner{expiration:num}}`. A key is written only when the WHOLE key looks like a Graph field name
+  (`^[a-z][a-z_]{0,23}$`), else `?`; never a value. Known limit: a lower-case word used as a key would show.
+- **Who:** `who=<app id>` + `who_is=us` (our app id, `config.appId`) | `inbox` (`FB_PAGE_INBOX_APP_ID` 263902037430900) |
+  `other` | `-`. The row note is built by `ownerRowDetail` (≤ 600 chars; the note itself is never cut).
+- ⚠️ **Meta's docs were NOT read first-hand** (developers.facebook.com does not open from the session). Sources: search
+  extracts of Meta's Handover Protocol / Conversation Routing pages + third-party docs. They say Meta names the owner
+  (`app_id`) only to the app that holds the thread or to the Page's default app — so production may show
+  `owner=hidden` and never an app id. The `expiration` value is NOT recorded (rule: no value but an app id).
+- **10900/0:** already recorded like every other code — `error_code "10900/0"` (code/subcode) and
+  `error_detail "(#10900) Activity already replied to | OAuthException"` (message | type, trace id never). Handling
+  unchanged; a test pins it. Meaning per the text: that comment already got a private reply.
+- `server/fbReceipt.js`: 2 lines (import + the one note write). Send call, `pickReceiptCandidates`,
+  `RECEIPT_MAX_FAILS`, retries, seller messages: 0 lines. `fbReceiptSameAsMain.server.test.ts` unchanged and green.
+- Tests: `fbThreadOwner.server.test.ts` blocks C (app id / who_is, hidden, none, shape format, no value leaks incl. 300
+  random answers, Graph error, switch off = no read, a hanging read never delays the send) and D (10900/0).
