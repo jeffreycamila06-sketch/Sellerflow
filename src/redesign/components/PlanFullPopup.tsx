@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { useT, tpl } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import {
-  loadMyAccountList, accountName, platformName, isAccountLive, waitMs, lockMs, countdownText, planFullTexts, waitLead,
+  loadMyAccountList, accountName, platformName, isAccountLive, waitMs, lockMs, countdownText, planFullTexts, waitLead, removeBodyText,
   type AccountList, type AccountRow, type PlanFullTarget, type LiveAccounts,
 } from "../adapters/planFull";
 
@@ -114,7 +114,7 @@ export default function PlanFullPopup({ target, ios, planName, live, onRemove, o
     const name = accountName(pick, t);
     body = (<>
       {title(tpl(t.rd_pf_rm_title, { name }))}
-      {lead(t.rd_pf_rm_body)}
+      {lead(removeBodyText(list, t))}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <button type="button" onClick={() => void doRemove()} disabled={busy} data-testid="pf-confirm-remove" style={{ ...primary("var(--danger)"), opacity: busy ? 0.7 : 1 }}>{busy ? t.rd_pf_removing : t.rd_pf_remove}</button>
         <button type="button" onClick={() => { setPick(null); setPhase("list"); }} disabled={busy} data-testid="pf-keep" style={secondary}>{t.rd_pf_rm_keep}</button>

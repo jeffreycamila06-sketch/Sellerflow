@@ -164,6 +164,17 @@ if (SHP) {
   RPC.account_quota = { used: accounts.length, limit, unlimited: false, locked: 0, next_free_at: null };
 }
 
+// Free plan: no 4-hour account lock previews (sql/216, docs/design/free-no-account-lock):
+//   ?fnl=free   what the database answers for a free seller: no wait on the TikTok username
+//   ?fnl=paid   a paid seller who changed the username 30 minutes ago: "Unlock in 3h 30m"
+const FNL = (/[?&]fnl=(\w+)/.exec(Q) || [])[1] || "";
+if (FNL) {
+  RPC.tiktok_slot_cooldowns = FNL === "paid"
+    ? [{ platform: "tiktok", slot_index: 0, last_changed_at: new Date(now - 30 * 60_000).toISOString(), server_now: new Date(now).toISOString() }]
+    : [];
+  RPC.touch_tiktok_slot = new Date(now).toISOString();
+}
+
 // Free orders per live account previews (sql/208, docs/design/free-account-cap):
 //   ?fac=1          a FREE login with no TikTok name; saving the username "usedshop" is refused by the
 //                   "database" (free_account_used) — any other name saves.

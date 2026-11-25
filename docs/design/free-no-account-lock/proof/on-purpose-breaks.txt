@@ -1,0 +1,65 @@
+CAUGHT  SQL: the swapped-in account gets a lock again (guard)
+           FAIL 1. FREE: username change 1 of 3 (free_b) accepted — no wait, no lock, 1 of 1 used
+           FAIL 1. FREE: username change 2 of 3 (free_c) accepted — no wait, no lock, 1 of 1 used
+           FAIL 1. FREE: username change 3 of 3 (free_d) accepted — no wait, no lock, 1 of 1 used
+CAUGHT  SQL: touch_tiktok_slot refuses a free seller again
+           FAIL 1. FREE: username change 2 of 3 (free_c) accepted — no wait, no lock, 1 of 1 used
+           FAIL 1. FREE: username change 3 of 3 (free_d) accepted — no wait, no lock, 1 of 1 used
+           FAIL 1. FREE: no change time is kept
+CAUGHT  SQL: a free seller's change time is kept (no delete)
+           FAIL 1. FREE: no change time is kept
+           FAIL 4. UPGRADE: the change made while Free leaves no wait behind
+           FAIL 4. UPGRADE: the next change is accepted…
+CAUGHT  SQL: tiktok_slot_cooldowns still shows a free seller's wait
+           FAIL DOWNGRADE: now Free → no lock shown anywhere
+           FAIL APPLY: a free seller who was mid-lock is free at once
+CAUGHT  SQL: a lock left from a paid time still holds a place (account_locked_seats)
+           FAIL DOWNGRADE: two changes in a row accepted
+           FAIL APPLY: a free seller who was mid-lock is free at once
+           FAIL APPLY: remove + another platform accepted, nothing held
+CAUGHT  SQL: my_account_list still sends the lock time to a free seller
+           FAIL DOWNGRADE: now Free → no lock shown anywhere
+           FAIL APPLY: a free seller who was mid-lock is free at once
+CAUGHT  SQL: account_quota still counts a held place for a free seller
+           FAIL APPLY: remove + another platform accepted, nothing held
+CAUGHT  SQL: 'basic' counts as free (a paid seller would lose the lock)
+           FAIL account_no_lock: only the plan 'free'
+           FAIL 3. PAID: 27 answers identical with and without sql/216
+           FAIL 3. PAID (basic): the first change is accepted and the 4-hour wait is shown
+CAUGHT  SQL: the plan is taken from the row the app sends (p_row_plan)
+           × files 216 (+ rollback) and 217 (+ rollback) only; NOT applied; one transaction with a lock timeout 12ms
+           × the rollback holds the six LIVE texts; sql/216 holds the six pinned new ones 6ms
+           × 'free' is decided from the plan only: trimmed, any letter case — and by nothing the app sends 2ms
+CAUGHT  APP: a free seller sees LOCKED while the answer loads
+           × while the lock answer is still on its way: Change is there, no LOCKED 19ms
+           × the lock answer could not be read: Change is there, no 'Locked. Admin can change this account.' 18ms
+CAUGHT  APP: the app overrules a wait the server answered (free label wins)
+           × a wait the server DOES answer is still shown (the app never overrules the server — e.g. the web is live before sql/216) 1028ms
+CAUGHT  APP: a paid seller also gets Change while loading
+           × basic: no Change while the lock answer is on its way; LOCKED when it could not be read 14ms
+           × plus: no Change while the lock answer is on its way; LOCKED when it could not be read 17ms
+           × pro: no Change while the lock answer is on its way; LOCKED when it could not be read 16ms
+CAUGHT  APP: Remove on a free seller's account says 'Wait a little'
+           × noLock: never a lock time and never a wait, whatever else the answer holds 7ms
+           × a lock time left in the answer changes nothing: Remove asks, it never says 'Wait a little' 31ms
+           × the note and the Remove question without the 4 hours; a lock time left in the answer never blocks Remove 47ms
+CAUGHT  APP: a held place makes a free seller wait
+           × noLock: never a lock time and never a wait, whatever else the answer holds 5ms
+           × a lock time left in the answer changes nothing: Remove asks, it never says 'Wait a little' 12ms
+           × the note and the Remove question without the 4 hours; a lock time left in the answer never blocks Remove 38ms
+CAUGHT  APP: the popup's note still names the 4 hours
+           × the list: Remove on the account, the note without the 4 hours 106ms
+           × iPhone: the same, no 4 hours, Contact Admin 15ms
+CAUGHT  APP: the Remove question still names the 4 hours (popup)
+           × Remove → the question without the 4 hours → removed → 'you can add the new account now' 44ms
+           × a lock time left in the answer changes nothing: Remove asks, it never says 'Wait a little' 35ms
+           × iPhone: the same, no 4 hours, Contact Admin 24ms
+CAUGHT  APP: the Shopee shops note still names the 4 hours
+           × the note and the Remove question without the 4 hours; a lock time left in the answer never blocks Remove 55ms
+CAUGHT  APP: no_lock read loosely (any truthy value)
+           × no_lock true → noLock; absent / anything else (an older database) → false 16ms
+CAUGHT  GUIDE: sql/217 without the sentence in one row
+           × files 216 (+ rollback) and 217 (+ rollback) only; NOT applied; one transaction with a lock timeout 12ms
+           × sql/217 = those two sections of the guide, nothing else; its rollback = the rows without the sentence 4ms
+
+19 of 19 on-purpose breaks caught

@@ -1,0 +1,84 @@
+ok   base = production: account_locked_seats
+ok   base = production: account_total_guard
+ok   base = production: account_quota
+ok   base = production: my_account_list
+ok   base = production: touch_tiktok_slot
+ok   base = production: tiktok_slot_cooldowns
+ok   base = production: account_limit_for
+ok   base = production: account_lock_length
+ok   base = production: account_seat_vacate
+ok   base = production: account_total_run
+ok   base = production: account_total_used
+ok   base = production: account_total_tiktok_trg
+ok   base = production: account_total_del_trg
+ok   base = production: account_limits_v2_on
+ok   base = production: account_live_ranking
+ok   base = production: account_live_check
+ok   base = production: shopee_link_shop_ins_trg
+ok   base = production: shopee_link_shop_del_trg
+ok   base = production: free_account_save_check
+ok   base = production: free_account_tiktok_trg
+ok   base = production: free_account_row_trg
+ok   base = production: check_and_increment_free_order
+ok   TODAY free: the first username change is accepted
+ok   TODAY free: the second is refused — cooldown_active, 'Unlock in' shown
+ok   TODAY free: a save without the touch is refused too — account_limit
+ok   TODAY free: the new name is locked ~4 hours in the account list
+ok   before sql/216: a free seller is in the middle of a lock
+ok   before: a basic seller swapped and is locked
+ok   sql/216 applied: account_locked_seats = this file's text
+ok   sql/216 applied: account_total_guard = this file's text
+ok   sql/216 applied: my_account_list = this file's text
+ok   sql/216 applied: account_quota = this file's text
+ok   sql/216 applied: touch_tiktok_slot = this file's text
+ok   sql/216 applied: tiktok_slot_cooldowns = this file's text
+ok   sql/216 changes no other function
+ok   account_no_lock: only the plan 'free'
+ok   grants as before
+ok   1. FREE: username change 1 of 3 (free_b) accepted — no wait, no lock, 1 of 1 used
+ok   1. FREE: username change 2 of 3 (free_c) accepted — no wait, no lock, 1 of 1 used
+ok   1. FREE: username change 3 of 3 (free_d) accepted — no wait, no lock, 1 of 1 used
+ok   1. FREE: no change time is kept
+ok   1. FREE: a save without the touch is accepted as well (the database has no lock to enforce)
+ok   2. FREE: removes the TikTok account
+ok   2. FREE: adds a Shopee shop → added
+ok   2. FREE: a second account is still refused → full (1 account on Free), never 'locked'
+ok   2. FREE: a TikTok name next to the shop is refused → account_limit (1 account)
+ok   2. FREE: removes the shop, adds a Facebook Page
+ok   2. FREE: removes the Page, adds an Instagram account
+ok   2. FREE: removes it, adds an official Shopee shop
+ok   2. FREE: removes it, adds a TikTok name again
+ok   2. FREE: after six swaps → 1 account, nothing locked
+ok   3. PAID: 27 answers identical with and without sql/216
+ok   3. PAID (basic): the first change is accepted and the 4-hour wait is shown
+ok   3. PAID: the second change is refused — cooldown_active / account_limit
+ok   3. PAID: after removing the locked name a different account is refused ('locked'), the same name back is accepted
+ok   3. PAID: the account list shows the lock ending in 4 hours, no_lock false
+ok   4. UPGRADE: while Free a change is accepted, no wait
+ok   4. UPGRADE: Admin sets the plan to basic
+ok   4. UPGRADE: the change made while Free leaves no wait behind
+ok   4. UPGRADE: the next change is accepted…
+ok   4. UPGRADE: …and it locks: 4-hour wait shown, account locked ~4 hours
+ok   4. UPGRADE: the change after that is refused — cooldown_active / account_limit
+ok   DOWNGRADE: basic, locked
+ok   DOWNGRADE: now Free → no lock shown anywhere
+ok   DOWNGRADE: two changes in a row accepted
+ok   APPLY: a free seller who was mid-lock is free at once
+ok   APPLY: remove + another platform accepted, nothing held
+ok   5. FREE: a username whose 150 free orders are used is refused — free_account_used, same answer as today
+ok   5. …also through the app's touch + save; the old name stays
+ok   5. …and another username is accepted right after
+ok   6. BYPASS: a basic seller swaps once (locked)
+ok   6. BYPASS: sending plan='free' with the next name → still refused, plan and name unchanged
+ok   6. BYPASS: a seller's own plan='free' write is not kept
+ok   6. BYPASS: the username wait holds for the paid seller
+ok   6. BYPASS: the inner functions can not be called from the app
+ok   sql/216 twice: every function text the same as after the first run
+ok   guard: a changed live function → sql/216 refuses, nothing changed
+ok   rollback: the six live texts are back, account_no_lock is gone
+ok   rollback: every function of the database = before sql/216
+ok   rollback: the wait is back, grants as before
+ok   rollback twice: no change
+ok   sql/216 applies again after its rollback
+
+82 passed, 0 failed
