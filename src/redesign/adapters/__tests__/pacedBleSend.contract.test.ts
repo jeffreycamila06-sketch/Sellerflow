@@ -142,8 +142,11 @@ describe("GenericBleTransport — every other printer runs the code it ran befor
 describe("the plugin and the other printer code", () => {
   it("one generic print call, and it gets the name of the printer the job really goes to", () => {
     expect(plugin.split("generic().printJob(").length - 1).toBe(1);
-    expect(plugin).toContain("generic().printJob(tspl, address, genericNameHint(call, address), r -> {");
+    expect(plugin).toContain("generic().printJob(tspl, address, genericNameHint(call, address, what), r -> {");
     const hint = plugin.slice(plugin.indexOf("private String genericNameHint("), plugin.indexOf("/** Send ready TSPL bytes to a generic BLE printer"));
+    // the call's own `name` only for testGenericPrinter (a sticker's own data can never decide)
+    expect(hint).toMatch(/if \("testGenericPrinter"\.equals\(what\)\) \{\s+String n = call\.getString\("name", ""\);/);
+    expect(hint.split('call.getString("name"').length - 1).toBe(1);
     // the saved name only when the job goes to the SAVED address — never for another printer under test
     expect(hint).toMatch(/address\.trim\(\)\.equalsIgnoreCase\(saved\.trim\(\)\)/);
     expect(hint).toMatch(/return isSaved \? prefs\(\)\.getString\(PREF_BT_NAME, ""\) : "";/);

@@ -19,7 +19,7 @@ ONE_CHANGED_LINE = {
         "    void printJob(final byte[] data, final String address, final String nameHint, final Callback callback) {",
         "    void printJob(final byte[] data, final String address, final Callback callback) {"),
     DIR + "SellerFlowPrinterPlugin.java": (
-        "        generic().printJob(tspl, address, genericNameHint(call, address), r -> {",
+        "        generic().printJob(tspl, address, genericNameHint(call, address, what), r -> {",
         "        generic().printJob(tspl, address, r -> {"),
 }
 

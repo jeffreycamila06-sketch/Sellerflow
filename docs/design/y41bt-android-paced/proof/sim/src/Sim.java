@@ -242,6 +242,15 @@ public final class Sim {
         o = run("Y41BT · the phone and printer agree on the smallest size (20 bytes)", p, 34, 700, Y); print(o, false);
         check("pieces of 20 bytes, sent", o.ok() && maxWriteLen(o) == 20 && o.printerGotEverything());
 
+        p = printer(Y); p.grantMtu = 23; p.connectMs = 1500; p.writeAnswerMs = 4;
+        o = run("Y41BT · smallest size (20 bytes) and a 100x60 sticker (48,040 bytes)", p, 34, 48_040, Y); print(o, false);
+        check("sent, every byte arrived, inside the 30 s a job may take (at " + o.at + " ms)", o.ok() && o.printerGotEverything() && o.at < 30_000);
+        check("2,402 pieces of 20 bytes", count(o, "APP write #") == 2402 && maxWriteLen(o) == 20);
+
+        p = printer(Y); p.grantMtu = -1; p.connectMs = 1500; p.writeAnswerMs = 4;
+        o = run("Y41BT · the size is never agreed (20 bytes after 3 s) and an 80x60 sticker (38,440 bytes)", p, 34, 38_440, Y); print(o, false);
+        check("sent, every byte arrived, inside 30 s (at " + o.at + " ms)", o.ok() && o.printerGotEverything() && o.at < 30_000);
+
         p = printer(Y); p.services.remove(2); p.services.add(service("FF00", "FF01", NOTIFY, "FF02", WRITE));
         o = run("Y41BT · a unit that only takes writes WITH response", p, 34, 2_000, Y); print(o, false);
         check("reported sent, every byte arrived", o.ok() && o.printerGotEverything() && maxWriteLen(o) <= 180);

@@ -65,6 +65,15 @@ BREAKS = [
      """            if (next == Next.WRITE_AFTER_GAP) {
                 phone.progress(s.taken());
                 pump();"""),
+    ("small pieces: a pause after EVERY piece again (a big sticker times out)", PACED,
+     "if (sincePause + pieces.get(taken).length > MAX_CHUNK) { sincePause = 0; return Next.WRITE_AFTER_GAP; }",
+     "if (true) { sincePause = 0; return Next.WRITE_AFTER_GAP; }"),
+    ("small pieces: no pause at all", PACED,
+     "if (sincePause + pieces.get(taken).length > MAX_CHUNK) { sincePause = 0; return Next.WRITE_AFTER_GAP; }",
+     "if (false) { sincePause = 0; return Next.WRITE_AFTER_GAP; }"),
+    ("more than 180 bytes may go out between two pauses", PACED,
+     "if (sincePause + pieces.get(taken).length > MAX_CHUNK) { sincePause = 0; return Next.WRITE_AFTER_GAP; }",
+     "if (sincePause >= MAX_CHUNK) { sincePause = 0; return Next.WRITE_AFTER_GAP; }"),
     ("a busy phone: the piece is counted as handed over", PACED,
      "else if (w == WRITE_BUSY) schedule(GAP_MS, this::pump);", "else if (w == WRITE_BUSY) s.onWriteStarted();"),
     ("the question is never asked", PACED,
@@ -124,7 +133,9 @@ BREAKS = [
     ("Plugin: the saved Y41BT name is used for ANOTHER printer under test", PLUGIN,
      'return isSaved ? prefs().getString(PREF_BT_NAME, "") : "";', 'return prefs().getString(PREF_BT_NAME, "");'),
     ("Plugin: no name is passed (the Y41BT is only known by the device's own name)", PLUGIN,
-     "generic().printJob(tspl, address, genericNameHint(call, address), r -> {", 'generic().printJob(tspl, address, "", r -> {'),
+     "generic().printJob(tspl, address, genericNameHint(call, address, what), r -> {", 'generic().printJob(tspl, address, "", r -> {'),
+    ("Plugin: a `name` inside ANY call's data decides (a sticker's own data too)", PLUGIN,
+     'if ("testGenericPrinter".equals(what)) {', "if (true) {"),
 ]
 
 def main():

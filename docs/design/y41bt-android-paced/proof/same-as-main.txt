@@ -1,5 +1,5 @@
 base = origin/main = 6977cd69f995c12336c7689456c6e17be4fb5871
-head = 6977cd69f995c12336c7689456c6e17be4fb5871  (+ uncommitted changes)
+head = fcff44bb73b8c79b026bde18e24dd0c09fc93cac  (+ uncommitted changes)
 
 mobile/android/app/src/main/java/com/sellerflow/live/GenericBleTransport.java
   removed: 2 marked region(s), 16 line(s) ending '// Y41BT'; changed line put back: 1

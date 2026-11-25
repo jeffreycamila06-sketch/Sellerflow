@@ -6711,14 +6711,18 @@ NOT proven on a phone.** Jeff's how-to (10-second check, logcat commands, test-a
   the LAST piece was HANDED to the phone, then disconnect. The iPhone app: pieces as big as iOS agrees (ceiling
   509 too, not 180), waits for iOS "ready", 8 ms after every piece, and the same 1.5 s "sent".
 - **Paced send — only when the printer's name starts with `Y41BT`** (`PacedBleSend.NAME_PREFIXES`; name = the
-  call's `name`, else the saved name when the job goes to the SAVED address (`genericNameHint` in the plugin), or
-  the device's own name): pieces ≤ **180 bytes** (never over MTU − 3) · next piece only after the phone's
-  `onCharacteristicWrite` for the previous one **+ 8 ms** · after the last piece ONE read of a standard value
+  call's `name` for `testGenericPrinter` only, else the saved name when the job goes to the SAVED address
+  (`genericNameHint(call, address, what)` in the plugin — never a `name` inside a sticker's data), or the
+  device's own name): pieces ≤ **180 bytes** (never over MTU − 3) · next piece only after the phone's
+  `onCharacteristicWrite` for the previous one · a pause of **8 ms** so that never more than 180 bytes go out
+  between two pauses (180-byte pieces: after every piece; 20-byte pieces at MTU 23: one per 9 pieces — a pause
+  per piece made a 100×60 sticker time out, printer-guardian) · after the last piece ONE read of a standard value
   (`1800/2A00` device name, else `2A01`, else Device Information `180A`) — its answer comes back only after every
   piece before it reached the printer's Bluetooth → then the usual 1.5 s → "sent". No answer in 8–20 s
   (`confirmTimeoutMs`: 8 s + 1 s per 4,000 bytes) or the link closing first → `BT_PRINT_FAILED` "The printer did
   not confirm it received the sticker." (the screen shows the existing "Test sticker failed"). Nothing standard to
-  read → ends as today. Same bytes, same order, same characteristic and write type. The whole job still ends inside
+  read, or the phone refusing the question 5 times → ends as today: `ok`, `delivered:false` = "sent" NOT
+  confirmed (log `ask=none` / `printerAnswered=notAsked`; the web reads only `ok`). Same bytes, same order, same characteristic and write type. The whole job still ends inside
   the transport's 30 s (the web lane's watchdog is 35 s). Answer object: `paced:true`, `delivered`.
   "Sent" still does not mean paper came out — the printer never says so.
 - **Files:** NEW `PacedBleSend.java` (pure Java: the rules + `Session` + `Driver` + the `Phone` interface) ·
@@ -6732,14 +6736,19 @@ NOT proven on a phone.** Jeff's how-to (10-second check, logcat commands, test-a
 - **Other printers unchanged, proven three ways** (`docs/design/y41bt-android-paced/proof/`): `same-as-main.txt`
   (the two edited Java files minus the marked lines = main, sha256; D520BT / Niimbot / TsplBuilder /
   BleStickerLogic / Swift / web printing files identical) · `sim/run.sh` (the REAL `GenericBleTransport` of main
-  and of the branch on a pretend Android in `sim/fake/`: 39 other-printer cases → identical traces; 38 Y41BT
-  checks; ⚠ a model, not a real phone or printer) · `breaks.txt` (33 on-purpose breaks, all caught).
+  and of the branch on a pretend Android in `sim/fake/`: 39 other-printer cases → identical traces; 41 Y41BT
+  checks; ⚠ a model, not a real phone or printer) · `breaks.txt` (37 on-purpose breaks, all caught).
   Run the Java tests without Gradle: `javac` + JUnit 4 on `PacedBleSend.java`, `BleStickerLogic.java` and the two
   test files (commands in `breaks.py`). The three Java files also compile against the Android 14 framework classes
   (Robolectric's `android-all` jar from Maven Central, scratch only); the plugin file and the whole app were NOT
   built in the cloud — `docs/design/y41bt-android-paced/build-test-apk.sh` (Mac, from a worktree) is the first
   real build: Gradle unit tests → debug APK that loads the live website → `~/Desktop/SellerFlowLive-Y41-test.apk`.
-- **Not done / open:** no real phone, printer or logcat · the paired (classic) Y41BT row untouched · 180 bytes and
-  8 ms are Jeff's ask, not measured on this printer · `versionCode` still 12 (a store release needs ≥ 13) · the
-  iPhone app unchanged (it works there) · the QR-scanner release gate (`qr-scanner-gate.sh`) will list these
-  printer-code changes (expected). No seller text changed → no help-guide change.
+- **Not done / open (printer-guardian 2026-11-25: GAPS FOUND — built, NOT proven):** no real phone, printer or
+  logcat · ⚠ a sticker that printed can be reported FAILED when the read's answer never comes (double sticker
+  risk, also on a phone that prints today) → the A51 5G must be tested with the test app before any store build ·
+  "sent" unconfirmed when `ask=none` · `printerAnswered=yes` = the bytes reached the printer's Bluetooth chip, not
+  "paper came out" · the paired (classic) Y41BT row untouched · 180 bytes and 8 ms are Jeff's ask, not measured on
+  this printer · the iPhone app unchanged (it works there) · **release = its own decision:** `versionCode` still
+  12 (needs ≥ 13), a build from this code also carries the built-in scanner (Android 1.10, not being released),
+  and `qr-scanner-gate.sh` will say "STOP — do not release" for these printer-code changes (by design; how the
+  gate is passed must be decided first). No seller text changed → no help-guide change.

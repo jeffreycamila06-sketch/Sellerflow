@@ -271,28 +271,93 @@ THIS BRANCH (paced send for the Y41BT)
    540 ms  APP requestMtu 512
    570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=700 piece=20 pieces=35 mtu=23 write=noResponse ask=1800/2A00
    570 ms  APP write #0 len=20 type=noResponse sha=f58143bf
-   580 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
-   590 ms  APP write #2 len=20 type=noResponse sha=25e586d3
-   600 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
-   610 ms  APP write #4 len=20 type=noResponse sha=20982725
-   620 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
-   630 ms  APP write #6 len=20 type=noResponse sha=d1571571
-   640 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+   572 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+   574 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+   576 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+   578 ms  APP write #4 len=20 type=noResponse sha=20982725
+   580 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+   582 ms  APP write #6 len=20 type=noResponse sha=d1571571
+   584 ms  APP write #7 len=20 type=noResponse sha=55d989c9
             … 22 more lines …
-   870 ms  APP write #30 len=20 type=noResponse sha=c0f3736d
-   880 ms  APP write #31 len=20 type=noResponse sha=99dd7d53
-   890 ms  APP write #32 len=20 type=noResponse sha=fccfd368
-   900 ms  APP write #33 len=20 type=noResponse sha=40037886
-   910 ms  APP write #34 len=20 type=noResponse sha=6dab99a7
-   911 ms  PRINTER has every byte (700)
-   912 ms  APP read 2A00
-  2432 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=35 mtu=23 confirmed=false
-  2432 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=700 piece=20 pieces=35 sendMs=342 printerAnswered=yes answerMs=20
-  2432 ms  APP disconnect (printer has 700 of 700 bytes)
-  2432 ms  APP close
-  2432 ms  RESULT sent chunks=35 mtu=23 confirmed=false | printer has 700 of 700 bytes (all, in order)
+   654 ms  APP write #30 len=20 type=noResponse sha=c0f3736d
+   656 ms  APP write #31 len=20 type=noResponse sha=99dd7d53
+   658 ms  APP write #32 len=20 type=noResponse sha=fccfd368
+   660 ms  APP write #33 len=20 type=noResponse sha=40037886
+   662 ms  APP write #34 len=20 type=noResponse sha=6dab99a7
+   663 ms  PRINTER has every byte (700)
+   664 ms  APP read 2A00
+  2184 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=35 mtu=23 confirmed=false
+  2184 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=700 piece=20 pieces=35 sendMs=94 printerAnswered=yes answerMs=20
+  2184 ms  APP disconnect (printer has 700 of 700 bytes)
+  2184 ms  APP close
+  2184 ms  RESULT sent chunks=35 mtu=23 confirmed=false | printer has 700 of 700 bytes (all, in order)
 
    ok    pieces of 20 bytes, sent
+── Y41BT · smallest size (20 bytes) and a 100x60 sticker (48,040 bytes) ──
+     0 ms  APP connectGatt transport=2
+  1500 ms  APP discoverServices
+  1700 ms  APP setNotification FF01 true
+  1700 ms  APP writeDescriptor 2902
+  1720 ms  APP setNotification FF03 true
+  1720 ms  APP writeDescriptor 2902
+  1740 ms  APP requestMtu 512
+  1770 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=48040 piece=20 pieces=2402 mtu=23 write=noResponse ask=1800/2A00
+  1770 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+  1774 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+  1778 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+  1782 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+  1786 ms  APP write #4 len=20 type=noResponse sha=20982725
+  1790 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+  1794 ms  APP write #6 len=20 type=noResponse sha=d1571571
+  1798 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+            … 2389 more lines …
+ 13486 ms  APP write #2397 len=20 type=noResponse sha=450af209
+ 13490 ms  APP write #2398 len=20 type=noResponse sha=c0f3736d
+ 13494 ms  APP write #2399 len=20 type=noResponse sha=99dd7d53
+ 13498 ms  APP write #2400 len=20 type=noResponse sha=fccfd368
+ 13502 ms  APP write #2401 len=20 type=noResponse sha=40037886
+ 13503 ms  PRINTER has every byte (48040)
+ 13506 ms  APP read 2A00
+ 15026 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=2402 mtu=23 confirmed=false
+ 15026 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=48040 piece=20 pieces=2402 sendMs=11736 printerAnswered=yes answerMs=20
+ 15026 ms  APP disconnect (printer has 48040 of 48040 bytes)
+ 15026 ms  APP close
+ 15026 ms  RESULT sent chunks=2402 mtu=23 confirmed=false | printer has 48040 of 48040 bytes (all, in order)
+
+   ok    sent, every byte arrived, inside the 30 s a job may take (at 15026 ms)
+   ok    2,402 pieces of 20 bytes
+── Y41BT · the size is never agreed (20 bytes after 3 s) and an 80x60 sticker (38,440 bytes) ──
+     0 ms  APP connectGatt transport=2
+  1500 ms  APP discoverServices
+  1700 ms  APP setNotification FF01 true
+  1700 ms  APP writeDescriptor 2902
+  1720 ms  APP setNotification FF03 true
+  1720 ms  APP writeDescriptor 2902
+  1740 ms  APP requestMtu 512
+  4740 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=38440 piece=20 pieces=1922 mtu=0 write=noResponse ask=1800/2A00
+  4740 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+  4744 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+  4748 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+  4752 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+  4756 ms  APP write #4 len=20 type=noResponse sha=20982725
+  4760 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+  4764 ms  APP write #6 len=20 type=noResponse sha=d1571571
+  4768 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+            … 1909 more lines …
+ 14112 ms  APP write #1917 len=20 type=noResponse sha=feba7801
+ 14116 ms  APP write #1918 len=20 type=noResponse sha=76bb184c
+ 14120 ms  APP write #1919 len=20 type=noResponse sha=251352f9
+ 14124 ms  APP write #1920 len=20 type=noResponse sha=f58143bf
+ 14128 ms  APP write #1921 len=20 type=noResponse sha=724b8cb2
+ 14129 ms  PRINTER has every byte (38440)
+ 14132 ms  APP read 2A00
+ 15652 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=1922 mtu=0 confirmed=false
+ 15652 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=38440 piece=20 pieces=1922 sendMs=9392 printerAnswered=yes answerMs=20
+ 15652 ms  APP disconnect (printer has 38440 of 38440 bytes)
+ 15652 ms  APP close
+ 15652 ms  RESULT sent chunks=1922 mtu=0 confirmed=false | printer has 38440 of 38440 bytes (all, in order)
+
+   ok    sent, every byte arrived, inside 30 s (at 15652 ms)
 ── Y41BT · a unit that only takes writes WITH response ──
      0 ms  APP connectGatt transport=2
    300 ms  APP discoverServices
@@ -423,4 +488,4 @@ THIS BRANCH (paced send for the Y41BT)
 ── XP-420B with an empty saved-name hint ──
    ok    XP-420B, no hint: today's send
 
-CHECKS: 38 ok, 0 failed
+CHECKS: 41 ok, 0 failed

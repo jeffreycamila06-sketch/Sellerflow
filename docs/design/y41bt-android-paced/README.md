@@ -102,13 +102,23 @@ after the pick) → tap Test print three times → print one real order.
 |---|---|---|
 | Paper comes out | `paced send done … printerAnswered=yes answerMs=…` | Send both log files. `answerMs` over 1500 = today's send closed the link before the last pieces had arrived. |
 | "Test sticker failed", no paper | `paced send failed … taken=…/… printerAnswered=no` | Honest failure. Send the log — the line says where it stopped. |
-| "Test sent", still no paper | `paced send done … printerAnswered=yes` | The printer's Bluetooth took every byte and still did not print → not a sending problem. Send the log. |
+| "Test sticker failed", but paper DID come out | `paced send failed … printerAnswered=no` | The printer got the sticker but never answered the question. This must not go to sellers (they would print it twice). Send the log. |
+| "Test sent", still no paper | `paced send done … printerAnswered=yes` | Every byte reached the printer's Bluetooth chip and it still did not print. Sending pieces more slowly will not fix that. Send the log; the next thing to try is writing with the printer's own acknowledgement for each piece. |
+| "Test sent", line says `ask=none` or `printerAnswered=notAsked` | `paced send … ask=none` | The phone could not ask the question, so "sent" is NOT confirmed — same as today. Send the log. |
 | No `paced send` line at all | | The saved printer is not the `_LE` row, or the app is not the test app. |
+
+**Also test — required, not optional:**
+
+1. **The A51 5G (the phone that prints today) with the same test app:** Test print three times, then 10 quick
+   orders. Ten stickers must come out, and none of them may show "not printed". This is the check that the
+   change does not break a phone that works.
+2. **The A52, once it prints:** the same 10 quick orders. Then switch the printer OFF in the middle of a
+   series — the app must say failed / not printed, never "sent".
+3. Your usual sticker size, and the biggest paper you have.
 
 To go back to the store app afterwards: `adb uninstall com.sellerflow.live`, then install from Google Play.
 
-Also try on the **A51 5G** with the test app if you can (it must still print — it is the same Y41BT code).
-Nothing else needs a re-test: see part 5.
+Nothing else needs a re-test (AIMO D520BT, Niimbot, XP-420B, iPhone, laptop): see part 5.
 
 ## 4. What the branch changes (Y41BT on Android only)
 
@@ -119,11 +129,13 @@ after the LAST piece was handed to the phone — whether or not those pieces had
 For a printer whose name starts with `Y41BT`:
 
 1. pieces of at most **180 bytes**;
-2. the next piece only after the phone answered that it took the previous one, **plus 8 ms**;
+2. the next piece only after the phone answered that it took the previous one, and a pause of **8 ms** so
+   that never more than 180 bytes go out between two pauses (with pieces of 180 bytes: after every piece);
 3. after the last piece the phone asks the printer's Bluetooth one small question (it reads the device
    name). The answer can only come back after every piece before it arrived. Answer → the usual 1.5 s →
    "sent". No answer in 8–20 s, or the link closes first → **failed** ("Test sticker failed" on the screen).
-   If the printer offers nothing to read, the job ends as today.
+   If the phone cannot ask (the printer offers nothing to read), the job ends as today — "sent", not
+   confirmed; the log then says `ask=none`.
 
 Same bytes, same order. The printer still never says "printed" — so "sent" now means "the printer's
 Bluetooth took every byte", not "paper came out".
@@ -146,21 +158,31 @@ Two things in the request that the code does not confirm:
 - `proof/sim/` — the REAL `GenericBleTransport` class of main and of the branch, run against a pretend phone
   and printer: 39 cases for printers that are not a Y41BT (XP-420B, another generic, no name × Android 14 /
   12, sizes, busy phone, failures, link drops) → **the two traces are identical** (`others-main.txt` =
-  `others-branch.txt`, 1,383 lines). The Y41BT cases: `y41-main.txt` (before) / `y41-branch.txt` (after, 38
-  checks — also "a Y41BT job, then an XP-420B job in the same app"). ⚠ The pretend phone is a model, not a Samsung and not a real Y41BT.
-- `proof/breaks.txt` — 33 on-purpose breaks of the new code, each one caught by a test.
-- `PacedBleSendTest.java` — 28 tests on the plain JVM (a fake phone with its own clock).
+  `others-branch.txt`, 1,383 lines). The Y41BT cases: `y41-main.txt` (before) / `y41-branch.txt` (after, 41
+  checks — also "a Y41BT job, then an XP-420B job in the same app" and a 100×60 sticker in 20-byte pieces). ⚠ The pretend phone is a model, not a Samsung and not a real Y41BT.
+- `proof/breaks.txt` — 37 on-purpose breaks of the new code, each one caught by a test.
+- `PacedBleSendTest.java` — 30 tests on the plain JVM (a fake phone with its own clock).
 - The two edited files + the new one compile against the real Android 14 framework classes (done in the
   cloud session; the whole app was NOT built there — the build script above is the first real build).
 
 ## 6. Not done / open
 
-- No logcat, no real phone, no real printer, no real app build (see above).
+- No logcat, no real phone, no real printer, no real app build (see above). `SellerFlowPrinterPlugin.java`
+  was never compiled in the cloud session — the build script is its first compile.
+- **A sticker that printed can be reported as failed** if the printer never answers the question (then a
+  seller would print it twice, and the next sticker waits 8–20 s). Today's send says "sent" there. This is
+  why the A51 5G test above is required before any store build.
+- **"Sent" is still not confirmed** when the phone cannot ask the question (`ask=none`).
+- `printerAnswered=yes` means the bytes reached the printer's Bluetooth chip — not that paper came out.
 - The paired (classic) Y41BT row is not changed. If part 1 shows the A52 uses it, that is a separate, small job.
 - 180 bytes and 8 ms are the request ("like the iPhone"), not measured on this printer. They are two
   constants in `PacedBleSend.java`.
 - A Y41BT sticker on Android may be slower than today on a fast link: a 60×40 sticker (about 19,000 bytes =
   107 pieces) now needs at least 0.85 s of sending (106 pauses of 8 ms). Today's real time was never measured.
-- `versionCode` is still 12 / 1.10 (the scanner build). A store release of this needs 13 or more.
-- The QR-scanner release gate (`mobile/android/qr-scanner-gate.sh`) compares the printer code with main and
-  will list these changes — expected.
+- **A store release is its own decision, not part of this test:** it needs `versionCode` 13 or more (the code
+  is still 12 / 1.10); a build from this code also contains the built-in QR scanner (Android 1.10, which is
+  not being released); and the scanner's release gate (`mobile/android/qr-scanner-gate.sh`) will answer
+  "STOP — do not release" for these printer-code changes — that is what it is for. How that gate is passed
+  (teach it the marked Y41BT lines, with `proof/same-as-main.py` as the evidence, or another way) has to be
+  decided before a release. No iPhone build and no new goldens are needed (the text builder and the iPhone
+  app are identical to main).

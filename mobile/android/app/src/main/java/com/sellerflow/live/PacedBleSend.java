@@ -13,7 +13,9 @@ import java.util.Locale;
  * like this:
  *   1. pieces of at most MAX_CHUNK bytes (never more than the phone and the printer agreed on);
  *   2. the next piece is handed over only after the phone's Bluetooth answered that it took the previous
- *      one, plus GAP_MS (the iPhone app's pause);
+ *      one, with a pause of GAP_MS (the iPhone app's pause) so that never more than MAX_CHUNK bytes go out
+ *      between two pauses — with pieces of 180 bytes that is a pause after every piece; with smaller pieces
+ *      (a phone and printer that agreed on less) one pause per 180 bytes, not one per piece;
  *   3. after the last piece the phone asks the printer's Bluetooth ONE small question: it reads a standard,
  *      read-only value (the device name). Bluetooth keeps the order, so the answer can only come back after
  *      every piece before it reached the printer's Bluetooth. Answer → "sent". No answer (time-out, or the
@@ -32,7 +34,10 @@ final class PacedBleSend {
     static final String[] NAME_PREFIXES = { "Y41BT" };
     /** Biggest piece (Jeff, Nov 25 2026: "small chunks ~180 bytes"). */
     static final int MAX_CHUNK = 180;
-    /** Pause after the phone took a piece, before the next one is handed over (the iPhone app's pause). */
+    /**
+     * The pause (the iPhone app's). Never more than MAX_CHUNK bytes are handed over between two pauses: after
+     * every piece of 180 bytes; with smaller pieces after as many as fit in 180 bytes (9 pieces of 20).
+     */
     static final long GAP_MS = 8;
     /**
      * How long the printer's Bluetooth may take to answer the question after the last piece: 8 s, plus 1 s
@@ -114,6 +119,8 @@ final class PacedBleSend {
         IGNORE,
         /** Hand over the next piece after GAP_MS. */
         WRITE_AFTER_GAP,
+        /** Hand over the next piece now (small pieces: fewer than MAX_CHUNK bytes went out since the last pause). */
+        WRITE_NOW,
         /** Every piece was taken by the phone: ask the printer the question. */
         ASK_CONFIRM,
         /** The phone did not take the question: hand it over again after CONFIRM_RETRY_MS. */
@@ -140,6 +147,7 @@ final class PacedBleSend {
         private final int pieceSize;
         private final int totalBytes;
         private int taken;          // pieces the phone answered "taken" for
+        private int sincePause;     // bytes taken since the last pause
         private boolean inFlight;   // one piece was handed over and its answer is not back yet
         private boolean failed;
         private int confirm = C_NOT_ASKED;
@@ -177,8 +185,12 @@ final class PacedBleSend {
             if (failed || !inFlight) return Next.IGNORE;
             inFlight = false;
             if (!ok) { failed = true; return Next.FAIL_WRITE; }
+            sincePause += pieces.get(taken).length;
             taken++;
-            return allTaken() ? Next.ASK_CONFIRM : Next.WRITE_AFTER_GAP;
+            if (allTaken()) return Next.ASK_CONFIRM;
+            // pause before a piece that would make it more than MAX_CHUNK bytes since the last pause
+            if (sincePause + pieces.get(taken).length > MAX_CHUNK) { sincePause = 0; return Next.WRITE_AFTER_GAP; }
+            return Next.WRITE_NOW;
         }
 
         /**
@@ -304,6 +316,9 @@ final class PacedBleSend {
             if (next == Next.WRITE_AFTER_GAP) {
                 phone.progress(s.taken());
                 schedule(GAP_MS, this::pump);
+            } else if (next == Next.WRITE_NOW) {
+                phone.progress(s.taken());
+                pump();
             } else if (next == Next.ASK_CONFIRM) {
                 phone.progress(s.taken());
                 phone.allTaken();

@@ -288,6 +288,52 @@ public class PacedBleSendTest {
     }
 
     @Test
+    public void smallPieces_onePausePer180Bytes_notOnePerPiece() {
+        // a phone and printer that agreed on the smallest size: 20-byte pieces, a 100x60 sticker (about 48 kB)
+        FakePhone phone = new FakePhone();
+        phone.answerAfterMs = 4;
+        byte[] payload = bytes(48_040);
+        FakePhone p = job(payload, 20, phone);
+        assertArrayEquals(payload, p.sent.toByteArray());
+        assertEquals(2402, p.pieces);
+        assertEquals(1, p.maxInFlight);
+        int pauses = 0, sinceLastPause = 20; // the first piece
+        for (int i = 1; i < p.handOverAt.size(); i++) {
+            long sinceAnswer = p.handOverAt.get(i) - p.answerAt.get(i - 1);
+            if (sinceAnswer == PacedBleSend.GAP_MS) { pauses++; sinceLastPause = 0; }
+            else assertEquals("piece " + i, 0, sinceAnswer);
+            sinceLastPause += p.pieceSizes.get(i);
+            assertTrue("never more than 180 bytes between two pauses (piece " + i + ")", sinceLastPause <= 180);
+        }
+        assertEquals(266, pauses); // one per 9 pieces of 20 bytes
+        // 2,402 answers of 4 ms + 266 pauses of 8 ms — far inside the 30 s a job may take (a pause after EVERY
+        // piece would be 2,401 x 8 ms = 19 s more)
+        assertEquals(2402 * 4 + 266 * 8, p.allTakenAt);
+        assertTrue(p.allTakenAt < 12_000);
+        assertEquals(1, p.settles);
+        assertEquals(0, p.fails);
+    }
+
+    @Test
+    public void piecesThatAreNotAMultipleOf180_stillPauseSoThatNoMoreThan180GoOut() {
+        for (int agreed : new int[] { 179, 100, 91, 90, 60, 45, 33 }) {
+            FakePhone p = job(bytes(4000), agreed, new FakePhone());
+            int since = p.pieceSizes.get(0);
+            for (int i = 1; i < p.handOverAt.size(); i++) {
+                if (p.handOverAt.get(i) - p.answerAt.get(i - 1) == PacedBleSend.GAP_MS) since = 0;
+                since += p.pieceSizes.get(i);
+                assertTrue("agreed " + agreed + " piece " + i, since <= 180);
+            }
+            assertEquals(1, p.settles);
+        }
+        // 179 and 100: a pause after every piece (two would be more than 180)
+        for (int agreed : new int[] { 179, 100 }) {
+            FakePhone p = job(bytes(2000), agreed, new FakePhone());
+            for (int i = 1; i < p.handOverAt.size(); i++) assertEquals(PacedBleSend.GAP_MS, p.handOverAt.get(i) - p.answerAt.get(i - 1));
+        }
+    }
+
+    @Test
     public void busyPhone_samePieceAgain_nothingSkippedOrDoubled() {
         FakePhone phone = new FakePhone();
         phone.busyFirst = 7;
@@ -557,6 +603,10 @@ public class PacedBleSendTest {
         assertNull(s.pieceToWrite());         // one in flight → nothing to hand over
         assertEquals(PacedBleSend.Next.WRITE_AFTER_GAP, s.onWriteAnswer(true));
         assertEquals(PacedBleSend.Next.IGNORE, s.onWriteAnswer(true)); // a second answer for the same piece
+        PacedBleSend.Session small = new PacedBleSend.Session(bytes(400), 20);
+        for (int i = 0; i < 8; i++) { small.onWriteStarted(); assertEquals("piece " + i, PacedBleSend.Next.WRITE_NOW, small.onWriteAnswer(true)); }
+        small.onWriteStarted();
+        assertEquals(PacedBleSend.Next.WRITE_AFTER_GAP, small.onWriteAnswer(true)); // 180 bytes went out → pause
         assertEquals(1, s.taken());
         assertEquals(PacedBleSend.Next.IGNORE, s.onConfirmStart(true, true)); // not all taken yet
         assertEquals(PacedBleSend.Next.IGNORE, s.onConfirmAnswer(0));
