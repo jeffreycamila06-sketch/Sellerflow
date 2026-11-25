@@ -4,6 +4,8 @@
 # file: ~/Desktop/qr-gate-class-diff.txt. Builds nothing, changes nothing in ~/Sellerflow.
 #   git -C ~/Sellerflow show origin/main:scripts/qr-gate-class-diff.sh | bash
 set -uo pipefail
+# dexdump output holds raw bytes (Kotlin metadata); macOS awk/grep/sed stop on them unless the locale is plain C.
+export LC_ALL=C LANG=C
 REPORT="$HOME/Desktop/qr-scanner-gate-report.txt"
 OUT="$HOME/Desktop/qr-gate-class-diff.txt"
 [ -f "$REPORT" ] || { echo "no gate report on the Desktop — run the gate first"; exit 2; }
