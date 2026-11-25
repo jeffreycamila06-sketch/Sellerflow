@@ -829,3 +829,54 @@ describe("assets.pb", () => {
     expect(() => assetDirEntries(Buffer.from([0x0d, 0x01]))).toThrow();
   });
 });
+
+// ── c) D8's shared helper classes ($$ExternalSynthetic…) are compared by body, not by name ─────────
+import { checkPrinterClasses as checkPC, parseDexdump as parseDD, methodsOf } from "../../../mobile/android/qr-scanner-gate-check.mjs";
+describe("c) D8 synthetic helpers", () => {
+  const SLOT = "Lkotlinx/coroutines/flow/StateFlowSlot;";
+  const OLD = "Landroidx/lifecycle/LifecycleKt$$ExternalSyntheticBackportWithForwarding0;";
+  const NEW = "Landroidx/camera/view/PreviewView$1$$ExternalSyntheticBackportWithForwarding0;";
+  const SIG = "m:(Ljava/util/concurrent/atomic/AtomicReference;Ljava/lang/Object;Ljava/lang/Object;)Z";
+  const BACK = "Lkotlin/UByte$$ExternalSyntheticBackport0;";
+  const cas = (t = "#int 1"): M[] => [{ name: "m", type: SIG.slice(2), insns: [
+    "invoke-virtual {v1, v2, v3}, Ljava/util/concurrent/atomic/AtomicReference;.compareAndSet:(Ljava/lang/Object;Ljava/lang/Object;)Z // method@@IDX",
+    "move-result v0", `const/4 v1, ${t} // #1`, "return v1"] }];
+  const backM = (extra: boolean, changed = false): M[] => [
+    { name: "m", type: "(II)I", insns: [changed ? "add-int v0, v1, v2" : "int-to-long v0, v4", "return v0"] },
+    ...(extra ? [{ name: "m", type: "(Ljava/lang/CharSequence;Ljava/lang/Iterable;)Ljava/lang/String;", insns: ["new-instance v0, Ljava/lang/StringBuilder; // type@@IDX", "return-object v0"] }] : []),
+  ];
+  const slotM = (owner: string): M[] => [{ name: "take", type: "()Z", insns: [`invoke-static {v2, v3, v1}, ${owner}.${SIG} // method@@IDX`, `invoke-static {v1, v2}, ${BACK}.m:(II)I // method@@IDX`, "return v2"] }];
+  const printer: M[] = [{ name: "printSlip", type: "()V", insns: [`invoke-virtual {v0}, ${SLOT}.take:()Z // method@@IDX`, "return-void"] }];
+  const build = (owner: string, synth: string, body: M[], back: M[], v: { off: number; idx: number; line: number }) => parseDD([
+    dexClass(0, PRINTER, printer, v), dexClass(1, SLOT, slotM(owner), v), dexClass(2, synth, body, v), dexClass(3, BACK, back, v),
+  ].join("\n"));
+  const run = (main: Map<string, unknown>, next: Map<string, unknown>) => checkPC({ mainClasses: main, newClasses: next, libClassDescs: new Set(), appRoots: [PRINTER], libFiles: [] } as never);
+  const base = build(OLD, OLD, cas(), backM(false), { off: 0x30dbd8, idx: 7611, line: 10 });
+
+  it("reads a helper class's methods without their # position", () => {
+    expect(methodsOf((base.get(BACK) as { text: string }).text).map((m: { key: string }) => m.key)).toEqual(["m:(II)I"]);
+  });
+  it("PASS: the identical helper moved to the camera's class name, and the shared helper class gained methods", () => {
+    const r = run(base, build(NEW, NEW, cas(), backM(true), { off: 0x4e6814, idx: 5146, line: 99 }));
+    expect(r.ok).toBe(true);
+    expect(r.lines.join("\n")).toMatch(/read the same once D8's shared helper classes are compared by body/);
+  });
+  it("FAIL: the moved helper's body is different", () => {
+    const r = run(base, build(NEW, NEW, cas("#int 0"), backM(true), { off: 0x4e6814, idx: 5146, line: 99 }));
+    expect(r.ok).toBe(false);
+    expect(r.lines.join("\n")).toMatch(/CHANGED Lkotlinx\/coroutines\/flow\/StateFlowSlot; changed[\s\S]*what changed in/);
+  });
+  it("FAIL: a method of the shared helper class changed", () => {
+    const r = run(base, build(NEW, NEW, cas(), backM(true, true), { off: 0x4e6814, idx: 5146, line: 99 }));
+    expect(r.ok).toBe(false);
+    expect(r.lines.join("\n")).toMatch(/UByte\$\$ExternalSyntheticBackport0; changed \(1 helper method\(s\) not found unchanged: m:\(II\)I\)/);
+  });
+  it("FAIL: a non-helper class changed for real (the report shows the lines)", () => {
+    const nb = build(NEW, NEW, cas(), backM(true), { off: 0x4e6814, idx: 5146, line: 99 });
+    const slot = nb.get(SLOT) as { text: string; refs: Set<string> };
+    nb.set(SLOT, { ...slot, text: slot.text.replace("return v2", "return v3") });
+    const r = run(base, nb);
+    expect(r.ok).toBe(false);
+    expect(r.lines.join("\n")).toMatch(/- .*return v2[\s\S]*\+ .*return v3/);
+  });
+});

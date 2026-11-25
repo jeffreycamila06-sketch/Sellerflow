@@ -263,6 +263,63 @@ export function mainActivityOnlyRegistration(mainText, newText) {
   return extra.length === 2 && REG_LINES[0].test(extra[0].trim()) && REG_LINES[1].test(extra[1].trim());
 }
 
+// ── D8 synthetic helpers ($$ExternalSynthetic…) ───────────────────────────────────────────────
+// D8 puts small Java-backport helpers (e.g. AtomicReference.compareAndSet for old Android) into shared
+// "$$ExternalSynthetic…" classes, merges IDENTICAL helpers into one, and names that class after the
+// alphabetically first class that uses it. Adding the camera code therefore renames helpers (androidx/lifecycle/…
+// → androidx/camera/…) and adds methods to a shared helper class, without changing any code. So: a call to a
+// helper is compared by the helper's BODY (not its class name), and a helper class counts as the same when every
+// one of its base methods exists with the identical body in the new build.
+export const SYNTH_CLASS = /\$\$ExternalSynthetic[A-Za-z]*\d*;$/;
+const SYNTH_CALL = /L[A-Za-z0-9_$/\-]*\$\$ExternalSynthetic[A-Za-z]*\d*;\.([A-Za-z0-9_$<>]+):(\([^)]*\)\S+)/g;
+/** The methods of one class's normalized text: [{ key: "name:type", body }] (the "#k" position is not part of it). */
+export function methodsOf(text) {
+  const out = [];
+  let cur = null;
+  for (const line of String(text).split("\n")) {
+    if (/^\s*#\d+\s*:\s*\(in L/.test(line)) { if (cur) out.push(cur); cur = { name: "", type: "", lines: [] }; continue; }
+    if (!cur) continue;
+    if (/^\s*(Virtual methods|Direct methods|Instance fields|Static fields)\b/.test(line) || /^source_file /.test(line)) { out.push(cur); cur = null; continue; }
+    const nm = /^\s*name\s*:\s*'([^']*)'/.exec(line); if (nm && !cur.name) cur.name = nm[1];
+    const ty = /^\s*type\s*:\s*'([^']*)'/.exec(line); if (ty && !cur.type) cur.type = ty[1];
+    // the code header "owner.name:type" carries the helper's CLASS name → not part of the body
+    if (/^\s*[A-Za-z0-9_$.]+\.[A-Za-z0-9_$<>]+:\(.*\)\S+\s*$/.test(line)) continue;
+    cur.lines.push(line);
+  }
+  if (cur) out.push(cur);
+  return out.map((m) => ({ key: `${m.name}:${m.type}`, body: m.lines.join("\n").replace(/\(in L[^)]*\)/g, "") }));
+}
+/** Every synthetic helper method of one build: "Lowner;.name:type" → body, and body → true. */
+export function synthIndex(classes) {
+  const byRef = new Map(), bodies = new Set();
+  for (const [d, c] of classes) {
+    if (!SYNTH_CLASS.test(d)) continue;
+    for (const m of methodsOf(c.text)) {
+      byRef.set(`${d}.${m.key.replace(":", ":")}`, m.body);
+      bodies.add(`${m.key}\n${m.body}`);
+    }
+  }
+  return { byRef, bodies };
+}
+/** A class's text with each call to a synthetic helper replaced by the helper's body (hashed). */
+export function canonSynthCalls(text, idx) {
+  return String(text).replace(SYNTH_CALL, (all, name, type) => {
+    const owner = all.slice(0, all.indexOf(";.") + 1);
+    const body = idx.byRef.get(`${owner}.${name}:${type}`);
+    return body === undefined ? all : `SYNTH[${sha(Buffer.from(`${name}:${type}\n${body}`)).slice(0, 16)}].${name}:${type}`;
+  });
+}
+/** The first lines where two normalized texts differ (for the report). */
+export function firstDiff(a, b, max = 6) {
+  const x = String(a).split("\n"), y = String(b).split("\n"), out = [];
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n && out.length < max * 2; i++) {
+    if (x[i] === y[i]) continue;
+    if (x[i] !== undefined) out.push(`      - ${x[i].trim()}`);
+    if (y[i] !== undefined) out.push(`      + ${y[i].trim()}`);
+  }
+  return out;
+}
 export function checkPrinterClasses({ mainClasses, newClasses, libClassDescs, appRoots, libFiles }) {
   const lines = [], bad = [];
   // the printer library FILES themselves
@@ -273,20 +330,33 @@ export function checkPrinterClasses({ mainClasses, newClasses, libClassDescs, ap
   }
   const libInDex = [...libClassDescs].filter((d) => mainClasses.has(d));
   const closure = printerClosure(mainClasses, [...libInDex, ...appRoots]);
-  let same = 0;
-  const changed = [];
+  let same = 0, viaSynth = 0;
+  const changed = [], details = [];
+  const mIdx = synthIndex(mainClasses), nIdx = synthIndex(newClasses);
   for (const d of [...closure].sort()) {
     const m = mainClasses.get(d), n = newClasses.get(d);
+    if (SYNTH_CLASS.test(d)) {
+      // a shared D8 helper class: every base method must exist with the identical body in the new build
+      const lost = methodsOf(m.text).filter((x) => !nIdx.bodies.has(`${x.key}\n${x.body}`));
+      if (!lost.length) { same++; if (!n || n.text !== m.text) viaSynth++; continue; }
+      changed.push(`${d} ${n ? "changed" : "missing"} (${lost.length} helper method(s) not found unchanged: ${lost.slice(0, 3).map((x) => x.key).join(", ")})`);
+      continue;
+    }
     if (!n) { changed.push(`${d} missing`); continue; }
     if (m.text === n.text) { same++; continue; }
     if (d === MAIN_ACTIVITY && mainActivityOnlyRegistration(m.text, n.text)) { lines.push(`  MainActivity: identical except the one added line registerPlugin(SellerFlowScannerPlugin.class) in onCreate`); same++; continue; }
+    const cm = canonSynthCalls(m.text, mIdx), cn = canonSynthCalls(n.text, nIdx);
+    if (cm === cn) { same++; viaSynth++; continue; }
     changed.push(`${d} changed`);
+    if (details.length < 60) details.push(`  what changed in ${d}:`, ...firstDiff(cm, cn));
   }
   bad.push(...changed);
   const appCount = [...closure].filter((d) => d.startsWith("Lcom/sellerflow/live/")).length;
   lines.unshift(`  ${closure.size} classes reached by the printer code (${libInDex.length} from the printer libraries, ${appCount} of our own, the rest from Capacitor / androidx / Java libraries they use) — ${same} identical`);
+  if (viaSynth) lines.push(`  ${viaSynth} of them read the same once D8's shared helper classes are compared by body (helpers renamed or grouped by the build tool, code unchanged)`);
   for (const c of changed.slice(0, 40)) lines.push(`  CHANGED ${c}`);
   if (changed.length > 40) lines.push(`  … and ${changed.length - 40} more`);
+  lines.push(...details);
   return { ok: bad.length === 0 && closure.size > 0, closure, lines: [`${bad.length || !closure.size ? "FAIL" : "PASS"} c) printer code: ${bad.length ? bad.length + " difference(s)" : closure.size ? "the same in both builds" : "no printer classes found"}`, ...lines] };
 }
 
