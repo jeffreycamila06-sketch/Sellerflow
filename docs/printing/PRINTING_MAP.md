@@ -122,6 +122,7 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
   the owner note to an already-failed `10/2018300` row (`startOwnerRead` → `ownerRowDetail`). That write runs
   after the send has answered, only with `fb_receipt_owner_read_enabled` = 'true'. The note now reads
   `owner=app|hidden|none|err|shape who=<app id|-> who_is=us|inbox|other|- … shape=<key names and value types only>`.
+  That row text may now be up to 600 characters (`OWNER_ROW_DETAIL_MAX`; was 300) — no app code reads it.
   The send call, `pickReceiptCandidates`, `RECEIPT_MAX_FAILS`, retries, answers, the picture: 0 lines.
   `fbReceiptSameAsMain.server.test.ts` still passes unchanged (every send story = main's frozen sender).
   No TODAY-vs-NEW pictures: nothing drawn changes. Every sticker / slip / laptop path: not touched (0 files).
