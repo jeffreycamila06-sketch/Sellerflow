@@ -117,6 +117,15 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
   stories × 4 identical to main; `docs/design/fb-receipt-thread-owner/proof/send-same-as-main.txt` (one send per
   case, 5 cases: request, stored picture bytes, answer, row status/code/picture the same — it does not show (1)).
   No TODAY-vs-NEW pictures: nothing drawn changes. Every sticker / slip / laptop path: not touched (0 files).
+- **Owner read records the answer's shape (2026-11-25, branch `claude/fb-owner-read-shape`) — NO drawing change, NO change to anything sent:**
+  `server/fbReceipt.js` changes TWO lines: the import from `fbThreadOwner.js`, and the one write that appends
+  the owner note to an already-failed `10/2018300` row (`startOwnerRead` → `ownerRowDetail`). That write runs
+  after the send has answered, only with `fb_receipt_owner_read_enabled` = 'true'. The note now reads
+  `owner=app|hidden|none|err|shape who=<app id|-> who_is=us|inbox|other|- … shape=<key names and value types only>`.
+  That row text may now be up to 600 characters (`OWNER_ROW_DETAIL_MAX`; was 300) — no app code reads it.
+  The send call, `pickReceiptCandidates`, `RECEIPT_MAX_FAILS`, retries, answers, the picture: 0 lines.
+  `fbReceiptSameAsMain.server.test.ts` still passes unchanged (every send story = main's frozen sender).
+  No TODAY-vs-NEW pictures: nothing drawn changes. Every sticker / slip / laptop path: not touched (0 files).
 - **Free-button orders (2026-11-19) — NOT changed here (Jeff: separate small branch later):** an order made with the Free button is a line with item "FREE" and price 0. Like every price-0 line it is drawn with NO price (`receiptLayout.js` `priced = total > 0`), and ONE such line makes the receipt's total read "to be confirmed" (`receiptTotalText`) on the phone sheet and the automatic receipt. The Orders row / export / Send to TikTok already say "Free" (`isFreeOrder`).
 - **Card format + Shipping fee (2026-11-14, branch `claude/fb-receipt-card`):** `layoutReceipt` now wraps
   "#N name" → lines → shipping → total in a rounded card (`box` op: r 22, fill `#fbfbfd`, 2 px stroke =

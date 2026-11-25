@@ -17,7 +17,7 @@ import { GRAPH_VERSION } from "./fbConfig.js";
 import { GRAPH_HOST } from "./fbLive.js";
 import { decryptToken } from "./fbTokens.js";
 import { withAppSecretProof, maskSecretText, makeRateGate, isFbCommentId } from "./fbHardening.js";
-import { readThreadOwner, ownerLogLine, ownerNote, makeOwnerReadGate, isBuyerId } from "./fbThreadOwner.js";
+import { readThreadOwner, ownerLogLine, ownerRowDetail, makeOwnerReadGate, isBuyerId } from "./fbThreadOwner.js";
 
 export const RECEIPT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000; // 7 days minus 1 hour
 export const RECEIPT_MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -258,10 +258,9 @@ export function createFbReceipt(deps) {
           if (!ownerReadGate(claim.page.pageId)) return;
           const r = await readThreadOwner({ fetchImpl, pageId: claim.page.pageId, buyerId, pageToken: claim.page.token, now });
           log(ownerLogLine(userId, claim.page.pageId, r, config && config.appId));
-          // Kept next to the failed row too (app id + counts only), so it can be read without the server log.
-          const note = ` | ${ownerNote(r, config && config.appId)}`;
-          const text = `${String(detail || "").slice(0, Math.max(0, RECEIPT_ERROR_DETAIL_MAX - note.length))}${note}`;
-          await store.updateReceipt(claim.id, { error_detail: text });
+          // Kept next to the failed row too (an app id, words, counts and — when no app id was read — the
+          // answer's shape: key names and types only), so it can be read without the server log.
+          await store.updateReceipt(claim.id, { error_detail: ownerRowDetail(detail, r, config && config.appId) });
         } catch { /* log only: never matters to the send */ }
       })();
     } catch { /* log only */ }
