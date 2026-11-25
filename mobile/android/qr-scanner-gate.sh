@@ -177,5 +177,10 @@ node "$WORK/new/mobile/android/qr-scanner-gate-check.mjs" \
   --main-libs "$WORK/main/mobile/android/app/libs" --new-libs "$WORK/new/mobile/android/app/libs" \
   --dexdump "$DEXDUMP" --max-mb "$MAX_MB" ${SIZE_ARGS[@]+"${SIZE_ARGS[@]}"} ${BLAME_ARGS[@]+"${BLAME_ARGS[@]}"} 2>&1 | tee -a "$REPORT"
 code=${PIPESTATUS[0]}
+# Fail closed: exit 0 counts only when the checker really printed its PASS verdict.
+if [ "$code" = 0 ] && ! grep -q "^RESULT: PASS" "$REPORT"; then
+  say "CANNOT MEASURE — STOP: the checker printed no verdict"
+  code=2
+fi
 save_report
 exit "$code"

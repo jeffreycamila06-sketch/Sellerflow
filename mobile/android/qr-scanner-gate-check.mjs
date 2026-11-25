@@ -27,7 +27,7 @@
 //   f) per-phone download growth ≤ max MB (a size table with no rows or a value that is not a number →
 //      CANNOT MEASURE); every NEW .so has 16 KB-aligned load segments
 // Any FAIL → "STOP — do not release" + the reasons. Exit 0 = PASS, 1 = FAIL, 2 = CANNOT MEASURE — STOP.
-import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync, realpathSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 import { spawnSync } from "node:child_process";
@@ -805,7 +805,13 @@ function cli(argv) {
   return r.status === "pass" ? 0 : r.status === "cannot" ? 2 : 1;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Run as a script? Compare REAL paths: on macOS $TMPDIR is /var/folders/… (a link to /private/var/…),
+// so the plain string compare silently skipped the whole check (no output, exit 0) on Jeff's Mac.
+function isMainModule() {
+  try { return !!process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); }
+  catch { return false; }
+}
+if (isMainModule()) {
   let code = 2;
   try { code = cli(process.argv.slice(2)); } catch (e) { console.log(`CANNOT MEASURE — STOP: ${e && e.message}`); code = 2; }
   process.exit(code);
