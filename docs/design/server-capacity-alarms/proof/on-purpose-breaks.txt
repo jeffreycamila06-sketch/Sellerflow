@@ -1,0 +1,30 @@
+caught  warning line moved to 65
+caught  danger line moved to 80
+caught  one reading is enough to go up
+caught  no hysteresis: back to normal under 60
+caught  back to normal after 1 calm reading
+caught  a message at every reading (told never set)
+caught  told set even when Telegram refused
+caught  danger → warning sends a message
+caught  no resend gap
+caught  a late warning goes out when calm
+caught  switch ignored for the level message
+caught  switch ignored for the restart alarm
+caught  runs when Telegram is off
+caught  clean end not honoured
+caught  a run still beating counts as dead
+caught  already reported run reported again
+caught  restart alarm without claiming
+caught  no 15-minute gap between restart alarms
+caught  ✅ the moment a restarted server starts
+caught  clean exit waits forever
+caught  a throwing counter escapes
+caught  a name can ride in the lives text
+caught  limit hard-coded
+caught  env limit ignored
+caught  SIGTERM exits before the clean end is written
+caught  the database part is never given up on
+caught  the reading waits for the database
+caught  sql: database warning at 80
+caught  sql: browsers may read server_runs
+29 of 29 on-purpose breaks caught

@@ -3,6 +3,8 @@
 //   • Env TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (set on Render). Missing either = alerts off; nothing else changes.
 //   • Messages are fixed texts chosen by a key (ALERT_TEXTS). Never a phone, name, store number, tracking
 //     number, cookie or token — send() has no way to take free text.
+//   • The server-capacity alarms (memory level, unexpected restart) are BUILT from whole numbers only
+//     (ALERT_BUILDERS = server/capacityTexts.js); a value that is not such a number gives no text at all.
 //   • ONE text carries a value after it: "new_version" + the 7-character commit the server started on
 //     (ALERT_VALUE_SHAPES: 7 characters 0-9 a-f, nothing else passes). Every other text takes no value.
 //   • A failed send is logged with ONE word and resolves { ok: false, word }; send() never throws.
@@ -17,6 +19,8 @@
 //     mark a message as "the same as before".
 //   • Alerts go out one after another, in the order they happened.
 //   • The token is never logged: the URL, the request and any error text never reach a log line.
+import { CAPACITY_TEXTS } from "./capacityTexts.js";
+
 // How long ONE send waits for Telegram's answer. 8 s until 2026-11-19: the first send after a server
 // restart was delivered, but its answer came later than 8 s and the Admin panel said "Not sent".
 export const TELEGRAM_SEND_MS = 20000;
@@ -42,8 +46,14 @@ export const ALERT_TEXTS = {
 // The texts that carry ONE value after them, and the only shape that value may have. Never free text.
 export const ALERT_VALUE_SHAPES = { new_version: /^[0-9a-f]{7}$/ };
 const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+// The texts that are BUILT from whole numbers (server/capacityTexts.js: memory level, unexpected restart).
+// A builder checks every number itself and answers "" for anything else — still never free text.
+export const ALERT_BUILDERS = CAPACITY_TEXTS;
 /** PURE — the whole message for `kind`, or "" when the key is not ours or its value has the wrong shape. */
 export function alertText(kind, value) {
+  if (typeof kind === "string" && own(ALERT_BUILDERS, kind)) {
+    try { const t = ALERT_BUILDERS[kind](value); return typeof t === "string" ? t : ""; } catch { return ""; }
+  }
   if (typeof kind !== "string" || !own(ALERT_TEXTS, kind)) return "";
   if (!own(ALERT_VALUE_SHAPES, kind)) return ALERT_TEXTS[kind];   // no value: whatever was passed is never read
   return typeof value === "string" && ALERT_VALUE_SHAPES[kind].test(value) ? `${ALERT_TEXTS[kind]} ${value}` : "";
