@@ -136,9 +136,11 @@ prepare() { # $1 = worktree
   case "$store" in /*) ;; *) store="$(cd "$src_dir" && cd "$(dirname "$store")" && pwd)/$(basename "$store")";; esac
   sed "s#^storeFile=.*#storeFile=$store#" "$KEYPROPS" > "$wt/mobile/android/keystore.properties"
   # mobile/package-lock.json has been out of step with package.json since the iOS StatusBar commit
-  # (npm ci refuses), so both builds use the SAME `npm install` that never writes package.json or the lock.
+  # (npm ci refuses). Both builds use the SAME plain `npm install`: it keeps the lock's pinned versions
+  # (typescript 6.0.3 — the unpinned "latest" breaks cap's config loader) and may only touch the lock
+  # inside this throw-away worktree, never in ~/Sellerflow.
   local plog="$WORK/prepare-$(basename "$wt").log"
-  (cd "$wt/mobile" && npm install --no-save --no-package-lock --no-audit --no-fund >"$plog" 2>&1 && npx cap sync android >>"$plog" 2>&1) \
+  (cd "$wt/mobile" && npm install --no-audit --no-fund >"$plog" 2>&1 && npx cap sync android >>"$plog" 2>&1) \
     || { echo "npm install / cap sync failed in $wt — last lines:"; tail -n 15 "$plog"; return 1; }
 }
 build() { # $1 = worktree, $2 = name → .aab, dependencies, manifest, merge report into $WORK/$2.*
