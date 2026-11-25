@@ -39,7 +39,7 @@ caught  Orders: the photo input is always on the page  →  webScan.screens.test
 caught  Orders: no Scan button with the page's scanner  →  webScan.screens.test.tsx
 caught  Orders: the read is not applied  →  webScan.screens.test.tsx
 caught  RedesignApp: Orders always gets webScan  →  webQrScanner.fence.test.ts
-caught  RedesignApp: the switch is never handed to the scanner  →  webQrScanner.fence.test.ts
+caught  RedesignApp: the answer is never handed to the scanner  →  webQrScanner.fence.test.ts
 caught  the app reads another switch name  →  webQrScanner.test.ts
 caught  the switch is on by default  →  webQrScanner.test.ts
 caught  sql/218 creates the switch ON  →  webQrScanner.fence.test.ts
@@ -53,5 +53,35 @@ caught  FENCE: an app-build file is changed  →  webQrScanner.fence.test.ts
 caught  FENCE: the native scanner's adapter is changed  →  webQrScanner.fence.test.ts
 caught  FENCE: a file is added under mobile/  →  webQrScanner.fence.test.ts
 caught  FENCE: a server file is changed  →  webQrScanner.fence.test.ts
+caught  testers: an admin is NOT let in  →  webQrScanner.test.ts
+caught  testers: a login with the feature key is NOT let in  →  webQrScanner.test.ts
+caught  testers: the switch no longer turns it on for everyone  →  webQrScanner.test.ts
+caught  testers: anything truthy counts as 'admin'  →  webQrScanner.test.ts
+caught  testers: anything truthy counts as the feature key  →  webQrScanner.test.ts
+caught  app: the admin role is not passed (real app)  →  webQrScanner.app.test.tsx
+caught  app: the feature key is not read (real app)  →  webQrScanner.app.test.tsx
+caught  app: another feature's key is read instead (real app)  →  webQrScanner.app.test.tsx
+caught  app: the switch is not read (real app)  →  webQrScanner.app.test.tsx
+caught  app: EVERY login is let in with the switch off (real app)  →  webQrScanner.app.test.tsx
+caught  app: the Scan button shows but a tap is not told the answer (real app)  →  webQrScanner.app.test.tsx
+caught  app: Orders shows the button from the switch only (real app)  →  webQrScanner.app.test.tsx
+caught  the app does not read the key web_qr_scanner  →  parcelBatchCap.test.ts
+caught  sql/219 puts a login on the list  →  webQrScannerFeatureSql.test.ts
+caught  sql/219 drops another feature's key  →  webQrScannerFeatureSql.test.ts
+caught  sql/219 spells the key differently from the app  →  webQrScannerFeatureSql.test.ts
+caught  sql/219 has no guard on the live text  →  webQrScannerFeatureSql.test.ts
+caught  sql/219 also creates the switch row  →  webQrScannerFeatureSql.test.ts
+caught  sql/219 rollback deletes the testers of EVERY feature  →  webQrScannerFeatureSql.test.ts
+caught  sql/219 rollback leaves the new key in  →  webQrScannerFeatureSql.test.ts
+caught  limit: it waits for the READER again (a slow reader load = 'camera isn't available')  →  webQrScanner.test.ts
+caught  limit: a camera that HAS a picture is still called 'not available'  →  webQrScanner.test.ts
+caught  limit: a camera with NO picture is taken as fine  →  webQrScanner.test.ts
+caught  limit: it also runs while the phone is still asking for the camera  →  webQrScanner.test.ts
+caught  reader: made only after the camera answered (not when the scanner opens)  →  webQrScanner.test.ts
+caught  reader: ours is not loaded at open (only at the first frame)  →  webQrScanner.test.ts
+caught  reader: ours is loaded even when the phone has its own  →  webQrScanner.test.ts
+caught  reader: a phone reader that never answers is waited for, for ever  →  webQrScanner.test.ts
+caught  reader: a failed making of the reader still opens the camera  →  webQrScanner.test.ts
+caught  reader: warmQrPixelReader starts no load  →  qrLiveWarm.test.ts
 
-55 of 55 on-purpose breaks caught
+85 of 85 on-purpose breaks caught
