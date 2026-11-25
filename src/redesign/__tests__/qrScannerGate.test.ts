@@ -796,3 +796,36 @@ describe("the shell script (it runs only on the Mac — its rules are pinned her
     void c4;
   });
 });
+
+// ── assets.pb: compared by asset folder (adding the ML Kit model folder changes its bytes) ──────────
+import { assetDirEntries, compareAssetDirs } from "../../../mobile/android/qr-scanner-gate-check.mjs";
+function pbAssets(dirs: Array<{ path: string; targeting?: Buffer }>): Buffer {
+  const vint = (n: number) => { const o: number[] = []; do { let b = n & 0x7f; n = Math.floor(n / 128); if (n) b |= 0x80; o.push(b); } while (n); return Buffer.from(o); };
+  const ld = (f: number, b: Buffer) => Buffer.concat([vint(f * 8 + 2), vint(b.length), b]);
+  return Buffer.concat(dirs.map((d) => ld(1, Buffer.concat([ld(1, Buffer.from(d.path)), d.targeting ? ld(2, d.targeting) : Buffer.alloc(0)]))));
+}
+describe("assets.pb", () => {
+  const base = pbAssets([{ path: "assets" }, { path: "assets/public", targeting: Buffer.from([8, 1]) }]);
+  it("reads the folders", () => {
+    expect(assetDirEntries(base).map((e) => e.path)).toEqual(["assets", "assets/public"]);
+  });
+  it("PASS: only the ML Kit model folder is new", () => {
+    const nb = pbAssets([{ path: "assets" }, { path: "assets/mlkit_barcode_models" }, { path: "assets/public", targeting: Buffer.from([8, 1]) }]);
+    expect(compareAssetDirs(base, nb)).toMatchObject({ missing: [], badNew: [], added: ["assets/mlkit_barcode_models"] });
+    const r = checkBundleEntries(new Map([["base/assets.pb", () => base]]) as never, new Map([["base/assets.pb", () => nb]]) as never);
+    const text = JSON.stringify(r);
+    expect(text).not.toMatch(/changed: base\/assets\.pb|asset folder (removed|not from)/);
+    expect(text).toMatch(/assets\.pb: 2 asset folder\(s\) of the base — 2 the same; new: assets\/mlkit_barcode_models/);
+  });
+  it("FAIL: a base folder is gone or its targeting changed", () => {
+    const nb = pbAssets([{ path: "assets" }, { path: "assets/public", targeting: Buffer.from([8, 2]) }]);
+    expect(compareAssetDirs(base, nb).missing).toEqual(["assets/public"]);
+  });
+  it("FAIL: a new folder that is not ML Kit's", () => {
+    const nb = pbAssets([{ path: "assets" }, { path: "assets/public", targeting: Buffer.from([8, 1]) }, { path: "assets/other" }]);
+    expect(compareAssetDirs(base, nb).badNew).toEqual(["assets/other"]);
+  });
+  it("CANNOT MEASURE on unreadable bytes", () => {
+    expect(() => assetDirEntries(Buffer.from([0x0d, 0x01]))).toThrow();
+  });
+});

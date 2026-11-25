@@ -642,6 +642,45 @@ export const EXPECTED_DIFF = new Set([
   "META-INF/version-control-info.textproto",
   "base/root/META-INF/version-control-info.textproto",
 ]);
+/**
+ * base/assets.pb = the bundle's list of asset folders (bundletool Assets: repeated { 1: path, 2: targeting }).
+ * Adding the ML Kit model folder changes its bytes, so it is compared by entry: every base folder must be
+ * there unchanged, and the only new folders allowed are the ML Kit model folder(s).
+ */
+export function assetDirEntries(buf) {
+  const u = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  const varint = (st) => { let r = 0, m = 1, b; do { if (st.i >= st.end) throw new Error("truncated varint"); b = u[st.i++]; r += (b & 0x7f) * m; m *= 128; } while (b & 0x80); return r; };
+  const out = [];
+  const top = { i: 0, end: u.length };
+  while (top.i < top.end) {
+    const tag = varint(top), f = Math.floor(tag / 8), wt = tag & 7;
+    if (wt !== 2) throw new Error(`unexpected wire type ${wt}`);
+    const len = varint(top), start = top.i, stop = start + len;
+    if (stop > u.length) throw new Error("truncated entry");
+    top.i = stop;
+    if (f !== 1) { out.push({ path: `#field${f}`, rest: Buffer.from(u.slice(start, stop)).toString("hex") }); continue; }
+    const st = { i: start, end: stop };
+    let path = null; const rest = [];
+    while (st.i < st.end) {
+      const t2 = varint(st), f2 = Math.floor(t2 / 8), w2 = t2 & 7;
+      if (w2 === 2) { const l2 = varint(st); const b2 = u.slice(st.i, st.i + l2); st.i += l2; if (f2 === 1) path = Buffer.from(b2).toString("utf8"); else rest.push(`${f2}:${Buffer.from(b2).toString("hex")}`); }
+      else if (w2 === 0) rest.push(`${f2}=${varint(st)}`);
+      else throw new Error(`unexpected wire type ${w2}`);
+    }
+    if (path === null) throw new Error("asset folder without a path");
+    out.push({ path, rest: rest.join(",") });
+  }
+  return out;
+}
+export function compareAssetDirs(mainBuf, newBuf) {
+  const a = assetDirEntries(mainBuf), b = assetDirEntries(newBuf);
+  const key = (e) => `${e.path}|${e.rest}`;
+  const kb = new Set(b.map(key)), ka = new Set(a.map(key));
+  const missing = a.filter((e) => !kb.has(key(e))).map((e) => e.path);
+  const added = b.filter((e) => !ka.has(key(e))).map((e) => e.path);
+  const badNew = added.filter((p) => !/^assets\/mlkit_barcode_models(\/|$)/.test(p));
+  return { baseCount: a.length, missing, added, badNew };
+}
 /** Every entry of the two .aab files except dex (c), lib (b) and the manifest (e). */
 export function checkBundleEntries(mainZip, newZip, ctx = {}) {
   const addedDeps = ctx.addedDeps || [], newSo = (ctx.newSo || []).map((k) => k.split("/").pop());
@@ -675,6 +714,18 @@ export function checkBundleEntries(mainZip, newZip, ctx = {}) {
   const names = [...new Set([...mainZip.keys(), ...newZip.keys()])].sort();
   for (const n of names) {
     if (skip(n) || n === "base/resources.pb") continue;
+    if (n === "base/assets.pb") {
+      const ga = mainZip.get(n), gb = newZip.get(n);
+      if (!ga || !gb) { fails.push(`assets.pb missing in the ${!ga ? "base" : "new"} build`); continue; }
+      try {
+        const r = compareAssetDirs(ga(), gb());
+        compared++;
+        for (const m of r.missing) fails.push(`asset folder removed or changed: ${m}`);
+        for (const x of r.badNew) fails.push(`NEW asset folder not from ML Kit: ${x}`);
+        notes.push(`  assets.pb: ${r.baseCount} asset folder(s) of the base — ${r.baseCount - r.missing.length} the same; new: ${r.added.join(", ") || "none"}`);
+      } catch (e) { cannot = cannot || `assets.pb cannot be read (${e.message})`; }
+      continue;
+    }
     if (EXPECTED_DIFF.has(n)) { notCompared.push(n); continue; }
     const ga = mainZip.get(n), gb = newZip.get(n);
     if (ga && !gb) { fails.push(`removed: ${n}`); continue; }
