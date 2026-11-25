@@ -1,0 +1,71 @@
+the real code first:
+  J (Java unit tests) = pass | S (simulation) = pass | C (source pins) = pass
+
+ 1. a second printer gets the paced send (XP-420B added to the list)
+      caught by J + S + C
+ 2. the name may match anywhere, not only at the start
+      caught by J
+ 3. pieces of 509 bytes again
+      caught by J + S + C
+ 4. the piece ignores the size the phone and printer agreed on
+      caught by J + S
+ 5. no pause between pieces
+      caught by J + C
+ 6. the next piece is offered while one is still in flight
+      caught by J
+ 7. a piece the phone reports as NOT written counts as written
+      caught by J + S
+ 8. the next piece goes at once (no wait after the answer)
+      caught by J
+ 9. a busy phone: the piece is counted as handed over
+      caught by J + S
+10. the question is never asked
+      caught by J + S
+11. no answer to the question still ends as SENT
+      caught by J + S
+12. the phone's own error (133) counts as the printer's answer
+      caught by J
+13. status 0x08 (also a lost link) counts as the printer's answer
+      caught by J
+14. the link closing before the answer ends as SENT
+      caught by J + S
+15. the link closing while sending ends as SENT
+      caught by J
+16. the question may read a value of the print service
+      caught by J + C
+17. the wait for the answer no longer grows with the job
+      caught by J + S
+18. a stopped job can still send
+      caught by J
+19. the 1.5 s wait starts before the printer answered (settle at the question)
+      caught by J + S
+20. GenericBleTransport: the Y41BT is not sent the paced way
+      caught by S + C
+21. GenericBleTransport: the saved name is ignored (only the device's own name)
+      caught by S + C
+22. GenericBleTransport: EVERY printer is sent the paced way
+      caught by S + C
+23. GenericBleTransport: a closing link uses the old rule (sent once everything was handed over)
+      caught by S + C
+24. GenericBleTransport: the printer's answer never reaches the driver
+      caught by S
+25. GenericBleTransport: the paced pieces use the generic size
+      caught by S + C
+26. GenericBleTransport: the phone's answers for the pieces never reach the driver
+      caught by S + C
+27. GenericBleTransport: a failed write is reported to the driver as written
+      caught by S + C
+28. GenericBleTransport: the paced state survives the job (the next printer inherits it)
+      caught by C
+29. GenericBleTransport: the paced write always asks for a response
+      caught by C
+30. GenericBleTransport: "sent" right after the answer (no 1.5 s)
+      caught by S + C
+31. GenericBleTransport: the generic send's own piece size is changed
+      caught by S + C
+32. Plugin: the saved Y41BT name is used for ANOTHER printer under test
+      caught by C
+33. Plugin: no name is passed (the Y41BT is only known by the device's own name)
+      caught by C
+
+33 of 33 breaks caught

@@ -6696,3 +6696,50 @@ opened the photo picker. This draws the SAME live scanner inside the web page. `
   the switch goes on, "In the latest phone app the camera opens" may want a reword — as its own phrase-swap SQL.
 - **Order:** merge (Vercel) and sql/218 in either order (no row = off) → `update … set value = 'true'` to turn it on;
   open apps see it after a full close-open. Rollback: the switch `'false'` (instant) or the rollback file.
+
+## 2026-11-25 — FLASH LABEL Y41BT ON ANDROID: PACED SEND (branch `claude/compassionate-pasteur-at5au5`, NOT merged; Android printer code = needs a NEW Android build; no SQL, no web, no Render)
+Jeff: Samsung A52 (app 1.9 and 1.10) — Test print says "Test sent", no paper; same printer prints from a Samsung
+A51 5G and from iPhone. **NO logcat was captured (cloud session, no phone) → the cause is NOT confirmed, the fix is
+NOT proven on a phone.** Jeff's how-to (10-second check, logcat commands, test-app build, what each log line means):
+`docs/design/y41bt-android-paced/README.md`.
+- **Two possible causes.** (A) the Bluetooth LE send (what this branch changes). (B) the A52 saved the PAIRED row
+  ("Y41BT-xxxx" without `_LE`, transport `spp`): the Android scan lists paired devices too, and that row prints
+  through `sendViaBluetoothSpp` (write → 180 ms → close) — NOT changed. Check first: the name on the saved-printer
+  card ends with `_LE` or not; in a log, a line `SellerFlowPrinterGen: generic print …` = LE, none = paired row.
+- **Today's generic LE send (every generic printer, unchanged):** pieces of MTU − 3 up to 509 bytes; Android 13+
+  hands over the next piece as soon as the phone answered (no pause), older Android every 8 ms; "sent" 1.5 s after
+  the LAST piece was HANDED to the phone, then disconnect. The iPhone app: pieces as big as iOS agrees (ceiling
+  509 too, not 180), waits for iOS "ready", 8 ms after every piece, and the same 1.5 s "sent".
+- **Paced send — only when the printer's name starts with `Y41BT`** (`PacedBleSend.NAME_PREFIXES`; name = the
+  call's `name`, else the saved name when the job goes to the SAVED address (`genericNameHint` in the plugin), or
+  the device's own name): pieces ≤ **180 bytes** (never over MTU − 3) · next piece only after the phone's
+  `onCharacteristicWrite` for the previous one **+ 8 ms** · after the last piece ONE read of a standard value
+  (`1800/2A00` device name, else `2A01`, else Device Information `180A`) — its answer comes back only after every
+  piece before it reached the printer's Bluetooth → then the usual 1.5 s → "sent". No answer in 8–20 s
+  (`confirmTimeoutMs`: 8 s + 1 s per 4,000 bytes) or the link closing first → `BT_PRINT_FAILED` "The printer did
+  not confirm it received the sticker." (the screen shows the existing "Test sticker failed"). Nothing standard to
+  read → ends as today. Same bytes, same order, same characteristic and write type. The whole job still ends inside
+  the transport's 30 s (the web lane's watchdog is 35 s). Answer object: `paced:true`, `delivered`.
+  "Sent" still does not mean paper came out — the printer never says so.
+- **Files:** NEW `PacedBleSend.java` (pure Java: the rules + `Session` + `Driver` + the `Phone` interface) ·
+  `GenericBleTransport.java` (16 guarded lines ending `// Y41BT` + two regions `// >>> Y41BT paced send … // <<<`:
+  the read callback and the real-Bluetooth `Phone`) · `SellerFlowPrinterPlugin.java` (`genericNameHint` region, the
+  one `generic().printJob(` call, one answer line) · NEW `PacedBleSendTest.java` · `scripts/printing-paths.mjs`
+  (+ the new file) · `pacedBleSend.contract.test.ts` (CI source pins) · PRINTING_MAP.md.
+  🔑 **A new statement inside GenericBleTransport's existing code must be a guarded line ending `// Y41BT`, new
+  code goes inside a marked region** — the contract test lists the guarded lines; `proof/same-as-main.py` removes
+  the marked lines and must get main's file byte for byte.
+- **Other printers unchanged, proven three ways** (`docs/design/y41bt-android-paced/proof/`): `same-as-main.txt`
+  (the two edited Java files minus the marked lines = main, sha256; D520BT / Niimbot / TsplBuilder /
+  BleStickerLogic / Swift / web printing files identical) · `sim/run.sh` (the REAL `GenericBleTransport` of main
+  and of the branch on a pretend Android in `sim/fake/`: 39 other-printer cases → identical traces; 38 Y41BT
+  checks; ⚠ a model, not a real phone or printer) · `breaks.txt` (33 on-purpose breaks, all caught).
+  Run the Java tests without Gradle: `javac` + JUnit 4 on `PacedBleSend.java`, `BleStickerLogic.java` and the two
+  test files (commands in `breaks.py`). The three Java files also compile against the Android 14 framework classes
+  (Robolectric's `android-all` jar from Maven Central, scratch only); the plugin file and the whole app were NOT
+  built in the cloud — `docs/design/y41bt-android-paced/build-test-apk.sh` (Mac, from a worktree) is the first
+  real build: Gradle unit tests → debug APK that loads the live website → `~/Desktop/SellerFlowLive-Y41-test.apk`.
+- **Not done / open:** no real phone, printer or logcat · the paired (classic) Y41BT row untouched · 180 bytes and
+  8 ms are Jeff's ask, not measured on this printer · `versionCode` still 12 (a store release needs ≥ 13) · the
+  iPhone app unchanged (it works there) · the QR-scanner release gate (`qr-scanner-gate.sh`) will list these
+  printer-code changes (expected). No seller text changed → no help-guide change.

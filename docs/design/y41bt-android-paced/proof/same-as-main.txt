@@ -1,0 +1,36 @@
+base = origin/main = 6977cd69f995c12336c7689456c6e17be4fb5871
+head = 6977cd69f995c12336c7689456c6e17be4fb5871  (+ uncommitted changes)
+
+mobile/android/app/src/main/java/com/sellerflow/live/GenericBleTransport.java
+  removed: 2 marked region(s), 16 line(s) ending '// Y41BT'; changed line put back: 1
+  main    sha256 ea06b2086ade93a3194db7e52b08496e30b3c00b102741aadb216a5eebcf148e  (20161 bytes)
+  result  sha256 ea06b2086ade93a3194db7e52b08496e30b3c00b102741aadb216a5eebcf148e  (20161 bytes)
+  => IDENTICAL to main
+
+mobile/android/app/src/main/java/com/sellerflow/live/SellerFlowPrinterPlugin.java
+  removed: 1 marked region(s), 1 line(s) ending '// Y41BT'; changed line put back: 1
+  main    sha256 ddd342eb787cd9f93ccb26f05884d067a60a49e76e863df74cad5374bd2c3072  (58369 bytes)
+  result  sha256 ddd342eb787cd9f93ccb26f05884d067a60a49e76e863df74cad5374bd2c3072  (58369 bytes)
+  => IDENTICAL to main
+
+every other file under mobile/ that differs from main:
+  A  mobile/android/app/src/main/java/com/sellerflow/live/PacedBleSend.java   <- new file of this feature
+  A  mobile/android/app/src/test/java/com/sellerflow/live/PacedBleSendTest.java   <- new file of this feature
+
+printer files that must be byte-identical to main:
+  same       mobile/android/app/src/main/java/com/sellerflow/live/BleStickerTransport.java
+  same       mobile/android/app/src/main/java/com/sellerflow/live/BleStickerLogic.java
+  same       mobile/android/app/src/main/java/com/sellerflow/live/NiimbotTransport.java
+  same       mobile/android/app/src/main/java/com/sellerflow/live/TsplBuilder.java
+  same       mobile/android/app/src/main/java/com/sellerflow/live/MainActivity.java
+  same       mobile/ios/App/App/SellerFlowPrinterPlugin.swift
+  same       mobile/android/app/build.gradle
+  same       mobile/android/app/src/main/AndroidManifest.xml
+  same       src/redesign/adapters/printing.ts
+  same       src/redesign/adapters/printerModels.ts
+  same       src/redesign/adapters/printerBridge.ts
+  same       src/redesign/adapters/savedPrinter.ts
+  same       src/redesign/adapters/stickerRaster.ts
+  same       src/redesign/screens/PrinterSettings.tsx
+
+RESULT: PASS — outside the marked Y41BT lines, nothing changed

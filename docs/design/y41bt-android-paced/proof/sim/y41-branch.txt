@@ -1,0 +1,426 @@
+THIS BRANCH (paced send for the Y41BT)
+
+── Y41BT · Android 14 · agreed 512 · 19,238 bytes · normal link ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=19238 piece=180 pieces=107 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+            … 94 more lines …
+  1590 ms  APP write #102 len=180 type=noResponse sha=66061488
+  1600 ms  APP write #103 len=180 type=noResponse sha=bdd5c4be
+  1610 ms  APP write #104 len=180 type=noResponse sha=01dd85af
+  1620 ms  APP write #105 len=180 type=noResponse sha=90560a49
+  1630 ms  APP write #106 len=158 type=noResponse sha=171f1270
+  1632 ms  APP read 2A00
+  1637 ms  PRINTER has every byte (19238)
+  3157 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=107 mtu=512 confirmed=false
+  3157 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=19238 piece=180 pieces=107 sendMs=1062 printerAnswered=yes answerMs=25
+  3157 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  3157 ms  APP close
+  3157 ms  RESULT sent chunks=107 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+   ok    reported sent
+   ok    no piece bigger than 180 bytes (biggest: 180)
+   ok    107 pieces (19,238 / 180)
+   ok    the printer got every byte, in order
+   ok    one question after the last piece (read 2A00)
+   ok    "sent" only after the printer had every byte
+   ok    the link is closed only after the printer had every byte
+   ok    answer fields: paced=true delivered=true
+── Y41BT · Android 14 · SLOW link (3 kB/s), the phone queues up to 12 kB · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=19238 piece=180 pieces=107 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+            … 94 more lines …
+  2698 ms  APP write #102 len=180 type=noResponse sha=66061488
+  2758 ms  APP write #103 len=180 type=noResponse sha=bdd5c4be
+  2818 ms  APP write #104 len=180 type=noResponse sha=01dd85af
+  2878 ms  APP write #105 len=180 type=noResponse sha=90560a49
+  2938 ms  APP write #106 len=158 type=noResponse sha=171f1270
+  2982 ms  APP read 2A00
+  6982 ms  PRINTER has every byte (19238)
+  8502 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=107 mtu=512 confirmed=false
+  8502 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=19238 piece=180 pieces=107 sendMs=2412 printerAnswered=yes answerMs=4020
+  8502 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  8502 ms  APP close
+  8502 ms  RESULT sent chunks=107 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+   ok    reported sent
+   ok    the printer got every byte, in order (nothing lost at the end)
+   ok    "sent" only after the printer had every byte
+── Y41BT · the printer never answers the question ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+            … 15 more lines …
+   800 ms  APP write #23 len=180 type=noResponse sha=745d001a
+   810 ms  APP write #24 len=180 type=noResponse sha=487fd676
+   820 ms  APP write #25 len=180 type=noResponse sha=97c99019
+   830 ms  APP write #26 len=180 type=noResponse sha=d315cd8a
+   840 ms  APP write #27 len=140 type=noResponse sha=bce6fabe
+   842 ms  APP read 2A00
+   847 ms  PRINTER has every byte (5000)
+ 10092 ms  LOG w SellerFlowPrinterGen: generic print failed name=Y41BT-0FC4_LE code=BT_PRINT_FAILED The printer did not confirm it received the sticker.
+ 10092 ms  LOG w SellerFlowPrinterGen: paced send failed name=Y41BT-0FC4_LE taken=28/28 piece=180 afterMs=9522 ask=1800/2A00 printerAnswered=no
+ 10092 ms  APP disconnect (printer has 5000 of 5000 bytes)
+ 10092 ms  APP close
+ 10092 ms  RESULT FAILED BT_PRINT_FAILED "The printer did not confirm it received the sticker." chunks=28 mtu=512 confirmed=false | printer has 5000 of 5000 bytes (all, in order)
+
+   ok    reported FAILED, not sent
+   ok    the failure comes 9.25 s after the question (8 s + 1 s per 4,000 bytes of the job)
+── Y41BT · the link closes before the printer answered (slow link) ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=6000 piece=180 pieces=34 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+            … 21 more lines …
+   860 ms  APP write #29 len=180 type=noResponse sha=08c00333
+   870 ms  APP write #30 len=180 type=noResponse sha=45bccbb0
+   880 ms  APP write #31 len=180 type=noResponse sha=0f7b363e
+   890 ms  APP write #32 len=180 type=noResponse sha=b7693a5c
+   900 ms  APP write #33 len=60 type=noResponse sha=8d940e84
+   902 ms  APP read 2A00
+  2500 ms  LINK closed by itself (printer has 3780 of 6000 bytes)
+  2500 ms  LOG w SellerFlowPrinterGen: generic print failed name=Y41BT-0FC4_LE code=BT_PRINT_FAILED The printer did not confirm it received the sticker.
+  2500 ms  LOG w SellerFlowPrinterGen: paced send failed name=Y41BT-0FC4_LE taken=34/34 piece=180 afterMs=1930 ask=1800/2A00 printerAnswered=no
+  2500 ms  APP disconnect (printer has 3780 of 6000 bytes, 2220 LOST)
+  2500 ms  APP close
+  2500 ms  RESULT FAILED BT_PRINT_FAILED "The printer did not confirm it received the sticker." chunks=34 mtu=512 confirmed=false | printer has 3780 of 6000 bytes
+
+   ok    reported FAILED, not sent
+   ok    the printer really did not get everything
+── Y41BT · a printer with no standard value to read ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 mtu=512 write=noResponse ask=none
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+            … 14 more lines …
+   790 ms  APP write #22 len=180 type=noResponse sha=4a0164c4
+   800 ms  APP write #23 len=180 type=noResponse sha=745d001a
+   810 ms  APP write #24 len=180 type=noResponse sha=487fd676
+   820 ms  APP write #25 len=180 type=noResponse sha=97c99019
+   830 ms  APP write #26 len=180 type=noResponse sha=d315cd8a
+   840 ms  APP write #27 len=140 type=noResponse sha=bce6fabe
+   847 ms  PRINTER has every byte (5000)
+  2342 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=28 mtu=512 confirmed=false
+  2342 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 sendMs=272 printerAnswered=notAsked answerMs=-1
+  2342 ms  APP disconnect (printer has 5000 of 5000 bytes)
+  2342 ms  APP close
+  2342 ms  RESULT sent chunks=28 mtu=512 confirmed=false | printer has 5000 of 5000 bytes (all, in order)
+
+   ok    reported sent, the old way (1.5 s after the last piece)
+   ok    still pieces of at most 180 bytes, one at a time
+   ok    answer fields: paced=true delivered=false
+── Y41BT · Android 12 (the older write call) ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+            … 15 more lines …
+   800 ms  APP write #23 len=180 type=noResponse sha=745d001a
+   810 ms  APP write #24 len=180 type=noResponse sha=487fd676
+   820 ms  APP write #25 len=180 type=noResponse sha=97c99019
+   830 ms  APP write #26 len=180 type=noResponse sha=d315cd8a
+   840 ms  APP write #27 len=140 type=noResponse sha=bce6fabe
+   842 ms  APP read 2A00
+   847 ms  PRINTER has every byte (5000)
+  2367 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=28 mtu=512 confirmed=false
+  2367 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 sendMs=272 printerAnswered=yes answerMs=25
+  2367 ms  APP disconnect (printer has 5000 of 5000 bytes)
+  2367 ms  APP close
+  2367 ms  RESULT sent chunks=28 mtu=512 confirmed=false | printer has 5000 of 5000 bytes (all, in order)
+
+   ok    reported sent, every byte arrived, pieces ≤ 180
+   ok    no hand-over was refused as busy (one piece at a time)
+── Y41BT · the phone is busy now and then ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write REFUSED (busy)
+   608 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   618 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   628 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   638 ms  APP write REFUSED (busy)
+            … 24 more lines …
+   874 ms  APP write #24 len=180 type=noResponse sha=487fd676
+   884 ms  APP write #25 len=180 type=noResponse sha=97c99019
+   894 ms  APP write #26 len=180 type=noResponse sha=d315cd8a
+   904 ms  APP write REFUSED (busy)
+   912 ms  APP write #27 len=140 type=noResponse sha=bce6fabe
+   914 ms  APP read 2A00
+   919 ms  PRINTER has every byte (5000)
+  2439 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=28 mtu=512 confirmed=false
+  2439 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 sendMs=344 printerAnswered=yes answerMs=25
+  2439 ms  APP disconnect (printer has 5000 of 5000 bytes)
+  2439 ms  APP close
+  2439 ms  RESULT sent chunks=28 mtu=512 confirmed=false | printer has 5000 of 5000 bytes (all, in order)
+
+   ok    reported sent, every byte arrived in order
+── Y41BT · a write fails ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=5000 piece=180 pieces=28 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   622 ms  LOG w SellerFlowPrinterGen: generic print failed name=Y41BT-0FC4_LE code=BT_PRINT_FAILED Printer write failed.
+   622 ms  LOG w SellerFlowPrinterGen: paced send failed name=Y41BT-0FC4_LE taken=5/28 piece=180 afterMs=52 ask=1800/2A00 printerAnswered=no
+   622 ms  APP disconnect (printer has 900 of 5000 bytes, 180 LOST)
+   622 ms  APP close
+   622 ms  RESULT FAILED BT_PRINT_FAILED "Printer write failed." chunks=28 mtu=512 confirmed=false | printer has 900 of 5000 bytes
+
+   ok    reported FAILED "Printer write failed."
+   ok    nothing was handed over after the failed piece
+── Y41BT · the phone and printer agree on the smallest size (20 bytes) ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=700 piece=20 pieces=35 mtu=23 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+   580 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+   590 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+   600 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+   610 ms  APP write #4 len=20 type=noResponse sha=20982725
+   620 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+   630 ms  APP write #6 len=20 type=noResponse sha=d1571571
+   640 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+            … 22 more lines …
+   870 ms  APP write #30 len=20 type=noResponse sha=c0f3736d
+   880 ms  APP write #31 len=20 type=noResponse sha=99dd7d53
+   890 ms  APP write #32 len=20 type=noResponse sha=fccfd368
+   900 ms  APP write #33 len=20 type=noResponse sha=40037886
+   910 ms  APP write #34 len=20 type=noResponse sha=6dab99a7
+   911 ms  PRINTER has every byte (700)
+   912 ms  APP read 2A00
+  2432 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=35 mtu=23 confirmed=false
+  2432 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=700 piece=20 pieces=35 sendMs=342 printerAnswered=yes answerMs=20
+  2432 ms  APP disconnect (printer has 700 of 700 bytes)
+  2432 ms  APP close
+  2432 ms  RESULT sent chunks=35 mtu=23 confirmed=false | printer has 700 of 700 bytes (all, in order)
+
+   ok    pieces of 20 bytes, sent
+── Y41BT · a unit that only takes writes WITH response ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP requestMtu 512
+   550 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=2000 piece=180 pieces=12 mtu=512 write=withResponse ask=1800/2A00
+   550 ms  APP write #0 len=180 type=withResponse sha=b45c9cdb
+   569 ms  APP write #1 len=180 type=withResponse sha=42750fe6
+   588 ms  APP write #2 len=180 type=withResponse sha=71b5f3db
+   607 ms  APP write #3 len=180 type=withResponse sha=12ebd8cc
+   626 ms  APP write #4 len=180 type=withResponse sha=ebab7658
+   645 ms  APP write #5 len=180 type=withResponse sha=aea0583e
+   664 ms  APP write #6 len=180 type=withResponse sha=3f796c1d
+   683 ms  APP write #7 len=180 type=withResponse sha=6489df64
+   702 ms  APP write #8 len=180 type=withResponse sha=61ab525d
+   721 ms  APP write #9 len=180 type=withResponse sha=af6322d7
+   740 ms  APP write #10 len=180 type=withResponse sha=d38a009b
+   759 ms  APP write #11 len=20 type=withResponse sha=e1bed7b4
+   760 ms  PRINTER has every byte (2000)
+   762 ms  APP read 2A00
+  2282 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=12 mtu=512 confirmed=false
+  2282 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=2000 piece=180 pieces=12 sendMs=212 printerAnswered=yes answerMs=20
+  2282 ms  APP disconnect (printer has 2000 of 2000 bytes)
+  2282 ms  APP close
+  2282 ms  RESULT sent chunks=12 mtu=512 confirmed=false | printer has 2000 of 2000 bytes (all, in order)
+
+   ok    reported sent, every byte arrived
+── Y41BT · the phone does not know the device's name; the SAVED name says Y41BT ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name= bytes=3000 piece=180 pieces=17 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+   650 ms  APP write #8 len=180 type=noResponse sha=61ab525d
+   660 ms  APP write #9 len=180 type=noResponse sha=af6322d7
+   670 ms  APP write #10 len=180 type=noResponse sha=d38a009b
+   680 ms  APP write #11 len=180 type=noResponse sha=9ff8e156
+   690 ms  APP write #12 len=180 type=noResponse sha=fc213553
+   700 ms  APP write #13 len=180 type=noResponse sha=fc39dc7b
+   710 ms  APP write #14 len=180 type=noResponse sha=8b7ebefe
+   720 ms  APP write #15 len=180 type=noResponse sha=6b0e8e9b
+   730 ms  APP write #16 len=120 type=noResponse sha=cb042a3b
+   732 ms  APP read 2A00
+   736 ms  PRINTER has every byte (3000)
+  2256 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=17 mtu=512 confirmed=false
+  2256 ms  LOG i SellerFlowPrinterGen: paced send done name= bytes=3000 piece=180 pieces=17 sendMs=162 printerAnswered=yes answerMs=24
+  2256 ms  APP disconnect (printer has 3000 of 3000 bytes)
+  2256 ms  APP close
+  2256 ms  RESULT sent chunks=17 mtu=512 confirmed=false | printer has 3000 of 3000 bytes (all, in order)
+
+   ok    paced (pieces ≤ 180, question asked)
+── Y41BT · the link closes while sending ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  LINK closed by itself (printer has 0 of 60000 bytes)
+   500 ms  LOG w SellerFlowPrinterGen: generic print failed name=Y41BT-0FC4_LE code=BT_PRINT_FAILED Printer disconnected during printing.
+   500 ms  APP disconnect (printer has 0 of 60000 bytes)
+   500 ms  APP close
+   500 ms  RESULT FAILED BT_PRINT_FAILED "Printer disconnected during printing." chunks=0 mtu=0 confirmed=false | printer has 0 of 60000 bytes
+
+   ok    reported FAILED "Printer disconnected during printing."
+── Y41BT · the printer closes the link itself after printing ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  LOG i SellerFlowPrinterGen: paced send name=Y41BT-0FC4_LE bytes=3000 piece=180 pieces=17 mtu=512 write=noResponse ask=1800/2A00
+   570 ms  APP write #0 len=180 type=noResponse sha=b45c9cdb
+   580 ms  APP write #1 len=180 type=noResponse sha=42750fe6
+   590 ms  APP write #2 len=180 type=noResponse sha=71b5f3db
+   600 ms  APP write #3 len=180 type=noResponse sha=12ebd8cc
+   610 ms  APP write #4 len=180 type=noResponse sha=ebab7658
+   620 ms  APP write #5 len=180 type=noResponse sha=aea0583e
+   630 ms  APP write #6 len=180 type=noResponse sha=3f796c1d
+   640 ms  APP write #7 len=180 type=noResponse sha=6489df64
+   650 ms  APP write #8 len=180 type=noResponse sha=61ab525d
+   660 ms  APP write #9 len=180 type=noResponse sha=af6322d7
+   670 ms  APP write #10 len=180 type=noResponse sha=d38a009b
+   680 ms  APP write #11 len=180 type=noResponse sha=9ff8e156
+   690 ms  APP write #12 len=180 type=noResponse sha=fc213553
+   700 ms  APP write #13 len=180 type=noResponse sha=fc39dc7b
+   710 ms  APP write #14 len=180 type=noResponse sha=8b7ebefe
+   720 ms  APP write #15 len=180 type=noResponse sha=6b0e8e9b
+   730 ms  APP write #16 len=120 type=noResponse sha=cb042a3b
+   732 ms  APP read 2A00
+   736 ms  PRINTER has every byte (3000)
+  1136 ms  LINK closed by itself (printer has 3000 of 3000 bytes)
+  1136 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=17 mtu=512 confirmed=false
+  1136 ms  LOG i SellerFlowPrinterGen: paced send done name=Y41BT-0FC4_LE bytes=3000 piece=180 pieces=17 sendMs=162 printerAnswered=yes answerMs=24
+  1136 ms  APP disconnect (printer has 3000 of 3000 bytes)
+  1136 ms  APP close
+  1136 ms  RESULT sent chunks=17 mtu=512 confirmed=false | printer has 3000 of 3000 bytes (all, in order)
+
+   ok    reported sent (the printer had answered first)
+── same app · job 1: Y41BT ──
+   ok    job 1 (Y41BT): paced
+── same app · job 2: XP-420B right after the Y41BT ──
+   ok    job 2 (XP-420B): today's send (pieces of 509, no question, not paced)
+── same app · job 3: Y41BT, the printer does not answer ──
+   ok    job 3 (Y41BT): failed, not sent
+── same app · job 4: XP-420B right after the FAILED Y41BT job ──
+   ok    job 4 (XP-420B): today's send, sent
+── same app · job 5: Y41BT again ──
+   ok    job 5 (Y41BT): paced again, sent
+── XP-420B · not a Y41BT ──
+   ok    XP-420B: today's send (pieces of 509, no question)
+── D520BT-Z · not a Y41BT ──
+   ok    D520BT-Z: today's send (pieces of 509, no question)
+── B1-I603042141 · not a Y41BT ──
+   ok    B1-I603042141: today's send (pieces of 509, no question)
+── Printer_8A2F · not a Y41BT ──
+   ok    Printer_8A2F: today's send (pieces of 509, no question)
+── XP-420B with an empty saved-name hint ──
+   ok    XP-420B, no hint: today's send
+
+CHECKS: 38 ok, 0 failed

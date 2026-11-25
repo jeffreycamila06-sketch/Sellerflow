@@ -207,9 +207,25 @@ public class SellerFlowPrinterPlugin extends Plugin {
         }
     }
 
+    // >>> Y41BT paced send
+    /**
+     * The NAME of the printer a generic BLE job goes to — only so GenericBleTransport can tell a FLASH LABEL
+     * Y41BT (PacedBleSend) from every other printer. The call's own `name` (a printer under test that is not
+     * saved yet), else the saved name when the job goes to the SAVED address, else "" (never the saved name
+     * for another address).
+     */
+    private String genericNameHint(PluginCall call, String address) {
+        String n = call.getString("name", "");
+        if (n != null && !n.trim().isEmpty()) return n.trim();
+        String saved = prefs().getString(PREF_BT_ADDR, "");
+        boolean isSaved = address != null && saved != null && !saved.trim().isEmpty() && address.trim().equalsIgnoreCase(saved.trim());
+        return isSaved ? prefs().getString(PREF_BT_NAME, "") : "";
+    }
+    // <<< Y41BT paced send
+
     /** Send ready TSPL bytes to a generic BLE printer and resolve with the printer's answer. */
     private void printGeneric(PluginCall call, byte[] tspl, String address, String what) {
-        generic().printJob(tspl, address, r -> {
+        generic().printJob(tspl, address, genericNameHint(call, address), r -> {
             if (r.error != null) {
                 Log.e(TAG, what + " (generic) failed: " + r.error.code + " " + r.error.message);
                 call.reject("BT_NOT_SUPPORTED".equals(r.error.code) ? r.error.message : "Bluetooth print failed: " + r.error.message, r.error.code);
@@ -225,6 +241,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
             ret.put("characteristic", r.characteristic);
             ret.put("chunks", r.chunks);
             ret.put("mtu", r.mtu);
+            if (r.paced) { ret.put("paced", true); ret.put("delivered", r.delivered); } // Y41BT
             ret.put("message", "Sent to printer");
             call.resolve(ret);
         });

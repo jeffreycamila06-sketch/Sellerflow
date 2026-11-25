@@ -9,7 +9,7 @@ export const PRINTING_FILE_RE = new RegExp([
   String.raw`^src/redesign/components/(ExactStickerPreview|PrinterGuideModal|PrinterModal|ReceiptSheet|OneStickerPattern)\.tsx$`,
   String.raw`^src/lib/(printerRouting\.ts|receiptLayout\.(js|d\.ts))$`,
   String.raw`^server/(fbAutoReceipt|fbReceipt|receiptDraw)\.js$`,
-  String.raw`^mobile/android/app/src/main/java/com/sellerflow/live/(BleStickerLogic|BleStickerTransport|GenericBleTransport|NiimbotTransport|SellerFlowPrinterPlugin|TsplBuilder)\.java$`,
+  String.raw`^mobile/android/app/src/main/java/com/sellerflow/live/(BleStickerLogic|BleStickerTransport|GenericBleTransport|NiimbotTransport|PacedBleSend|SellerFlowPrinterPlugin|TsplBuilder)\.java$`,
   String.raw`^mobile/ios/App/App/SellerFlowPrinterPlugin\.swift$`,
   String.raw`^mobile/ios/tspl-parity/`,
 ].join("|"));

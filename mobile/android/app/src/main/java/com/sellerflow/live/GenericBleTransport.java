@@ -62,6 +62,8 @@ final class GenericBleTransport {
         String characteristic = "";
         int chunks;
         int mtu;
+        boolean paced; // Y41BT
+        boolean delivered; // Y41BT
     }
 
     interface Callback { void onResult(Result r); }
@@ -89,6 +91,11 @@ final class GenericBleTransport {
     private int mtu;
     private Runnable overallTimer, phaseTimer, pacingTimer, settleTimer;
     private long lastWriteProgressAt; // uptime of the last chunk the stack accepted (stall watchdog)
+    private boolean pacedWanted; // Y41BT
+    private PacedBleSend.Driver paced; // Y41BT
+    private BluetoothGattCharacteristic confirmChar; // Y41BT
+    private String confirmName = "none"; // Y41BT
+    private long sendStartedAt, allTakenAt, confirmedAt; // Y41BT
 
     GenericBleTransport(Context context) {
         this.context = context.getApplicationContext();
@@ -106,7 +113,7 @@ final class GenericBleTransport {
     }
 
     @SuppressLint("MissingPermission")
-    void printJob(final byte[] data, final String address, final Callback callback) {
+    void printJob(final byte[] data, final String address, final String nameHint, final Callback callback) {
         handler.post(() -> {
             if (!ensureAdapter()) { callback.onResult(errorResult("Bluetooth not supported", "BT_UNAVAILABLE")); return; }
             if (!adapter.isEnabled()) { callback.onResult(errorResult("Bluetooth is off", "BT_OFF")); return; }
@@ -124,6 +131,8 @@ final class GenericBleTransport {
             payload = data != null ? data : new byte[0];
             deviceName = "";
             try { String n = device.getName(); deviceName = n != null ? n : ""; } catch (Exception ignored) {}
+            pacedWanted = PacedBleSend.appliesTo(nameHint, deviceName); // Y41BT
+            paced = null; confirmChar = null; confirmName = "none"; sendStartedAt = allTakenAt = confirmedAt = 0; // Y41BT
             writeChar = null;
             writeNoResponse = false;
             toSubscribe.clear();
@@ -172,6 +181,7 @@ final class GenericBleTransport {
                     try { g.discoverServices(); }
                     catch (SecurityException e) { finish(new BleStickerTransport.BtError("Bluetooth permission denied.", "BT_PERMISSION")); }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    if (paced != null) { paced.onDisconnected(); return; } // Y41BT
                     // Every byte was already sent → the job is done (some printers drop the link after printing).
                     if (allSent) finishOk();
                     else finish(new BleStickerTransport.BtError("Printer disconnected during printing.", "BT_PRINT_FAILED"));
@@ -244,6 +254,7 @@ final class GenericBleTransport {
         @Override
         public void onCharacteristicWrite(BluetoothGatt g, BluetoothGattCharacteristic ch, int status) {
             handler.post(() -> {
+                if (paced != null) { if (jobActive && g == gatt) paced.onWriteAnswer(status == BluetoothGatt.GATT_SUCCESS); return; } // Y41BT
                 if (!jobActive || g != gatt || allSent) return;
                 // Write-without-response below API 33 is paced by a timer, not this callback.
                 if (writeNoResponse && Build.VERSION.SDK_INT < SDK_TIRAMISU) return;
@@ -265,6 +276,19 @@ final class GenericBleTransport {
         public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic ch) {
             handler.post(() -> onNotify(g, ch, ch != null ? ch.getValue() : null));
         }
+
+        // >>> Y41BT paced send
+        // The answer to the question asked after the last piece. Android 13+ calls the 4-argument version,
+        // whose default calls this one; older versions call this one directly. No other printer ever reads.
+        @SuppressWarnings("deprecation")
+        @Override
+        public void onCharacteristicRead(BluetoothGatt g, BluetoothGattCharacteristic ch, int status) {
+            handler.post(() -> {
+                if (paced == null || !jobActive || g != gatt) return; // this transport reads nothing else
+                paced.onConfirmAnswer(status);
+            });
+        }
+        // <<< Y41BT paced send
     };
 
     @SuppressLint("MissingPermission")
@@ -318,6 +342,7 @@ final class GenericBleTransport {
     private void beginWrites(int chunkSize) {
         if (!jobActive || writesStarted) return;
         writesStarted = true;
+        if (pacedWanted) { beginPaced(chunkSize); return; } // Y41BT
         chunks = BleStickerLogic.chunks(payload, chunkSize);
         nextChunk = 0;
         lastWriteProgressAt = SystemClock.uptimeMillis();
@@ -395,6 +420,7 @@ final class GenericBleTransport {
         r.statusHex = BleStickerLogic.toHexCapped(status, STATUS_HEX_MAX);
         Log.i(TAG, "generic print name=" + deviceName + " service=" + pickedService + " char=" + pickedChar
             + " chunks=" + chunks.size() + " mtu=" + mtu + " confirmed=" + r.confirmed);
+        if (paced != null) pacedFillResult(r); // Y41BT
         complete(r);
     }
 
@@ -403,6 +429,7 @@ final class GenericBleTransport {
         Result r = new Result();
         r.error = error;
         Log.w(TAG, "generic print failed name=" + deviceName + " code=" + error.code + " " + error.message);
+        if (paced != null) pacedLogFailure(); // Y41BT
         complete(r);
     }
 
@@ -416,6 +443,8 @@ final class GenericBleTransport {
         if (overallTimer != null) { handler.removeCallbacks(overallTimer); overallTimer = null; }
         if (settleTimer != null) { handler.removeCallbacks(settleTimer); settleTimer = null; }
         if (pacingTimer != null) { handler.removeCallbacks(pacingTimer); pacingTimer = null; }
+        if (paced != null) { paced.stop(); paced = null; } // Y41BT
+        pacedWanted = false; confirmChar = null; // Y41BT
         cancelPhase();
         BluetoothGatt g = gatt;
         gatt = null;
@@ -440,4 +469,144 @@ final class GenericBleTransport {
     private void cancelPhase() {
         if (phaseTimer != null) { handler.removeCallbacks(phaseTimer); phaseTimer = null; }
     }
+
+    // >>> Y41BT paced send
+    // Everything below runs ONLY for a printer PacedBleSend.appliesTo() names (the FLASH LABEL Y41BT). The rules
+    // — piece size, when the next piece goes, the question after the last piece, how the job ends — are in
+    // PacedBleSend (unit-tested with a fake phone); this is only the real Bluetooth behind PacedBleSend.Phone.
+    // Same write characteristic, write type and connection steps as every other generic printer.
+
+    private void beginPaced(int negotiatedChunk) {
+        PacedBleSend.Session session = new PacedBleSend.Session(payload, PacedBleSend.chunkSize(negotiatedChunk));
+        chunks = session.pieces(); // the result and the log report the real number of pieces
+        nextChunk = 0;
+        confirmChar = findConfirmChar();
+        sendStartedAt = lastWriteProgressAt = SystemClock.uptimeMillis();
+        Log.i(TAG, "paced send name=" + deviceName + " bytes=" + payload.length + " piece=" + session.pieceSize()
+            + " pieces=" + chunks.size() + " mtu=" + mtu + " write=" + (writeNoResponse ? "noResponse" : "withResponse")
+            + " ask=" + confirmName);
+        armWriteStall(); // same watchdog as every generic printer: fails only when NO piece is taken for 12 s
+        paced = new PacedBleSend.Driver(session, pacedPhone);
+        paced.start();
+    }
+
+    /** The standard read-only value to ask for after the last piece (PacedBleSend.pickConfirmRead), or null. */
+    private BluetoothGattCharacteristic findConfirmChar() {
+        BluetoothGatt g = gatt;
+        if (g == null) return null;
+        try {
+            List<BleStickerLogic.Svc> layout = new ArrayList<>();
+            for (BluetoothGattService s : g.getServices()) {
+                List<BleStickerLogic.Chr> cs = new ArrayList<>();
+                for (BluetoothGattCharacteristic c : s.getCharacteristics()) cs.add(new BleStickerLogic.Chr(c.getUuid().toString(), c.getProperties()));
+                layout.add(new BleStickerLogic.Svc(s.getUuid().toString(), cs));
+            }
+            String[] pick = PacedBleSend.pickConfirmRead(layout);
+            if (pick == null) return null;
+            for (BluetoothGattService s : g.getServices()) {
+                if (!pick[0].equals(BleStickerLogic.normUuid(s.getUuid().toString()))) continue;
+                for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
+                    if (pick[1].equals(BleStickerLogic.normUuid(c.getUuid().toString()))
+                        && (c.getProperties() & PacedBleSend.PROP_READ) != 0) {
+                        confirmName = pick[0] + "/" + pick[1];
+                        return c;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private final PacedBleSend.Phone pacedPhone = new PacedBleSend.Phone() {
+        @SuppressLint("MissingPermission")
+        @Override
+        public int write(byte[] piece) {
+            if (!jobActive || gatt == null || writeChar == null) return PacedBleSend.WRITE_ERROR;
+            int type = writeNoResponse ? BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT;
+            boolean started;
+            try {
+                if (Build.VERSION.SDK_INT >= SDK_TIRAMISU) {
+                    started = gatt.writeCharacteristic(writeChar, piece, type) == BluetoothStatusCodes.SUCCESS;
+                } else {
+                    writeChar.setWriteType(type);
+                    writeChar.setValue(piece);
+                    started = gatt.writeCharacteristic(writeChar);
+                }
+            } catch (SecurityException e) {
+                finish(new BleStickerTransport.BtError("Bluetooth permission denied.", "BT_PERMISSION"));
+                return PacedBleSend.WRITE_ERROR;
+            } catch (Exception e) {
+                finish(new BleStickerTransport.BtError("Printer write failed: " + e.getMessage(), "BT_PRINT_FAILED"));
+                return PacedBleSend.WRITE_ERROR;
+            }
+            return started ? PacedBleSend.WRITE_STARTED : PacedBleSend.WRITE_BUSY;
+        }
+
+        @Override
+        public boolean canAsk() { return confirmChar != null; }
+
+        @SuppressLint("MissingPermission")
+        @Override
+        public boolean ask() {
+            BluetoothGatt g = gatt;
+            if (!jobActive || g == null || confirmChar == null) return false;
+            try { return g.readCharacteristic(confirmChar); } catch (Exception e) { return false; }
+        }
+
+        @Override
+        public Object later(long ms, Runnable r) { handler.postDelayed(r, ms); return r; }
+
+        @Override
+        public void cancel(Object handle) { if (handle instanceof Runnable) handler.removeCallbacks((Runnable) handle); }
+
+        @Override
+        public void progress(int taken) {
+            nextChunk = taken;
+            lastWriteProgressAt = SystemClock.uptimeMillis(); // a piece was taken: the stall clock restarts
+        }
+
+        @Override
+        public void allTaken() {
+            allSent = true;
+            allTakenAt = SystemClock.uptimeMillis();
+            cancelPhase(); // the stall watchdog is for the pieces only
+        }
+
+        @Override
+        public void confirmed() { confirmedAt = SystemClock.uptimeMillis(); }
+
+        /** The usual 1.5 s, then "sent" — the same ending as every generic printer. */
+        @Override
+        public void settle() {
+            if (!jobActive) return;
+            if (settleTimer != null) handler.removeCallbacks(settleTimer);
+            settleTimer = GenericBleTransport.this::finishOk;
+            handler.postDelayed(settleTimer, SETTLE_MS);
+        }
+
+        @Override
+        public void done() { finishOk(); }
+
+        @Override
+        public void fail(String message) { finish(new BleStickerTransport.BtError(message, "BT_PRINT_FAILED")); }
+    };
+
+    private void pacedFillResult(Result r) {
+        PacedBleSend.Session s = paced.session();
+        r.paced = true;
+        r.delivered = s.delivered();
+        long sendMs = allTakenAt > 0 ? allTakenAt - sendStartedAt : -1;
+        long answerMs = confirmedAt > 0 ? confirmedAt - allTakenAt : -1;
+        Log.i(TAG, "paced send done name=" + deviceName + " bytes=" + payload.length + " piece=" + s.pieceSize()
+            + " pieces=" + chunks.size() + " sendMs=" + sendMs
+            + " printerAnswered=" + (s.delivered() ? "yes" : (s.nothingToAsk() ? "notAsked" : "no")) + " answerMs=" + answerMs);
+    }
+
+    private void pacedLogFailure() {
+        PacedBleSend.Session s = paced.session();
+        Log.w(TAG, "paced send failed name=" + deviceName + " taken=" + s.taken() + "/" + chunks.size()
+            + " piece=" + s.pieceSize() + " afterMs=" + (sendStartedAt > 0 ? SystemClock.uptimeMillis() - sendStartedAt : -1)
+            + " ask=" + confirmName + " printerAnswered=" + (s.delivered() ? "yes" : "no"));
+    }
+    // <<< Y41BT paced send
 }

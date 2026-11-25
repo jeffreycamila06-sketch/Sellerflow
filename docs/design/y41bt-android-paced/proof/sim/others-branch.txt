@@ -1,0 +1,1383 @@
+── XP-420B · Android 14 · agreed 512 · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   595 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   620 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   645 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   670 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   695 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   720 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   745 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   770 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   795 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   820 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   845 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   870 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   895 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   920 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   945 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   970 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   995 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+  1020 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1045 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1070 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1095 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1120 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1145 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1170 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  1195 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  1220 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  1245 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  1270 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  1295 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  1515 ms  PRINTER has every byte (19238)
+  2795 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  2795 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  2795 ms  APP close
+  2795 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+── XP-420B · Android 14 · agreed 247 · 5,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=244 type=noResponse sha=0cdbd8e1
+   572 ms  APP write #1 len=244 type=noResponse sha=57e478a4
+   574 ms  APP write #2 len=244 type=noResponse sha=82e7ee63
+   576 ms  APP write #3 len=244 type=noResponse sha=ce4d58a7
+   578 ms  APP write #4 len=244 type=noResponse sha=17f6910f
+   580 ms  APP write #5 len=244 type=noResponse sha=cd4fe4dd
+   582 ms  APP write #6 len=244 type=noResponse sha=bb724293
+   584 ms  APP write #7 len=244 type=noResponse sha=acaa9fe8
+   586 ms  APP write #8 len=244 type=noResponse sha=6ddb7325
+   588 ms  APP write #9 len=244 type=noResponse sha=1beb1a9d
+   590 ms  APP write #10 len=244 type=noResponse sha=497a306d
+   592 ms  APP write #11 len=244 type=noResponse sha=a093e020
+   594 ms  APP write #12 len=244 type=noResponse sha=c962409a
+   596 ms  APP write #13 len=244 type=noResponse sha=be09a016
+   598 ms  APP write #14 len=244 type=noResponse sha=0b6fffc4
+   600 ms  APP write #15 len=244 type=noResponse sha=59553d41
+   602 ms  APP write #16 len=244 type=noResponse sha=a4b22677
+   604 ms  APP write #17 len=244 type=noResponse sha=c1d07fa7
+   606 ms  APP write #18 len=244 type=noResponse sha=133a82f7
+   608 ms  APP write #19 len=244 type=noResponse sha=1e0740f2
+   610 ms  APP write #20 len=120 type=noResponse sha=d788ebef
+   816 ms  PRINTER has every byte (5000)
+  2110 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=21 mtu=247 confirmed=false
+  2110 ms  APP disconnect (printer has 5000 of 5000 bytes)
+  2110 ms  APP close
+  2110 ms  RESULT sent chunks=21 mtu=247 confirmed=false | printer has 5000 of 5000 bytes (all, in order)
+
+── XP-420B · Android 14 · size cannot be agreed · 600 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   540 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+   542 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+   544 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+   546 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+   548 ms  APP write #4 len=20 type=noResponse sha=20982725
+   550 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+   552 ms  APP write #6 len=20 type=noResponse sha=d1571571
+   554 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+   556 ms  APP write #8 len=20 type=noResponse sha=0ade4399
+   558 ms  APP write #9 len=20 type=noResponse sha=54620fc3
+   560 ms  APP write #10 len=20 type=noResponse sha=c3816e74
+   562 ms  APP write #11 len=20 type=noResponse sha=9c4c85b6
+   564 ms  APP write #12 len=20 type=noResponse sha=7a293418
+   566 ms  APP write #13 len=20 type=noResponse sha=be1fe68f
+   568 ms  APP write #14 len=20 type=noResponse sha=5e6c997e
+   570 ms  APP write #15 len=20 type=noResponse sha=05ce86c5
+   572 ms  APP write #16 len=20 type=noResponse sha=85888b14
+   574 ms  APP write #17 len=20 type=noResponse sha=64d06685
+   576 ms  APP write #18 len=20 type=noResponse sha=cb1c7245
+   578 ms  APP write #19 len=20 type=noResponse sha=23fc71ae
+   580 ms  APP write #20 len=20 type=noResponse sha=d5822c91
+   582 ms  APP write #21 len=20 type=noResponse sha=1f9938e3
+   584 ms  APP write #22 len=20 type=noResponse sha=a1ec8d89
+   586 ms  APP write #23 len=20 type=noResponse sha=b8224bc2
+   588 ms  APP write #24 len=20 type=noResponse sha=3f6780d8
+   590 ms  APP write #25 len=20 type=noResponse sha=55888890
+   592 ms  APP write #26 len=20 type=noResponse sha=519bc440
+   594 ms  APP write #27 len=20 type=noResponse sha=c21a124a
+   596 ms  APP write #28 len=20 type=noResponse sha=49f8bc37
+   598 ms  APP write #29 len=20 type=noResponse sha=450af209
+   599 ms  PRINTER has every byte (600)
+  2098 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=30 mtu=0 confirmed=false
+  2098 ms  APP disconnect (printer has 600 of 600 bytes)
+  2098 ms  APP close
+  2098 ms  RESULT sent chunks=30 mtu=0 confirmed=false | printer has 600 of 600 bytes (all, in order)
+
+── XP-420B · Android 14 · size never answered · 300 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+  3540 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+  3542 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+  3544 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+  3546 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+  3548 ms  APP write #4 len=20 type=noResponse sha=20982725
+  3550 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+  3552 ms  APP write #6 len=20 type=noResponse sha=d1571571
+  3554 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+  3556 ms  APP write #8 len=20 type=noResponse sha=0ade4399
+  3558 ms  APP write #9 len=20 type=noResponse sha=54620fc3
+  3560 ms  APP write #10 len=20 type=noResponse sha=c3816e74
+  3562 ms  APP write #11 len=20 type=noResponse sha=9c4c85b6
+  3564 ms  APP write #12 len=20 type=noResponse sha=7a293418
+  3566 ms  APP write #13 len=20 type=noResponse sha=be1fe68f
+  3568 ms  APP write #14 len=20 type=noResponse sha=5e6c997e
+  3569 ms  PRINTER has every byte (300)
+  5068 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=15 mtu=0 confirmed=false
+  5068 ms  APP disconnect (printer has 300 of 300 bytes)
+  5068 ms  APP close
+  5068 ms  RESULT sent chunks=15 mtu=0 confirmed=false | printer has 300 of 300 bytes (all, in order)
+
+── XP-420B · Android 12 · agreed 512 · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   578 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   586 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   594 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   602 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   610 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   618 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   626 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   634 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   642 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   650 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   658 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   666 ms  APP write REFUSED (busy)
+   674 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   682 ms  APP write REFUSED (busy)
+   690 ms  APP write REFUSED (busy)
+   698 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   706 ms  APP write REFUSED (busy)
+   714 ms  APP write REFUSED (busy)
+   722 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   730 ms  APP write REFUSED (busy)
+   738 ms  APP write REFUSED (busy)
+   746 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   754 ms  APP write REFUSED (busy)
+   762 ms  APP write REFUSED (busy)
+   770 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   778 ms  APP write REFUSED (busy)
+   786 ms  APP write REFUSED (busy)
+   794 ms  APP write REFUSED (busy)
+   802 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   810 ms  APP write REFUSED (busy)
+   818 ms  APP write REFUSED (busy)
+   826 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   834 ms  APP write REFUSED (busy)
+   842 ms  APP write REFUSED (busy)
+   850 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   858 ms  APP write REFUSED (busy)
+   866 ms  APP write REFUSED (busy)
+   874 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   882 ms  APP write REFUSED (busy)
+   890 ms  APP write REFUSED (busy)
+   898 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   906 ms  APP write REFUSED (busy)
+   914 ms  APP write REFUSED (busy)
+   922 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   930 ms  APP write REFUSED (busy)
+   938 ms  APP write REFUSED (busy)
+   946 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   954 ms  APP write REFUSED (busy)
+   962 ms  APP write REFUSED (busy)
+   970 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   978 ms  APP write REFUSED (busy)
+   986 ms  APP write REFUSED (busy)
+   994 ms  APP write REFUSED (busy)
+  1002 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+  1010 ms  APP write REFUSED (busy)
+  1018 ms  APP write REFUSED (busy)
+  1026 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1034 ms  APP write REFUSED (busy)
+  1042 ms  APP write REFUSED (busy)
+  1050 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1058 ms  APP write REFUSED (busy)
+  1066 ms  APP write REFUSED (busy)
+  1074 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1082 ms  APP write REFUSED (busy)
+  1090 ms  APP write REFUSED (busy)
+  1098 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1106 ms  APP write REFUSED (busy)
+  1114 ms  APP write REFUSED (busy)
+  1122 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1130 ms  APP write REFUSED (busy)
+  1138 ms  APP write REFUSED (busy)
+  1146 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1154 ms  APP write REFUSED (busy)
+  1162 ms  APP write REFUSED (busy)
+  1170 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  1178 ms  APP write REFUSED (busy)
+  1186 ms  APP write REFUSED (busy)
+  1194 ms  APP write REFUSED (busy)
+  1202 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  1210 ms  APP write REFUSED (busy)
+  1218 ms  APP write REFUSED (busy)
+  1226 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  1234 ms  APP write REFUSED (busy)
+  1242 ms  APP write REFUSED (busy)
+  1250 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  1258 ms  APP write REFUSED (busy)
+  1266 ms  APP write REFUSED (busy)
+  1274 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  1282 ms  APP write REFUSED (busy)
+  1290 ms  APP write REFUSED (busy)
+  1298 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  1515 ms  PRINTER has every byte (19238)
+  2798 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  2798 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  2798 ms  APP close
+  2798 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+── XP-420B · Android 12 · phone busy now and then · 6,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   578 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   586 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   594 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   602 ms  APP write REFUSED (busy)
+   610 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   618 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   626 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   634 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   642 ms  APP write REFUSED (busy)
+   650 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   658 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   666 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   674 ms  APP write #11 len=401 type=noResponse sha=656673b4
+   865 ms  PRINTER has every byte (6000)
+  2174 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=12 mtu=512 confirmed=false
+  2174 ms  APP disconnect (printer has 6000 of 6000 bytes)
+  2174 ms  APP close
+  2174 ms  RESULT sent chunks=12 mtu=512 confirmed=false | printer has 6000 of 6000 bytes (all, in order)
+
+── XP-420B · Android 14 · printer only takes writes WITH response · 3,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP requestMtu 512
+   550 ms  APP write #0 len=509 type=withResponse sha=9ce334ab
+   577 ms  APP write #1 len=509 type=withResponse sha=d45f1e01
+   604 ms  APP write #2 len=509 type=withResponse sha=b77f8b6c
+   631 ms  APP write #3 len=509 type=withResponse sha=40fed1fb
+   658 ms  APP write #4 len=509 type=withResponse sha=02cfa919
+   685 ms  APP write #5 len=455 type=withResponse sha=c81470cb
+   707 ms  PRINTER has every byte (3000)
+  2185 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=6 mtu=512 confirmed=false
+  2185 ms  APP disconnect (printer has 3000 of 3000 bytes)
+  2185 ms  APP close
+  2185 ms  RESULT sent chunks=6 mtu=512 confirmed=false | printer has 3000 of 3000 bytes (all, in order)
+
+── XP-420B · Android 14 · a write fails ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  LOG w SellerFlowPrinterGen: generic print failed name=XP-420B code=BT_PRINT_FAILED Printer write failed.
+   578 ms  APP disconnect (printer has 0 of 6000 bytes, 2036 LOST)
+   578 ms  APP close
+   578 ms  RESULT FAILED BT_PRINT_FAILED "Printer write failed." chunks=12 mtu=512 confirmed=false | printer has 0 of 6000 bytes
+
+── XP-420B · Android 14 · the link closes while sending ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   595 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   620 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   645 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   670 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   695 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   700 ms  LINK closed by itself (printer has 2545 of 60000 bytes)
+   700 ms  LOG w SellerFlowPrinterGen: generic print failed name=XP-420B code=BT_PRINT_FAILED Printer disconnected during printing.
+   700 ms  APP disconnect (printer has 2545 of 60000 bytes, 4581 LOST)
+   700 ms  APP close
+   700 ms  RESULT FAILED BT_PRINT_FAILED "Printer disconnected during printing." chunks=118 mtu=512 confirmed=false | printer has 2545 of 60000 bytes
+
+── XP-420B · Android 14 · the printer closes the link after printing ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=437 type=noResponse sha=e7c8bc90
+   766 ms  PRINTER has every byte (4000)
+  1166 ms  LINK closed by itself (printer has 4000 of 4000 bytes)
+  1166 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=8 mtu=512 confirmed=false
+  1166 ms  APP disconnect (printer has 4000 of 4000 bytes)
+  1166 ms  APP close
+  1166 ms  RESULT sent chunks=8 mtu=512 confirmed=false | printer has 4000 of 4000 bytes (all, in order)
+
+── XP-420B · Android 14 · the printer says PRINTING:DONE ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=437 type=noResponse sha=e7c8bc90
+   766 ms  PRINTER has every byte (4000)
+  2084 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=8 mtu=512 confirmed=true
+  2084 ms  APP disconnect (printer has 4000 of 4000 bytes)
+  2084 ms  APP close
+  2084 ms  RESULT sent chunks=8 mtu=512 confirmed=true | printer has 4000 of 4000 bytes (all, in order)
+
+── XP-420B · Android 14 · SLOW link (3 kB/s), phone queue 12 kB · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   588 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   590 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   592 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   594 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   596 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   598 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   600 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   602 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   604 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   606 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   608 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   610 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   612 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   614 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   616 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   626 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   795 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+   964 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1133 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1302 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1471 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1640 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1809 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1978 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  2147 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  2316 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  2485 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  2654 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  2823 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  4323 ms  LOG i SellerFlowPrinterGen: generic print name=XP-420B service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  4323 ms  APP disconnect (printer has 11198 of 19238 bytes, 8040 LOST)
+  4323 ms  APP close
+  4323 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 11198 of 19238 bytes
+
+── XP-420B · Android 14 · nothing to write to ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  LOG w SellerFlowPrinterGen: generic print failed name=XP-420B code=BT_NOT_SUPPORTED This printer is not supported yet.
+   500 ms  APP disconnect (printer has 0 of 500 bytes)
+   500 ms  APP close
+   500 ms  RESULT FAILED BT_NOT_SUPPORTED "This printer is not supported yet." chunks=0 mtu=0 confirmed=false | printer has 0 of 500 bytes
+
+── Printer_8A2F · Android 14 · agreed 512 · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   595 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   620 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   645 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   670 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   695 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   720 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   745 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   770 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   795 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   820 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   845 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   870 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   895 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   920 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   945 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   970 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   995 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+  1020 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1045 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1070 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1095 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1120 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1145 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1170 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  1195 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  1220 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  1245 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  1270 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  1295 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  1515 ms  PRINTER has every byte (19238)
+  2795 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  2795 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  2795 ms  APP close
+  2795 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+── Printer_8A2F · Android 14 · agreed 247 · 5,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=244 type=noResponse sha=0cdbd8e1
+   572 ms  APP write #1 len=244 type=noResponse sha=57e478a4
+   574 ms  APP write #2 len=244 type=noResponse sha=82e7ee63
+   576 ms  APP write #3 len=244 type=noResponse sha=ce4d58a7
+   578 ms  APP write #4 len=244 type=noResponse sha=17f6910f
+   580 ms  APP write #5 len=244 type=noResponse sha=cd4fe4dd
+   582 ms  APP write #6 len=244 type=noResponse sha=bb724293
+   584 ms  APP write #7 len=244 type=noResponse sha=acaa9fe8
+   586 ms  APP write #8 len=244 type=noResponse sha=6ddb7325
+   588 ms  APP write #9 len=244 type=noResponse sha=1beb1a9d
+   590 ms  APP write #10 len=244 type=noResponse sha=497a306d
+   592 ms  APP write #11 len=244 type=noResponse sha=a093e020
+   594 ms  APP write #12 len=244 type=noResponse sha=c962409a
+   596 ms  APP write #13 len=244 type=noResponse sha=be09a016
+   598 ms  APP write #14 len=244 type=noResponse sha=0b6fffc4
+   600 ms  APP write #15 len=244 type=noResponse sha=59553d41
+   602 ms  APP write #16 len=244 type=noResponse sha=a4b22677
+   604 ms  APP write #17 len=244 type=noResponse sha=c1d07fa7
+   606 ms  APP write #18 len=244 type=noResponse sha=133a82f7
+   608 ms  APP write #19 len=244 type=noResponse sha=1e0740f2
+   610 ms  APP write #20 len=120 type=noResponse sha=d788ebef
+   816 ms  PRINTER has every byte (5000)
+  2110 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=21 mtu=247 confirmed=false
+  2110 ms  APP disconnect (printer has 5000 of 5000 bytes)
+  2110 ms  APP close
+  2110 ms  RESULT sent chunks=21 mtu=247 confirmed=false | printer has 5000 of 5000 bytes (all, in order)
+
+── Printer_8A2F · Android 14 · size cannot be agreed · 600 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   540 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+   542 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+   544 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+   546 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+   548 ms  APP write #4 len=20 type=noResponse sha=20982725
+   550 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+   552 ms  APP write #6 len=20 type=noResponse sha=d1571571
+   554 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+   556 ms  APP write #8 len=20 type=noResponse sha=0ade4399
+   558 ms  APP write #9 len=20 type=noResponse sha=54620fc3
+   560 ms  APP write #10 len=20 type=noResponse sha=c3816e74
+   562 ms  APP write #11 len=20 type=noResponse sha=9c4c85b6
+   564 ms  APP write #12 len=20 type=noResponse sha=7a293418
+   566 ms  APP write #13 len=20 type=noResponse sha=be1fe68f
+   568 ms  APP write #14 len=20 type=noResponse sha=5e6c997e
+   570 ms  APP write #15 len=20 type=noResponse sha=05ce86c5
+   572 ms  APP write #16 len=20 type=noResponse sha=85888b14
+   574 ms  APP write #17 len=20 type=noResponse sha=64d06685
+   576 ms  APP write #18 len=20 type=noResponse sha=cb1c7245
+   578 ms  APP write #19 len=20 type=noResponse sha=23fc71ae
+   580 ms  APP write #20 len=20 type=noResponse sha=d5822c91
+   582 ms  APP write #21 len=20 type=noResponse sha=1f9938e3
+   584 ms  APP write #22 len=20 type=noResponse sha=a1ec8d89
+   586 ms  APP write #23 len=20 type=noResponse sha=b8224bc2
+   588 ms  APP write #24 len=20 type=noResponse sha=3f6780d8
+   590 ms  APP write #25 len=20 type=noResponse sha=55888890
+   592 ms  APP write #26 len=20 type=noResponse sha=519bc440
+   594 ms  APP write #27 len=20 type=noResponse sha=c21a124a
+   596 ms  APP write #28 len=20 type=noResponse sha=49f8bc37
+   598 ms  APP write #29 len=20 type=noResponse sha=450af209
+   599 ms  PRINTER has every byte (600)
+  2098 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=30 mtu=0 confirmed=false
+  2098 ms  APP disconnect (printer has 600 of 600 bytes)
+  2098 ms  APP close
+  2098 ms  RESULT sent chunks=30 mtu=0 confirmed=false | printer has 600 of 600 bytes (all, in order)
+
+── Printer_8A2F · Android 14 · size never answered · 300 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+  3540 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+  3542 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+  3544 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+  3546 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+  3548 ms  APP write #4 len=20 type=noResponse sha=20982725
+  3550 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+  3552 ms  APP write #6 len=20 type=noResponse sha=d1571571
+  3554 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+  3556 ms  APP write #8 len=20 type=noResponse sha=0ade4399
+  3558 ms  APP write #9 len=20 type=noResponse sha=54620fc3
+  3560 ms  APP write #10 len=20 type=noResponse sha=c3816e74
+  3562 ms  APP write #11 len=20 type=noResponse sha=9c4c85b6
+  3564 ms  APP write #12 len=20 type=noResponse sha=7a293418
+  3566 ms  APP write #13 len=20 type=noResponse sha=be1fe68f
+  3568 ms  APP write #14 len=20 type=noResponse sha=5e6c997e
+  3569 ms  PRINTER has every byte (300)
+  5068 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=15 mtu=0 confirmed=false
+  5068 ms  APP disconnect (printer has 300 of 300 bytes)
+  5068 ms  APP close
+  5068 ms  RESULT sent chunks=15 mtu=0 confirmed=false | printer has 300 of 300 bytes (all, in order)
+
+── Printer_8A2F · Android 12 · agreed 512 · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   578 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   586 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   594 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   602 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   610 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   618 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   626 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   634 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   642 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   650 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   658 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   666 ms  APP write REFUSED (busy)
+   674 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   682 ms  APP write REFUSED (busy)
+   690 ms  APP write REFUSED (busy)
+   698 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   706 ms  APP write REFUSED (busy)
+   714 ms  APP write REFUSED (busy)
+   722 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   730 ms  APP write REFUSED (busy)
+   738 ms  APP write REFUSED (busy)
+   746 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   754 ms  APP write REFUSED (busy)
+   762 ms  APP write REFUSED (busy)
+   770 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   778 ms  APP write REFUSED (busy)
+   786 ms  APP write REFUSED (busy)
+   794 ms  APP write REFUSED (busy)
+   802 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   810 ms  APP write REFUSED (busy)
+   818 ms  APP write REFUSED (busy)
+   826 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   834 ms  APP write REFUSED (busy)
+   842 ms  APP write REFUSED (busy)
+   850 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   858 ms  APP write REFUSED (busy)
+   866 ms  APP write REFUSED (busy)
+   874 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   882 ms  APP write REFUSED (busy)
+   890 ms  APP write REFUSED (busy)
+   898 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   906 ms  APP write REFUSED (busy)
+   914 ms  APP write REFUSED (busy)
+   922 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   930 ms  APP write REFUSED (busy)
+   938 ms  APP write REFUSED (busy)
+   946 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   954 ms  APP write REFUSED (busy)
+   962 ms  APP write REFUSED (busy)
+   970 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   978 ms  APP write REFUSED (busy)
+   986 ms  APP write REFUSED (busy)
+   994 ms  APP write REFUSED (busy)
+  1002 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+  1010 ms  APP write REFUSED (busy)
+  1018 ms  APP write REFUSED (busy)
+  1026 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1034 ms  APP write REFUSED (busy)
+  1042 ms  APP write REFUSED (busy)
+  1050 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1058 ms  APP write REFUSED (busy)
+  1066 ms  APP write REFUSED (busy)
+  1074 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1082 ms  APP write REFUSED (busy)
+  1090 ms  APP write REFUSED (busy)
+  1098 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1106 ms  APP write REFUSED (busy)
+  1114 ms  APP write REFUSED (busy)
+  1122 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1130 ms  APP write REFUSED (busy)
+  1138 ms  APP write REFUSED (busy)
+  1146 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1154 ms  APP write REFUSED (busy)
+  1162 ms  APP write REFUSED (busy)
+  1170 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  1178 ms  APP write REFUSED (busy)
+  1186 ms  APP write REFUSED (busy)
+  1194 ms  APP write REFUSED (busy)
+  1202 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  1210 ms  APP write REFUSED (busy)
+  1218 ms  APP write REFUSED (busy)
+  1226 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  1234 ms  APP write REFUSED (busy)
+  1242 ms  APP write REFUSED (busy)
+  1250 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  1258 ms  APP write REFUSED (busy)
+  1266 ms  APP write REFUSED (busy)
+  1274 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  1282 ms  APP write REFUSED (busy)
+  1290 ms  APP write REFUSED (busy)
+  1298 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  1515 ms  PRINTER has every byte (19238)
+  2798 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  2798 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  2798 ms  APP close
+  2798 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+── Printer_8A2F · Android 12 · phone busy now and then · 6,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   578 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   586 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   594 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   602 ms  APP write REFUSED (busy)
+   610 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   618 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   626 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   634 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   642 ms  APP write REFUSED (busy)
+   650 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   658 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   666 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   674 ms  APP write #11 len=401 type=noResponse sha=656673b4
+   865 ms  PRINTER has every byte (6000)
+  2174 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=12 mtu=512 confirmed=false
+  2174 ms  APP disconnect (printer has 6000 of 6000 bytes)
+  2174 ms  APP close
+  2174 ms  RESULT sent chunks=12 mtu=512 confirmed=false | printer has 6000 of 6000 bytes (all, in order)
+
+── Printer_8A2F · Android 14 · printer only takes writes WITH response · 3,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP requestMtu 512
+   550 ms  APP write #0 len=509 type=withResponse sha=9ce334ab
+   577 ms  APP write #1 len=509 type=withResponse sha=d45f1e01
+   604 ms  APP write #2 len=509 type=withResponse sha=b77f8b6c
+   631 ms  APP write #3 len=509 type=withResponse sha=40fed1fb
+   658 ms  APP write #4 len=509 type=withResponse sha=02cfa919
+   685 ms  APP write #5 len=455 type=withResponse sha=c81470cb
+   707 ms  PRINTER has every byte (3000)
+  2185 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=6 mtu=512 confirmed=false
+  2185 ms  APP disconnect (printer has 3000 of 3000 bytes)
+  2185 ms  APP close
+  2185 ms  RESULT sent chunks=6 mtu=512 confirmed=false | printer has 3000 of 3000 bytes (all, in order)
+
+── Printer_8A2F · Android 14 · a write fails ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  LOG w SellerFlowPrinterGen: generic print failed name=Printer_8A2F code=BT_PRINT_FAILED Printer write failed.
+   578 ms  APP disconnect (printer has 0 of 6000 bytes, 2036 LOST)
+   578 ms  APP close
+   578 ms  RESULT FAILED BT_PRINT_FAILED "Printer write failed." chunks=12 mtu=512 confirmed=false | printer has 0 of 6000 bytes
+
+── Printer_8A2F · Android 14 · the link closes while sending ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   595 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   620 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   645 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   670 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   695 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   700 ms  LINK closed by itself (printer has 2545 of 60000 bytes)
+   700 ms  LOG w SellerFlowPrinterGen: generic print failed name=Printer_8A2F code=BT_PRINT_FAILED Printer disconnected during printing.
+   700 ms  APP disconnect (printer has 2545 of 60000 bytes, 4581 LOST)
+   700 ms  APP close
+   700 ms  RESULT FAILED BT_PRINT_FAILED "Printer disconnected during printing." chunks=118 mtu=512 confirmed=false | printer has 2545 of 60000 bytes
+
+── Printer_8A2F · Android 14 · the printer closes the link after printing ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=437 type=noResponse sha=e7c8bc90
+   766 ms  PRINTER has every byte (4000)
+  1166 ms  LINK closed by itself (printer has 4000 of 4000 bytes)
+  1166 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=8 mtu=512 confirmed=false
+  1166 ms  APP disconnect (printer has 4000 of 4000 bytes)
+  1166 ms  APP close
+  1166 ms  RESULT sent chunks=8 mtu=512 confirmed=false | printer has 4000 of 4000 bytes (all, in order)
+
+── Printer_8A2F · Android 14 · the printer says PRINTING:DONE ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=437 type=noResponse sha=e7c8bc90
+   766 ms  PRINTER has every byte (4000)
+  2084 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=8 mtu=512 confirmed=true
+  2084 ms  APP disconnect (printer has 4000 of 4000 bytes)
+  2084 ms  APP close
+  2084 ms  RESULT sent chunks=8 mtu=512 confirmed=true | printer has 4000 of 4000 bytes (all, in order)
+
+── Printer_8A2F · Android 14 · SLOW link (3 kB/s), phone queue 12 kB · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   588 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   590 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   592 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   594 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   596 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   598 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   600 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   602 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   604 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   606 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   608 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   610 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   612 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   614 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   616 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   626 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   795 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+   964 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1133 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1302 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1471 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1640 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1809 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1978 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  2147 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  2316 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  2485 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  2654 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  2823 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  4323 ms  LOG i SellerFlowPrinterGen: generic print name=Printer_8A2F service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  4323 ms  APP disconnect (printer has 11198 of 19238 bytes, 8040 LOST)
+  4323 ms  APP close
+  4323 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 11198 of 19238 bytes
+
+── Printer_8A2F · Android 14 · nothing to write to ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  LOG w SellerFlowPrinterGen: generic print failed name=Printer_8A2F code=BT_NOT_SUPPORTED This printer is not supported yet.
+   500 ms  APP disconnect (printer has 0 of 500 bytes)
+   500 ms  APP close
+   500 ms  RESULT FAILED BT_NOT_SUPPORTED "This printer is not supported yet." chunks=0 mtu=0 confirmed=false | printer has 0 of 500 bytes
+
+── (no name) · Android 14 · agreed 512 · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   595 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   620 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   645 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   670 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   695 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   720 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   745 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   770 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   795 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   820 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   845 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   870 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   895 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   920 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   945 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   970 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   995 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+  1020 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1045 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1070 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1095 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1120 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1145 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1170 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  1195 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  1220 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  1245 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  1270 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  1295 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  1515 ms  PRINTER has every byte (19238)
+  2795 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  2795 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  2795 ms  APP close
+  2795 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+── (no name) · Android 14 · agreed 247 · 5,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=244 type=noResponse sha=0cdbd8e1
+   572 ms  APP write #1 len=244 type=noResponse sha=57e478a4
+   574 ms  APP write #2 len=244 type=noResponse sha=82e7ee63
+   576 ms  APP write #3 len=244 type=noResponse sha=ce4d58a7
+   578 ms  APP write #4 len=244 type=noResponse sha=17f6910f
+   580 ms  APP write #5 len=244 type=noResponse sha=cd4fe4dd
+   582 ms  APP write #6 len=244 type=noResponse sha=bb724293
+   584 ms  APP write #7 len=244 type=noResponse sha=acaa9fe8
+   586 ms  APP write #8 len=244 type=noResponse sha=6ddb7325
+   588 ms  APP write #9 len=244 type=noResponse sha=1beb1a9d
+   590 ms  APP write #10 len=244 type=noResponse sha=497a306d
+   592 ms  APP write #11 len=244 type=noResponse sha=a093e020
+   594 ms  APP write #12 len=244 type=noResponse sha=c962409a
+   596 ms  APP write #13 len=244 type=noResponse sha=be09a016
+   598 ms  APP write #14 len=244 type=noResponse sha=0b6fffc4
+   600 ms  APP write #15 len=244 type=noResponse sha=59553d41
+   602 ms  APP write #16 len=244 type=noResponse sha=a4b22677
+   604 ms  APP write #17 len=244 type=noResponse sha=c1d07fa7
+   606 ms  APP write #18 len=244 type=noResponse sha=133a82f7
+   608 ms  APP write #19 len=244 type=noResponse sha=1e0740f2
+   610 ms  APP write #20 len=120 type=noResponse sha=d788ebef
+   816 ms  PRINTER has every byte (5000)
+  2110 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=21 mtu=247 confirmed=false
+  2110 ms  APP disconnect (printer has 5000 of 5000 bytes)
+  2110 ms  APP close
+  2110 ms  RESULT sent chunks=21 mtu=247 confirmed=false | printer has 5000 of 5000 bytes (all, in order)
+
+── (no name) · Android 14 · size cannot be agreed · 600 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   540 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+   542 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+   544 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+   546 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+   548 ms  APP write #4 len=20 type=noResponse sha=20982725
+   550 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+   552 ms  APP write #6 len=20 type=noResponse sha=d1571571
+   554 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+   556 ms  APP write #8 len=20 type=noResponse sha=0ade4399
+   558 ms  APP write #9 len=20 type=noResponse sha=54620fc3
+   560 ms  APP write #10 len=20 type=noResponse sha=c3816e74
+   562 ms  APP write #11 len=20 type=noResponse sha=9c4c85b6
+   564 ms  APP write #12 len=20 type=noResponse sha=7a293418
+   566 ms  APP write #13 len=20 type=noResponse sha=be1fe68f
+   568 ms  APP write #14 len=20 type=noResponse sha=5e6c997e
+   570 ms  APP write #15 len=20 type=noResponse sha=05ce86c5
+   572 ms  APP write #16 len=20 type=noResponse sha=85888b14
+   574 ms  APP write #17 len=20 type=noResponse sha=64d06685
+   576 ms  APP write #18 len=20 type=noResponse sha=cb1c7245
+   578 ms  APP write #19 len=20 type=noResponse sha=23fc71ae
+   580 ms  APP write #20 len=20 type=noResponse sha=d5822c91
+   582 ms  APP write #21 len=20 type=noResponse sha=1f9938e3
+   584 ms  APP write #22 len=20 type=noResponse sha=a1ec8d89
+   586 ms  APP write #23 len=20 type=noResponse sha=b8224bc2
+   588 ms  APP write #24 len=20 type=noResponse sha=3f6780d8
+   590 ms  APP write #25 len=20 type=noResponse sha=55888890
+   592 ms  APP write #26 len=20 type=noResponse sha=519bc440
+   594 ms  APP write #27 len=20 type=noResponse sha=c21a124a
+   596 ms  APP write #28 len=20 type=noResponse sha=49f8bc37
+   598 ms  APP write #29 len=20 type=noResponse sha=450af209
+   599 ms  PRINTER has every byte (600)
+  2098 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=30 mtu=0 confirmed=false
+  2098 ms  APP disconnect (printer has 600 of 600 bytes)
+  2098 ms  APP close
+  2098 ms  RESULT sent chunks=30 mtu=0 confirmed=false | printer has 600 of 600 bytes (all, in order)
+
+── (no name) · Android 14 · size never answered · 300 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+  3540 ms  APP write #0 len=20 type=noResponse sha=f58143bf
+  3542 ms  APP write #1 len=20 type=noResponse sha=724b8cb2
+  3544 ms  APP write #2 len=20 type=noResponse sha=25e586d3
+  3546 ms  APP write #3 len=20 type=noResponse sha=d8ad45a6
+  3548 ms  APP write #4 len=20 type=noResponse sha=20982725
+  3550 ms  APP write #5 len=20 type=noResponse sha=34b4bd38
+  3552 ms  APP write #6 len=20 type=noResponse sha=d1571571
+  3554 ms  APP write #7 len=20 type=noResponse sha=55d989c9
+  3556 ms  APP write #8 len=20 type=noResponse sha=0ade4399
+  3558 ms  APP write #9 len=20 type=noResponse sha=54620fc3
+  3560 ms  APP write #10 len=20 type=noResponse sha=c3816e74
+  3562 ms  APP write #11 len=20 type=noResponse sha=9c4c85b6
+  3564 ms  APP write #12 len=20 type=noResponse sha=7a293418
+  3566 ms  APP write #13 len=20 type=noResponse sha=be1fe68f
+  3568 ms  APP write #14 len=20 type=noResponse sha=5e6c997e
+  3569 ms  PRINTER has every byte (300)
+  5068 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=15 mtu=0 confirmed=false
+  5068 ms  APP disconnect (printer has 300 of 300 bytes)
+  5068 ms  APP close
+  5068 ms  RESULT sent chunks=15 mtu=0 confirmed=false | printer has 300 of 300 bytes (all, in order)
+
+── (no name) · Android 12 · agreed 512 · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   578 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   586 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   594 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   602 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   610 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   618 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   626 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   634 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   642 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   650 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   658 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   666 ms  APP write REFUSED (busy)
+   674 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   682 ms  APP write REFUSED (busy)
+   690 ms  APP write REFUSED (busy)
+   698 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   706 ms  APP write REFUSED (busy)
+   714 ms  APP write REFUSED (busy)
+   722 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   730 ms  APP write REFUSED (busy)
+   738 ms  APP write REFUSED (busy)
+   746 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   754 ms  APP write REFUSED (busy)
+   762 ms  APP write REFUSED (busy)
+   770 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   778 ms  APP write REFUSED (busy)
+   786 ms  APP write REFUSED (busy)
+   794 ms  APP write REFUSED (busy)
+   802 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   810 ms  APP write REFUSED (busy)
+   818 ms  APP write REFUSED (busy)
+   826 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   834 ms  APP write REFUSED (busy)
+   842 ms  APP write REFUSED (busy)
+   850 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   858 ms  APP write REFUSED (busy)
+   866 ms  APP write REFUSED (busy)
+   874 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   882 ms  APP write REFUSED (busy)
+   890 ms  APP write REFUSED (busy)
+   898 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   906 ms  APP write REFUSED (busy)
+   914 ms  APP write REFUSED (busy)
+   922 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   930 ms  APP write REFUSED (busy)
+   938 ms  APP write REFUSED (busy)
+   946 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   954 ms  APP write REFUSED (busy)
+   962 ms  APP write REFUSED (busy)
+   970 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   978 ms  APP write REFUSED (busy)
+   986 ms  APP write REFUSED (busy)
+   994 ms  APP write REFUSED (busy)
+  1002 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+  1010 ms  APP write REFUSED (busy)
+  1018 ms  APP write REFUSED (busy)
+  1026 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1034 ms  APP write REFUSED (busy)
+  1042 ms  APP write REFUSED (busy)
+  1050 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1058 ms  APP write REFUSED (busy)
+  1066 ms  APP write REFUSED (busy)
+  1074 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1082 ms  APP write REFUSED (busy)
+  1090 ms  APP write REFUSED (busy)
+  1098 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1106 ms  APP write REFUSED (busy)
+  1114 ms  APP write REFUSED (busy)
+  1122 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1130 ms  APP write REFUSED (busy)
+  1138 ms  APP write REFUSED (busy)
+  1146 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1154 ms  APP write REFUSED (busy)
+  1162 ms  APP write REFUSED (busy)
+  1170 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  1178 ms  APP write REFUSED (busy)
+  1186 ms  APP write REFUSED (busy)
+  1194 ms  APP write REFUSED (busy)
+  1202 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  1210 ms  APP write REFUSED (busy)
+  1218 ms  APP write REFUSED (busy)
+  1226 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  1234 ms  APP write REFUSED (busy)
+  1242 ms  APP write REFUSED (busy)
+  1250 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  1258 ms  APP write REFUSED (busy)
+  1266 ms  APP write REFUSED (busy)
+  1274 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  1282 ms  APP write REFUSED (busy)
+  1290 ms  APP write REFUSED (busy)
+  1298 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  1515 ms  PRINTER has every byte (19238)
+  2798 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  2798 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  2798 ms  APP close
+  2798 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+── (no name) · Android 12 · phone busy now and then · 6,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   578 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   586 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   594 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   602 ms  APP write REFUSED (busy)
+   610 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   618 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   626 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   634 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   642 ms  APP write REFUSED (busy)
+   650 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   658 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   666 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   674 ms  APP write #11 len=401 type=noResponse sha=656673b4
+   865 ms  PRINTER has every byte (6000)
+  2174 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=12 mtu=512 confirmed=false
+  2174 ms  APP disconnect (printer has 6000 of 6000 bytes)
+  2174 ms  APP close
+  2174 ms  RESULT sent chunks=12 mtu=512 confirmed=false | printer has 6000 of 6000 bytes (all, in order)
+
+── (no name) · Android 14 · printer only takes writes WITH response · 3,000 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP requestMtu 512
+   550 ms  APP write #0 len=509 type=withResponse sha=9ce334ab
+   577 ms  APP write #1 len=509 type=withResponse sha=d45f1e01
+   604 ms  APP write #2 len=509 type=withResponse sha=b77f8b6c
+   631 ms  APP write #3 len=509 type=withResponse sha=40fed1fb
+   658 ms  APP write #4 len=509 type=withResponse sha=02cfa919
+   685 ms  APP write #5 len=455 type=withResponse sha=c81470cb
+   707 ms  PRINTER has every byte (3000)
+  2185 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=6 mtu=512 confirmed=false
+  2185 ms  APP disconnect (printer has 3000 of 3000 bytes)
+  2185 ms  APP close
+  2185 ms  RESULT sent chunks=6 mtu=512 confirmed=false | printer has 3000 of 3000 bytes (all, in order)
+
+── (no name) · Android 14 · a write fails ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  LOG w SellerFlowPrinterGen: generic print failed name= code=BT_PRINT_FAILED Printer write failed.
+   578 ms  APP disconnect (printer has 0 of 6000 bytes, 2036 LOST)
+   578 ms  APP close
+   578 ms  RESULT FAILED BT_PRINT_FAILED "Printer write failed." chunks=12 mtu=512 confirmed=false | printer has 0 of 6000 bytes
+
+── (no name) · Android 14 · the link closes while sending ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   595 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   620 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   645 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   670 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   695 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   700 ms  LINK closed by itself (printer has 2545 of 60000 bytes)
+   700 ms  LOG w SellerFlowPrinterGen: generic print failed name= code=BT_PRINT_FAILED Printer disconnected during printing.
+   700 ms  APP disconnect (printer has 2545 of 60000 bytes, 4581 LOST)
+   700 ms  APP close
+   700 ms  RESULT FAILED BT_PRINT_FAILED "Printer disconnected during printing." chunks=118 mtu=512 confirmed=false | printer has 2545 of 60000 bytes
+
+── (no name) · Android 14 · the printer closes the link after printing ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=437 type=noResponse sha=e7c8bc90
+   766 ms  PRINTER has every byte (4000)
+  1166 ms  LINK closed by itself (printer has 4000 of 4000 bytes)
+  1166 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=8 mtu=512 confirmed=false
+  1166 ms  APP disconnect (printer has 4000 of 4000 bytes)
+  1166 ms  APP close
+  1166 ms  RESULT sent chunks=8 mtu=512 confirmed=false | printer has 4000 of 4000 bytes (all, in order)
+
+── (no name) · Android 14 · the printer says PRINTING:DONE ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=437 type=noResponse sha=e7c8bc90
+   766 ms  PRINTER has every byte (4000)
+  2084 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=8 mtu=512 confirmed=true
+  2084 ms  APP disconnect (printer has 4000 of 4000 bytes)
+  2084 ms  APP close
+  2084 ms  RESULT sent chunks=8 mtu=512 confirmed=true | printer has 4000 of 4000 bytes (all, in order)
+
+── (no name) · Android 14 · SLOW link (3 kB/s), phone queue 12 kB · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+   588 ms  APP write #9 len=509 type=noResponse sha=6fcefc42
+   590 ms  APP write #10 len=509 type=noResponse sha=4fe3524b
+   592 ms  APP write #11 len=509 type=noResponse sha=95f3a554
+   594 ms  APP write #12 len=509 type=noResponse sha=7081a0af
+   596 ms  APP write #13 len=509 type=noResponse sha=b45a3766
+   598 ms  APP write #14 len=509 type=noResponse sha=43ff4953
+   600 ms  APP write #15 len=509 type=noResponse sha=b125e252
+   602 ms  APP write #16 len=509 type=noResponse sha=933525f5
+   604 ms  APP write #17 len=509 type=noResponse sha=c08f6ef6
+   606 ms  APP write #18 len=509 type=noResponse sha=0440a0a8
+   608 ms  APP write #19 len=509 type=noResponse sha=b70715cd
+   610 ms  APP write #20 len=509 type=noResponse sha=aa599cc5
+   612 ms  APP write #21 len=509 type=noResponse sha=2e5e4dde
+   614 ms  APP write #22 len=509 type=noResponse sha=ae6095cc
+   616 ms  APP write #23 len=509 type=noResponse sha=9f840c57
+   626 ms  APP write #24 len=509 type=noResponse sha=c80e1763
+   795 ms  APP write #25 len=509 type=noResponse sha=c6c31a4f
+   964 ms  APP write #26 len=509 type=noResponse sha=8b9b6390
+  1133 ms  APP write #27 len=509 type=noResponse sha=15e3adc9
+  1302 ms  APP write #28 len=509 type=noResponse sha=84a83918
+  1471 ms  APP write #29 len=509 type=noResponse sha=a4f20cd7
+  1640 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1809 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1978 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  2147 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  2316 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  2485 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  2654 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  2823 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  4323 ms  LOG i SellerFlowPrinterGen: generic print name= service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  4323 ms  APP disconnect (printer has 11198 of 19238 bytes, 8040 LOST)
+  4323 ms  APP close
+  4323 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 11198 of 19238 bytes
+
+── (no name) · Android 14 · nothing to write to ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  LOG w SellerFlowPrinterGen: generic print failed name= code=BT_NOT_SUPPORTED This printer is not supported yet.
+   500 ms  APP disconnect (printer has 0 of 500 bytes)
+   500 ms  APP close
+   500 ms  RESULT FAILED BT_NOT_SUPPORTED "This printer is not supported yet." chunks=0 mtu=0 confirmed=false | printer has 0 of 500 bytes
+

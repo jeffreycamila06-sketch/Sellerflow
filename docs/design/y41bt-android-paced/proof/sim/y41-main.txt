@@ -1,0 +1,66 @@
+MAIN (today's send — the Y41BT is sent like every generic printer)
+
+── Y41BT · Android 14 · agreed 512 · 19,238 bytes · normal link ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+            … 22 more lines …
+  1145 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1170 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  1195 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  1220 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  1245 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  1270 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  1295 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  1515 ms  PRINTER has every byte (19238)
+  2795 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  2795 ms  APP disconnect (printer has 19238 of 19238 bytes)
+  2795 ms  APP close
+  2795 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 19238 of 19238 bytes (all, in order)
+
+── Y41BT · Android 14 · SLOW link (3 kB/s), the phone queues up to 12 kB · 19,238 bytes ──
+     0 ms  APP connectGatt transport=2
+   300 ms  APP discoverServices
+   500 ms  APP setNotification FF01 true
+   500 ms  APP writeDescriptor 2902
+   520 ms  APP setNotification FF03 true
+   520 ms  APP writeDescriptor 2902
+   540 ms  APP requestMtu 512
+   570 ms  APP write #0 len=509 type=noResponse sha=9ce334ab
+   572 ms  APP write #1 len=509 type=noResponse sha=d45f1e01
+   574 ms  APP write #2 len=509 type=noResponse sha=b77f8b6c
+   576 ms  APP write #3 len=509 type=noResponse sha=40fed1fb
+   578 ms  APP write #4 len=509 type=noResponse sha=02cfa919
+   580 ms  APP write #5 len=509 type=noResponse sha=7f28dd21
+   582 ms  APP write #6 len=509 type=noResponse sha=d9af7408
+   584 ms  APP write #7 len=509 type=noResponse sha=be3146d0
+   586 ms  APP write #8 len=509 type=noResponse sha=13e19819
+            … 21 more lines …
+  1640 ms  APP write #30 len=509 type=noResponse sha=ba426910
+  1809 ms  APP write #31 len=509 type=noResponse sha=c3620bc5
+  1978 ms  APP write #32 len=509 type=noResponse sha=a0b4f44f
+  2147 ms  APP write #33 len=509 type=noResponse sha=ed41d030
+  2316 ms  APP write #34 len=509 type=noResponse sha=7a0c8f23
+  2485 ms  APP write #35 len=509 type=noResponse sha=0e8bf2ef
+  2654 ms  APP write #36 len=509 type=noResponse sha=bb8fc88e
+  2823 ms  APP write #37 len=405 type=noResponse sha=bc99ecd1
+  4323 ms  LOG i SellerFlowPrinterGen: generic print name=Y41BT-0FC4_LE service=FF00 char=FF02 chunks=38 mtu=512 confirmed=false
+  4323 ms  APP disconnect (printer has 11198 of 19238 bytes, 8040 LOST)
+  4323 ms  APP close
+  4323 ms  RESULT sent chunks=38 mtu=512 confirmed=false | printer has 11198 of 19238 bytes
+
+   (main, in this model: reported SENT while the printer has 11198 of 19,238 bytes — 8040 lost when the link was closed)
+
