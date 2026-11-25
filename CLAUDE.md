@@ -6594,6 +6594,35 @@ Jeff's how-to: `docs/ops/server-alarms.md`. Taglish texts, numbers only.
 - Tests: `capacityAlarm.server.test.ts` (44) · `capacityAlarmSql.test.ts` (5) · `scripts/sql215-behaviour.mjs`
   (PGlite, 78) · 29 of 29 on-purpose breaks caught (`docs/design/server-capacity-alarms/proof/`).
 
+## 2026-11-25 — FREE PLAN: NO 4-HOUR LOCK ON CHANGING / REMOVING THE LIVE ACCOUNT (branch `claude/free-no-account-lock`, NOT merged; sql/216 + sql/217 NOT applied; web + database only, NO Render)
+Jeff's rule: a seller whose plan is 'free' changes the TikTok username, or removes the account and adds a different
+one (any platform), at any time. Paid plans unchanged. The plan at the moment of the action decides. Still 1 account
+on Free; a live account still can't be changed / removed; the 150-order rules are not touched.
+- **Two locks existed (read live 2026-11-25):** (1) the TikTok username slot — `touch_tiktok_slot` /
+  `tiktok_slot_cooldowns` (`tiktok_account_changes`); (2) the swapped-in account — `account_seats.lock_until`, set by
+  `account_total_guard`, counted by `account_locked_seats`, shown by `my_account_list` / `account_quota`.
+- **sql/216 (+ rollback):** NEW `account_no_lock(p_plan)` = `lower(btrim(plan)) = 'free'`. Six live functions, each =
+  the live text + the lines marked "sql/216" (md5 guard, a = live, b = this file; twice = same): `touch_tiktok_slot`
+  (free → no `cooldown_active`, the slot's change time is DELETED so an upgrade starts clean), `tiktok_slot_cooldowns`
+  (free → no rows), `account_total_guard` (free → no `lock_until` on a replacement), `account_locked_seats` (free → 0),
+  `my_account_list` (free → `lock_until` null, `locked` 0, `next_free_at` null, + key `no_lock`), `account_quota`
+  (free → `locked` 0). "Free" is always read by the database from `seller_profiles.plan` (a seller's own
+  `plan='free'` write is put back by `seller_profiles_on_update`) → a paid seller cannot switch the lock off.
+  No table / trigger / setting / row / grant changed. `shopee_link_register` untouched ('locked' needs locked seats > 0).
+  ⚠️ The NEXT file that changes one of these six functions must start from sql/216's text.
+- **App:** `AccountList.noLock` (`no_lock === true`) → `lockMs` / `waitMs` null, `lockNoteText` / `removeBodyText`
+  (new keys `rd_pf_lock_note_free`, `rd_pf_rm_body_free`, 8 languages) in `PlanFullPopup` + `ShopeeShops`.
+  `useChannelEditor`: `isFreePlan(account.plan)` → a saved name shows **Change** (never LOCKED) while the cooldown
+  answer is loading / unreadable; an answered wait is still shown (the app never overrules the server).
+  "End your live first" (`isAccountLive`) is an APP rule and is unchanged.
+- **Either order is safe** (database first: TikTok screen right at once, the popup's 4-hour sentence stays until the
+  web is live; web first: nothing changes until sql/216). **Order:** sql/216 → merge (Vercel) → sql/217 (guide rows
+  `account-limit` + `manage-accounts`, one sentence each; rollback = the live rows, md5 checked 2026-11-25).
+- A lock left from a paid time (or running when sql/216 is applied) holds nothing once the plan is Free. A paid plan
+  that is `expired` but still named e.g. 'basic' is NOT free → keeps the lock (the rule is the plan name).
+- Proof: `scripts/sql216-behaviour.mjs` (PGlite, 82) · `freeNoAccountLockSql.test.ts` · `freeNoLock.test.tsx` ·
+  `ManageChannels.freeNoLock.test.tsx` · `docs/design/free-no-account-lock/` (54 checked pictures, 19/19 breaks).
+
 ## 2026-11-25 — IN-PAGE LIVE QR SCANNER for the Android app WITHOUT the built-in scanner (branch `claude/web-qr-scanner`, NOT merged; sql/218 NOT applied; web only — no app build, no Render)
 Android 1.10 (the built-in scanner) is not being released, so Android sellers stay on app 1.9, where every Scan
 opened the photo picker. This draws the SAME live scanner inside the web page. `mobile/` = 0 lines, printing = 0 lines.
@@ -6627,7 +6656,7 @@ opened the photo picker. This draws the SAME live scanner inside the web page. `
   left (the hook's clean-up), a second scanner opened, a camera that arrives after the close. Never throws.
 - **Fence:** `scripts/web-qr-scanner-fence.mjs --check` (562 files: all of `mobile/`, `server/`, `server.js`,
   `chrome-extension/`, the packages, every printing / sticker / receipt / Bluetooth file, `nativeQrScanner.ts`,
-  `qrCentrePick.ts`) = git content ids of main `1e1d731e`. The vitest copy runs on this branch (also in CI) or with
+  `qrCentrePick.ts`) = git content ids of main `a62c7299`. The vitest copy runs on this branch (also in CI) or with
   `WEB_QR_GATE=1`; skipped elsewhere so later printing / app work is never blocked. After merging a newer main INTO
   the branch: `node scripts/web-qr-scanner-fence.mjs --write origin/main`.
 - **Tests:** `webQrScanner.test.ts` (gate: 120 combinations, 1 yes; every close path; refused camera; light; the

@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { accountSlots, accountList, accountText, maxAcc } from "./connect";
 import { fetchSlotCooldowns, touchSlot, slotLockState, slotKey, type SlotCooldowns } from "./tiktokCooldown";
 import { isAdminRole } from "../../lib/roles";
+import { isFreePlan } from "../../lib/planWindow";
 import type { AccountUser } from "../../accountDb";
 import { useT } from "../i18n";
 import { useLang } from "../i18n/langContext";
@@ -40,6 +41,10 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
   const field = platform; // "tiktok" | "facebook"
   const other: "tiktok" | "facebook" = isTT ? "facebook" : "tiktok";
   const isAdmin = isAdminRole(account?.role);
+  // sql/216 (Jeff 2026-11-25): the Free plan has no 4-hour lock. The SERVER decides (it answers no wait and
+  // refuses nothing for a free seller); this only keeps "LOCKED" off the screen while that answer is loading
+  // or could not be read. A wait the server DOES answer is still shown as it is.
+  const isFree = isFreePlan(account?.plan);
   const limit = maxAcc(account?.plan || "free");
   const planBadge = (account?.plan || "free").toUpperCase();
   // Account total, Build 2 (sql/85): ONLY while enforcing, a seller with more registered
@@ -93,6 +98,7 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
   // with a "Change" button until the seller taps it (then editable). Server-time only.
   const savedSlotView = (i: number): SavedSlotView => {
     if (isAdmin) return { editable: true, note: "unlocked", unlockMs: 0, canChange: false };
+    if (!cooldown && isFree) return unlockedSlots.has(i) ? { editable: true, note: "unlocked", unlockMs: 0, canChange: false } : { editable: false, note: "locked", unlockMs: 0, canChange: true };
     if (!cooldown) return { editable: false, note: "locked", unlockMs: 0, canChange: false }; // fail-closed
     const last = cooldown.byKey.get(slotKey(field, i)) ?? null;
     const st = slotLockState(last, serverNow());

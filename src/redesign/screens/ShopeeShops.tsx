@@ -9,7 +9,7 @@ import { useT, tpl } from "../i18n";
 import { useLang } from "../i18n/langContext";
 import { BackButton } from "../components/BackButton";
 import AccountQuotaLine from "../components/AccountQuotaLine";
-import { accountName, isAccountLive, waitMs, lockMs, countdownText, type AccountList, type AccountRow, type LiveAccounts } from "../adapters/planFull";
+import { accountName, isAccountLive, waitMs, lockMs, countdownText, lockNoteText, removeBodyText, type AccountList, type AccountRow, type LiveAccounts } from "../adapters/planFull";
 import type { RemoveResult } from "../components/PlanFullPopup";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "12px 14px", marginBottom: 10, boxShadow: "var(--shadow)" };
@@ -58,7 +58,7 @@ export default function ShopeeShops({ list, live, onRemove, onReload, onBack, no
       <div className="sfl-pf-sheet" role="dialog" aria-modal="true" aria-label={tpl(t.rd_pf_rm_title, { name: accountName(pick, t) })} data-testid="ss-confirm" onClick={(e) => e.stopPropagation()}>
         <div className="sfl-pf-grab" aria-hidden="true" />
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "var(--text)" }}>{tpl(t.rd_pf_rm_title, { name: accountName(pick, t) })}</h2>
-        <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.45, color: "var(--text-dim)" }}>{t.rd_pf_rm_body}</p>
+        <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.45, color: "var(--text-dim)" }}>{removeBodyText(list, t)}</p>
         <button type="button" onClick={() => void confirmRemove()} disabled={busy} data-testid="ss-confirm-remove" style={{ minHeight: 50, borderRadius: 14, border: "none", background: "var(--danger)", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 800, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? t.rd_pf_removing : t.rd_pf_remove}</button>
         <button type="button" onClick={() => setPick(null)} disabled={busy} data-testid="ss-keep" style={{ minHeight: 48, borderRadius: 14, border: "1.5px solid var(--border-strong)", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>{t.rd_pf_rm_keep}</button>
       </div>
@@ -126,7 +126,7 @@ export default function ShopeeShops({ list, live, onRemove, onReload, onBack, no
             <span>{tpl(t.rd_ss_wait, { time: countdownText(wait, t) })}</span>
           </div>
         )}
-        <div data-testid="ss-lock-note" style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: "4px 2px 8px" }}>{t.rd_pf_lock_note}</div>
+        <div data-testid="ss-lock-note" style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: "4px 2px 8px" }}>{lockNoteText(list, t)}</div>
         <div data-testid="ss-add-hint" style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 2px" }}>{t.rd_ss_add_hint}</div>
       </div>
       {sheet}
