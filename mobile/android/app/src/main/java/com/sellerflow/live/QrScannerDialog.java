@@ -115,11 +115,9 @@ final class QrScannerDialog extends Dialog {
             if (torchWanted && camera != null) camera.getCameraControl().enableTorch(true);
         }
     };
-    private final Observer<CameraState> stateObserver = state -> {
-        if (state == null || finished) return;
-        if (state.getError() != null) showPanel(texts.camBusy, false);
-        else if (state.getType() == CameraState.Type.OPEN && granted) showPanel(null, false);
-    };
+    // Built in the constructor (not as a field initializer): it reads the final `texts`, which javac
+    // only treats as assigned after the constructor has set it.
+    private final Observer<CameraState> stateObserver;
 
     QrScannerDialog(Activity activity, SellerFlowScannerPlugin.ScannerTexts texts, boolean granted, Listener listener) {
         super(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
@@ -127,6 +125,11 @@ final class QrScannerDialog extends Dialog {
         this.texts = texts;
         this.granted = granted;
         this.listener = listener;
+        this.stateObserver = state -> {
+            if (state == null || finished) return;
+            if (state.getError() != null) showPanel(this.texts.camBusy, false);
+            else if (state.getType() == CameraState.Type.OPEN && this.granted) showPanel(null, false);
+        };
         setCancelable(true);
         setCanceledOnTouchOutside(false);
         setOnCancelListener(d -> { if (!finished) { finished = true; listener.onCancel(); } });
