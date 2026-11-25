@@ -42,7 +42,7 @@ import { parcelTrackingVisible, parcelTrackingLocked, loadParcelTrackingAccess, 
 import { buyerContactVisible } from "./adapters/buyerContact";
 import { scanQrLookupVisible } from "./adapters/scanQrLookup";
 import { nativeScannerAvailable, setNativeQrScannerOn } from "./adapters/nativeQrScanner";
-import { setWebQrScannerOn, webScannerAvailable } from "./adapters/webQrScanner";
+import { setWebQrScannerOn, webScannerAvailable, webQrScannerOnFor } from "./adapters/webQrScanner";
 import { fmStoreCheckVisible } from "./adapters/fmStoreCheck";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -965,7 +965,9 @@ export default function RedesignApp() {
   // In-page live QR scanner (the Android app WITHOUT the built-in scanner): the kill switch
   // web_qr_scanner_enabled (sql/218). Off / not read / iPhone / laptop / a build with the built-in scanner →
   // nothing changes (today's photo flow, or the built-in scanner as before).
-  useEffect(() => { setWebQrScannerOn(featureSw.webQrScanner); }, [featureSw.webQrScanner]);
+  // In-page QR scanner: admins get it before the switch (Jeff tests on his own phone first), everyone with the switch.
+  const webQrOn = webQrScannerOnFor(featureSw.webQrScanner, isAdmin);
+  useEffect(() => { setWebQrScannerOn(webQrOn); }, [webQrOn]);
   useApprovedPrinters(authed); // Admin-approved printers join the scan whitelist (sql/160) — one read per session
   // Printer setup v2 (admin / test_printers / the printer_flow_v2 switch) — also decides whether the Classic text
   // card is on screen; the router honors the stored Classic flag only while that card is shown (printing.ts
@@ -3167,7 +3169,7 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => { if (source === "post") return postItemStock(postSales?.sales ?? [], code, saleId ?? null); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote, postLabel: (sid: number) => postLabel(postSales?.sales.find((x) => x.id === sid)), postGiveOff: postAccess !== "full" } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} webScan={webScannerAvailable(featureSw.webQrScanner)} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />}
+            initialQuery={ordersInitialQuery} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} webScan={webScannerAvailable(webQrOn)} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
             tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
             pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
@@ -3289,7 +3291,7 @@ export default function RedesignApp() {
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
           {screen === "blacklist" && blacklistOn && (
-            <Blacklist onBack={() => goBack()} rows={blacklist.rows} error={blacklist.error} onReload={() => void blacklist.reload()} webScan={webScannerAvailable(featureSw.webQrScanner)}
+            <Blacklist onBack={() => goBack()} rows={blacklist.rows} error={blacklist.error} onReload={() => void blacklist.reload()} webScan={webScannerAvailable(webQrOn)}
               onAdd={blacklist.add} onUndo={blacklist.undo} onRemove={blacklist.remove} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} />
           )}
           {screen === "customers" && <Customers onBack={() => goBack()} cur={cur} customers={customersData.customers} state={customersData.state} onExport={customersData.state === "live" ? exportCustomers : undefined} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}

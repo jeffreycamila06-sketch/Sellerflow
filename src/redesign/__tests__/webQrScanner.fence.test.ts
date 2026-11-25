@@ -135,10 +135,11 @@ describe("in-page QR scanner — the screens ask for it only when there is NO bu
     const app = read("src/redesign/RedesignApp.tsx");
     expect(count(app, "liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)}")).toBe(2); // Orders + Blacklist, as before
     expect(count(app, "liveScan=")).toBe(2);
-    expect(count(app, "webScan={webScannerAvailable(featureSw.webQrScanner)}")).toBe(2);
+    expect(count(app, "webScan={webScannerAvailable(webQrOn)}")).toBe(2);
+    expect(count(app, "const webQrOn = webQrScannerOnFor(featureSw.webQrScanner, isAdmin);")).toBe(1); // admins first, then everyone with the switch
     expect(count(app, "webScan=")).toBe(2);
     expect(count(app, "useEffect(() => { setNativeQrScannerOn(featureSw.nativeQrScanner); }, [featureSw.nativeQrScanner]);")).toBe(1);
-    expect(count(app, "useEffect(() => { setWebQrScannerOn(featureSw.webQrScanner); }, [featureSw.webQrScanner]);")).toBe(1);
+    expect(count(app, "useEffect(() => { setWebQrScannerOn(webQrOn); }, [webQrOn]);")).toBe(1);
     expect(count(app, "setWebQrScannerOn(")).toBe(1);
   });
   it("only these files use the in-page scanner", () => {

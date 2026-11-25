@@ -32,6 +32,9 @@ export function setWebQrScannerOn(on: boolean): void { switchOn = on === true; }
 function canWebScan(): boolean {
   try { return isCapacitorAndroid() && !nativeScannerAvailable(true) && cameraSupported(); } catch { return false; }
 }
+/** RedesignApp: who has the in-page scanner switched on — every seller once the switch is on; admins before
+ *  (so the owner tests on his own phone first). Anything but a literal true = off. */
+export function webQrScannerOnFor(switchOn: boolean, isAdmin: boolean): boolean { return switchOn === true || isAdmin === true; }
 /** Asked at tap time by the screens: true → open the in-page scanner; false → today's photo flow. */
 export function webQrScanner(): boolean { return switchOn && canWebScan(); }
 /** For a render (Orders shows its Scan button with it): the switch value is passed in so it is seen at once. */
@@ -447,7 +450,10 @@ export function openWebQrScanner(texts: ScannerTexts, onDone: (r: WebScanResult)
       return { w: (r && r.clientWidth) || window.innerWidth || 0, h: (r && r.clientHeight) || window.innerHeight || 0 };
     };
     try { grabber = (deps.grabber ?? cameraGrabber)(ui!.video, view); } catch { fail(null); return; }
-    startTimer = setTimeout(() => { if (!gotFrame) fail(null); }, deps.startMs ?? START_MS);
+    // "The camera isn't available" only when the CAMERA gave no picture: a picture on the video counts
+    // even while the QR reader is still loading (slow internet on the first scan).
+    const pictureSeen = (): boolean => { try { return (ui?.video.videoWidth ?? 0) > 0 && (ui?.video.videoHeight ?? 0) > 0; } catch { return false; } };
+    startTimer = setTimeout(() => { if (!gotFrame && !pictureSeen()) fail(null); }, deps.startMs ?? START_MS);
     void tick();
   };
 

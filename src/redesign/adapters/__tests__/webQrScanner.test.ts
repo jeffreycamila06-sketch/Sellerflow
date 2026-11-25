@@ -10,6 +10,7 @@ vi.mock("../qrDecode", () => ({ readQrFromFile: vi.fn(), readQrHitsFromPixels: (
 import {
   cameraGrabber, frameSidePx, hitsFromDetected, openWebQrScanner, scanGeometry, setWebQrScannerOn, torchSupported,
   webQrScanner, webScanConstraints, webScanFallbackText, webScannerAvailable, type FrameGrabber, type WebScanResult,
+  webQrScannerOnFor,
 } from "../webQrScanner";
 import { scannerTexts } from "../nativeQrScanner";
 import { parseSwitches, SWITCHES_OFF, FEATURE_SWITCH_KEYS } from "../featureSwitches";
@@ -460,8 +461,25 @@ describe("camera refused / not there / any error → today's photo flow with one
     phone = installFakePhone();
     const hand = byHand();
     scan(TEXTS, done, { grabber: () => hand.grabber, frameMs: 0, startMs: 30 });
+    const video = document.querySelector("video") as HTMLVideoElement; // the camera shows nothing at all
+    Object.defineProperty(video, "videoWidth", { configurable: true, value: 0 });
+    Object.defineProperty(video, "videoHeight", { configurable: true, value: 0 });
     await until(() => done.mock.calls.length === 1);
     expect(done.mock.calls[0][0]).toEqual({ kind: "fallback", reason: "unavailable" });
+    expect(allStopped()).toBe(true);
+  });
+  it("the camera gives a picture but the QR reader is still loading (slow internet) → NO 'unavailable', scanner stays", async () => {
+    phone = installFakePhone();
+    const hand = byHand();
+    scan(TEXTS, done, { grabber: () => hand.grabber, frameMs: 0, startMs: 30 });
+    const video = document.querySelector("video") as HTMLVideoElement;
+    Object.defineProperty(video, "videoWidth", { configurable: true, value: 1920 });
+    Object.defineProperty(video, "videoHeight", { configurable: true, value: 1080 });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(done).not.toHaveBeenCalled();
+    expect(scannerOnScreen()).not.toBeNull();
+    part("wqs-close").click();
+    expect(done.mock.calls).toEqual([[{ kind: "cancelled" }]]);
     expect(allStopped()).toBe(true);
   });
   it("no QR reader works on this phone → fallback 'unavailable', camera off", async () => {
@@ -636,5 +654,16 @@ describe("reading a frame: the phone's own reader, else the loaded one", () => {
     const g2 = cameraGrabber(video(), view);
     expect(await g2.grab()).toBeNull();
     expect(g2.dead()).toBe(false);
+  });
+});
+
+describe("who has it switched on (webQrScannerOnFor)", () => {
+  it("switch off: only admins; switch on: everyone; never anything but a literal true", () => {
+    expect(webQrScannerOnFor(false, false)).toBe(false);
+    expect(webQrScannerOnFor(false, true)).toBe(true);
+    expect(webQrScannerOnFor(true, false)).toBe(true);
+    expect(webQrScannerOnFor(true, true)).toBe(true);
+    expect(webQrScannerOnFor("true" as unknown as boolean, false)).toBe(false);
+    expect(webQrScannerOnFor(undefined as unknown as boolean, undefined as unknown as boolean)).toBe(false);
   });
 });
