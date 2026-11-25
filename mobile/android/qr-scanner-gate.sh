@@ -145,7 +145,7 @@ prepare() { # $1 = worktree
 }
 build() { # $1 = worktree, $2 = name → .aab, dependencies, manifest, merge report into $WORK/$2.*
   local wt="$1" n="$2" log="$WORK/gradle-$2.log"
-  (cd "$wt/mobile/android" && ./gradlew --no-daemon -q clean bundleRelease >"$log" 2>&1) || { echo "bundleRelease failed — see $log"; return 1; }
+  (cd "$wt/mobile/android" && ./gradlew --no-daemon -q clean bundleRelease >"$log" 2>&1) || { echo "bundleRelease failed — see $log — the error:"; grep -n -A12 "What went wrong" "$log" | head -n 40 || tail -n 30 "$log"; return 1; }
   (cd "$wt/mobile/android" && ./gradlew --no-daemon -q :app:dependencies --configuration releaseRuntimeClasspath >"$WORK/$n.deps.txt" 2>>"$log") || { echo "dependencies failed — see $log"; return 1; }
   cp "$(ls "$wt"/mobile/android/app/build/outputs/bundle/release/*.aab | head -1)" "$WORK/$n.aab" || return 1
   cp "$(find "$wt/mobile/android/app/build/intermediates" -path '*merged_manifest*' -path '*release*' -name AndroidManifest.xml | head -1)" "$WORK/$n.manifest.xml" || { echo "merged manifest not found"; return 1; }
