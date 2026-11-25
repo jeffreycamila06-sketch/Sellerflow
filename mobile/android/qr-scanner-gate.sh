@@ -135,7 +135,11 @@ prepare() { # $1 = worktree
   store="$(sed -n 's/^storeFile=//p' "$KEYPROPS" | head -1)"
   case "$store" in /*) ;; *) store="$(cd "$src_dir" && cd "$(dirname "$store")" && pwd)/$(basename "$store")";; esac
   sed "s#^storeFile=.*#storeFile=$store#" "$KEYPROPS" > "$wt/mobile/android/keystore.properties"
-  (cd "$wt/mobile" && npm ci --silent >/dev/null 2>&1 && npx cap sync android >/dev/null 2>&1) || { echo "npm ci / cap sync failed in $wt"; return 1; }
+  # mobile/package-lock.json has been out of step with package.json since the iOS StatusBar commit
+  # (npm ci refuses), so both builds use the SAME `npm install` that never writes package.json or the lock.
+  local plog="$WORK/prepare-$(basename "$wt").log"
+  (cd "$wt/mobile" && npm install --no-save --no-package-lock --no-audit --no-fund >"$plog" 2>&1 && npx cap sync android >>"$plog" 2>&1) \
+    || { echo "npm install / cap sync failed in $wt — last lines:"; tail -n 15 "$plog"; return 1; }
 }
 build() { # $1 = worktree, $2 = name → .aab, dependencies, manifest, merge report into $WORK/$2.*
   local wt="$1" n="$2" log="$WORK/gradle-$2.log"
