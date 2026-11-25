@@ -109,7 +109,7 @@ git -C "$ROOT" worktree add -q --detach "$WORK/new" "$NEW_SHA" || die "git workt
 
 step() { # $1 = what, rest = command; its messages go to the screen and the report
   local what="$1"; shift
-  say "$what…"
+  say "${what}…"
   "$@" 2>&1 | tee -a "$REPORT"
   return "${PIPESTATUS[0]}"
 }
