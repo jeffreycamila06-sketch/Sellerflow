@@ -59,13 +59,14 @@ Every other screen has **‹ Back** at the top left. It takes you back to where 
 - To see your plan, open **Settings → General Settings → Subscription** (it shows CURRENT PLAN, days left and renew date). Subscription is not shown on iPhone — message Admin.
 - Payment is done outside the app through Telegram. Message Admin on Telegram @SellerFlowLive to subscribe, upgrade or renew.
 - This guide does not quote prices. For prices, message Admin.'),
-  ('account-limit', 'Account limit per plan', '2026-11-22'::date, 'account limit, accounts, multi account, add account, limit reached, plan full, remove account, wait 4 hours, end your live first, ilang account, dagdag account, puno na, 账号上限, 多帳號, 帳號數量, 方案已滿', 'Your plan sets how many live accounts you can have **in total across all live platforms** (TikTok, Facebook, Instagram and Shopee together): Free 1, Basic 1, Plus 2, Pro 3, Master 5. Each Shopee shop counts as one account.
+  ('account-limit', 'Account limit per plan', '2026-11-25'::date, 'account limit, accounts, multi account, add account, limit reached, plan full, remove account, wait 4 hours, end your live first, ilang account, dagdag account, puno na, 账号上限, 多帳號, 帳號數量, 方案已滿', 'Your plan sets how many live accounts you can have **in total across all live platforms** (TikTok, Facebook, Instagram and Shopee together): Free 1, Basic 1, Plus 2, Pro 3, Master 5. Each Shopee shop counts as one account.
 
 When your plan is full, a **Plan full** window shows your accounts:
 - Tap **Remove** next to one, then **Remove** again to confirm. Your orders and stickers stay.
 - An account that is live right now shows **End your live first** — end that live, then remove it.
 - Or tap **Upgrade plan** (on iPhone: **Contact Admin**).
 - After you remove an account you can add a **different** one right away. That new account then can''t be removed or changed again for **4 hours** ("Wait a little" shows the time left). Adding the same account back works right away.
+- On the Free plan you can change or remove your account at any time.
 
 Messages you may see:
 - "Accounts used: 2 of 3" — your count.
@@ -486,12 +487,13 @@ Who has it:
   ('shipping', 'Shipping (Coming soon)', '2026-10-11'::date, 'shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送', 'The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
 
 There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.'),
-  ('manage-accounts', 'Manage TikTok accounts (4-hour lock)', '2026-11-22'::date, 'manage accounts, change username, tiktok username, locked, unlock, 4 hours, palitan account, naka-lock, 更改账号, 換帳號, 锁定', 'Go to **Settings → General Settings → TikTok Live** (or **Manage / add accounts** on the Live screen). This opens **Manage TikTok channels**.
+  ('manage-accounts', 'Manage TikTok accounts (4-hour lock)', '2026-11-25'::date, 'manage accounts, change username, tiktok username, locked, unlock, 4 hours, palitan account, naka-lock, 更改账号, 換帳號, 锁定', 'Go to **Settings → General Settings → TikTok Live** (or **Manage / add accounts** on the Live screen). This opens **Manage TikTok channels**.
 
 - Type your username in an empty row (lowercase letters, numbers, underscores and periods) and tap **Save profile**.
 - A saved account shows **LOCKED**. After a change it stays locked for **4 hours** ("Unlock in Xh Ym").
 - When it unlocks you see **Change**. Tap it, and you have a short time to edit ("You can change this now — … left"). After saving, it locks again for 4 hours.
 - "This username was changed recently. Please try again later." means the 4 hours are not over.
+- On the Free plan you can change or remove your account at any time.
 - Empty rows only go up to your plan''s limit. For more, tap **Add TikTok — Multi Account** and message Admin on Telegram @SellerFlowLive.
 - When your plan is full, the **Plan full** window opens instead (see "Account limit per plan").'),
   ('password-reset', 'Forgot password', '2026-10-11'::date, 'forgot password, reset password, password, can''t log in, code, 6-digit, nakalimutan password, 忘记密码, 忘記密碼, 重设密码', 'On the login screen tap **Forgot password?**. You will see one of these:

@@ -1,0 +1,55 @@
+ok      1-manage-free_android-360.png  Change button 78x44px
+ok      1-manage-free_iphone-390.png  Change button 78x44px
+ok      1-manage-free_iphone-390_dark.png  Change button 78x44px
+ok      1-manage-free_android-412.png  Change button 78x44px
+ok      1-manage-free_android-430.png  Change button 78x44px
+ok      1-manage-free_laptop-1280.png  Change button 78x44px
+ok      2-manage-free-change-tapped_android-360.png
+ok      2-manage-free-change-tapped_iphone-390.png
+ok      2-manage-free-change-tapped_iphone-390_dark.png
+ok      2-manage-free-change-tapped_android-412.png
+ok      2-manage-free-change-tapped_android-430.png
+ok      2-manage-free-change-tapped_laptop-1280.png
+ok      3-manage-free-after-saving-a-new-name_android-360.png  Change button 78x44px
+ok      3-manage-free-after-saving-a-new-name_iphone-390.png  Change button 78x44px
+ok      3-manage-free-after-saving-a-new-name_iphone-390_dark.png  Change button 78x44px
+ok      3-manage-free-after-saving-a-new-name_android-412.png  Change button 78x44px
+ok      3-manage-free-after-saving-a-new-name_android-430.png  Change button 78x44px
+ok      3-manage-free-after-saving-a-new-name_laptop-1280.png  Change button 78x44px
+ok      4-manage-free-second-change-right-away_android-360.png  Change button 78x44px
+ok      4-manage-free-second-change-right-away_iphone-390.png  Change button 78x44px
+ok      4-manage-free-second-change-right-away_iphone-390_dark.png  Change button 78x44px
+ok      4-manage-free-second-change-right-away_android-412.png  Change button 78x44px
+ok      4-manage-free-second-change-right-away_android-430.png  Change button 78x44px
+ok      4-manage-free-second-change-right-away_laptop-1280.png  Change button 78x44px
+ok      5-manage-paid-for-comparison_android-360.png
+ok      5-manage-paid-for-comparison_iphone-390.png
+ok      5-manage-paid-for-comparison_iphone-390_dark.png
+ok      5-manage-paid-for-comparison_android-412.png
+ok      5-manage-paid-for-comparison_android-430.png
+ok      5-manage-paid-for-comparison_laptop-1280.png
+ok      6-planfull-free-list_android-360.png
+ok      6-planfull-free-list_iphone-390.png
+ok      6-planfull-free-list_iphone-390_dark.png
+ok      6-planfull-free-list_android-412.png
+ok      6-planfull-free-list_android-430.png
+ok      6-planfull-free-list_laptop-1280.png
+ok      7-planfull-free-remove-question_android-360.png
+ok      7-planfull-free-remove-question_iphone-390.png
+ok      7-planfull-free-remove-question_iphone-390_dark.png
+ok      7-planfull-free-remove-question_android-412.png
+ok      7-planfull-free-remove-question_android-430.png
+ok      7-planfull-free-remove-question_laptop-1280.png
+ok      8-planfull-free-live-account_android-360.png
+ok      8-planfull-free-live-account_iphone-390.png
+ok      8-planfull-free-live-account_iphone-390_dark.png
+ok      8-planfull-free-live-account_android-412.png
+ok      8-planfull-free-live-account_android-430.png
+ok      8-planfull-free-live-account_laptop-1280.png
+ok      9-shops-free_android-360.png
+ok      9-shops-free_iphone-390.png
+ok      9-shops-free_iphone-390_dark.png
+ok      9-shops-free_android-412.png
+ok      9-shops-free_android-430.png
+ok      9-shops-free_laptop-1280.png
+all 54 pictures: right buttons, no lock words for the free seller, no sideways scroll, nothing cut off

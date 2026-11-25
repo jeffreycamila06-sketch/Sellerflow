@@ -10,6 +10,9 @@
 // different one is immediate. The account that took the place is locked for 4 hours (lockUntil): Remove on it
 // shows "Wait a little" with the time left instead of removing it. If it is removed another way, its place stays
 // used until the 4 hours end (locked / nextFreeAt). The same account back is immediate.
+//
+// FREE PLAN (sql/216, Jeff 2026-11-25): no lock at all. The database says so (`no_lock`) and sends no lock time;
+// the popup and the Shopee shops screen then leave the 4-hour sentences out. Absent (older database) = today.
 import { supabase } from "../../supabase";
 import { tpl, type RedesignT } from "../i18n";
 import { unlockInHM } from "./tiktokCooldown";
@@ -22,7 +25,7 @@ export interface PlanFullTarget {
   wait?: { nextFreeAt: string | null; serverNow: string | null; receivedAt: number }; // the server already said "wait" (receivedAt = this device's ms when the answer came)
 }
 export interface AccountRow { platform: AccountPlatform; key: string; id: string | null; name: string | null; link: boolean; rank: number; covered: boolean; addedAt: string | null; lockUntil: string | null }
-export interface AccountList { v2: boolean; plan: string; limit: number; unlimited: boolean; used: number; locked: number; nextFreeAt: string | null; serverNow: string | null; loadedAt: number; accounts: AccountRow[] }
+export interface AccountList { v2: boolean; plan: string; limit: number; unlimited: boolean; used: number; locked: number; nextFreeAt: string | null; serverNow: string | null; loadedAt: number; accounts: AccountRow[]; noLock?: boolean }
 export interface LiveAccounts { tiktok: string | null; facebook: string | null; instagram: string | null; shopeeUid: string | null; shopeeShopId: string | null }
 
 /** Who sees the new popup / screens: admins, the preview key, or everyone once the switch is on. */
@@ -48,7 +51,7 @@ export function parseAccountList(data: unknown, loadedAt: number = Date.now()): 
   }
   return {
     v2: d.v2 === true, plan: String(d.plan || ""), limit: num(d.limit, 1), unlimited: d.unlimited === true,
-    used: num(d.used), locked: num(d.locked), nextFreeAt: iso(d.next_free_at), serverNow: iso(d.now), loadedAt, accounts,
+    used: num(d.used), locked: num(d.locked), nextFreeAt: iso(d.next_free_at), serverNow: iso(d.now), loadedAt, accounts, noLock: d.no_lock === true,
   };
 }
 
@@ -92,6 +95,7 @@ export function isAccountLive(a: AccountRow, live: LiveAccounts): boolean {
  *  The wait applies when the seller's REAL accounts leave room and only held places fill the plan.
  *  Counted on the SERVER's clock: its time when the answer came + the time this device has counted since. */
 export function waitMs(list: AccountList | null, target: PlanFullTarget, deviceNow: number): number | null {
+  if (list?.noLock) return null;                       // sql/216: Free plan → never a wait
   const fromTarget = !!target.wait?.nextFreeAt;
   const nextFree = fromTarget ? target.wait!.nextFreeAt : (list && list.locked > 0 && list.used - list.locked < list.limit ? list.nextFreeAt : null);
   if (!nextFree) return null;
@@ -106,11 +110,15 @@ export function waitMs(list: AccountList | null, target: PlanFullTarget, deviceN
  *  locked. Same clock as waitMs: the server's time when the list came + what this device has counted since.
  *  Never for a seller without a limit (an admin). */
 export function lockMs(a: AccountRow, list: AccountList | null, deviceNow: number): number | null {
-  if (!a.lockUntil || !list || list.unlimited) return null;
+  if (!a.lockUntil || !list || list.unlimited || list.noLock) return null;
   const serverNowMs = list.serverNow ? Date.parse(list.serverNow) + (deviceNow - list.loadedAt) : deviceNow;
   const ms = Date.parse(a.lockUntil) - serverNowMs;
   return ms > 0 ? ms : null;
 }
+
+/** The sentence under the account list and the Remove question: without the 4 hours for a seller who has no lock (sql/216). */
+export const lockNoteText = (list: AccountList | null, t: RedesignT): string => (list?.noLock ? t.rd_pf_lock_note_free : t.rd_pf_lock_note);
+export const removeBodyText = (list: AccountList | null, t: RedesignT): string => (list?.noLock ? t.rd_pf_rm_body_free : t.rd_pf_rm_body);
 
 export const countdownText = (ms: number, t: RedesignT): string => tpl(t.rd_pf_countdown, unlockInHM(ms));
 
@@ -127,7 +135,7 @@ export function planFullTexts(o: { list: AccountList; target: PlanFullTarget; io
     : one
       ? (target.kind === "tiktok" ? t.rd_pf_to_tiktok_one : target.kind === "facebook" ? t.rd_pf_to_facebook_one : target.kind === "instagram" ? t.rd_pf_to_instagram_one : t.rd_pf_to_shopee_one)
       : (target.kind === "tiktok" ? t.rd_pf_to_tiktok_many : target.kind === "facebook" ? t.rd_pf_to_facebook_many : target.kind === "instagram" ? t.rd_pf_to_instagram_many : t.rd_pf_to_shopee_many);
-  const lock = t.rd_pf_lock_note;
+  const lock = lockNoteText(list, t);
   return {
     title: ios ? t.rd_pf_title_ios : t.rd_pf_title,
     lead: one ? `${head} ${t.rd_pf_this_account}` : `${head} ${goal}`,
