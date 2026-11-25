@@ -6648,3 +6648,51 @@ works, the `/thread_owner` answer was not the shape the code expected. Log-only 
   `RECEIPT_MAX_FAILS`, retries, seller messages: 0 lines. `fbReceiptSameAsMain.server.test.ts` unchanged and green.
 - Tests: `fbThreadOwner.server.test.ts` blocks C (app id / who_is, hidden, none, shape format, no value leaks incl. 300
   random answers, Graph error, switch off = no read, a hanging read never delays the send) and D (10900/0).
+
+## 2026-11-25 — IN-PAGE LIVE QR SCANNER for the Android app WITHOUT the built-in scanner (branch `claude/web-qr-scanner`, NOT merged; sql/218 NOT applied; web only — no app build, no Render)
+Android 1.10 (the built-in scanner) is not being released, so Android sellers stay on app 1.9, where every Scan
+opened the photo picker. This draws the SAME live scanner inside the web page. `mobile/` = 0 lines, printing = 0 lines.
+- **Who gets it — ALL four, else nothing changes** (`adapters/webQrScanner.ts`: `webQrScanner()` at tap time,
+  `webScannerAvailable(switch)` for a render): `Capacitor.getPlatform() === "android"` · NO `SellerFlowScanner`
+  plugin in the app build (`!nativeScannerAvailable(true)`) · switch `app_settings.web_qr_scanner_enabled` exactly
+  `'true'` (`featureSw.webQrScanner`, **sql/218 creates it `'false'`**; RedesignApp → `setWebQrScannerOn`) ·
+  `navigator.mediaDevices.getUserMedia` exists. iPhone (any build), laptop, a browser, Android with the built-in
+  scanner: exactly as before. The native adapter `nativeQrScanner.ts` and `src/lib/qrCentrePick.ts` are not edited.
+- **Where:** 7-11 Parcel Scan, FamilyMart Parcel Scan, Blacklist, Orders. Each screen: ONE new line right after
+  `const native = nativeQrScanner();` → `if (!native && webQrScanner()) { …; return; }`; the lines after it are
+  today's. The read text goes VERBATIM into the screen's own parser (`applyQrRead` / `applyRead` / `applyScan`).
+  Orders: prop `webScan` shows the Scan button too and adds the hidden photo input `ord-scan-file`; Blacklist:
+  prop `webScan` = the wide-screen wording like `liveScan`. RedesignApp's two `liveScan=` lines are unchanged.
+- **The screen (`openWebQrScanner`, plain DOM on `document.body`, the phone app's look):** back camera
+  (`facingMode` ideal environment, ~1920×1080, continuous focus when offered), frame = 68 % of the short side (max
+  320 px), title / hint from the existing `rd_qrs_*` texts (no new text), ✕ Close, flashlight ONLY when the camera
+  track says it has one (`applyConstraints({advanced:[{torch}]})`), "Take a photo instead".
+  Reader per frame: the phone's `BarcodeDetector` when it lists `qr_code`, else the reader the photo flow already
+  loads (`readQrHitsFromPixels` — ADDED at the end of `qrDecode.ts`, nothing above it changed: zxing-wasm through the
+  same loader, jsQR last). Rule = `pickCentreQr` + `stepPick` (2 frames in a row; a tie shows `rd_qrs_one`).
+  A read: beep (0.12 s, 2.6 kHz, WebAudio) + `navigator.vibrate(60)`, then closed.
+- **What the screen gets** (`useWebQrScan()` → `scan(texts, onDone)`, `onDone` is called INSIDE the tap / camera
+  answer so the photo picker can open from it): `read` · `photo` ("Take a photo instead" → today's picker) ·
+  `cancelled` · `fallback` (`denied` → `rd_qrs_cam_off`, anything else → `rd_qrs_cam_busy`; the screen shows that
+  one line and opens today's picker). When the browser no longer counts the tap (a long permission question) the
+  scanner stays with the line and its own "Take a photo instead" instead of closing.
+- **Camera always off afterwards:** every track is stopped on a read, Close, photo, the phone's Back (a history
+  entry while open, like PictureViewer), the app going to the background (`visibilitychange` — while the phone is
+  still asking for permission nothing runs; the camera that then arrives is stopped), `pagehide`, the screen being
+  left (the hook's clean-up), a second scanner opened, a camera that arrives after the close. Never throws.
+- **Fence:** `scripts/web-qr-scanner-fence.mjs --check` (562 files: all of `mobile/`, `server/`, `server.js`,
+  `chrome-extension/`, the packages, every printing / sticker / receipt / Bluetooth file, `nativeQrScanner.ts`,
+  `qrCentrePick.ts`) = git content ids of main `a62c7299`. The vitest copy runs on this branch (also in CI) or with
+  `WEB_QR_GATE=1`; skipped elsewhere so later printing / app work is never blocked. After merging a newer main INTO
+  the branch: `node scripts/web-qr-scanner-fence.mjs --write origin/main`.
+- **Tests:** `webQrScanner.test.ts` (gate: 120 combinations, 1 yes; every close path; refused camera; light; the
+  frame reader) · `webScan.screens.test.tsx` (the real scanner on the 4 screens against a fake phone,
+  `adapters/__tests__/webScan.harness.ts`) · `qrLiveHits.zxing/.jsqr.test.ts` (real sticker pictures as camera
+  frames) · `webQrScanner.fence.test.ts`. Existing native-scanner tests: not edited.
+- **Real browser:** `previews/web-qr-scanner/` — the real app in Chromium at 412×915 as the Android app, with a fake
+  camera playing videos of real stickers (`make-previews.cjs`, `results.txt`): reads, the tie hint, Back, refused
+  camera → the picker really opens, all tracks ended. ⚠️ NOT run on a real Android phone.
+- **Help guide:** not changed (the switch ships off; the Parcel Scan text already describes the live camera). When
+  the switch goes on, "In the latest phone app the camera opens" may want a reword — as its own phrase-swap SQL.
+- **Order:** merge (Vercel) and sql/218 in either order (no row = off) → `update … set value = 'true'` to turn it on;
+  open apps see it after a full close-open. Rollback: the switch `'false'` (instant) or the rollback file.

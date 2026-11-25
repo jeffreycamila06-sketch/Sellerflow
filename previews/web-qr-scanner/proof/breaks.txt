@@ -1,0 +1,57 @@
+caught  gate: any phone, not only the Android app  →  webQrScanner.test.ts
+caught  gate: also when the app build HAS the built-in scanner  →  webQrScanner.test.ts
+caught  gate: also without a camera API  →  webQrScanner.test.ts
+caught  switch: anything truthy turns it on  →  webQrScanner.test.ts
+caught  switch ignored at tap time  →  webQrScanner.test.ts
+caught  switch ignored for a render (Orders button)  →  webQrScanner.test.ts
+caught  the camera is NOT stopped when the scan ends  →  webQrScanner.test.ts
+caught  a camera that arrives after the close is left running  →  webQrScanner.test.ts
+caught  going to the background does not close the scanner  →  webQrScanner.test.ts
+caught  a camera arriving while in the background is kept on  →  webQrScanner.test.ts
+caught  the phone's Back does not close the scanner  →  webQrScanner.test.ts
+caught  a late pop of an earlier scanner closes the new one  →  webQrScanner.test.ts
+caught  its history entry is left behind after Close  →  webQrScanner.test.ts
+caught  leaving the screen still calls the screen back  →  webQrScanner.test.ts
+caught  one frame is enough to read  →  webQrScanner.test.ts
+caught  no 'Point at one QR' hint on a tie  →  webQrScanner.test.ts
+caught  a refused camera is called 'not available'  →  webQrScanner.test.ts
+caught  closes even when the photo picker could not be opened (the tap no longer counts)  →  webQrScanner.test.ts
+caught  the light button is always shown  →  webQrScanner.test.ts
+caught  the light shows 'on' even when the camera refused  →  webQrScanner.test.ts
+caught  no vibration on a read  →  webQrScanner.test.ts
+caught  no beep on a read  →  webQrScanner.test.ts
+caught  the beep is not 2.6 kHz  →  webQrScanner.test.ts
+caught  the FRONT camera is asked  →  webQrScanner.test.ts
+caught  the event sent carries the QR text  →  webQrScanner.test.ts
+caught  a phone reader that cannot read QR codes is still used  →  webQrScanner.test.ts
+caught  the phone's failing reader is never given up on  →  webQrScanner.test.ts
+caught  a camera that never shows a picture keeps the scanner open for ever  →  webQrScanner.test.ts
+caught  a second scanner can be opened on top of the first  →  webQrScanner.test.ts
+caught  the frame is not the phone app's size  →  webQrScanner.test.ts
+caught  Parcel Scan: the page's scanner also when the built-in one is there  →  webQrScanner.fence.test.ts
+caught  Parcel Scan: the read text is changed before today's parser  →  webScan.screens.test.tsx
+caught  Parcel Scan: 'Take a photo instead' / a refused camera opens no photo picker  →  webScan.screens.test.tsx
+caught  Parcel Scan: no line when the camera is refused  →  webScan.screens.test.tsx
+caught  FamilyMart: the read is not applied  →  webScan.screens.test.tsx
+caught  Blacklist: no line when the camera is refused  →  webScan.screens.test.tsx
+caught  Blacklist: the read skips today's parser (saved as another platform)  →  webScan.screens.test.tsx
+caught  Orders: the photo input is always on the page  →  webScan.screens.test.tsx
+caught  Orders: no Scan button with the page's scanner  →  webScan.screens.test.tsx
+caught  Orders: the read is not applied  →  webScan.screens.test.tsx
+caught  RedesignApp: Orders always gets webScan  →  webQrScanner.fence.test.ts
+caught  RedesignApp: the switch is never handed to the scanner  →  webQrScanner.fence.test.ts
+caught  the app reads another switch name  →  webQrScanner.test.ts
+caught  the switch is on by default  →  webQrScanner.test.ts
+caught  sql/218 creates the switch ON  →  webQrScanner.fence.test.ts
+caught  sql/218 overwrites a row that is already there  →  webQrScanner.fence.test.ts
+caught  the rollback deletes more than its row  →  webQrScanner.fence.test.ts
+caught  the frame reader finds only one QR (two stickers would be guessed)  →  qrLiveHits.zxing.test.ts
+caught  the frame reader gives a corner, not the centre  →  qrLiveHits.zxing.test.ts
+caught  the scanner uses printing code  →  webQrScanner.fence.test.ts
+caught  FENCE: a printing file is changed  →  webQrScanner.fence.test.ts
+caught  FENCE: an app-build file is changed  →  webQrScanner.fence.test.ts
+caught  FENCE: the native scanner's adapter is changed  →  webQrScanner.fence.test.ts
+caught  FENCE: a file is added under mobile/  →  webQrScanner.fence.test.ts
+caught  FENCE: a server file is changed  →  webQrScanner.fence.test.ts
+
+55 of 55 on-purpose breaks caught

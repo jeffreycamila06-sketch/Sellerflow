@@ -338,3 +338,46 @@ export async function decodeQrFromVideo(video: HTMLVideoElement): Promise<string
   const canvas = drawDownscaled(video, video.videoWidth, video.videoHeight);
   return canvas ? decodeCanvas(canvas) : null;
 }
+
+// ── Live camera frames for the in-page scanner (adapters/webQrScanner) — ADDED, nothing above changed ──
+// Every QR in one frame's pixels WITH its centre (the centre rule needs positions). Only used where the
+// phone has no reader of its own: the stronger reader (the SAME loader as the photo flow), else jsQR.
+// null = no reader could be loaded. Never throws.
+export interface QrPixelHit { text: string; cx: number; cy: number }
+type ZxPlaced = { isValid: boolean; text: string; position?: { topLeft: Pt; topRight: Pt; bottomRight: Pt; bottomLeft: Pt } };
+const ZX_LIVE_OPTIONS = { formats: ["QRCode"], tryHarder: false, tryRotate: false, tryInvert: false, tryDownscale: false, maxNumberOfSymbols: 4 };
+let zxLiveGaveUp = false; // the stronger reader did not load once → jsQR for the rest of this app open
+export async function readQrHitsFromPixels(px: Pixels): Promise<QrPixelHit[] | null> {
+  if (!px || !px.width || !px.height) return [];
+  const centre = (q: Pt[]): { cx: number; cy: number } => ({ cx: q.reduce((s, p) => s + p.x, 0) / q.length, cy: q.reduce((s, p) => s + p.y, 0) / q.length });
+  if (!zxLiveGaveUp) {
+    const zx = await within(loadZxing(), ZX_LOAD_MS, null);
+    if (zx) {
+      try {
+        const out: QrPixelHit[] = [];
+        for (const r of (await zx.readBarcodes(px, ZX_LIVE_OPTIONS)) as ZxPlaced[]) {
+          const p = r.position;
+          if (!r.isValid || !r.text || !p) continue;
+          out.push({ text: r.text, ...centre([p.topLeft, p.topRight, p.bottomRight, p.bottomLeft]) });
+        }
+        return out;
+      } catch { return []; }
+    }
+    zxLiveGaveUp = true;
+  }
+  let jsQR: typeof import("jsqr").default;
+  try { jsQR = (await import("jsqr")).default; } catch { return null; }
+  // jsQR sees ONE code per look: blank it and look once more, so a second sticker is seen (never a guess).
+  const data = new Uint8ClampedArray(px.data);
+  const out: QrPixelHit[] = [];
+  for (let i = 0; i < 2; i++) {
+    let r: ReturnType<typeof jsQR>;
+    try { r = jsQR(data, px.width, px.height); } catch { break; }
+    if (!r || typeof r.data !== "string" || !r.data) break;
+    const L = r.location;
+    const quad = [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner];
+    out.push({ text: r.data, ...centre(quad) });
+    blank(data, px.width, px.height, quad);
+  }
+  return out;
+}

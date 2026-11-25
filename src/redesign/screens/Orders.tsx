@@ -40,8 +40,9 @@ import PostsBody, { type PostsUi } from "./PostSales";
 import { markPostsSeen, postsSeen } from "../adapters/fbPostSales";
 import { useScreenTimers } from "../adapters/useScreenTimers";
 import { isFreeOrder } from "../../lib/freeOrder";
-import type { QrOutcome } from "../adapters/qrDecode";
+import { readQrFromFile, warmQrReader, type QrOutcome } from "../adapters/qrDecode";
 import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
+import { useWebQrScan, webQrScanner, webScanFallbackText } from "../adapters/webQrScanner";
 import { blacklistHandleFromQr } from "../adapters/blacklist";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
@@ -58,8 +59,12 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
   tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow, posts, postsLocked = false, onPostsLocked,
-  liveScan = false,
+  liveScan = false, webScan = false,
 }: {
+  // The in-page live scanner (the Android app WITHOUT the built-in scanner, web_qr_scanner_enabled on —
+  // RedesignApp: webScannerAvailable). It also shows the Scan button, and adds the hidden photo input its
+  // "Take a photo instead" opens. Absent/false = nothing of it on the page.
+  webScan?: boolean;
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // Scan button (2026-11-22): ONLY when the phone app's live scanner is there (the app build has it AND
   // native_qr_scanner_enabled is on — RedesignApp: nativeScannerAvailable). Absent/false = no Scan button
@@ -243,8 +248,36 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
     setQuery(q);
     setScanned({ handle, query: q });
   };
+  // The in-page scanner (webScan): its read goes through the SAME applyScan; "Take a photo instead" and a
+  // camera that can't be used open the photo picker (ord-scan-file → the same reader as Parcel Scan).
+  const scanFileRef = useRef<HTMLInputElement | null>(null);
+  const webScanOpen = useWebQrScan();
+  const onScanFile = async (files: FileList | null) => {
+    const f = files && files[0];
+    if (scanFileRef.current) scanFileRef.current.value = ""; // the same photo can be picked again
+    if (!f) return;
+    setScanBusy(true);
+    let read: QrOutcome;
+    try { read = await readQrFromFile(f); } catch { read = { kind: "none", reason: "image_unreadable" }; }
+    if (!aliveRef.current) return;
+    setScanBusy(false);
+    applyScan(read);
+  };
+  const onWebScan = () => {
+    const texts = scannerTexts(t);
+    setScanBusy(true);
+    webScanOpen(texts, (out) => {
+      if (!aliveRef.current) return;
+      setScanBusy(false);
+      if (out.kind === "cancelled") return;
+      if (out.kind === "read") { applyScan({ kind: "one", text: out.text }); return; }
+      if (out.kind === "fallback") showScanMsg(webScanFallbackText(out.reason, texts));
+      warmQrReader(); scanFileRef.current?.click();
+    });
+  };
   const onScanTap = () => {
     const native = nativeQrScanner();
+    if (!native && webQrScanner()) { onWebScan(); return; }
     if (!native) return; // only reachable if the switch went off after the button was drawn
     setScanBusy(true);
     void runStickerScan(native, scannerTexts(t)).then((out) => {
@@ -445,7 +478,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           {searching && (
             <button onClick={() => setQuery("")} aria-label={t.rd_ord_search_clear} style={{ background: "transparent", border: "none", color: "var(--on-header)", fontSize: 14, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
           )}
-          {liveScan && (
+          {webScan && <input ref={scanFileRef} type="file" accept="image/*" hidden data-testid="ord-scan-file" onChange={(e) => void onScanFile(e.target.files)} />}
+          {(liveScan || webScan) && (
             <button type="button" className="sfl-tap44 sfl-tap44-up" onClick={onScanTap} disabled={scanBusy} data-testid="ord-scan" aria-label={t.rd_qrs_title} title={t.rd_qrs_title}
               style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, height: 26, boxSizing: "border-box", lineHeight: 1, padding: "0 10px", margin: "-5px -6px -5px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", background: "rgba(255,255,255,.16)", color: "var(--on-header)", fontSize: 12, fontWeight: 800, cursor: scanBusy ? "default" : "pointer", opacity: scanBusy ? 0.6 : 1, fontFamily: "var(--font-ui)", whiteSpace: "nowrap" }}>
               <span aria-hidden="true">▣</span>{t.rd_ord_scan}

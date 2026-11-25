@@ -14,6 +14,7 @@ import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { isAndroid } from "../adapters/platform";
 import { readQrFromFile, warmQrReader, type QrOutcome } from "../adapters/qrDecode";
 import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
+import { useWebQrScan, webQrScanner, webScanFallbackText } from "../adapters/webQrScanner";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import { validHandle, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import {
@@ -269,8 +270,23 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     finally { if (aliveRef.current) setQrBusy(false); }
   };
   // Same as 7-11: the phone app's live scanner when this build has one, else today's photo picker.
+  // Same as 7-11: the Android app WITHOUT the built-in scanner, switch on → the live camera drawn by the page.
+  const webScan = useWebQrScan();
+  const onWebScanQr = () => {
+    const texts = scannerTexts(t);
+    setQrBusy(true);
+    webScan(texts, (out) => {
+      if (!aliveRef.current) return;
+      setQrBusy(false);
+      if (out.kind === "cancelled") return;
+      if (out.kind === "read") { try { applyQrRead({ kind: "one", text: out.text }); } catch { flash(t.rd_ps2_qr_none); } return; }
+      if (out.kind === "fallback") flash(webScanFallbackText(out.reason, texts));
+      warmQrReader(); qrRef.current?.click(); // "Take a photo instead" / the camera can't be used → today's photo picker
+    });
+  };
   const onScanQrTap = () => {
     const native = nativeQrScanner();
+    if (!native && webQrScanner()) { onWebScanQr(); return; }
     if (!native) { warmQrReader(); qrRef.current?.click(); return; }
     setQrBusy(true);
     void runStickerScan(native, scannerTexts(t)).then((out) => {
