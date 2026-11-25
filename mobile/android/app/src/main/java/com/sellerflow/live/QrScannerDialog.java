@@ -12,12 +12,14 @@ import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
-import android.media.AudioManager;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioTrack;
 import android.media.Image;
-import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Size;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -39,6 +41,7 @@ import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.core.resolutionselector.AspectRatioStrategy;
 import androidx.camera.core.resolutionselector.ResolutionSelector;
+import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
@@ -72,7 +75,9 @@ import java.util.concurrent.Executors;
  * Reader = ML Kit barcode scanning (bundled model, QR only). Every frame: the QRs' centres are
  * mapped to the screen (QrCentrePick.mapToView) and QrCentrePick.pick / step decide — nearest the
  * frame's centre, clearly nearer than the next one, 2 frames in a row; too close → "Point at one QR".
- * A read = a short beep (notification volume, silent in silent mode) + a haptic tap (no VIBRATE permission).
+ * The reader gets a large picture (about 1920x1440, never above it) so a QR still reads from a distance;
+ * the on-screen preview keeps the camera's own size.
+ * A read = the iPhone's beep (0.12 s, 2.6 kHz) on the MEDIA volume + a haptic tap (no VIBRATE permission).
  */
 final class QrScannerDialog extends Dialog {
     interface Listener {
@@ -394,8 +399,15 @@ final class QrScannerDialog extends Dialog {
             .build();
         preview = new Preview.Builder().setResolutionSelector(rs).build();
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
+        // Reader picture: CameraX's analysis default is only 640x480, so a QR had to be held very close.
+        // Ask for about 1920x1440 (4:3), never bigger; a phone that can't gives the nearest smaller size.
+        ResolutionSelector readRs = new ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .setResolutionStrategy(new ResolutionStrategy(new Size(1920, 1440),
+                ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
+            .build();
         analysis = new ImageAnalysis.Builder()
-            .setResolutionSelector(rs)
+            .setResolutionSelector(readRs)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build();
         scanner = BarcodeScanning.getClient(new BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build());
@@ -479,10 +491,41 @@ final class QrScannerDialog extends Dialog {
             root.performHapticFeedback(haptic, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
         } catch (Exception ignored) {}
         try {
-            final ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80);
-            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 120);
-            new Handler(Looper.getMainLooper()).postDelayed(tone::release, 300);
+            final AudioTrack beep = makeBeep();
+            if (beep != null) {
+                beep.play();
+                new Handler(Looper.getMainLooper()).postDelayed(beep::release, 400);
+            }
         } catch (Exception ignored) {}
+    }
+
+    /** The iPhone scanner's beep: 0.12 s of 2.6 kHz with a 5 ms fade in/out, on the MEDIA volume
+     *  (the notification stream was silent on phones set to silent/vibrate or with a low ring volume). */
+    private static AudioTrack makeBeep() {
+        final int rate = 22050;
+        final int count = rate * 12 / 100;
+        final int fadeLen = rate / 200;
+        short[] pcm = new short[count];
+        for (int i = 0; i < count; i++) {
+            double fade = Math.min(1.0, (double) Math.min(i, count - i) / fadeLen);
+            double v = Math.sin(2.0 * Math.PI * 2600.0 * i / rate) * 0.5 * fade;
+            pcm[i] = (short) (Math.max(-1.0, Math.min(1.0, v)) * Short.MAX_VALUE);
+        }
+        AudioTrack track = new AudioTrack.Builder()
+            .setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build())
+            .setAudioFormat(new AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(rate)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build())
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .setBufferSizeInBytes(count * 2)
+            .build();
+        if (track.write(pcm, 0, count) != count) { track.release(); return null; }
+        return track;
     }
 
     /** Dims everything but the rounded square frame in the middle and draws its white edge. */
