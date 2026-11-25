@@ -31,6 +31,7 @@ const tables: Record<string, Row[]> = {
     // Native "Scan sticker QR" switch (sql/210) — the Orders Scan button shows only with it AND the phone
     // app's scanner (docs/design/native-qr-scanner/header-check.cjs fakes that plugin).
     { key: "native_qr_scanner_enabled", value: "true" },
+    { key: "web_qr_scanner_enabled", value: "true" },
   ],
   // One finished 2-day session (Orders → Sessions picker + its Export). day(-n) = n days ago.
   live_session_orders: [
@@ -116,6 +117,7 @@ const quotaAnswer = (): unknown => {
 };
 const RPC: Record<string, unknown> = {
   account_quota: quotaAnswer(),
+  blacklist_add: { result: "added", id: "preview-added-1", day: day(0) }, // Blacklist "Add" in a preview (previews/web-qr-scanner)
   my_referral_summary: INV === "choose"
     ? { code: null, month_days: 10, eligible: true, has_inviter: false, can_enter_code: true, invites: [] }
     : { code: "BUDGETUKAY", month_days: 10, eligible: INV !== "free", has_inviter: false, can_enter_code: INV === "free",

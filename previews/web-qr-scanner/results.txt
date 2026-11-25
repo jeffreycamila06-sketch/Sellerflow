@@ -1,0 +1,47 @@
+In-page QR scanner — the real app in Chromium at 412×915, as the Android app without the built-in scanner,
+with a fake camera playing videos of real SellerFlowLive stickers (see make-previews.cjs).
+The QR reader here is the loaded one (Chromium on this machine has no reader of its own).
+
+ok   scanner open over Parcel Scan, hint "Point at the QR on the sticker", still open after 1.5 s (the sticker's QR is outside the frame)
+ok   frame 280×280 px in the middle (206, 458) — 68 % of 412
+ok   no sideways scroll (0)
+ok   buttons: wqs-close 46×46 · wqs-light 46×46 · wqs-photo 197×50 (each at least 44 px)
+     picture: previews/web-qr-scanner/01-scanner-light-off.png
+ok   light button → the camera is asked to switch its light ON
+     picture: previews/web-qr-scanner/02-scanner-light-on.png
+ok   light button again → OFF
+ok   Close → scanner gone, 1 camera track(s), all stopped: true
+ok   Close → the username box is untouched
+ok   no page error (0)
+ok   two stickers in the frame → the REAL reader sees both → hint "Point at one QR"
+ok   …and after 1.2 s more nothing was read (never a guess between two)
+     picture: previews/web-qr-scanner/03-point-at-one-qr.png
+ok   the phone's Back → scanner gone, camera stopped: true; still on Parcel Scan: true
+ok   no page error (0)
+ok   7-11 Parcel Scan: live read → username "jhun.belle" (from the QR https://tiktok.com/@jhun.belle), 394 ms after the tap
+ok   after the read: scanner gone, camera stopped: true
+     picture: previews/web-qr-scanner/08-parcel-scan-after-read.png
+ok   no page error (0)
+     picture: previews/web-qr-scanner/06-blacklist-scan-button.png
+ok   Blacklist: the Scan sticker QR button
+ok   Blacklist: live read → "✓ Added @jhun.belle — Return itemUndo"
+ok   camera stopped: true
+     picture: previews/web-qr-scanner/09-blacklist-after-read.png
+ok   no page error (0)
+ok   Orders: the Scan button is there (Android app without the built-in scanner, switch on)
+     picture: previews/web-qr-scanner/07-orders-scan-button.png
+ok   Orders: live read → the search box "@jhun.belle"
+ok   camera stopped: true
+     picture: previews/web-qr-scanner/10-orders-after-read.png
+ok   no page error (0)
+ok   "Take a photo instead" → the photo picker opened: true; scanner gone; camera stopped: true
+ok   camera refused → the photo picker opened: true; the line: "Camera is off for SellerFlowLive"; no scanner left on screen
+     picture: previews/web-qr-scanner/04-camera-refused-photo-flow.png
+ok   camera refused after a long permission question (the tap no longer counts) → the scanner stays with the line "Camera is off for SellerFlowLive" and its own button
+     picture: previews/web-qr-scanner/05-camera-refused-after-long-question.png
+ok   …"Take a photo instead" there → the photo picker opened: true
+ok   a plain browser (no app): Scan QR → the photo picker at once: true; camera asked 0 time(s); no scanner
+ok   a plain browser (no app): Orders has no Scan button
+ok   the iPhone app without the built-in scanner: Scan QR → the photo picker at once: true; camera asked 0 time(s); no scanner
+
+ALL CHECKS PASSED

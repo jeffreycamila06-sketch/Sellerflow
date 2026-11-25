@@ -31,6 +31,7 @@ import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUser
 import { useWakeLock } from "../adapters/useWakeLock";
 import { readQrFromFile, warmQrReader, type QrOutcome } from "../adapters/qrDecode";
 import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
+import { useWebQrScan, webQrScanner, webScanFallbackText } from "../adapters/webQrScanner";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import CustomerDetails from "./CustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
@@ -1181,8 +1182,25 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // new app builds, switch on); a laptop or an older app build → today's photo picker, unchanged.
   // Its answer goes through the SAME applyQrRead (a photo from "Take a photo instead" through
   // readQrFromFile first, like today).
+  // The Android app WITHOUT the built-in scanner, switch on (adapters/webQrScanner): the live camera drawn
+  // by the page. Its read goes through the SAME applyQrRead; "Take a photo instead" and a camera that
+  // can't be used open today's photo picker (the second with one short line).
+  const webScan = useWebQrScan();
+  const onWebScanQr = () => {
+    const texts = scannerTexts(t);
+    setQrBusy(true);
+    webScan(texts, (out) => {
+      if (!aliveRef.current) return;
+      setQrBusy(false);
+      if (out.kind === "cancelled") return;
+      if (out.kind === "read") { try { applyQrRead({ kind: "one", text: out.text }); } catch { setToast(t.rd_ps2_qr_none); later(() => setToast(""), 2500); } return; }
+      if (out.kind === "fallback") { setToast(webScanFallbackText(out.reason, texts)); later(() => setToast(""), 2500); }
+      warmQrReader(); qrRef.current?.click();
+    });
+  };
   const onScanQrTap = () => {
     const native = nativeQrScanner();
+    if (!native && webQrScanner()) { onWebScanQr(); return; }
     if (!native) { warmQrReader(); qrRef.current?.click(); return; }
     setQrBusy(true);
     void runStickerScan(native, scannerTexts(t)).then((out) => {
