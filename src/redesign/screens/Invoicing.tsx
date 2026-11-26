@@ -24,6 +24,8 @@ import { mayBeIncomplete, sessionRange, usePastSessions } from "../adapters/past
 import { useCopyFeedback } from "../adapters/buttonFeedback";
 import CopyFailNote from "../components/CopyFailNote";
 import SoonBadge from "../components/SoonBadge";
+import PlatformEmblem from "../components/PlatformEmblem";
+import { LIVE_PICKER_MOTION, emblemMotionVars, emblemOutline, EMBLEM_SLUG, type PickerPlatform } from "../adapters/livePicker";
 import TikTokSendSheet from "../components/TikTokSendSheet";
 import InvoiceFormatSheet from "../components/InvoiceFormatSheet";
 import {
@@ -349,13 +351,27 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
         </HeaderWithBack>
       </div>
       <div style={{ padding: "12px 14px 26px", maxWidth: 720, margin: "0 auto", boxSizing: "border-box" }}>
-        <div role="tablist" data-testid="ivc-tabs" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4, padding: 4, borderRadius: 12, background: "var(--chip-bg)", marginBottom: 12 }}>
-          {INVOICE_PLATFORMS.map((p) => (
-            <button key={p} type="button" role="tab" aria-selected={tab === p} data-testid={`ivc-tab-${p}`} onClick={() => setTab(p)}
-              style={{ minHeight: 44, minWidth: 0, padding: "0 2px", borderRadius: 9, border: "none", background: tab === p ? "var(--surface)" : "transparent", color: tab === p ? "var(--text)" : "var(--text-muted)", boxShadow: tab === p ? "var(--shadow)" : "none", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {PLATFORM_NAME[p]}
-            </button>
-          ))}
+        {/* Each tab = the Live picker's own emblem (small) above the name. The selected tab's emblem moves at
+            the picker's speed, the others slowly (redesign.css .sfl-ivc-tab*); the app's motion switch and
+            "reduce motion" stop all of it. */}
+        <div role="tablist" data-testid="ivc-tabs" className={`sfl-ivc-tabs sfl-ivc-tabs--m-${LIVE_PICKER_MOTION}`}
+          style={{ ...emblemMotionVars(), display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4, padding: 4, borderRadius: 14, background: "var(--chip-bg)", marginBottom: 12 } as CSSProperties}>
+          {INVOICE_PLATFORMS.map((p) => {
+            const brand = PLATFORM_NAME[p] as PickerPlatform;
+            const on = tab === p;
+            return (
+              <button key={p} type="button" role="tab" aria-selected={on} data-testid={`ivc-tab-${p}`} onClick={() => setTab(p)}
+                className={`sfl-ivc-tab${on ? " is-on" : ""}`}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, minHeight: 56, minWidth: 0, padding: "5px 1px 4px", boxSizing: "border-box", borderRadius: 11, border: `2px solid ${on ? emblemOutline(brand) : "transparent"}`, background: on ? "var(--surface)" : "transparent", color: on ? "var(--text)" : "var(--text-muted)", boxShadow: on ? "var(--shadow)" : "none", cursor: "pointer", fontFamily: "var(--font-ui)", overflow: "hidden" }}>
+                <span aria-hidden="true" data-testid={`ivc-tab-emblem-${p}`} className="sfl-ivc-emb">
+                  <span className="sfl-ivc-emb-in">
+                    <span className={`sfl-lpk-emb sfl-lpk-emb--${EMBLEM_SLUG[brand]}`}><PlatformEmblem platform={brand} /></span>
+                  </span>
+                </span>
+                <span data-testid={`ivc-tab-name-${p}`} style={{ maxWidth: "100%", fontSize: 12, fontWeight: 700, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{PLATFORM_NAME[p]}</span>
+              </button>
+            );
+          })}
         </div>
         {tab === "tiktok" ? tiktok : soon(tab)}
       </div>
