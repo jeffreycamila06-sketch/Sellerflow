@@ -42,6 +42,8 @@ import { opaqueErrors } from "./server/errorCodes.js";
 import { finalErrorHandler } from "./server/finalErrorHandler.js";
 import { registerHealthRoutes } from "./server/healthRoutes.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
+import { createSendAllRunner, SEND_ALL_TICK_MS } from "./server/fbSendAll.js";
+import { makeReceiptAccess } from "./server/fbReceiptAccess.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { createFbPostSales, pageLiveIn } from "./server/fbPostSales.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
@@ -2468,6 +2470,7 @@ try {
 let fbRuntime = null;
 let stopReceiptCleanup = null;
 let autoReceiptRunner = null; // B1 — set inside the Facebook block; the timer below is a no-op while null
+let sendAllRunner = null; // FB-2 Invoicing "Send all in Messenger" — set inside the Facebook block
 // F5 — an FB init failure must NEVER take down the server (or the live TikTok/Shopee
 // relays). The whole gated block is wrapped so any throw is logged and leaves
 // fbRuntime null; TikTok/Shopee routes/relays are unaffected.
@@ -2488,6 +2491,29 @@ try {
         const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_receipt_owner_read_enabled").maybeSingle();
         if (error) throw new Error("fb_receipt_owner_read_enabled_read_failed");
         return data ? data.value : null;
+      },
+    });
+    // FB-2 (sql/225): Invoicing → Facebook "Send all in Messenger". Exact 'true' = every seller with the
+    // add-on; otherwise admins only. Read at most once a minute; a failed read = off.
+    const sendAllFlag = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_send_all_enabled").maybeSingle();
+        if (error) throw new Error("fb_send_all_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
+    // Rule 2 (server/fbReceiptAccess.js): the add-on row AND the plan not ended (plan_expiry empty or
+    // in the future). Any error = no. receiptAddonRow = the row alone (the Facebook sign-in only).
+    const receiptAccess = makeReceiptAccess({
+      readAccess: async (uid) => {
+        const { data, error } = await serviceSb.from("fb_receipt_access").select("enabled").eq("user_id", uid).eq("enabled", true).maybeSingle();
+        if (error) throw new Error("receipt_access_read");
+        return data || null;
+      },
+      readProfile: async (uid) => {
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan_expiry").eq("auth_user_id", uid).maybeSingle();
+        if (error) throw new Error("receipt_plan_read");
+        return data || null;
       },
     });
     const store = {
@@ -2517,12 +2543,80 @@ try {
         if (error) throw new Error("fb_page_read_failed");
         return data || null;
       },
-      // fb_receipt_access (sql/73): may this user grant pages_messaging? Any error → false.
-      async hasReceiptAccess(userId) {
-        try {
-          const { data, error } = await serviceSb.from("fb_receipt_access").select("user_id").eq("user_id", String(userId || "")).eq("enabled", true).maybeSingle();
-          return !error && !!data;
-        } catch { return false; }
+      // fb_receipt_access (sql/73) AND the plan not ended (rule 2, 2026-11-26). Any error → false.
+      // Used by the receipt Send, Send all, /fb/access and the sold-out message. The Facebook
+      // sign-in (fbRuntime below) keeps the row-only check.
+      hasReceiptAccess: (userId) => receiptAccess.hasReceiptAccess(userId),
+      // ── FB-2 Send all (server/fbSendAll.js, sql/225) — service role, explicit user_id ──
+      async isAdmin(userId) {
+        const { data, error } = await serviceSb.from("seller_profiles").select("role").eq("auth_user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("send_all_role_read");
+        return String(data?.role || "").trim().toLowerCase() === "admin";
+      },
+      async insertSendAllJob(row) {
+        const { data, error } = await serviceSb.from("fb_send_all_jobs").insert(row).select("id").single();
+        if (error) return error.code === "23505" ? { conflict: true } : { error: "insert_failed" };
+        return { id: data.id };
+      },
+      async claimSendAllJobs(limit) {
+        const { data, error } = await serviceSb.rpc("claim_fb_send_all_jobs", { p_limit: limit });
+        if (error) throw new Error("send_all_claim");
+        return data || [];
+      },
+      async touchSendAllJob(id, patch) {
+        const { error } = await serviceSb.from("fb_send_all_jobs").update(patch).eq("id", id).eq("status", "running");
+        if (error) throw new Error("send_all_touch");
+      },
+      async finishSendAllJob(id, patch) {
+        const { error } = await serviceSb.from("fb_send_all_jobs").update(patch).eq("id", id).eq("status", "running");
+        if (error) throw new Error("send_all_finish");
+      },
+      async latestSendAllJob(userId, sessionId) {
+        const { data, error } = await serviceSb.from("fb_send_all_jobs").select("id, status, buyer_number, total, sent, skipped, failed, note, created_at, claimed_at, finished_at")
+          .eq("user_id", String(userId)).eq("session_id", String(sessionId)).order("id", { ascending: false }).limit(1).maybeSingle();
+        if (error) throw new Error("send_all_job_read");
+        return data || null;
+      },
+      // That session's Facebook orders, oldest first, all pages.
+      async listSessionFbRows(userId, sessionId) {
+        const out = [];
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await serviceSb.from("live_session_orders")
+            .select("id, session_id, buyer_number, handle, customer_name, product, price, qty, created_at, comment_msg_id, platform_meta")
+            .eq("user_id", String(userId)).eq("session_id", String(sessionId)).eq("platform", "Facebook")
+            .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999);
+          if (error) throw new Error("send_all_rows");
+          out.push(...(data || []));
+          if (!data || data.length < 1000) return out;
+        }
+      },
+      async listSessionReceipts(userId, sessionId) {
+        const out = [];
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await serviceSb.from("fb_receipts").select("comment_id, status, sent_at, kind, error_code, created_at")
+            .eq("user_id", String(userId)).eq("session_id", String(sessionId)).order("id", { ascending: true }).range(from, from + 999);
+          if (error) throw new Error("send_all_receipts");
+          out.push(...(data || []));
+          if (!data || data.length < 1000) return out;
+        }
+      },
+      // Buyer numbers the seller saved as Sent by hand / Can't message / Cancelled on the Facebook tab.
+      async listInvoiceSkips(userId, sessionId) {
+        const { data, error } = await serviceSb.from("invoice_sends").select("buyer_number, status")
+          .eq("user_id", String(userId)).eq("session_key", String(sessionId)).eq("platform", "facebook").in("status", ["sent", "skipped", "cancelled"]);
+        if (error) throw new Error("send_all_skips");
+        return (data || []).map((r) => Number(r.buyer_number));
+      },
+      async listLineCancels(userId, sessionId) {
+        const { data, error } = await serviceSb.from("invoice_line_cancels").select("order_id")
+          .eq("user_id", String(userId)).eq("session_key", String(sessionId)).eq("platform", "facebook");
+        if (error) throw new Error("send_all_cancels");
+        return (data || []).map((r) => Number(r.order_id));
+      },
+      async getSendAllSettings(userId) {
+        const { data, error } = await serviceSb.from("seller_receipt_settings").select("opening, note, qr_image, invoice_shipping_fee").eq("user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("send_all_settings");
+        return { opening: data?.opening || "", note: data?.note || "", qrImage: data?.qr_image || null, shippingFee: Number(data?.invoice_shipping_fee) > 0 ? Number(data.invoice_shipping_fee) : 0 };
       },
       // ── Messenger receipt (server/fbReceipt.js, sql/75) — service role, explicit user_id ──
       async listReceiptOrders(userId, sessionId, buyerNumber, sinceIso) {
@@ -2700,7 +2794,9 @@ try {
     });
     fbRuntime = createFbRuntime({
       config: fbCfg,
-      store,
+      // the Facebook sign-in asks for Messenger permission when the add-on row is there (rule 2 is
+      // NOT applied there: a seller whose plan ended keeps the Page's permission for the renewal)
+      store: { ...store, hasReceiptAccess: (uid) => receiptAccess.receiptAddonRow(uid) },
       stopReasonsEnabled: fbStopReasonsFlag,
       commentPagingEnabled: fbCommentPagingFlag,
       identityV2Enabled: fbIdentityV2Flag,
@@ -2888,6 +2984,21 @@ try {
       autoReceiptRunner = null;
       console.log("[FB] auto-receipt not started");
     }
+    // FB-2 — Invoicing → Facebook "Send all in Messenger" (switch fb_send_all_enabled or an admin; the
+    // add-on with the plan not ended). Same receipt instance = same buyer lock as the manual Send. Isolated.
+    try {
+      if (fbReceiptApi) {
+        sendAllRunner = createSendAllRunner({
+          store, receipt: fbReceiptApi, enabled: sendAllFlag, config: fbCfg,
+          fetchImpl: withAppSecretProof(globalThis.fetch, fbCfg.appSecret), // the can_reply_privately preflight
+          log: (line) => console.log(line),
+        });
+        sendAllRunner.registerRoutes(app, requireAuth);
+      }
+    } catch {
+      sendAllRunner = null;
+      console.log("[FB] send-all not started");
+    }
     // Receipt pictures older than 24 hours are deleted from the bucket (hourly).
     try {
       stopReceiptCleanup = startReceiptImageCleanup({ store, log: (line) => console.log(line) });
@@ -2975,6 +3086,9 @@ try {
 {
   const autoReceiptTimer = setInterval(() => { if (autoReceiptRunner) void autoReceiptRunner.tick().catch(() => {}); }, AUTO_RECEIPT_TICK_MS);
   if (typeof autoReceiptTimer.unref === "function") autoReceiptTimer.unref();
+  // FB-2 Send all: picks up a job a restart left behind (a tap starts its job at once).
+  const sendAllTimer = setInterval(() => { if (sendAllRunner) sendAllRunner.kick(); }, SEND_ALL_TICK_MS);
+  if (typeof sendAllTimer.unref === "function") sendAllTimer.unref();
 }
 
 // ── INSTAGRAM LIVE (phase 1, admin / preview only) — server/igLive.js ─────────
