@@ -202,6 +202,27 @@ if (FAC) {
   RPC.admin_free_account_reset = { ok: true, was: 193 };
 }
 
+// Receipt add-on previews (sql/223, docs/design/fb-addon-lock): ?ra=1&admin=1 — made-up sellers and the
+// Admin "Receipt add-on" list (shop, email, plan, plan end, since, note). Never shipped.
+if (/[?&]ra=1\b/.test(Q)) {
+  const seller = (n: number, email: string, shop: string, plan: string, endsIn: number | null) => ({
+    auth_user_id: `ra-${n}`, email, full_name: shop, store_name: shop, phone: "", tiktok: "", facebook: "", admin_contact_note: "", country: "TW",
+    plan, plan_status: "active", plan_expiry: endsIn == null ? null : new Date(now + endsIn * 86_400_000).toISOString(), trial_started_at: null, connected_accounts: [], role: "seller", created_at: iso(90 - n),
+  });
+  const extra = [
+    seller(1, "lia.closet@example.com", "Lia Closet", "pro", 41),
+    seller(2, "ben.shop@example.com", "Ben's Ukay Corner", "plus", 3),
+    seller(3, "cy.wholesale.long.name@example.com", "", "basic", -2),
+    seller(4, "dee.store@example.com", "Dee Store", "basic", 18),
+    seller(5, "mika.thrift@example.com", "Mika Thrift", "master", null),
+  ];
+  tables.seller_profiles.push(...extra);
+  const addon = (r: Row, since: number, note: string | null) => ({ user_id: r.auth_user_id, email: r.email, shop: r.store_name || null, plan: r.plan, plan_status: "active", plan_expiry: r.plan_expiry, since: iso(since), note });
+  RPC.admin_receipt_addon_list = [addon(extra[1], 6, null), addon(extra[2], 20, "trial week"), addon(extra[0], 52, "paid in chat · Nov"), addon(extra[4], 80, "owner friend")];
+  RPC.admin_receipt_addon_set = { ok: true, result: "added" };
+  RPC.admin_receipt_addon_note = { ok: true };
+}
+
 // Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
 //   = the switch invoicing_enabled on, a running 2-day session with that many TikTok buyers (+ 2 Facebook
 //   buyers, who are not in the TikTok list), the first <sent> saved as Sent, then one Next, one Not sent,

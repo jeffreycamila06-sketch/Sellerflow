@@ -427,7 +427,7 @@ Keywords: send to tiktok, send message, message buyer, copy message, edit item, 
 
 ## invoicing — Invoicing (send invoices on TikTok)
 Last checked: 2026-11-26
-Keywords: invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can't message, new item, past session, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單
+Keywords: invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can't message, new item, past session, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, facebook invoicing, messenger invoice, ask admin, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單
 
 Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer's total.
 
@@ -453,7 +453,9 @@ Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of y
 - **Payment note** — how the buyer pays you. It is added at the end of every invoice.
 - **Shipping fee** — added to every invoice. Leave it empty for none.
 
-Facebook, Instagram and Shopee invoices are coming soon.
+**Facebook tab** — sending invoices to Facebook buyers in Messenger is turned on by Admin. If it isn't on for you, tap **Ask Admin to turn it on**: Telegram opens with a ready message.
+
+Instagram and Shopee invoices are coming soon.
 
 ## past-sessions — See orders from past lives
 Last checked: 2026-10-28

@@ -41,6 +41,8 @@ import { loadConnectedAccounts, loadSellerAccounts, accountsTotal, extraAccounts
 import DowngradeDialog from "../components/DowngradeDialog";
 import { SellerInviteRow, InviteRewardsPanel, InviteHistoryPanel } from "../components/AdminInvite";
 import { FreeSharingPanel } from "../components/AdminFreeSharing";
+import { ReceiptAddonPanel, ReceiptBadge } from "../components/AdminReceiptAddon";
+import { ReceiptAddonCtx, addonEmailSet, useReceiptAddons } from "../adapters/receiptAddon";
 import { loadReferralOverview, type ReferralPreview } from "../adapters/invite";
 import Pc711Panel from "../components/Pc711Panel";
 import PrinterTestersPanel from "../components/PrinterTestersPanel";
@@ -53,7 +55,7 @@ const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 
 
 export type AdminPanelKind =
   | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee" | "parcelsw"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711" | "printertesters" | "invrewards" | "invhistory" | "freeshare";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711" | "printertesters" | "invrewards" | "invhistory" | "freeshare" | "receiptaddon";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -75,6 +77,7 @@ const cic = {
   shipfee: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /><circle cx="17.5" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /></svg>,
   parcelsw: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="6" stroke="currentColor" strokeWidth="1.6" /><circle cx="15" cy="12" r="3" fill="currentColor" /></svg>,
   printertesters: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M7 9V4h10v5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><rect x="4" y="9" width="16" height="7" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 14h8v6H8z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>,
+  raddon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 8h6M9 12h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
   gift: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="9" width="16" height="11" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M3 9h18M12 9v11" stroke="currentColor" strokeWidth="1.6" /><path d="M12 9c-1.5-3.5-5-4-5-1.5S10 9 12 9Zm0 0c1.5-3.5 5-4 5-1.5S14 9 12 9Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
   invhist: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.6" /><path d="M3 18a5 5 0 0 1 10 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M15 8h6M15 12h6M17 16h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
   pc711: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.6" /><path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="15" r="1.6" fill="currentColor" /></svg>,
@@ -176,6 +179,7 @@ export default function Admin({ onBack, onOpenPanel, counts, live = false, userB
           <Ctrl icon={cic.gift} label={t.rd_adm_ctrl_invrewards} onClick={() => onOpenPanel("invrewards")} testId="admin-ctrl-invrewards" />
           <Ctrl icon={cic.invhist} label={t.rd_adm_ctrl_invhistory} onClick={() => onOpenPanel("invhistory")} testId="admin-ctrl-invhistory" />
           <Ctrl icon={cic.invhist} label={t.rd_adm_ctrl_freeshare} onClick={() => onOpenPanel("freeshare")} testId="admin-ctrl-freeshare" />
+          <Ctrl icon={cic.raddon} label={t.rd_adm_ctrl_raddon} onClick={() => onOpenPanel("receiptaddon")} testId="admin-ctrl-receiptaddon" />
           <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.parcelmon} label={t.rd_adm_ctrl_parcel} onClick={() => onOpenPanel("parcelmon")} />
@@ -198,7 +202,7 @@ const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
   pulse: t.rd_pulse_title, helpchat: t.rd_adm_ctrl_helpchat, pc711: t.rd_pc711_title, printertesters: t.rd_prt_tile,
-  invrewards: t.rd_adm_ctrl_invrewards, invhistory: t.rd_adm_ctrl_invhistory, freeshare: t.rd_adm_ctrl_freeshare,
+  invrewards: t.rd_adm_ctrl_invrewards, invhistory: t.rd_adm_ctrl_invhistory, freeshare: t.rd_adm_ctrl_freeshare, receiptaddon: t.rd_adm_ctrl_raddon,
 } as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const miniStat: CSSProperties = { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
@@ -237,7 +241,7 @@ function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[];
       {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_none}</div>}
       {list.map((u) => (
         <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
-          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.note || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email} · {u.plan}</div><CountryTag email={u.email} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.note || u.email}</div><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{u.email} · {u.plan}</div><ReceiptBadge email={u.email} /></div><CountryTag email={u.email} /></div>
           <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: statusColor }}>{statusLabel}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(u.days === 1 ? t.rd_adm_days_left_one : t.rd_adm_days_left_many, { n: daysDisplay(u.days) })}</div></div>
         </div>
       ))}
@@ -1310,9 +1314,15 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     return { infoFor, open: (email: string) => { if (infoFor(email)) setCountryFor(email); } };
   })();
   const countryInfo = countryFor && countryApi ? countryApi.infoFor(countryFor) : null;
+  // Receipt add-on (sql/223): one read when a panel that shows it opens — the add-on list itself, and the
+  // "+ Receipt" badge in Manage sellers / Active / Expiring / Expired. No timer.
+  const addonPanels: AdminPanelKind[] = ["receiptaddon", "sellers", "subActive", "subExpiring", "subExpired"];
+  const addons = useReceiptAddons(usersState === "live" && addonPanels.includes(panel));
+  const addonSet = addons.state === "ready" ? addonEmailSet(addons.list) : null;
 
   return (
     <AdminCountryCtx.Provider value={countryApi}>
+    <ReceiptAddonCtx.Provider value={addonSet}>
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} className="sfl-anim-sheet" style={{ width: "100%", maxHeight: "86%", background: "var(--surface)", borderRadius: "22px 22px 0 0", display: "flex", flexDirection: "column", boxShadow: "0 -16px 40px rgba(0,0,0,.3)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 13px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
@@ -1357,6 +1367,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                           <CountryPill email={u.email} />
                           <span style={{ fontSize: 10, fontWeight: 800, color: isAdmin ? "var(--accent-fg)" : "var(--text-dim)", background: isAdmin ? "var(--accent-soft)" : "var(--surface-3)", padding: "3px 7px", borderRadius: 6 }}>{u.role}</span>
                           <span style={{ fontSize: 10, fontWeight: 800, color: planFg(plan), background: "var(--surface)", border: "1px solid var(--border)", padding: "3px 7px", borderRadius: 6 }}>{plan}</span>
+                          <ReceiptBadge email={u.email} />
                           {u.status && u.status !== "active" && <span style={{ fontSize: 10, fontWeight: 800, color: u.status === "expired" ? "var(--danger)" : "var(--warn)", background: "var(--surface)", border: "1px solid var(--border)", padding: "3px 7px", borderRadius: 6 }}>{u.status}</span>}
                         </div>
                       </div>
@@ -1471,6 +1482,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           {panel === "invrewards" && <InviteRewardsPanel />}
           {panel === "invhistory" && <InviteHistoryPanel onToast={notify} />}
           {panel === "freeshare" && <FreeSharingPanel onToast={notify} />}
+          {panel === "receiptaddon" && <ReceiptAddonPanel list={addons.list} state={usersState === "live" ? addons.state : "error"} reload={addons.reload} onToast={notify} />}
 
           {panel === "broadcast" && (
             <div>
@@ -1769,6 +1781,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
       {dg && <DowngradeDialog key={`${dg.user.email}:${dg.plan}`} email={dg.user.email} planLabel={dg.label} limit={dg.limit} accounts={dg.accounts} busy={busy} onCancel={() => { if (!busy) setDg(null); }} onConfirm={(remove) => void confirmDowngrade(remove)} />}
       {countryInfo && <AdminCountryPicker info={countryInfo} onClose={() => setCountryFor(null)} onSave={(iso) => countries.save(countryInfo.userId, iso)} />}
     </div>
+    </ReceiptAddonCtx.Provider>
     </AdminCountryCtx.Provider>
   );
 }

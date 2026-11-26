@@ -6895,3 +6895,37 @@ Settings → Invoicing tab bar: a small Live-picker emblem above each name (TikT
   en / fil / id "pcs", zh / zh-TW 件, vi cái, th ชิ้น, bg бр. Replaces the View branch's "N items".
 - Proof: `Invoicing.cancel.test.tsx`, `invoicingCancelSql.test.ts`, `scripts/sql222-behaviour.mjs` (PGlite 54),
   `docs/design/invoicing-cancel/` (pictures, measured 360/390/430/1280 × 8, 20/20 breaks).
+
+## 2026-11-26 — FACEBOOK TAB "LOCKED" CARD + ADMIN "RECEIPT ADD-ON" LIST (branch `claude/fb-addon-lock`, NOT merged; sql/223 + sql/224 NOT applied; web only, no Render)
+"Receipt add-on" = an enabled `fb_receipt_access` row (sql/73). No price anywhere; no date of its own —
+it ends with the seller's plan (`plan_expiry`). Admin adds / removes it.
+- **Invoicing → Facebook tab** (`Invoicing.tsx` `fbLocked`): shown when `onReceiptFormat` is absent
+  (= `fbReceiptUi` false). Lock icon, `rd_ivc_fb_lock_title/body/btn/hint`, the button = a real
+  `<a target="_blank">` to `telegramDraftUrl(t.rd_ivc_fb_lock_msg)` (the Website teaser's helper — its
+  "only callers" test now lists SettingsHub + Invoicing). Same card on web / Android / iPhone; 8 languages.
+  With the add-on: main's card byte for byte (`fixtures/invoicingFbAddon.main.json`, recorded on main
+  58d780b — re-record if that card changes on purpose). ⚠️ Before `/fb/access` answers, an add-on seller sees
+  the locked card for a moment (same as today's Receipt format button appearing late).
+- **Admin → Controls → Receipt add-on** (`components/AdminReceiptAddon.tsx`, panel kind `receiptaddon`,
+  `adapters/receiptAddon.ts`): list of enabled rows (shop / email / plan / plan end amber < 7 days or ended /
+  "+ Receipt" / since / note), search, **+ Add seller** by email, **Remove** asked inside the page
+  (enabled false, row kept), inline note. `ReceiptBadge` ("+ Receipt") next to the plan in Manage sellers
+  and the Active / Expiring / Expired lists — `ReceiptAddonCtx`, one list read per panel open of those
+  kinds (`useReceiptAddons`), no timer. Admin texts are English in all 8 languages (admin-only, like Free
+  sharing / 7-11 login).
+- **sql/223 (+ rollback):** `admin_receipt_addon_list()` / `admin_receipt_addon_set(email, on, note)` /
+  `admin_receipt_addon_note(user, note)` — SECURITY DEFINER, `is_admin()` first (non-admin → `[]` /
+  `not_admin`, nothing changed), anon revoked, authenticated execute. No row or setting changed by the file.
+  Re-adding a removed seller keeps the first `created_at` ("since"). The server's own read
+  (`hasReceiptAccess`, enabled = true) is unchanged. Proof `scripts/sql223-behaviour.mjs` (PGlite, 39) +
+  `receiptAddonSql.test.ts`.
+- **Guide:** invoicing section gets a "Facebook tab" line + 3 keywords; 116b regenerated. sql/221 IS applied
+  (the live row exists), so **sql/224** = a phrase swap of that one line on the `invoicing` row (+ rollback).
+  `invoicingGuideSql.test.ts`: sql/221's row + sql/224 = 116b's row.
+- **Order:** merge (Vercel) and sql/223 in either order (before sql/223 the Admin panel says "Couldn't load
+  the list" and no badge shows; the seller card does not need it) → sql/224 after the merge.
+- Tests: `Invoicing.fbLocked.test.tsx`, `invoicingOpen.app.test.tsx` (real app: 5 plans × web / Android /
+  iPhone), `Admin.receiptAddon.test.tsx`, `receiptAddonSql.test.ts`. Pictures + measured:
+  `docs/design/fb-addon-lock/`. Not touched: server, Messenger receipt sending, TikTok tab, Orders,
+  printing, buyer numbers, chrome-extension/, app_settings values, fb_receipt_access rows.
+

@@ -433,10 +433,11 @@ describe("the other tabs", () => {
       expect(q("ivc-receipt-format")).toBeNull();
     }
   });
-  it("Facebook says Soon; no Receipt format button for a seller without the Messenger receipt", async () => {
+  it("Facebook, a seller without the Messenger receipt: the locked card (Invoicing.fbLocked.test.tsx), no Receipt format button", async () => {
     await open();
     fireEvent.click(q("ivc-tab-facebook")!);
-    expect(q("ivc-soon-facebook")!.textContent).toContain(t.rd_ivc_fb_soon);
+    expect(q("ivc-fb-locked")).not.toBeNull();
+    expect(q("ivc-soon-facebook")).toBeNull();
     expect(q("ivc-receipt-format")).toBeNull();
   });
   it("Facebook, a seller with the Messenger receipt: also a button to the Receipt format screen", async () => {
