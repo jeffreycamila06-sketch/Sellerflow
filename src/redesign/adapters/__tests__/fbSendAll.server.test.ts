@@ -49,7 +49,7 @@ function world(nBuyers: number, o: Opts = {}) {
   const jobs: Row[] = [];
   const draws: unknown[][] = [];
   const store = {
-    hasReceiptAccess: vi.fn(async () => o.access ?? true),
+    hasReceiptAccess: vi.fn(async (_uid?: string) => o.access ?? true),
     isAdmin: vi.fn(async () => o.admin ?? false),
     getPage: async () => ({ ...page }),
     // ── the receipt send's own reads (the same rows) ──

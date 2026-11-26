@@ -38,6 +38,7 @@ import PlatformEmblem from "../components/PlatformEmblem";
 import { LIVE_PICKER_MOTION, emblemMotionVars, emblemOutline, EMBLEM_SLUG, type PickerPlatform } from "../adapters/livePicker";
 import TikTokSendSheet from "../components/TikTokSendSheet";
 import InvoiceFormatSheet from "../components/InvoiceFormatSheet";
+import FbSendAllTab from "../components/FbSendAllTab";
 import type { BlAddResult } from "../adapters/blacklist";
 import {
   EMPTY_INVOICE_FORMAT, INVOICE_PLATFORMS, PLATFORM_NAME, inFilter, invoiceCounts, invoiceMessage, invoiceRows, loadInvoiceFormat, loadPending,
@@ -69,7 +70,7 @@ const pickBtn: CSSProperties = { display: "flex", alignItems: "center", gap: 8, 
 const pickItem = (on: boolean): CSSProperties => ({ display: "block", width: "100%", boxSizing: "border-box", minHeight: 44, padding: "10px 14px", border: "none", borderTop: "1px solid var(--border)", background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent-fg)" : "var(--text)", fontSize: 13.5, fontWeight: on ? 800 : 600, textAlign: "left", cursor: "pointer", fontFamily: "var(--font-ui)", lineHeight: 1.35, overflowWrap: "anywhere" });
 const pickNote: CSSProperties = { padding: "10px 14px", borderTop: "1px solid var(--border)", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.4 };
 
-export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, sessionStartedAt = null, sessionWindowDays = null, todayId, onReceiptFormat, tapGuardMs = SEND_NEXT_GUARD_MS, sessionId = null, pastSessions = false, onBlacklistAdd }: {
+export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, sessionStartedAt = null, sessionWindowDays = null, todayId, onReceiptFormat, tapGuardMs = SEND_NEXT_GUARD_MS, sessionId = null, pastSessions = false, onBlacklistAdd, fbSendAll }: {
   cur: string; onBack: () => void;
   /** the current session's buyers — the same list the Orders tab gets */
   buyers: Buyer[];
@@ -87,6 +88,9 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   /** the Blacklist screen's own add (RedesignApp: blacklist.add, reason "Not checked out"); absent = the
    *  seller has no Blacklist → no question after "Buyer cancelled" */
   onBlacklistAdd?: (handle: string) => Promise<BlAddResult>;
+  /** FB-2 "Send all in Messenger" (fb_send_all_enabled on, or an admin) for a seller with the add-on
+   *  (onReceiptFormat): the picture's language. Absent = the Facebook tab exactly as before. */
+  fbSendAll?: { lang: string };
 }) {
   const t = useT();
   const [tab, setTab] = useState<InvoicePlatform>("tiktok");
@@ -457,7 +461,16 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
             );
           })}
         </div>
-        {tab === "tiktok" ? tiktok : tab === "facebook" && !onReceiptFormat ? fbLocked : soon(tab)}
+        {tab === "tiktok" ? tiktok
+          : tab === "facebook" && !onReceiptFormat ? fbLocked
+          : tab === "facebook" && fbSendAll ? (
+            <FbSendAllTab picker={picker} isPast={!!pastSel} sessionKey={activeKey} sessionId={pastSel ? pastSel.id : sessionId}
+              pastBanner={pastSel ? (
+                <div data-testid="ivc-fb-past-line" style={{ display: "inline-block", marginBottom: 8, padding: "4px 9px", borderRadius: 8, fontSize: 12.5, fontWeight: 800, lineHeight: 1.35, overflowWrap: "anywhere", ...AMBER }}>{tpl(t.rd_psn_banner, { range: pastRange })}</div>
+              ) : null}
+              buyers={shownBuyers} fee={fee} money={money} lang={fbSendAll.lang} cur={cur} buyersState={pastState} fallback={soon("facebook")} />
+          )
+          : soon(tab)}
       </div>
 
       {sheetRow && (
