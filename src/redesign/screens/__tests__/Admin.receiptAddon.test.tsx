@@ -59,7 +59,7 @@ import { addonEndsSoon, addonEnded, filterAddons, addonsFromRpc } from "../../ad
 
 const DAY = 864e5;
 const NOW = Date.parse("2026-11-26T06:00:00Z");
-const mk = (id: string, email: string, plan: string, expiryDays: number | null, shop = ""): AccountUser => ({
+const mk = (id: string, email: string, plan: AccountUser["plan"], expiryDays: number | null, shop = ""): AccountUser => ({
   authUserId: id, email, plan, planStatus: "active", planExpiry: expiryDays == null ? "" : new Date(NOW + expiryDays * DAY).toISOString(), connectedAccounts: [], role: "seller", createdAt: "2026-11-01T00:00:00Z",
   profile: { fullName: "", storeName: shop, phone: "", tiktok: "", facebook: "", adminContactNote: "", country: "TW" },
 });
