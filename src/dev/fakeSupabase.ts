@@ -219,7 +219,8 @@ if (IVC.length === 2) {
     rows.push({ id: 7000 + rows.length, user_id: UID, session_id: IVC_SESSION, session_date: t.slice(0, 10), created_at: t, buyer_number: n, handle, customer_name: name, platform, product: item[0], price: item[1], qty: 1, comment_msg_id: null, auto_code: null });
   for (let n = 1; n <= count; n++) {
     const base = NAMES[(n - 1) % NAMES.length];
-    const handle = n === 18 ? "7234567890123456789" : `@${base}${n > NAMES.length ? n : ""}`;
+    // &ivclong=1: buyer #2 gets a very long username (Invoicing row width checks)
+    const handle = n === 18 ? "7234567890123456789" : n === 2 && /[?&]ivclong=1/.test(Q) ? "@a.very.long.tiktok.username.that_keeps_going_2026" : `@${base}${n > NAMES.length ? n : ""}`;
     const name = n === 18 ? "7234567890123456789" : base.replace(/[._]/g, " ");
     add(n, handle, name, "TikTok", ITEMS[n % ITEMS.length], at(n));
     if (n % 3 === 0) add(n, handle, name, "TikTok", ITEMS[(n + 2) % ITEMS.length], at(n, 4 * 60_000));

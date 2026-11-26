@@ -32,10 +32,25 @@ const bigBtn: CSSProperties = { display: "block", boxSizing: "border-box", width
 //     (onSent = that buyer is "Sent"); a copy that failed selects the message so it can be copied by hand;
 //   • one more button: "Can't message" (onSkip).
 //   • onCopyFailed tells the caller that the main button's copy was refused (that buyer is NOT sent);
+//   • onSentByHand (only while that buyer is Copy failed / Sending…) shows a small "I sent it by hand" link:
+//     the caller marks the buyer Sent and closes the sheet;
 //   • pastRange shows the "Past session" line WITHOUT the "OLD session … Send anyway?" question — in
 //     Invoicing the seller picked that session on purpose. (Orders passes the sheet's own pastRange prop
 //     and keeps its question.)
-export interface SendSheetInvoice { note: string; shipping: string; sent: boolean; onSent: () => void; onSkip: () => void; onCopyFailed?: () => void; pastRange?: string }
+//   • lineIds / cancelledLines / onCancelLine: the × of a line that has its order id SAVES "cancelled"
+//     (struck through + Undo; left out of the message and the total). A line without an id yet keeps
+//     today's × (this message only). The last remaining line asks "Cancel the whole buyer?".
+//   • onCancelBuyer / buyerCancelled / onUndoCancel: "Buyer cancelled", and its Undo.
+export interface SendSheetInvoice {
+  note: string; shipping: string; sent: boolean; onSent: () => void; onSkip: () => void; onCopyFailed?: () => void; pastRange?: string; onSentByHand?: () => void;
+  /** per line of the receipt: the order's database id (null = not paired yet) */
+  lineIds?: readonly (number | null)[];
+  cancelledLines?: ReadonlySet<number>;
+  onCancelLine?: (orderId: number, on: boolean) => void;
+  buyerCancelled?: boolean;
+  onCancelBuyer?: () => void;
+  onUndoCancel?: () => void;
+}
 
 // pastRange (e.g. "10/08 → 10/10"): the card is from a PAST session → the header says so and
 // the first copy asks one confirm ("This is an OLD session … Send anyway?").
@@ -55,10 +70,16 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   const ios = isIOS();
   const target = chaseTarget(receipt.handle);
 
-  const sum = messageTotal(lines, null, shipping); // items + shipping fee
-  const total = messageTotal(lines, totalOverride, shipping);
+  // Invoicing: a line whose order is cancelled stays in the list (struck through, Undo) but is left out
+  // of the message and of the total. `lines` keeps every line; keys "c<i>" = the i-th line of the receipt.
+  const orderIdOf = (l: SendLine): number | null => (l.added ? null : invoice?.lineIds?.[Number(l.key.slice(1))] ?? null);
+  const isCut = (l: SendLine): boolean => { const id = orderIdOf(l); return id !== null && !!invoice?.cancelledLines?.has(id); };
+  const kept = lines.filter((l) => !isCut(l));
+  const [askWhole, setAskWhole] = useState(false);
+  const sum = messageTotal(kept, null, shipping); // items + shipping fee
+  const total = messageTotal(kept, totalOverride, shipping);
   const autoMessage = buildSendMessage({
-    name: receipt.name, date, lines, total, cur, note, shippingFee: shipping,
+    name: receipt.name, date, lines: kept, total, cur, note, shippingFee: shipping,
     labels: { hi: t.rd_tts_msg_hi, order: t.rd_tts_msg_order, total: t.rd_tts_msg_total, shipping: t.rd_tts_msg_shipping },
   });
   const message = draft ?? autoMessage; // what the box shows = exactly what Copy copies
@@ -68,6 +89,15 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   // override → the total is the sum again. Typing an added line's TEXT keeps it.
   const setPrice = (key: string, price: string) => { setTotalOverride(null); setLine(key, { price }); };
   const removeLine = (key: string) => { setTotalOverride(null); setLines((ls) => ls.filter((l) => l.key !== key)); };
+  // × on a line: an order with its id → saved "cancelled" (Invoicing); the last line left asks first.
+  const onX = (l: SendLine) => {
+    const id = orderIdOf(l);
+    if (id === null || !invoice?.onCancelLine) { removeLine(l.key); return; }
+    const left = lines.filter((x) => !x.added && !isCut(x)).length;
+    if (left <= 1 && invoice.onCancelBuyer) { setAskWhole(true); return; }
+    setTotalOverride(null);
+    invoice.onCancelLine(id, true);
+  };
   const addLine = () => { setTotalOverride(null); const key = `a${nextId.current++}`; setLines((ls) => [...ls, { key, text: "", price: "", added: true, qty: 1 }]); };
   // Changing the shipping fee drops a Total override too (same as changing a price).
   const setShip = (v: string) => { setTotalOverride(null); setShipping(priceInput(v, cur)); };
@@ -118,7 +148,15 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
           <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 2px 0" }}>{t.rd_tts_hint}</div>
 
           <span style={label}>{t.rd_rc_lines}</span>
-          {lines.map((l, i) => (
+          {lines.map((l, i) => isCut(l) ? (
+            <div key={l.key} data-testid="tts-line-cancelled" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, minHeight: 44, padding: "0 4px", borderRadius: 10, background: "var(--chip-bg)" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)", width: 24, textAlign: "right", flexShrink: 0 }}>{i + 1}.</span>
+              <span data-testid="tts-cut-text" style={{ flex: 1, minWidth: 0, fontSize: 14, color: "var(--text-muted)", textDecoration: "line-through", overflowWrap: "anywhere" }}>{l.orig ?? l.text}{qtySuffix(l.qty)}</span>
+              <span data-testid="tts-cut-price" style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-muted)", textDecoration: "line-through" }}>{l.free ? t.rd_cpp_free : l.price}</span>
+              <button type="button" data-testid="tts-line-undo" onClick={() => { const id = orderIdOf(l); if (id !== null) { setTotalOverride(null); invoice?.onCancelLine?.(id, false); } }}
+                style={{ flexShrink: 0, minHeight: 44, padding: "0 10px", border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ivc_undo}</button>
+            </div>
+          ) : (
             <div key={l.key} data-testid={l.added ? "tts-line-added" : "tts-line"} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, minHeight: 40, padding: l.added ? 4 : 0, borderRadius: 10, background: l.added ? "var(--accent-soft)" : "transparent" }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)", width: 24, textAlign: "right", flexShrink: 0 }}>{i + 1}.</span>
               {l.added
@@ -128,7 +166,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
                   {l.qty > 1 && <span data-testid="tts-qty" style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)" }}>{qtySuffix(l.qty).trim()}</span>}
                 </>}
               <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode={hasCents(cur) ? "decimal" : "numeric"} value={l.price} onChange={(e) => setPrice(l.key, priceInput(e.target.value, cur))} style={{ ...input, width: 96, textAlign: "right" }} />
-              <button type="button" data-testid="tts-remove" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => removeLine(l.key)} style={smallBtn}>×</button>
+              <button type="button" data-testid="tts-remove" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => onX(l)} style={smallBtn}>×</button>
             </div>
           ))}
           <button type="button" data-testid="tts-add" onClick={addLine}
@@ -172,6 +210,18 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
               <button type="button" data-testid="tts-old-yes" onClick={() => setOldOk(true)}
                 style={{ ...bigBtn, border: "none", background: "#b45309", color: "#fff" }}>{t.rd_tts_old_yes}</button>
             </div>
+          ) : invoice && invoice.buyerCancelled ? (<>
+          <div data-testid="tts-cancelled-note" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--chip-bg)", color: "var(--text-dim)", fontSize: 13, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_cancelled_note}</div>
+          <button type="button" data-testid="tts-undo-cancel" onClick={() => invoice.onUndoCancel?.()}
+            style={{ ...bigBtn, border: "1.5px solid var(--accent)", background: "var(--surface)", color: "var(--accent-fg)" }}>{t.rd_ivc_undo_cancel}</button>
+          </>) : invoice && askWhole ? (
+            <div role="alertdialog" data-testid="tts-ask-whole" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--chip-bg)", color: "var(--text)", fontSize: 13.5, fontWeight: 700, lineHeight: 1.45 }}>
+              {t.rd_ivc_ask_whole}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" data-testid="tts-ask-whole-no" onClick={() => setAskWhole(false)} style={{ ...bigBtn, flex: 1, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)" }}>{t.rd_ivc_no}</button>
+                <button type="button" data-testid="tts-ask-whole-yes" onClick={() => { setAskWhole(false); invoice.onCancelBuyer?.(); }} style={{ ...bigBtn, flex: 1, border: "none", background: "var(--danger)", color: "#fff" }}>{t.rd_ivc_yes_cancel_buyer}</button>
+              </div>
+            </div>
           ) : invoice ? (<>
           {target.kind === "open"
             ? <a href={target.url} target="_blank" rel="noreferrer" data-testid="tts-copy-open" onClick={() => onInvoiceSend(t.rd_tts_copied_open)}
@@ -184,6 +234,16 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
             <button type="button" data-testid="tts-skip" onClick={() => { invoice.onSkip(); onClose(); }}
               style={{ ...bigBtn, flex: 1, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--warn)" }}>{t.rd_ivc_skip}</button>
           </div>
+          {invoice.onCancelBuyer && (
+            <button type="button" data-testid="tts-cancel-buyer" onClick={() => invoice.onCancelBuyer?.()}
+              style={{ ...bigBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text-dim)" }}>{t.rd_ivc_cancel_buyer}</button>
+          )}
+          {invoice.onSentByHand && (
+            <button type="button" data-testid="tts-by-hand" onClick={invoice.onSentByHand}
+              style={{ display: "block", margin: "6px auto 0", minHeight: 44, padding: "0 12px", border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 13, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+              {t.rd_ivc_by_hand}
+            </button>
+          )}
           </>) : (<>
           {target.kind === "open"
             ? <a href={target.url} target="_blank" rel="noreferrer" data-testid="tts-copy-open" onClick={onCopyOpen}

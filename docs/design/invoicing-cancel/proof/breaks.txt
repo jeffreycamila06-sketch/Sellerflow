@@ -1,0 +1,21 @@
+caught: a cancelled buyer reads as Not sent (Send next takes them)
+caught: N keeps counting the cancelled buyer
+caught: a cancelled buyer is listed under Not sent
+caught: Undo cancel always goes back to Not sent
+caught: Undo cancel always goes back to Sent
+caught: the Blacklist question shows for a seller without Blacklist
+caught: Yes does not add to Blacklist
+caught: RedesignApp passes the add without the Blacklist gate
+caught: a cancelled line stays in the row's lines / total
+caught: a cancelled line stays in the sheet's message
+caught: cancelled lines matched by position, not by order id
+caught: × removes the line without saving
+caught: Undo of a line is not saved
+caught: the last line is cancelled without asking
+caught: No on 'cancel the whole buyer' cancels the buyer
+caught: a line cancelled after the send makes it 'New item'
+caught: the saved cancelled lines are not read back
+caught: Send next does not wait for the cancelled lines
+caught: the order ids are read by session even without a real session id
+caught: Undo time not given back by sql/222 (stamp rule removed)
+20 of 20 caught

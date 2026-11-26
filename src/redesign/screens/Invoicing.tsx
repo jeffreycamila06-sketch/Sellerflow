@@ -9,9 +9,16 @@
 // sheet asks no "old session" question (the seller picked that session on purpose).
 // COPY FAILED = NOT SENT: a buyer whose message could not be copied is never marked Sent; the big button
 // stays on that buyer ("Copy again") until a copy works.
+// BUYER CANCELLED: the buyer is left out of Send next and of "X of N sent" (listed under All, dimmed,
+// total struck through); right after, "Add <buyer> to Blacklist?" when the seller has Blacklist (the
+// Blacklist screen's own add, reason "Not checked out"). Undo cancel → Sent again if they were Sent before
+// the cancel (with that send time), else Not sent.
+// CANCEL ONE ITEM: the × of a line in the row sheet saves that ORDER (by its database id) as cancelled for
+// the invoice; the order itself is never changed.
 // Opening TikTok is always a real link the seller taps (the only open that works inside the iPhone app).
 // Nothing here changes an order, a buyer number, stock or Sales.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { headerBar, headerTitle, mono } from "../ui";
 import { HeaderWithBack } from "../components/BackButton";
 import { tpl, useT } from "../i18n";
@@ -28,9 +35,10 @@ import PlatformEmblem from "../components/PlatformEmblem";
 import { LIVE_PICKER_MOTION, emblemMotionVars, emblemOutline, EMBLEM_SLUG, type PickerPlatform } from "../adapters/livePicker";
 import TikTokSendSheet from "../components/TikTokSendSheet";
 import InvoiceFormatSheet from "../components/InvoiceFormatSheet";
+import type { BlAddResult } from "../adapters/blacklist";
 import {
   EMPTY_INVOICE_FORMAT, INVOICE_PLATFORMS, PLATFORM_NAME, inFilter, invoiceCounts, invoiceMessage, invoiceRows, loadInvoiceFormat, loadPending,
-  savePending, sendTarget, sentTime, stateOf, tagOf, useInvoiceStatus,
+  byHandAllowed, pieceCount, savePending, sendTarget, sentTime, stateOf, tagOf, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus,
   type InvoiceFilter, type InvoiceFormat, type InvoicePlatform, type InvoiceRow, type InvoiceTag,
 } from "../adapters/invoicing";
 
@@ -50,6 +58,7 @@ const TAG_LOOK: Record<InvoiceTag, CSSProperties> = {
   new_item: { background: "rgba(217,119,6,.16)", color: "var(--warn)" },
   skipped: { background: "rgba(217,119,6,.16)", color: "var(--warn)" },
   copy_failed: { background: "rgba(217,119,6,.16)", color: "var(--warn)" },
+  cancelled: { background: "var(--chip-bg)", color: "var(--text-muted)", boxShadow: "inset 0 0 0 1px var(--border)" },
 };
 // a past session: the same amber the Orders tab uses for one (fixed colours — readable in both themes)
 const AMBER = { border: "1px solid #f59e0b", background: "#fef3c7", color: "#92400e" } as const;
@@ -57,7 +66,7 @@ const pickBtn: CSSProperties = { display: "flex", alignItems: "center", gap: 8, 
 const pickItem = (on: boolean): CSSProperties => ({ display: "block", width: "100%", boxSizing: "border-box", minHeight: 44, padding: "10px 14px", border: "none", borderTop: "1px solid var(--border)", background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent-fg)" : "var(--text)", fontSize: 13.5, fontWeight: on ? 800 : 600, textAlign: "left", cursor: "pointer", fontFamily: "var(--font-ui)", lineHeight: 1.35, overflowWrap: "anywhere" });
 const pickNote: CSSProperties = { padding: "10px 14px", borderTop: "1px solid var(--border)", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.4 };
 
-export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, sessionStartedAt = null, sessionWindowDays = null, todayId, onReceiptFormat, tapGuardMs = SEND_NEXT_GUARD_MS, sessionId = null, pastSessions = false }: {
+export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, sessionStartedAt = null, sessionWindowDays = null, todayId, onReceiptFormat, tapGuardMs = SEND_NEXT_GUARD_MS, sessionId = null, pastSessions = false, onBlacklistAdd }: {
   cur: string; onBack: () => void;
   /** the current session's buyers — the same list the Orders tab gets */
   buyers: Buyer[];
@@ -72,6 +81,9 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   /** the running session's id (null = none) and whether this seller has past sessions — the SAME rule
    *  and the same list as the Orders tab's Sessions picker */
   sessionId?: string | null; pastSessions?: boolean;
+  /** the Blacklist screen's own add (RedesignApp: blacklist.add, reason "Not checked out"); absent = the
+   *  seller has no Blacklist → no question after "Buyer cancelled" */
+  onBlacklistAdd?: (handle: string) => Promise<BlAddResult>;
 }) {
   const t = useT();
   const [tab, setTab] = useState<InvoicePlatform>("tiktok");
@@ -89,6 +101,8 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   const pastSel = past.selected;
   const activeKey = pastSel ? pastSel.id : sessionKey;
   const status = useInvoiceStatus(activeKey, "tiktok", true);
+  const cancels = useInvoiceLineCancels(activeKey, "tiktok", true);
+  const [blAsk, setBlAsk] = useState<{ handle: string; phase: "ask" | "busy" | "added" | "already" | "error" } | null>(null);
   // this phone only, per session: the buyer being sent (kept on the phone) and the buyer whose copy
   // failed (kept nowhere). Another session picked → that session's own.
   const [local, setLocal] = useState<{ key: string; pendingId: string | null; copyFailedId: string | null }>(
@@ -111,11 +125,14 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
 
   const fee = format.fee;
   const shownBuyers = pastSel ? past.buyers : buyers;
-  const rows = useMemo(() => invoiceRows(shownBuyers, "tiktok", fee), [shownBuyers, fee]);
+  const orderIds = useInvoiceOrderIds(shownBuyers, "tiktok", pastSel ? pastSel.id : sessionId, true);
+  const idMap = orderIds.ids, cutSet = cancels.cancelled;
+  const rows = useMemo(() => invoiceRows(shownBuyers, "tiktok", fee, { ids: idMap, cancelled: cutSet }), [shownBuyers, fee, idMap, cutSet]);
   // the buyer being sent: only while that row is still there and not already saved as Sent with the same lines
   const pending = useMemo(() => {
     const r = pendingId ? rows.find((x) => x.id === pendingId) : undefined;
-    return r && stateOf(r, status.saved.get(r.id)) !== "sent" ? r : null;
+    const st = r ? stateOf(r, status.saved.get(r.id)) : null;
+    return r && st !== "sent" && st !== "cancelled" ? r : null;
   }, [pendingId, rows, status.saved]);
   // `key` = the session the tap was made in: an answer that lands after another session was picked
   // changes nothing on screen
@@ -132,7 +149,7 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   const next = target.row;
   const again = target.again;
   const counts = invoiceCounts(rows, status.saved);
-  const sum = rows.reduce((s, r) => s + r.total, 0);
+  const sum = rows.reduce((s, r) => s + (stateOf(r, status.saved.get(r.id)) === "cancelled" ? 0 : r.total), 0);
   const labels = { hi: t.rd_tts_msg_hi, order: t.rd_tts_msg_order, total: t.rd_tts_msg_total, shipping: t.rd_tts_msg_shipping };
   // the date in a message: a past session's own range (as in the Orders tab), else the running session's
   const pastRange = pastSel ? sessionRange(pastSel) : "";
@@ -140,7 +157,7 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   const thisDate = currentSessionDate(sessionStartedAt, sessionWindowDays, buyers.flatMap((b) => b.orders.map((o) => o.orderNum)), todayId);
   const money = (n: number) => `${cur}${fmt(n)}`;
   const pastState = pastSel ? past.buyersState : "ready";
-  const ready = status.state === "ready" && fmtState === "ready" && pastState === "ready";
+  const ready = status.state === "ready" && fmtState === "ready" && pastState === "ready" && cancels.state === "ready";
 
   // "Send next": the buyer sent before this tap becomes Sent; this buyer's message is copied and (the link
   // itself) opens them in TikTok. With nobody left the button reads Done and only marks the last one.
@@ -175,6 +192,30 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
     void past.pick(s);
   };
 
+  // "Buyer cancelled": saved as 'cancelled' (the lines it was sent with are kept), the sheet closes, and
+  // the seller with Blacklist is asked once.
+  const cancelBuyer = (r: InvoiceRow) => {
+    const prev = status.saved.get(r.id);
+    status.mark(r, "cancelled", prev?.hash ?? r.hash);
+    if (pendingId === r.id) setPending(activeKey, null);
+    if (copyFailedId === r.id) setCopyFailed(activeKey, null);
+    setSheetId(null);
+    track("invoice_cancel", { platform: "tiktok" });
+    if (onBlacklistAdd) setBlAsk({ handle: r.receipt.handle, phase: "ask" });
+  };
+  // "Undo cancel": Sent again (with its first send time) when the buyer was Sent before the cancel; else Not sent.
+  const undoCancel = (r: InvoiceRow) => {
+    const prev = status.saved.get(r.id);
+    if (prev?.status === "cancelled" && prev.sentAt) status.mark(r, "sent", prev.hash);
+    else status.clear(r);
+  };
+  const askYes = () => {
+    if (!blAsk || !onBlacklistAdd) return;
+    const handle = blAsk.handle;
+    setBlAsk({ handle, phase: "busy" });
+    void onBlacklistAdd(handle).then((res) => setBlAsk((b) => (b && b.handle === handle ? { handle, phase: res.kind === "added" ? "added" : res.kind === "already" ? "already" : "error" } : b)));
+  };
+
   const tagText = (tag: InvoiceTag, r: InvoiceRow): string =>
     tag === "next" ? t.rd_ivc_t_next
     : tag === "sending" ? t.rd_ivc_t_sending
@@ -182,7 +223,9 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
     : tag === "new_item" ? t.rd_ivc_t_new
     : tag === "skipped" ? t.rd_ivc_t_skip
     : tag === "copy_failed" ? t.rd_ivc_t_copy_failed
+    : tag === "cancelled" ? t.rd_ivc_t_cancelled
     : t.rd_ivc_f_not;
+  const piecesText = (n: number) => (n === 1 ? t.rd_ivc_pcs_1 : tpl(t.rd_ivc_pcs, { n }));
 
   const sheetRow = sheetId ? rows.find((r) => r.id === sheetId) ?? null : null;
   const shown = rows.filter((r) => inFilter(stateOf(r, status.saved.get(r.id)), filter));
@@ -232,13 +275,19 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
           <button type="button" data-testid="ivc-past-retry" onClick={() => void past.pick(pastSel)} style={{ ...chipBtn(true), marginTop: 10 }}>{t.rd_fb_try_again}</button>
         </div>
       )}
-      {(status.state === "loading" || fmtState === "loading" || pastState === "loading") && status.state !== "error" && fmtState !== "error" && pastState !== "error" && (
+      {(status.state === "loading" || fmtState === "loading" || pastState === "loading" || cancels.state === "loading") && status.state !== "error" && cancels.state !== "error" && fmtState !== "error" && pastState !== "error" && (
         <div data-testid="ivc-loading" style={{ ...card, fontSize: 13, color: "var(--text-muted)" }}>{pastState === "loading" ? t.rd_psn_buyers_loading : t.rd_loading}</div>
       )}
       {status.state === "error" && pastState !== "error" && (
         <div role="alert" data-testid="ivc-load-error" style={{ ...card, borderColor: "var(--danger)" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)", lineHeight: 1.4 }}>{t.rd_ivc_load_failed}</div>
           <button type="button" data-testid="ivc-load-retry" onClick={status.reload} style={{ ...chipBtn(true), marginTop: 10 }}>{t.rd_fb_try_again}</button>
+        </div>
+      )}
+      {cancels.state === "error" && status.state !== "error" && pastState !== "error" && (
+        <div role="alert" data-testid="ivc-cancels-error" style={{ ...card, borderColor: "var(--danger)" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)", lineHeight: 1.4 }}>{t.rd_ivc_load_failed}</div>
+          <button type="button" data-testid="ivc-cancels-retry" onClick={cancels.reload} style={{ ...chipBtn(true), marginTop: 10 }}>{t.rd_fb_try_again}</button>
         </div>
       )}
       {fmtState === "error" && status.state !== "error" && pastState !== "error" && (
@@ -258,13 +307,13 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
             </div>
           )}
           <div data-testid="ivc-summary-line" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", lineHeight: 1.4, overflowWrap: "anywhere" }}>
-            {pastSel ? tpl(t.rd_ivc_summary_past, { n: rows.length, sum: money(sum) }) : tpl(t.rd_ivc_summary, { date: thisDate, n: rows.length, sum: money(sum) })}
+            {pastSel ? tpl(t.rd_ivc_summary_past, { n: counts.active, sum: money(sum) }) : tpl(t.rd_ivc_summary, { date: thisDate, n: counts.active, sum: money(sum) })}
           </div>
-          <div role="progressbar" aria-valuemin={0} aria-valuemax={counts.all} aria-valuenow={counts.sent} data-testid="ivc-progress"
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={counts.active} aria-valuenow={counts.sent} data-testid="ivc-progress"
             style={{ marginTop: 10, height: 8, borderRadius: 999, background: "var(--chip-bg)", overflow: "hidden" }}>
-            <div style={{ width: `${counts.all ? Math.round((counts.sent / counts.all) * 100) : 0}%`, height: "100%", borderRadius: 999, background: "var(--ok)" }} />
+            <div style={{ width: `${counts.active ? Math.round((counts.sent / counts.active) * 100) : 0}%`, height: "100%", borderRadius: 999, background: "var(--ok)" }} />
           </div>
-          <div data-testid="ivc-progress-text" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{tpl(t.rd_ivc_progress, { x: counts.sent, n: counts.all })}</div>
+          <div data-testid="ivc-progress-text" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{tpl(t.rd_ivc_progress, { x: counts.sent, n: counts.active })}</div>
         </div>
 
         <div data-testid="ivc-action">
@@ -279,8 +328,8 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
             <button type="button" data-testid="ivc-done" onClick={sendNext} style={bigBtn}>{t.rd_ps_done}</button>
           )}
           {!next && !pending && (
-            <div data-testid="ivc-finished" style={{ ...card, fontSize: 13.5, fontWeight: 700, color: counts.sent === counts.all ? "var(--ok)" : "var(--text-dim)" }}>
-              {counts.sent === counts.all ? `✓ ${t.rd_ivc_all_done}` : t.rd_ivc_none_left}
+            <div data-testid="ivc-finished" style={{ ...card, fontSize: 13.5, fontWeight: 700, color: counts.sent === counts.active ? "var(--ok)" : "var(--text-dim)" }}>
+              {counts.sent === counts.active ? `✓ ${t.rd_ivc_all_done}` : t.rd_ivc_none_left}
             </div>
           )}
           {(next || pending) && !again && <div data-testid="ivc-hint" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_ivc_hint}</div>}
@@ -288,10 +337,10 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
           <CopyFailNote fb={copyFb} t={t} what="text" testid="ivc-copy-fail" />
         </div>
 
-        {status.unsaved > 0 && (
+        {status.unsaved + cancels.unsaved > 0 && (
           <div role="alert" data-testid="ivc-unsaved" style={{ ...card, borderColor: "var(--warn)", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: "var(--warn)", lineHeight: 1.4 }}>{tpl(t.rd_ivc_unsaved, { n: status.unsaved })}</span>
-            <button type="button" data-testid="ivc-unsaved-retry" onClick={status.retry} style={{ ...chipBtn(true), flexShrink: 0 }}>{t.rd_fb_try_again}</button>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: "var(--warn)", lineHeight: 1.4 }}>{tpl(t.rd_ivc_unsaved, { n: status.unsaved + cancels.unsaved })}</span>
+            <button type="button" data-testid="ivc-unsaved-retry" onClick={() => { status.retry(); cancels.retry(); }} style={{ ...chipBtn(true), flexShrink: 0 }}>{t.rd_fb_try_again}</button>
           </div>
         )}
 
@@ -305,16 +354,29 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
           {shown.length === 0 && <div data-testid="ivc-empty-filter" style={{ padding: "14px", fontSize: 13, color: "var(--text-muted)" }}>{t.rd_ivc_empty_filter}</div>}
           {shown.map((r, i) => {
             const tag = tagOf(r, status.saved, pending?.id ?? null, next?.id ?? null, copyFailedId);
+            const off = tag === "cancelled";
             return (
-              <button key={r.id} type="button" data-testid="ivc-row" data-buyer={r.num} data-tag={tag} onClick={() => setSheetId(r.id)}
-                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", minHeight: 56, padding: "9px 12px", border: "none", borderTop: i ? "1px solid var(--border)" : "none", background: "transparent", textAlign: "left", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
-                <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 600, color: "var(--text)", minWidth: 38, flexShrink: 0 }}>#{r.num}</span>
-                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+              // The whole row opens the buyer's sheet; "✎ View" (a real button, 44px tap area) does the same — the
+              // row is a plain container so the View button is not a button inside a button.
+              <div key={r.id} data-testid="ivc-row" data-buyer={r.num} data-tag={tag} data-cancelled={off ? "1" : undefined} onClick={() => setSheetId(r.id)}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", minHeight: 56, padding: "9px 12px", borderTop: i ? "1px solid var(--border)" : "none", background: "transparent", textAlign: "left", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 600, color: "var(--text)", minWidth: 38, flexShrink: 0, opacity: off ? 0.5 : 1 }}>#{r.num}</span>
+                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4, opacity: off ? 0.6 : 1 }}>
                   <span data-testid="ivc-row-handle" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.receipt.handle}</span>
-                  <span data-testid="ivc-row-tag" style={{ alignSelf: "flex-start", maxWidth: "100%", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, lineHeight: 1.35, ...TAG_LOOK[tag] }}>{tagText(tag, r)}</span>
+                  <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 6, rowGap: 2, minWidth: 0 }}>
+                    <span data-testid="ivc-row-tag" style={{ maxWidth: "100%", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, lineHeight: 1.35, ...TAG_LOOK[tag] }}>{tagText(tag, r)}</span>
+                    {!off && <span data-testid="ivc-row-pcs" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap", lineHeight: 1.35 }}>· {piecesText(pieceCount(r))}</span>}
+                  </span>
                 </span>
-                <span data-testid="ivc-row-total" style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>{money(r.total)}</span>
-              </button>
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
+                  <span data-testid="ivc-row-total" style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 600, color: off ? "var(--text-muted)" : "var(--text)", whiteSpace: "nowrap", textDecoration: off ? "line-through" : "none" }}>{money(r.total)}</span>
+                  <button type="button" data-testid="ivc-row-view" className="sfl-tap44" aria-label={`${t.rd_ivc_view} #${r.num}`}
+                    onClick={(e) => { e.stopPropagation(); setSheetId(r.id); }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1.5px solid var(--accent)", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "var(--font-ui)", lineHeight: 1 }}>
+                    <span aria-hidden="true">✎</span>{t.rd_ivc_view}
+                  </button>
+                </span>
+              </div>
             );
           })}
         </div>
@@ -387,12 +449,54 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
             onSkip: () => { status.mark(sheetRow, "skipped"); if (pendingId === sheetRow.id) setPending(activeKey, null); if (copyFailedId === sheetRow.id) setCopyFailed(activeKey, null); track("invoice_skip", { platform: "tiktok" }); },
             // copy refused in the sheet = NOT sent: the buyer shows "Copy failed" and the big button goes to
             // them. (A buyer already Sent stays Sent — only the "Send again" did not go out.)
+            lineIds: sheetRow.orderIds, cancelledLines: cutSet,
+            onCancelLine: (orderId: number, on: boolean) => { cancels.set(orderId, on); track(on ? "invoice_line_cancel" : "invoice_line_undo", { platform: "tiktok" }); },
+            buyerCancelled: stateOf(sheetRow, status.saved.get(sheetRow.id)) === "cancelled",
+            onCancelBuyer: () => cancelBuyer(sheetRow),
+            onUndoCancel: () => undoCancel(sheetRow),
             onCopyFailed: () => {
               if (stateOf(sheetRow, status.saved.get(sheetRow.id)) === "sent") return;
               if (pendingId === sheetRow.id) setPending(activeKey, null);
               setCopyFailed(activeKey, sheetRow.id);
             },
+            // "I sent it by hand": only while this buyer is Copy failed or Sending… — saved like a normal Sent
+            ...(byHandAllowed(tagOf(sheetRow, status.saved, pending?.id ?? null, next?.id ?? null, copyFailedId)) ? {
+              onSentByHand: () => {
+                status.mark(sheetRow, "sent");
+                if (pendingId === sheetRow.id) setPending(activeKey, null);
+                if (copyFailedId === sheetRow.id) setCopyFailed(activeKey, null);
+                track("invoice_send", { platform: "tiktok", via: "hand" });
+                setSheetId(null);
+              },
+            } : {}),
           }} />
+      )}
+      {blAsk && createPortal(
+        <div data-testid="ivc-bl-overlay" onClick={() => { if (blAsk.phase !== "busy") setBlAsk(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center" }}>
+          <div role="dialog" aria-label={tpl(t.rd_ivc_bl_ask, { who: blAsk.handle })} data-testid="ivc-bl-ask" onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 480, boxSizing: "border-box", background: "var(--surface-2)", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 16px calc(18px + env(safe-area-inset-bottom))", boxShadow: "0 -14px 40px rgba(0,0,0,.35)" }}>
+            <div data-testid="ivc-bl-title" style={{ fontSize: 15.5, fontWeight: 800, color: "var(--text)", lineHeight: 1.4, overflowWrap: "anywhere" }}>{tpl(t.rd_ivc_bl_ask, { who: blAsk.handle })}</div>
+            <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_bl_not_out_short}</div>
+            {(blAsk.phase === "ask" || blAsk.phase === "busy") ? (
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button type="button" data-testid="ivc-bl-no" disabled={blAsk.phase === "busy"} onClick={() => setBlAsk(null)}
+                  style={{ flex: 1, minHeight: 48, borderRadius: 12, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ivc_no}</button>
+                <button type="button" data-testid="ivc-bl-yes" disabled={blAsk.phase === "busy"} onClick={askYes}
+                  style={{ flex: 1, minHeight: 48, borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", opacity: blAsk.phase === "busy" ? 0.6 : 1 }}>{t.rd_ivc_bl_yes}</button>
+              </div>
+            ) : (<>
+              <div role="status" data-testid="ivc-bl-result" data-result={blAsk.phase} style={{ marginTop: 12, fontSize: 13.5, fontWeight: 700, lineHeight: 1.45, overflowWrap: "anywhere", color: blAsk.phase === "error" ? "var(--danger)" : "var(--ok)" }}>
+                {blAsk.phase === "added" ? tpl(t.rd_bl_added, { buyer: blAsk.handle, reason: t.rd_bl_not_out_short })
+                  : blAsk.phase === "already" ? tpl(t.rd_bl_already, { buyer: blAsk.handle, reason: t.rd_bl_not_out_short })
+                  : t.rd_bl_save_err}
+              </div>
+              <button type="button" data-testid="ivc-bl-close" onClick={() => setBlAsk(null)}
+                style={{ marginTop: 12, width: "100%", minHeight: 48, borderRadius: 12, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
+            </>)}
+          </div>
+        </div>,
+        (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
       )}
       {formatOpen && (
         <InvoiceFormatSheet cur={cur} format={format} sharedWithReceipt={!!onReceiptFormat} onClose={() => setFormatOpen(false)} onSaved={setFormat} />

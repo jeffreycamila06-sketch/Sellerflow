@@ -3318,6 +3318,7 @@ export default function RedesignApp() {
             <Invoicing cur={cur} onBack={() => goBack()} buyers={liveSession.session.buyers} sessionKey={invoiceSessionKey(sessionInstance.currentSessionId, liveSession.dayId)}
               sellerId={auth.profile?.authUserId || ""} sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} todayId={liveSession.dayId}
               sessionId={sessionInstance.currentSessionId} pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
+              {...(blacklistOn ? { onBlacklistAdd: (handle: string) => blacklist.add("tiktok", handle, "not_checked_out") } : {})}
               {...(fbReceiptUi ? { onReceiptFormat: () => setScreen("receiptformat") } : {})} />
           )}
           {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => goBack()} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}

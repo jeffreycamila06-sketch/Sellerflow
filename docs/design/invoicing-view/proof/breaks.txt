@@ -1,0 +1,21 @@
+caught: pieces count lines, not quantities
+caught: pieces off by one
+caught: '1 pcs' instead of '1 pc'
+caught: count line not shown
+caught: cancelled lines still counted
+caught: a cancelled buyer still shows a count
+caught: View opens the first row, not its own
+caught: View opens nothing
+caught: row tap no longer opens the sheet
+caught: View loses its 44px tap area
+caught: View without the accent outline
+caught: by hand also for Next
+caught: by hand also for Sent
+caught: by hand only for Sending
+caught: by hand saves Can't message
+caught: by hand saves nothing
+caught: by hand leaves the sheet open
+caught: by hand leaves 'Copy failed' on the row
+caught: sheet ignores the by-hand rule (always shown in Invoicing)
+caught: by hand shown in the Orders sheet too
+20 of 20 caught

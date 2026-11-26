@@ -121,7 +121,7 @@ describe("status, tags and the order of Send next", () => {
     const saved = new Map<string, SavedStatus>();
     expect(sendQueue(rows, saved, null).map((r) => r.num)).toEqual([1, 2, 4]);
     expect(rows.map((r) => tagOf(r, saved, null, a.id))).toEqual(["next", "not_sent", "not_sent"]);
-    expect(invoiceCounts(rows, saved)).toEqual({ all: 3, sent: 0, notSent: 3 });
+    expect(invoiceCounts(rows, saved)).toEqual({ all: 3, active: 3, sent: 0, notSent: 3, cancelled: 0 });
   });
   it("the five tags (+ the buyer being sent right now)", () => {
     const saved = new Map<string, SavedStatus>([[a.id, sent(a)], [c.id, { status: "skipped", sentAt: null, hash: c.hash }]]);
