@@ -106,7 +106,10 @@ describe("SettingsHub tile gate", () => {
   it("RedesignApp opens the screen from the Invoicing card, and shows the screen and the Orders button, only for FB preview accounts or /fb/access receipt", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain('onInvoicing={fbReceiptUi ? () => setScreen("receiptformat") : () => setToast({ msg: tApp.rd_invoice_soon_note, kind: "ok", ms: 4000 })}');
-    expect(src).not.toContain("onReceiptFormat");
+    // no "Receipt format" prop goes to the Settings tab; the one onReceiptFormat in the app is the Invoicing screen's
+    // Facebook-tab button (sql/220), for the same receipt gate
+    expect(src.split("onReceiptFormat").length - 1).toBe(1);
+    expect(src).toContain('{...(fbReceiptUi ? { onReceiptFormat: () => setScreen("receiptformat") } : {})} />');
     expect(src).toContain('{screen === "receiptformat" && fbReceiptUi && <ReceiptFormat');
     expect(src).toContain("fbReceipt={fbReceiptUi}");
     expect(src).toContain("const fbPreview = fbPreviewEnabled(auth.profile?.email);");

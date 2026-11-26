@@ -20,7 +20,7 @@ export const DEFAULT_BACK: Readonly<Record<string, string>> = {
   printersettings: "settings", printpattern: "settings",
   ttchannels: "settings", fbchannels: "settings", shopeechannels: "settings", fbpages: "settings", igaccounts: "settings",
   parcelscan: "menu", fmparcelscan: "menu", customerdetails: "menu", parceltracking: "menu",
-  receiptformat: "menu", print: "orders", signup: "login",
+  receiptformat: "menu", invoicing: "menu", print: "orders", signup: "login",
 };
 
 /** Opening `to` while on `from` (a tile, a link, a popup button, …). */

@@ -6744,3 +6744,57 @@ Production Nov 25–26: two planned restarts (the daily restart, a deploy) each 
   `invoicingGuideSql.test.ts` · `receiptGate.test.tsx` (tile block updated). 10 on-purpose breaks caught.
   Pictures + measured widths: `docs/design/invoicing-soon/`.
 - **Order:** merge (Vercel) → sql/219 on Jeff's go.
+
+## 2026-11-26 — INVOICING, STEP 2a: TikTok "SEND NEXT" (text) (branch `claude/invoicing-tiktok`, NOT merged; sql/220 + sql/221 NOT applied; web only, no Render)
+Settings → Invoicing: tabs TikTok · Facebook · Instagram · Shopee. TikTok works; the others say Soon (Facebook also has a
+button to the unchanged Receipt format screen for a `fbReceiptUi` seller). Pictures + decisions: `docs/design/invoicing-tiktok/`.
+- **Gate — ONE rule:** `invoicingVisible({ isAdmin, previewKey: hasFeature("invoicing"), switchOn: featureSw.invoicing })`
+  (adapters/invoicing.ts). Switch `app_settings.invoicing_enabled` (sql/220 creates it 'false'; exact 'true' = every
+  plan, Free too) · preview key `invoicing` (`feature_access_emails`; sql/220 adds NO login) · admin always.
+  Off and not listed → RedesignApp passes SettingsHub exactly today's props (the pinned `onInvoicing={fbReceiptUi ? …}`
+  line is untouched; the open state is a spread AFTER it: `{...(invoicingOn ? { onInvoicing, invoicingOpen: true } : {})}`).
+  `invoicingOpen` on the card = "›" instead of the Soon badge. Screen id `invoicing` (back → menu).
+- **Rows = the Orders buyer cards** (`invoiceRows` → `buyerReceipts`, one row per buyer of the session, all days of a
+  multi-day session together) and **the message = Send to TikTok's** (`invoiceMessage` → `buildSendMessage`,
+  `initialSendLines`, `messageTotal`, `currentSessionDate`). No second grouping exists. Opening TikTok = `chaseTarget`
+  (a real `<a href target="_blank">` the seller taps; a number-only id = a button, copy only + a note).
+- **Send next:** a tap marks the buyer opened before as Sent, copies the next buyer's message and opens them. The buyer
+  just opened is "pending" (this phone only, `sfl_rd_invoice_pending:<userId>` = session + platform + row id) and shows
+  the tag **Sending…**; with nobody left the button reads **Done**. Queue = Not sent + New item, by buyer number
+  (Can't message is left out). Sending / skipping from the row sheet settles a pending buyer. A second tap within
+  `SEND_NEXT_GUARD_MS` (900 ms) does nothing — a double tap never marks a buyer Sent (tests pass `tapGuardMs={0}`).
+- **Row sheet = `TikTokSendSheet` with the optional `invoice` prop** (Orders never passes it → the sheet there is
+  unchanged, its tests untouched): note + shipping fee start from the Format (Send to TikTok's remembered note is
+  neither read nor written), main button Send / Send again → `onSent` only when the copy really worked (a refused copy
+  selects the message box, nothing is marked), plus **Can't message** (`onSkip`).
+- **Saved status — `public.invoice_sends` (sql/220):** PK (user_id, session_key, platform, buyer_number, buyer_key).
+  `buyer_key` = `buyerKeyOf(handle)`, a short one-way code that keeps two buyers with the same number apart;
+  `lines_hash` = `linesHashOf(receipt)` = the buyer's order lines + their total (NOT the shipping fee) → a different
+  value later = **New item · send again**. status sent | skipped; `sent_at` / `created_at` / `updated_at` are the
+  database's (trigger `trg_invoice_sends_stamp`). Column shapes refuse free text (`^[0-9a-z]{0,24}$`) — no name,
+  username or message is stored or logged. RLS: own rows only, 4 policies, nothing for anon, no admin rule.
+  `session_key` = `invoiceSessionKey(currentSessionId, dayId)` (session id, else `day:<Taipei day>`) → a new session
+  starts all Not sent. One paged read on open (`useInvoiceStatus`), one upsert per mark; a failed mark stays on screen,
+  is counted ("N not saved yet") and retried. Analytics = `invoice_send` / `invoice_skip` with platform + via only.
+- **Format (one for all platforms):** payment note = `seller_receipt_settings.note` (the note Receipt format edits);
+  NEW `seller_receipt_settings.invoice_shipping_fee` (null = no shipping line). `saveInvoiceFormat` upserts ONLY
+  `user_id, note, invoice_shipping_fee, updated_at` — opening text and QR are never sent. The Messenger receipt code
+  (server) does not read the new column. Nothing is sent until the status AND the format were read (each has a retry).
+- **sql/220 (+ rollback), md5 guards on the two live functions it starts from** (both checked on production
+  2026-11-26): `my_feature_access` = sql/206's text + `('invoicing')` (29 keys); `privacy_retention_purge` = sql/65's
+  text + one loop (invoice_sends rows 3 months after their last change; the cron job itself is not touched).
+  ⚠️ The NEXT file that adds a feature key or changes the nightly purge must start from sql/220's texts; sql/206's
+  rollback refuses after sql/220 (roll 220 back first). Proof `scripts/sql220-behaviour.mjs` (PGlite, 71 checks).
+- **Guide:** new section `invoicing` + the settings-tiles line; `sql/116b` regenerated (🔴 still not to be applied);
+  **sql/221** = the new row + a phrase swap of that one line (sql/219 IS applied in production, checked 2026-11-26).
+- **Order:** sql/220 and the web merge in either order (before sql/220: no switch row, no key → closed; a Format save
+  would say "Couldn't save") → add the test login to `feature_access_emails` ('invoicing') → test → switch 'true' →
+  sql/221 LAST. Rollback: switch 'false' (instant) or `sql/220_invoicing_rollback.sql`.
+- **Known limits:** current session only (when it ends, its buyers leave the list — as on the Orders buyer cards);
+  "Sending…" is per phone (another phone shows that buyer as Next until the tap); a price edited in the row sheet is
+  for that message only, the row's total stays the order's; a copy refused on Send next still opens TikTok (the message
+  is shown selected to copy by hand) and the buyer counts as being sent.
+- Preview: `?ivc=40,12` in `src/dev/fakeSupabase.ts` (preview-only). ⚠️ In screenshot scripts tap with the page's own
+  `click()` — Playwright's click scrolls a hidden container sideways in the dark theme (not a real-tap behaviour).
+- Not touched (0 lines): Orders.tsx, ReceiptFormat.tsx, server/, server.js, printing files, comment delivery, buyer
+  numbers, chrome-extension/, mobile/. No app_settings VALUE is changed (one new row, 'false').

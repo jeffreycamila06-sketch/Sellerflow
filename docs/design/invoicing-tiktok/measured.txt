@@ -1,0 +1,59 @@
+ok  tiktok_iphone390_light.png: 390px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+    Live 11/25 → 11/26 · 40 buyers · NT$13,730 · 12 of 40 sent · button "Send next · #13 @mia.go · NT$298" · tags {"sent":12,"next":1,"not_sent":25,"skipped":1,"new_item":1}
+ok  sheet_iphone390_light.png: sheet inside the screen=true · Send / Copy / Can't message all seen above the bottom=true · shipping fee starts at 38
+ok  format_iphone390_light.png: sheet inside=true · Save seen=true · "Message typeText (Picture soon)"
+ok  instagram_iphone390_light.png: "SoonInvoices for Instagram are coming soon." · no Send button=true
+ok  tiktok_iphone390_dark.png: 390px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  sheet_iphone390_dark.png: sheet inside the screen=true · Send / Copy / Can't message all seen above the bottom=true · shipping fee starts at 38
+ok  format_iphone390_dark.png: sheet inside=true · Save seen=true · "Message typeText (Picture soon)"
+ok  instagram_iphone390_dark.png: "SoonInvoices for Instagram are coming soon." · no Send button=true
+ok  tiktok_android360_light.png: 360px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  sheet_android360_light.png: sheet inside the screen=true · Send / Copy / Can't message all seen above the bottom=true · shipping fee starts at 38
+ok  format_android360_light.png: sheet inside=true · Save seen=true · "Message typeText (Picture soon)"
+ok  instagram_android360_light.png: "SoonInvoices for Instagram are coming soon." · no Send button=true
+ok  tiktok_android360_dark.png: 360px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  sheet_android360_dark.png: sheet inside the screen=true · Send / Copy / Can't message all seen above the bottom=true · shipping fee starts at 38
+ok  format_android360_dark.png: sheet inside=true · Save seen=true · "Message typeText (Picture soon)"
+ok  instagram_android360_dark.png: "SoonInvoices for Instagram are coming soon." · no Send button=true
+ok  tiktok_laptop1280_light.png: 1280px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  sheet_laptop1280_light.png: sheet inside the screen=true · Send / Copy / Can't message all seen above the bottom=true · shipping fee starts at 38
+ok  format_laptop1280_light.png: sheet inside=true · Save seen=true · "Message typeText (Picture soon)"
+ok  instagram_laptop1280_light.png: "SoonInvoices for Instagram are coming soon." · no Send button=true
+ok  tiktok_laptop1280_dark.png: 1280px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  sheet_laptop1280_dark.png: sheet inside the screen=true · Send / Copy / Can't message all seen above the bottom=true · shipping fee starts at 38
+ok  format_laptop1280_dark.png: sheet inside=true · Save seen=true · "Message typeText (Picture soon)"
+ok  instagram_laptop1280_dark.png: "SoonInvoices for Instagram are coming soon." · no Send button=true
+ok  360px en: 360px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  360px fil: 360px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 67px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  360px zh: 360px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  360px zh-TW: 360px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  360px vi: 360px · sideways=false · header 44px (one line) · Format 55x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  360px th: 360px · sideways=false · header 44px (one line) · Format 68x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  360px id: 360px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  360px bg: 360px · sideways=false · header 44px (one line) · Format 78x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px en: 390px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px fil: 390px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px zh: 390px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px zh-TW: 390px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px vi: 390px · sideways=false · header 44px (one line) · Format 55x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px th: 390px · sideways=false · header 44px (one line) · Format 68x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px id: 390px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  390px bg: 390px · sideways=false · header 44px (one line) · Format 78x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px en: 430px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px fil: 430px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px zh: 430px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px zh-TW: 430px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px vi: 430px · sideways=false · header 44px (one line) · Format 55x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px th: 430px · sideways=false · header 44px (one line) · Format 68x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px id: 430px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  430px bg: 430px · sideways=false · header 44px (one line) · Format 78x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px en: 1280px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px fil: 1280px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px zh: 1280px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px zh-TW: 1280px · sideways=false · header 44px (one line) · Format 54x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px vi: 1280px · sideways=false · header 44px (one line) · Format 55x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px th: 1280px · sideways=false · header 44px (one line) · Format 68x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px id: 1280px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+ok  1280px bg: 1280px · sideways=false · header 44px (one line) · Format 78x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
+
+all checks ok

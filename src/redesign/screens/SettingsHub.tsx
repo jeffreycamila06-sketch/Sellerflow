@@ -79,7 +79,7 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onInvoicing, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false, onBlacklist, blacklistNew = false,
+  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onInvoicing, invoicingOpen = false, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false, onBlacklist, blacklistNew = false,
 }: {
   onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
   onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
@@ -103,6 +103,8 @@ export default function SettingsHub({
   // Website card, with "Soon". The tap is decided by the app: a seller who has the Receipt format screen opens
   // it (as the old "Receipt format" tile did); everyone else gets a short "coming soon" note. No tile is hidden.
   onInvoicing?: () => void;
+  /** Invoicing is open for this seller (sql/220): the card shows "›" instead of "Soon". Absent = today's card. */
+  invoicingOpen?: boolean;
   // Taiwan market only (same market rule that lets Parcel Scan appear at all; admin sees it).
   // Shows the FamilyMart "Coming soon" tile, and a "Coming soon" 7-11 tile for a seller who has
   // neither the working nor the locked 7-11 tile. A tap only shows a short note.
@@ -160,7 +162,9 @@ export default function SettingsHub({
               <span style={tileLabel}>{t.rd_invoice_title}</span>
               <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.25 }}>{t.rd_invoice_sub}</span>
             </span>
-            <SoonBadge plain testid="invoicing-soon" style={{ marginLeft: "auto", flexShrink: 0 }} />
+            {invoicingOpen
+              ? <span data-testid="invoicing-open" aria-hidden="true" style={{ marginLeft: "auto", flexShrink: 0, fontSize: 18, fontWeight: 700, color: "var(--accent-fg)" }}>›</span>
+              : <SoonBadge plain testid="invoicing-soon" style={{ marginLeft: "auto", flexShrink: 0 }} />}
           </button>
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />

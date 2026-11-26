@@ -5,6 +5,8 @@
 // neq / in / is / not / gte / lte / order / range / limit / single / maybeSingle / head
 // counts, insert / update / delete) — anything else resolves to empty data, never an error.
 //   npx vite --config vite.preview.config.ts --port 5199
+import { invoiceRows } from "../redesign/adapters/invoicing";
+import { rebuildSessionFromRows } from "../lib/orderLogic";
 type Row = Record<string, unknown>;
 type Res = { data: unknown; error: null; count: number | null };
 
@@ -118,6 +120,7 @@ const quotaAnswer = (): unknown => {
   const [used, limit, locked] = QUOTA.split(",").map(Number);
   return { used, limit, unlimited: false, locked: locked || 0, next_free_at: null };
 };
+let seedInvoiceSends: (() => void) | null = null;   // set by ?ivc= below; run on the first read of invoice_sends
 const RPC: Record<string, unknown> = {
   account_quota: quotaAnswer(),
   blacklist_add: { result: "added", id: "preview-added-1", day: day(0) }, // Blacklist "Add" in a preview (previews/web-qr-scanner)
@@ -199,6 +202,52 @@ if (FAC) {
   RPC.admin_free_account_reset = { ok: true, was: 193 };
 }
 
+// Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
+//   = the switch invoicing_enabled on, a running 2-day session with that many TikTok buyers (+ 2 Facebook
+//   buyers, who are not in the TikTok list), the first <sent> saved as Sent, then one Next, one Not sent,
+//   one "Can't message", one "New item" (sent before a later order), a number-only TikTok id further down,
+//   and a saved format (payment note + shipping fee 38). Absent = nothing below is touched.
+const IVC = (/[?&]ivc=(\d+),(\d+)/.exec(Q) || []).slice(1).map(Number);
+const IVC_SESSION = "preview-invoice";
+if (IVC.length === 2) {
+  const [count, sent] = IVC;
+  const NAMES = ["ana.cruz", "ben.t", "cara_shop", "dina.ukay", "ella.m", "faye88", "gina.lim", "hana_tw", "ivy.chen", "joy.reyes", "kim.dc", "lea.santos", "mia.go", "nina_p", "olive.tan", "pia.lopez", "queenie.w", "rica.m", "sam.yu", "tina.ong"];
+  const ITEMS = [["A1 dress", 350], ["B2 top", 280], ["C3 bag", 120], ["D4 cap", 90], ["E5 belt", 60], ["F6 jeans", 420], ["G7 skirt", 260]] as const;
+  const at = (n: number, extra = 0) => new Date(now - 26 * 3_600_000 + n * 9 * 60_000 + extra).toISOString();
+  const rows: Row[] = [];
+  const add = (n: number, handle: string, name: string, platform: string, item: readonly [string, number], t: string) =>
+    rows.push({ id: 7000 + rows.length, user_id: UID, session_id: IVC_SESSION, session_date: t.slice(0, 10), created_at: t, buyer_number: n, handle, customer_name: name, platform, product: item[0], price: item[1], qty: 1, comment_msg_id: null, auto_code: null });
+  for (let n = 1; n <= count; n++) {
+    const base = NAMES[(n - 1) % NAMES.length];
+    const handle = n === 18 ? "7234567890123456789" : `@${base}${n > NAMES.length ? n : ""}`;
+    const name = n === 18 ? "7234567890123456789" : base.replace(/[._]/g, " ");
+    add(n, handle, name, "TikTok", ITEMS[n % ITEMS.length], at(n));
+    if (n % 3 === 0) add(n, handle, name, "TikTok", ITEMS[(n + 2) % ITEMS.length], at(n, 4 * 60_000));
+    if (n % 7 === 0) add(n, handle, name, "TikTok", ITEMS[(n + 4) % ITEMS.length], at(n, 20 * 3_600_000));   // again on day 2
+  }
+  add(count + 1, "Maria Santos", "Maria Santos", "Facebook", ITEMS[0], at(count + 1));
+  add(count + 2, "Joy Reyes", "Joy Reyes", "Facebook", ITEMS[1], at(count + 2));
+  tables.live_session_orders.push(...rows);
+  tables.app_settings.push({ key: "invoicing_enabled", value: "true" });
+  tables.seller_session_config = [{ user_id: UID, current_session_id: IVC_SESSION, session_started_at: new Date(now - 26 * 3_600_000).toISOString(), session_window_days: 2, session_ended_at: null, window_days: 1, window_start: null }];
+  tables.seller_receipt_settings = [{ user_id: UID, opening: "", note: "Pay by bank transfer within 24 hours.\nBank 012 · 0000-1234-5678", qr_image: null, invoice_shipping_fee: 38, updated_at: iso(3) }];
+  RPC.session_status = { running: true, session_id: IVC_SESSION, session_platform: "TikTok" };
+  // the saved status is made from the app's own rows (same buyer mark, same lines code) the first time it is read
+  seedInvoiceSends = () => {
+    const list = invoiceRows(rebuildSessionFromRows(rows as never).buyers, "tiktok", "");
+    const morning = new Date(now); morning.setHours(9, 0, 0, 0);
+    const row = (r: (typeof list)[number], i: number, status: string, hash = r.hash): Row => ({
+      user_id: UID, session_key: IVC_SESSION, platform: "tiktok", buyer_number: r.num, buyer_key: r.key, status, lines_hash: hash,
+      sent_at: status === "sent" ? new Date(morning.getTime() + i * 60_000).toISOString() : null,
+    });
+    tables.invoice_sends = [
+      ...list.slice(0, sent).map((r, i) => row(r, i, "sent")),
+      ...(list[sent + 2] ? [row(list[sent + 2], 0, "skipped")] : []),
+      ...(list[sent + 3] ? [row(list[sent + 3], sent + 3, "sent", "before")] : []),
+    ];
+  };
+}
+
 type Filter = (r: Row) => boolean;
 const cmp = (a: unknown, b: unknown): number => (a == null && b == null ? 0 : a == null ? 1 : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0);
 
@@ -235,6 +284,18 @@ class Query implements PromiseLike<Res> {
   update(p: Row) { this.mode = "update"; this.payload = p; return this; }
   delete() { this.mode = "delete"; return this; }
   private run(): Res {
+    if (this.table === "invoice_sends" && seedInvoiceSends) { const seed = seedInvoiceSends; seedInvoiceSends = null; seed(); }
+    if (this.table === "invoice_sends" && this.mode === "insert") {   // the app's upsert: one row per buyer, the time is the database's
+      const p = (Array.isArray(this.payload) ? this.payload[0] : this.payload) ?? {};
+      tables.invoice_sends = (tables.invoice_sends ?? []).filter((r) => !(r.session_key === p.session_key && r.platform === p.platform && r.buyer_number === p.buyer_number && r.buyer_key === p.buyer_key));
+      this.payload = { ...p, sent_at: p.status === "sent" ? new Date().toISOString() : null };
+    }
+    if (this.table === "seller_receipt_settings" && this.mode === "insert") {   // the app's upsert: only the columns sent change
+      const p = (Array.isArray(this.payload) ? this.payload[0] : this.payload) ?? {};
+      const old = (tables.seller_receipt_settings ?? []).find((r) => r.user_id === p.user_id);
+      tables.seller_receipt_settings = (tables.seller_receipt_settings ?? []).filter((r) => r !== old);
+      this.payload = { ...(old ?? {}), ...p };
+    }
     const all = tables[this.table] ?? (tables[this.table] = []);
     if (FAC && this.table === "seller_profiles" && this.mode !== "select" && this.mode !== "delete"
       && [this.payload].flat().some((r) => /usedshop/i.test(String((r as Row | null)?.tiktok ?? "")))) {

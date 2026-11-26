@@ -13,6 +13,7 @@ import { useT, tpl } from "../i18n";
 import { chaseTarget } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { copyText } from "./inviteShare";
+import { selectAll } from "../adapters/buttonFeedback";
 import {
   initialSendLines, messageTotal, buildSendMessage, loadSendNote, saveSendNote, qtySuffix, priceInput, type SendLine,
 } from "../adapters/tiktokSend";
@@ -23,16 +24,26 @@ const input: CSSProperties = { boxSizing: "border-box", padding: "9px 10px", bor
 const smallBtn: CSSProperties = { width: 40, height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text-muted)", fontSize: 18, lineHeight: 1, cursor: "pointer", fontFamily: "var(--font-ui)" };
 const bigBtn: CSSProperties = { display: "block", boxSizing: "border-box", width: "100%", marginTop: 10, padding: "12px 0", borderRadius: 12, fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", cursor: "pointer", fontFamily: "var(--font-ui)" };
 
+// INVOICING (Settings → Invoicing, 2026-11-26) opens this same sheet for one buyer of its list. Only
+// with `invoice` (Orders never passes it — the sheet there is exactly as before):
+//   • the note and the shipping fee start from the seller's invoice format (the remembered note of
+//     Send to TikTok is neither read nor written);
+//   • the main button reads Send / Send again and tells the caller when the message was really copied
+//     (onSent = that buyer is "Sent"); a copy that failed selects the message so it can be copied by hand;
+//   • one more button: "Can't message" (onSkip).
+export interface SendSheetInvoice { note: string; shipping: string; sent: boolean; onSent: () => void; onSkip: () => void }
+
 // pastRange (e.g. "10/08 → 10/10"): the card is from a PAST session → the header says so and
 // the first copy asks one confirm ("This is an OLD session … Send anyway?").
-export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose, pastRange }: {
-  receipt: BuyerReceipt; cur: string; date: string; sellerId: string; onClose: () => void; pastRange?: string;
+export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose, pastRange, invoice }: {
+  receipt: BuyerReceipt; cur: string; date: string; sellerId: string; onClose: () => void; pastRange?: string; invoice?: SendSheetInvoice;
 }) {
   const t = useT();
   const [lines, setLines] = useState<SendLine[]>(() => initialSendLines(receipt.lines));
-  const [shipping, setShipping] = useState(""); // EMPTY every open (per customer) — never remembered, unlike the note
+  const [shipping, setShipping] = useState(invoice?.shipping ?? ""); // EMPTY every open (per customer) — never remembered, unlike the note (Invoicing: the format's fee)
   const [totalOverride, setTotalOverride] = useState<string | null>(null);
-  const [note, setNote] = useState(() => loadSendNote(sellerId));
+  const [note, setNote] = useState(() => (invoice ? invoice.note : loadSendNote(sellerId)));
+  const previewRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState<string | null>(null); // null = auto mode (rebuilt from the fields); a string = the seller's own text
   const [status, setStatus] = useState("");
   const [oldOk, setOldOk] = useState(!pastRange); // past session: copy buttons only after one confirm
@@ -58,8 +69,18 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   const setShip = (v: string) => { setTotalOverride(null); setShipping(priceInput(v, cur)); };
 
   const copy = async (): Promise<boolean> => {
-    saveSendNote(sellerId, note);
+    if (!invoice) saveSendNote(sellerId, note);
     return copyText(message);
+  };
+  // Invoicing: the main button's copy. Copied → the caller marks the buyer Sent; not copied → the message
+  // is selected in its box (the seller copies it by hand) and nothing is marked.
+  const onInvoiceSend = (okText: string) => {
+    void copy().then((ok) => {
+      if (ok) { setStatus(okText); invoice?.onSent(); return; }
+      setStatus(t.rd_tts_copy_failed);
+      const box = previewRef.current;
+      if (box) { try { box.scrollIntoView({ block: "center" }); } catch { /* not laid out */ } box.focus(); selectAll(box); }
+    });
   };
   // Copy, then the anchor's own navigation opens the profile (a real <a> tap — the only open
   // that works inside the iOS app). On iOS the clipboard keeps the MESSAGE (no @handle copy).
@@ -136,7 +157,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
               </button>
             )}
           </span>
-          <GrowArea value={message} label={t.rd_tts_preview} onChange={setDraft} />
+          <GrowArea value={message} label={t.rd_tts_preview} onChange={setDraft} boxRef={previewRef} />
         </div>
 
         <div style={{ flex: "0 0 auto", padding: "0 14px calc(18px + env(safe-area-inset-bottom))" }}>
@@ -146,7 +167,19 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
               <button type="button" data-testid="tts-old-yes" onClick={() => setOldOk(true)}
                 style={{ ...bigBtn, border: "none", background: "#b45309", color: "#fff" }}>{t.rd_tts_old_yes}</button>
             </div>
-          ) : (<>
+          ) : invoice ? (<>
+          {target.kind === "open"
+            ? <a href={target.url} target="_blank" rel="noreferrer" data-testid="tts-copy-open" onClick={() => onInvoiceSend(t.rd_tts_copied_open)}
+                style={{ ...bigBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{invoice.sent ? t.rd_ivc_send_again : t.rd_ivc_send}</a>
+            : <button type="button" data-testid="tts-copy-find" onClick={() => onInvoiceSend(t.rd_tts_copy_find)}
+                style={{ ...bigBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_tts_copy_find_btn}</button>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" data-testid="tts-copy-only" onClick={() => onCopyOnly("only")}
+              style={{ ...bigBtn, flex: 1, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)" }}>{t.rd_tts_copy_only}</button>
+            <button type="button" data-testid="tts-skip" onClick={() => { invoice.onSkip(); onClose(); }}
+              style={{ ...bigBtn, flex: 1, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--warn)" }}>{t.rd_ivc_skip}</button>
+          </div>
+          </>) : (<>
           {target.kind === "open"
             ? <a href={target.url} target="_blank" rel="noreferrer" data-testid="tts-copy-open" onClick={onCopyOpen}
                 style={{ ...bigBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_tts_copy_open}</a>
@@ -183,8 +216,9 @@ function useGrow(ref: RefObject<HTMLTextAreaElement | null>, value: string) {
 }
 
 // The whole message: multi-line, grows with the text, same look as the other fields.
-function GrowArea({ value, label: aria, onChange }: { value: string; label: string; onChange: (v: string) => void }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+function GrowArea({ value, label: aria, onChange, boxRef }: { value: string; label: string; onChange: (v: string) => void; boxRef?: RefObject<HTMLTextAreaElement | null> }) {
+  const own = useRef<HTMLTextAreaElement>(null);
+  const ref = boxRef ?? own;
   useGrow(ref, value);
   return (
     <textarea ref={ref} data-testid="tts-preview" aria-label={aria} rows={3} value={value} onChange={(e) => onChange(e.target.value)}
