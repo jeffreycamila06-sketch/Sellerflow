@@ -10,7 +10,8 @@
 //   • the send = fbReceipt.sendOne: the same per-buyer lock, claim, upload and ONE Graph call as the
 //     automatic receipt (one private reply per comment, the fb_receipts unique index), with the
 //     can_reply_privately preflight (false → the buyer is skipped);
-//   • at most 10 sends per minute per seller.
+//   • at most 10 sends per minute per seller. Jobs of different sellers run at the same time; one seller's
+//     jobs one after another (a lane per seller; a waiting job keeps a heartbeat).
 // Gate, per job and per request: fb_send_all_enabled = 'true' OR the seller is an admin, AND the
 // add-on. fb_auto_receipt_enabled is never read here and nothing here queues an after-live job.
 //
@@ -28,6 +29,9 @@ import { makeRateGate } from "./fbHardening.js";
 
 export const SEND_ALL_RATE_MAX = 10;
 export const SEND_ALL_RATE_WINDOW_MS = 60 * 1000;
+// a job claimed but waiting behind the same seller's running job: a heartbeat at least this often
+// (the database takes a job back after 3 minutes without one)
+export const WAITER_BEAT_MS = 30 * 1000;
 export const SEND_ALL_TICK_MS = 15 * 1000;
 export const SEND_ALL_PENDING_FRESH_MS = 2 * 60 * 1000; // a 'pending' row this young = still sending
 export const SEND_ALL_STATUS_RATE_MAX = 60;  // per seller per minute (the app polls every 4 s)
@@ -168,8 +172,14 @@ export function createSendAllRunner(deps) {
   } = deps;
   const rate = new Map(); // userId → send timestamps (in memory)
   const sendablePage = makeSendablePage(store, config);
-  let busy = false;
+  let claiming = false;
   let again = false;
+  // ONE lane per seller: their jobs run one after another (so the 10-a-minute limit holds per seller);
+  // the lanes of different sellers run at the same time. A job claimed while its seller's lane is busy
+  // waits in the lane and keeps a heartbeat (else the database would take it back as stale_running).
+  const lanes = new Map(); // userId → { tail: Promise, waiting: Map<jobId, job> }
+  const inLane = new Set(); // job ids in a lane (waiting or running) — never queued twice
+  const waiterBeat = new Map(); // waiting job id → last heartbeat sent (ms)
 
   const hasAccess = async (uid) => { try { return (await store.hasReceiptAccess(uid)) === true; } catch { return false; } };
   // switch OR admin; any read error = no
@@ -194,7 +204,22 @@ export function createSendAllRunner(deps) {
     } catch { /* a stale job goes back to 'queued' after 3 minutes */ }
     log(`[FB] send-all job=${job.id} user=${short(job.user_id)} ${status} ${note || ""}${c ? ` sent=${c.sent} skipped=${c.skipped} failed=${c.failed}` : ""}`);
   }
-  const touch = async (job, patch) => { try { await store.touchSendAllJob(job.id, { heartbeat_at: iso(now()), ...patch }); } catch { /* next touch */ } };
+  const touch = async (job, patch) => {
+    try { await store.touchSendAllJob(job.id, { heartbeat_at: iso(now()), ...patch }); } catch { /* next touch */ }
+    await beatWaiters(job.user_id);
+  };
+  // the waiting jobs of one seller (or of every seller): a heartbeat at most every WAITER_BEAT_MS each
+  async function beatWaiters(uid) {
+    const list = uid == null ? [...lanes.values()] : [lanes.get(uid)].filter(Boolean);
+    const t = now();
+    for (const lane of list) {
+      for (const w of lane.waiting.values()) {
+        if (t - (waiterBeat.get(w.id) || 0) < WAITER_BEAT_MS) continue;
+        waiterBeat.set(w.id, t);
+        try { await store.touchSendAllJob(w.id, { heartbeat_at: iso(t) }); } catch { /* next beat */ }
+      }
+    }
+  }
 
   async function runJob(job) {
     const uid = job.user_id;
@@ -244,25 +269,50 @@ export function createSendAllRunner(deps) {
     return finish(job, "done", "", c);
   }
 
-  // One pass: every waiting job, one after another. Never throws, never overlaps itself; a kick
-  // during a pass runs one more pass right after it.
+  async function runSafe(job) {
+    try { await runJob(job); } catch { await finish(job, "failed", "error"); }
+  }
+  // put a claimed job in its seller's lane; resolves when that job has finished
+  function enqueue(job) {
+    const uid = String(job.user_id || "");
+    if (inLane.has(job.id)) return Promise.resolve();
+    inLane.add(job.id);
+    let lane = lanes.get(uid);
+    if (!lane) { lane = { tail: Promise.resolve(), waiting: new Map() }; lanes.set(uid, lane); }
+    lane.waiting.set(job.id, job);
+    waiterBeat.set(job.id, now()); // the claim itself set the heartbeat
+    const l = lane;
+    const done = l.tail.then(async () => {
+      l.waiting.delete(job.id); waiterBeat.delete(job.id);
+      await runSafe(job);
+    }).finally(() => {
+      inLane.delete(job.id);
+      if (l.tail === done && l.waiting.size === 0 && lanes.get(uid) === l) lanes.delete(uid);
+    });
+    l.tail = done;
+    return done;
+  }
+
+  // One pass: claim every waiting job and put each in its seller's lane. Sellers run at the same time,
+  // one job at a time per seller. Claiming never overlaps itself (a kick during a claim runs one more
+  // claim right after); a kick while jobs RUN claims at once (a new seller does not wait for another's
+  // job). Never throws. Resolves when the jobs it claimed have finished.
   async function tick() {
-    if (busy) { again = true; return 0; }
-    busy = true;
-    let n = 0;
+    await beatWaiters(null);
+    if (claiming) { again = true; return 0; }
+    claiming = true;
+    const started = [];
     try {
       for (;;) {
         again = false;
         let jobs = [];
         try { jobs = (await store.claimSendAllJobs(5)) || []; } catch { jobs = []; }
-        for (const job of jobs) {
-          n++;
-          try { await runJob(job); } catch { await finish(job, "failed", "error"); }
-        }
-        if (!jobs.length && !again) break; // nothing waiting and no tap during the pass
+        for (const job of jobs) started.push(enqueue(job));
+        if (!jobs.length && !again) break; // nothing waiting and no tap during the claim
       }
-    } finally { busy = false; }
-    return n;
+    } finally { claiming = false; }
+    await Promise.all(started);
+    return started.length;
   }
   const kick = () => { void tick().catch(() => {}); };
 
@@ -355,5 +405,5 @@ export function createSendAllRunner(deps) {
     app.post("/fb/sendall/preview", requireAuth, gate(SEND_ALL_PREVIEW_RATE_MAX), wrap(preview));
   }
 
-  return { start, status, preview, tick, kick, runJob, registerRoutes, _rate: rate };
+  return { start, status, preview, tick, kick, runJob, registerRoutes, _rate: rate, _lanes: lanes };
 }

@@ -6949,7 +6949,10 @@ everywhere; (3) NO automatic send after a live (`fb_auto_receipt_enabled` and th
   `labels`, `shippingFee` — the after-live input is byte-identical) and the order lines minus `invoice_line_cancels`
   (platform facebook). Skipped: already sent / pending / no-private-reply (autoSend's rule), invoice_sends
   sent/skipped/cancelled (platform facebook, session_key = the session id), every line cancelled, mixed buyer.
-  10 sends a minute per seller (waits with a heartbeat). Gate per request and per buyer: `fb_send_all_enabled` = 'true'
+  10 sends a minute per seller (waits with a heartbeat). **One lane per seller:** jobs of DIFFERENT sellers run at
+  the same time, a seller's own jobs one after another (a job claimed while the seller's other job runs waits in the
+  lane and gets a heartbeat at least every 30 s, `WAITER_BEAT_MS` — from the running job's touches and from the 15 s
+  pass). A tap while jobs run claims at once (claiming never overlaps itself). Gate per request and per buyer: `fb_send_all_enabled` = 'true'
   OR admin (`seller_profiles.role`), AND rule 2. Heartbeat older than 3 min → re-queued (max 3 tries) by
   `claim_fb_send_all_jobs`, which also deletes finished jobs after 30 days.
 - **The phone gets** per buyer NUMBER `{n, tag, at?}` + the job's counts. Tags: not_sent · sending · sent · other_app ·
@@ -6967,13 +6970,15 @@ everywhere; (3) NO automatic send after a live (`fb_auto_receipt_enabled` and th
   comment in the last 7 days → Can't message (no).
 - **Switch:** `insert into app_settings (key, value) values ('fb_send_all_enabled', 'true') on conflict (key) do update set value = excluded.value;`
   (sql/225 creates it 'false'; NOT flipped).
-- **Order:** sql/225 → Render deploy (quiet window) → Vercel merge → test as admin → flip the switch → sql/226 (guide).
-  Web before Render = the tab shows "Couldn't load" for admins only (the switch is off). Rollback: switch 'false' or
-  `sql/225_fb_send_all_rollback.sql`.
+- **Order (Render deploys from main):** sql/225 → merge (Vercel) → Render deploy (quiet window — by hand, or the
+  nightly one) → test as admin → flip the switch → sql/226 (guide). sql/225 must be in BEFORE the merge (the nightly
+  deploy may start the server half that night). Between the merge and the Render deploy the tab shows "Couldn't load"
+  for admins only (the switch is off). Rollback: switch 'false' or `sql/225_fb_send_all_rollback.sql`.
 - **Picture:** Send all strips emoji (`noEmoji`; the server fonts have none). Korean / Arabic draw as boxes on the
   server (automatic receipt too — open item: add Noto Sans KR / Arabic). The automatic receipt's picture is byte-identical
   to main (`docs/design/fb-send-all/proof/receipt-same-as-main.txt`). printer-guardian run: parity table in the report,
   map P10 / §3 / §4 / §8 updated.
-- Proof: `fbSendAll.server.test.ts` (40), `Invoicing.fbSendAll.test.tsx` (21), `fbSendAll.test.ts` (9),
+- Proof: `fbSendAll.server.test.ts` (39), `fbSendAll.lanes.server.test.ts` (4: two sellers both send in the first
+  minute, same seller two sessions one after the other with no stale_running), `Invoicing.fbSendAll.test.tsx` (21), `fbSendAll.test.ts` (9),
   `invoicingOpen.app.test.tsx` (gate in the real app), `scripts/sql225-behaviour.mjs` (PGlite, 36),
   `docs/design/fb-send-all/` (pictures + measured).
