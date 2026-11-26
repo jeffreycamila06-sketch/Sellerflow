@@ -6935,7 +6935,9 @@ Jeff's rules: (1) any seller with `fb_receipt_access.enabled`, ANY plan; (2) pla
 everywhere; (3) NO automatic send after a live (`fb_auto_receipt_enabled` and the after-live job untouched);
 (4) "Other chat app" (10/2018300) = amber note + "How".
 - **Rule 2 (`server/fbReceiptAccess.js`):** `store.hasReceiptAccess` = the add-on row AND `seller_profiles.plan_expiry`
-  empty or in the future; any read error / no profile / bad date = no. Covers the Orders receipt Send, Send all,
+  empty or in the future — a **Free** plan never ends (its plan_expiry is not read; printer-guardian catch: Admin's
+  "Free" sets now + 31 days); any read error / no profile / bad date = no. On 2026-11-26 all 10 add-on sellers are paid
+  with a future end date (nobody loses the receipt at the deploy). Covers the Orders receipt Send, Send all,
   `/fb/access` (→ the Facebook tab shows the locked card) and the sold-out message. The Facebook sign-in
   (`/fb/oauth/start`, fbRuntime gets `{ ...store, hasReceiptAccess: receiptAddonRow }`) keeps the ROW-only check, so a
   seller whose plan ended does not lose the Page's Messenger permission for the renewal.
@@ -6968,6 +6970,10 @@ everywhere; (3) NO automatic send after a live (`fb_auto_receipt_enabled` and th
 - **Order:** sql/225 → Render deploy (quiet window) → Vercel merge → test as admin → flip the switch → sql/226 (guide).
   Web before Render = the tab shows "Couldn't load" for admins only (the switch is off). Rollback: switch 'false' or
   `sql/225_fb_send_all_rollback.sql`.
-- Proof: `fbSendAll.server.test.ts` (38), `Invoicing.fbSendAll.test.tsx` (21), `fbSendAll.test.ts` (9),
+- **Picture:** Send all strips emoji (`noEmoji`; the server fonts have none). Korean / Arabic draw as boxes on the
+  server (automatic receipt too — open item: add Noto Sans KR / Arabic). The automatic receipt's picture is byte-identical
+  to main (`docs/design/fb-send-all/proof/receipt-same-as-main.txt`). printer-guardian run: parity table in the report,
+  map P10 / §3 / §4 / §8 updated.
+- Proof: `fbSendAll.server.test.ts` (40), `Invoicing.fbSendAll.test.tsx` (21), `fbSendAll.test.ts` (9),
   `invoicingOpen.app.test.tsx` (gate in the real app), `scripts/sql225-behaviour.mjs` (PGlite, 36),
   `docs/design/fb-send-all/` (pictures + measured).
