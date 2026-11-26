@@ -23,6 +23,7 @@ import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
 import ContactChip from "../components/ContactChip";
 import { AdminCountryPicker, CountryPill, CountryTag } from "../components/AdminCountry";
+import { FreeTierList } from "../components/AdminFreeTier";
 import { AdminCountryCtx, type AdminCountryApi, type CountryInfo } from "../adapters/adminCountryCtx";
 import { useAdminCountries, resolveUserCountry } from "../adapters/adminCountry";
 import AdminHelpChat from "../components/AdminHelpChat";
@@ -249,39 +250,8 @@ function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[];
   );
 }
 
-// REAL free-tier monitor (list_free_users_status RPC).
-// Signup-date label (Taiwan time) for the free-tier cards. Pure. Returns just the
-// "Jul 18" part (month abbrev + day, no year/time) or "—" when created_at is
-// missing/invalid; the "Joined {d}" wrapper is the translated rd_adm_joined key.
-function joinedDate(createdAt: string | undefined | null): string {
-  if (!createdAt) return "—";
-  const d = new Date(createdAt);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "Asia/Taipei" });
-}
-
-function FreeUserList({ list, rawByEmail }: { list: FreeUserRow[]; rawByEmail: Record<string, AccountUser> }) {
-  const t = useT();
-  // Display-only reorder: newest-first by signup date. sortUsersBySignup sorts a
-  // COPY (never mutates props) with a stable, NaN-free comparator; missing dates sink
-  // to the bottom. Extracted + unit-tested in useReadData (guards this exact path).
-  const sorted = sortUsersBySignup(list, rawByEmail);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{tpl(list.length === 1 ? t.rd_adm_free_shops_one : t.rd_adm_free_shops_many, { n: list.length })}</div>
-      {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_free}</div>}
-      {sorted.map((u) => {
-        const color = u.capped ? "var(--danger)" : u.near_cap ? "var(--warn)" : "var(--ok)";
-        return (
-          <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.full_name || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div><CountryTag email={u.email} suffix={tpl(t.rd_adm_joined, { d: joinedDate(rawByEmail[u.email]?.createdAt) })} /></div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, color }}>{u.count} / {u.cap}</div></div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// REAL free-tier monitor (list_free_users_status RPC) — groups, chips, last order and the
+// look-alike warning live in components/AdminFreeTier.tsx (2026-11-26).
 
 function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { list: Sub[]; statusLabel: string; statusColor: string; note: string; showPlan?: boolean }) {
   return (
@@ -1565,7 +1535,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
             ? <SellerSubList list={subB.expiring} statusLabel={t.rd_adm_st_expiring} statusColor="var(--warn)" note={tpl(t.rd_adm_note_expiring, { n: subB.expiring.length })} />
             : <SubList list={SUBS.expiring} statusLabel={t.rd_adm_st_expiring} statusColor="var(--warn)" note={t.rd_adm_note_expiring_sample} />)}
           {panel === "subFree" && (realFree
-            ? <FreeUserList list={freeUsers} rawByEmail={rawByEmail} />
+            ? <FreeTierList list={freeUsers} rawByEmail={rawByEmail} />
             : <SubList list={SUBS.free} statusLabel={t.rd_adm_st_free} statusColor="var(--accent-fg)" note={t.rd_adm_note_free_sample} showPlan={false} />)}
           {panel === "subExpired" && (realSubs
             ? <SellerSubList list={subB.expired} statusLabel={t.rd_adm_st_expired} statusColor="var(--danger)" note={tpl(t.rd_adm_note_expired, { n: subB.expired.length })} />

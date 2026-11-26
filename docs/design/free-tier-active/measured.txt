@@ -1,0 +1,10 @@
+iphone390 light: wide=false listOut=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+iphone390 dark: wide=false listOut=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+android360 light: wide=false listOut=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+android360 dark: wide=false listOut=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+laptop1280 light: wide=false listOut=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+laptop1280 dark: wide=false listOut=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+360: ok rows=9 amber=3 active7=5 wide=false out=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+390: ok rows=9 amber=3 active7=5 wide=false out=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+430: ok rows=9 amber=3 active7=5 wide=false out=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0
+1280: ok rows=9 amber=3 active7=5 wide=false out=false chipsH=44/44/44 sheetCloseH=44 sheetOut=false errors=0

@@ -223,6 +223,30 @@ if (/[?&]ra=1\b/.test(Q)) {
   RPC.admin_receipt_addon_note = { ok: true };
 }
 
+// Admin → Free tier previews (sql/228, docs/design/free-tier-active): ?ft=1&admin=1 — made-up free sellers
+// (three look-alike "budgetukay" accounts, one finished, several with no order) + their last order times.
+if (/[?&]ft=1\b/.test(Q)) {
+  const H = 3_600_000;
+  const free = (n: number, email: string, shop: string, tiktok: string, used: number, joinedDaysAgo: number, lastAgoMs: number | null) => ({ n, email, shop, tiktok, used, joinedDaysAgo, lastAgoMs });
+  const list = [
+    free(1, "budget.ukay@example.com", "Budget Ukay", "budgetukay1", 34, 40, 2 * H),
+    free(2, "ukay.second@example.com", "", "budget_ukay2", 150, 25, 3 * 24 * H),
+    free(3, "ukay.fourth@example.com", "", "budgetukay4", 0, 2, null),
+    free(4, "mika.thrift@example.com", "Mika Thrift Corner", "mikathrift", 88, 60, 20 * 60_000),
+    free(5, "lia.closet@example.com", "Lia Closet", "lia.closet", 12, 33, 5 * 24 * H),
+    free(6, "dee.store@example.com", "Dee Store", "deestore", 150, 70, 12 * 24 * H),
+    free(7, "rose.preloved@example.com", "Rose Preloved PH", "rosepreloved", 3, 9, 30 * H),
+    free(8, "new.seller@example.com", "New Seller", "newseller", 0, 1, null),
+    free(9, "fresh.start@example.com", "Fresh Start Shop", "freshstart", 0, 5, null),
+  ];
+  tables.seller_profiles.push(...list.map((f) => ({
+    auth_user_id: `ft-${f.n}`, email: f.email, full_name: f.shop, store_name: f.shop, phone: "", tiktok: f.tiktok, facebook: "", admin_contact_note: "", country: f.n === 7 ? "PH" : "TW",
+    plan: "free", plan_status: "active", plan_expiry: null, trial_started_at: null, connected_accounts: [], role: "seller", created_at: iso(f.joinedDaysAgo),
+  })));
+  RPC.list_free_users_status = list.map((f) => ({ email: f.email, store_name: f.shop, full_name: f.shop, count: f.used, cap: 150, near_cap: f.used >= 110, capped: f.used >= 150, cycle_resets_in_days: null }));
+  RPC.admin_free_tier_activity = list.map((f) => ({ email: f.email, last_order_at: f.lastAgoMs == null ? null : new Date(now - f.lastAgoMs).toISOString() }));
+}
+
 // Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
 //   = the switch invoicing_enabled on, a running 2-day session with that many TikTok buyers (+ 2 Facebook
 //   buyers, who are not in the TikTok list), the first <sent> saved as Sent, then one Next, one Not sent,
