@@ -95,12 +95,12 @@ describe("sql/221 — the help guide when Invoicing opens", () => {
     expect(once.split("**Invoicing**").length - 1).toBe(1);
     expect(run(up221, after219.replace(`${LINE}\n`, ""))).toBe(after219.replace(`${LINE}\n`, ""));   // no old line → nothing is touched
   });
-  it("the new row + sql/224 (the Facebook tab line, applied after it) is word for word the row of sql/116b = the guide file's section", () => {
+  it("the new row + sql/224 (the Facebook tab line) + sql/226 (Send all) is word for word the row of sql/116b = the guide file's section", () => {
     expect(up221.split("('invoicing',").length - 1).toBe(1);
     const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
     expect(md5(unq(r221[3]))).toBe("2dbd54d0909f9b6eb341745efb48a0d7");   // = the live row's body (read 2026-11-26)
     expect(r221[1]).toBe(seedRow[1]);
-    expect(run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) })).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
+    expect(run224(up226, run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) }))).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
     const a = guide.indexOf("## invoicing — ");
     const section = guide.slice(a, guide.indexOf("\n## ", a + 5));
     expect(section.split("\n")[0]).toBe(`## invoicing — ${unq(seedRow[1])}`);
@@ -136,6 +136,7 @@ describe("sql/221 — the help guide when Invoicing opens", () => {
 
 // sql/224 (Facebook tab locked card, 2026-11-26): the "invoicing" row's Facebook line + three search words.
 const up224 = read("sql/224_guide_fb_invoicing_lock.sql"), down224 = read("sql/224_guide_fb_invoicing_lock_rollback.sql");
+const up226 = read("sql/226_guide_fb_send_all.sql"), down226 = read("sql/226_guide_fb_send_all_rollback.sql");
 function run224(sql: string, row: { body: string; keywords: string }): { body: string; keywords: string } {
   const rb = sql.match(new RegExp(`replace\\(body, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
   const rk = sql.match(new RegExp(`replace\\(keywords, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
@@ -152,9 +153,9 @@ describe("sql/224 — the Facebook tab line in the invoicing row", () => {
   })();
   const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
   const live = { body: unq(r221[3]), keywords: unq(r221[2]) };
-  it("live row + sql/224 = sql/116b; twice = no change; the old line is gone and the new one is there once", () => {
+  it("live row + sql/224 (+ sql/226) = sql/116b; twice = no change; the old line is gone and the new one is there once", () => {
     const once = run224(up224, live);
-    expect(once).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
+    expect(run224(up226, once)).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
     expect(run224(up224, once)).toEqual(once);
     expect(once.body).not.toContain("Facebook, Instagram and Shopee invoices are coming soon.");
     expect(once.body.split("**Ask Admin to turn it on**").length - 1).toBe(1);
@@ -174,5 +175,38 @@ describe("sql/224 — the Facebook tab line in the invoicing row", () => {
       expect(sql).toMatch(/^commit;$/m);
       expect(sql).not.toMatch(/\b(drop|alter|insert|delete|app_settings|feature_access_emails|fb_receipt_access)\b/i);
     }
+  });
+});
+
+// sql/226 (FB-2 Send all, 2026-11-26): the Facebook tab's steps, appended to the sql/224 line.
+describe("sql/226 — Send all in Messenger in the invoicing row", () => {
+  const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+  const live = run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) });   // = the live row now (sql/224 applied)
+  it("the live row is the one read on production (md5), sql/226 adds the block once, twice = no change", () => {
+    expect(md5(live.body)).toBe("359055643d01d94a59600f80440f3211");
+    const once = run224(up226, live);
+    expect(once.body.split("**Send all in Messenger**").length - 1).toBe(1);
+    expect(once.body).toContain("**Other chat app**");
+    expect(once.body).toContain("Conversation routing");
+    expect(once.body).toContain("Messenger receipts stop when your account expires.");
+    expect(once.body.endsWith("Instagram and Shopee invoices are coming soon.")).toBe(true);
+    expect(once.keywords).toContain("other chat app, conversation routing");
+    expect(run224(up226, once)).toEqual(once);
+  });
+  it("the rollback gives the live row back; twice = no change", () => {
+    const once = run224(up226, live);
+    expect(run224(down226, once)).toEqual(live);
+    expect(run224(down226, live)).toEqual(live);
+  });
+  it("only the invoicing row; one statement in one transaction; user words only (no plan / price / table words)", () => {
+    for (const sql of [up226, down226]) {
+      expect([...new Set(sql.match(/where id = '([\w-]+)'/g))]).toEqual(["where id = 'invoicing'"]);
+      expect(sql.split("update public.support_guide").length - 1).toBe(1);
+      expect(sql).toMatch(/^begin;$/m);
+      expect(sql).toMatch(/^commit;$/m);
+      expect(sql).not.toMatch(/\b(drop|alter|insert|delete|app_settings|feature_access_emails|fb_receipt_access)\b/i);
+    }
+    const block = run224(up226, live).body.slice(live.body.length - "Instagram and Shopee invoices are coming soon.".length - 2);
+    expect(block).not.toMatch(/\b(plan|upgrade|subscri\w*|price)\b|NT\$|fb_send_all|server|job|psid|token/i);
   });
 });

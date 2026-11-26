@@ -109,7 +109,7 @@ describe("SettingsHub tile gate", () => {
     // no "Receipt format" prop goes to the Settings tab; the one onReceiptFormat in the app is the Invoicing screen's
     // Facebook-tab button (sql/220), for the same receipt gate
     expect(src.split("onReceiptFormat").length - 1).toBe(1);
-    expect(src).toContain('{...(fbReceiptUi ? { onReceiptFormat: () => setScreen("receiptformat") } : {})} />');
+    expect(src).toContain('{...(fbReceiptUi ? { onReceiptFormat: () => setScreen("receiptformat") } : {})}\n              {...(fbReceiptUi && (isAdmin || featureSw.fbSendAll) ? { fbSendAll: { lang } } : {})} />');
     expect(src).toContain('{screen === "receiptformat" && fbReceiptUi && <ReceiptFormat');
     expect(src).toContain("fbReceipt={fbReceiptUi}");
     expect(src).toContain("const fbPreview = fbPreviewEnabled(auth.profile?.email);");
