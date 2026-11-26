@@ -268,3 +268,43 @@ describe("the iPhone app", () => {
     for (const [k, v] of Object.entries(t)) if (k.startsWith("rd_ivc_")) expect(`${k}: ${v}`.replace(k, "")).not.toMatch(BAD);
   });
 });
+
+// Facebook tab (Jeff, 2026-11-26): without the Receipt add-on → the locked card with the Telegram link,
+// for every plan and every build; with it → today's card with the Receipt format button.
+describe("the Facebook tab inside the real app", () => {
+  const BUILDS = ["web", "android", "ios"] as const;
+  const setBuild = (b: (typeof BUILDS)[number]) => {
+    const w = window as unknown as { Capacitor?: unknown };
+    if (b === "web") delete w.Capacitor; else w.Capacitor = { getPlatform: () => b, isNativePlatform: () => true, Plugins: {} };
+    window.history.replaceState({}, "", b === "ios" ? "/?ios=1" : "/");
+  };
+  afterEach(() => setBuild("web"));
+  const openFbTab = async () => {
+    await openSettingsTab();
+    fireEvent.click(card()); await flush();
+    expect(screenNow()).toBe("invoicing");
+    fireEvent.click(q("ivc-tab-facebook")!);
+  };
+  for (const b of BUILDS) for (const plan of ["free", "basic", "plus", "pro", "master"]) {
+    it(`${b}, ${plan} plan, no add-on: the locked card, the button = the Telegram chat with the ready message`, async () => {
+      setBuild(b); H.plan.v = plan; H.access.v = { facebook: true, receipt: false };
+      H.sw.v = { ...SWITCHES_OFF, invoicing: true };
+      await openFbTab();
+      expect(q("ivc-fb-locked")).not.toBeNull();
+      expect(q("ivc-receipt-format")).toBeNull();
+      expect(q("ivc-fb-lock-ask")!.getAttribute("href")).toBe("https://t.me/SellerFlowLive?text=Hi%20Admin%2C%20I'd%20like%20Facebook%20invoicing.");
+      expect(q("ivc-fb-lock-ask")!.textContent).toBe("Ask Admin to turn it on");
+    });
+  }
+  for (const b of BUILDS) {
+    it(`${b}, with the add-on: today's card and its Receipt format button — no locked card`, async () => {
+      setBuild(b); H.plan.v = "plus"; H.access.v = { facebook: true, receipt: true };
+      H.sw.v = { ...SWITCHES_OFF, invoicing: true };
+      await openFbTab();
+      expect(q("ivc-fb-locked")).toBeNull();
+      expect(q("ivc-soon-facebook")!.textContent).toContain(t.rd_ivc_fb_soon);
+      fireEvent.click(q("ivc-receipt-format")!); await flush();
+      expect(screenNow()).toBe("receiptformat");
+    });
+  }
+});

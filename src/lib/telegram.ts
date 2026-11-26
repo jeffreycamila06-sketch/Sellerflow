@@ -14,5 +14,6 @@ export const TELEGRAM_URL = "https://t.me/SellerFlowLive";
 export const LINE_URL = "";
 // The support chat with a ready message in the message box (Telegram's draft-text link for a username,
 // t.me/<username>?text=<draft>). If Telegram can't show the draft, the chat still opens as with TELEGRAM_URL.
-// Used ONLY by the Seller Website teaser card; every other link keeps TELEGRAM_URL.
+// Used ONLY by the Seller Website teaser card and the locked Facebook invoicing card (Invoicing);
+// every other link keeps TELEGRAM_URL.
 export const telegramDraftUrl = (text: string) => (text ? `${TELEGRAM_URL}?text=${encodeURIComponent(text)}` : TELEGRAM_URL);

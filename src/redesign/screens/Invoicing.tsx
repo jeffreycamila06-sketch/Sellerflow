@@ -2,7 +2,9 @@
 // TikTok works: a session's buyers, one row each (all days of a multi-day session together — the rows
 // come from the Orders buyer card's own code, adapters/invoicing.ts), a "Send next" button that copies
 // that buyer's message (the Send to TikTok text) and opens the buyer in TikTok the way Send to TikTok
-// does, and the saved status of every invoice. Facebook / Instagram / Shopee say "Soon".
+// does, and the saved status of every invoice. Instagram / Shopee say "Soon". Facebook: a seller WITH the
+// Receipt add-on (onReceiptFormat) gets today's "Soon" card + Receipt format; without it, a locked card
+// with "Ask Admin to turn it on" (Telegram, a ready message) — every plan, every build, no price.
 // SESSION PICKER: "This session" or a past one — the SAME list and the SAME loader the Orders tab uses
 // (adapters/pastSessions.ts usePastSessions; its own state here, so picking changes nothing in Orders or
 // in the live session). The saved status is per session. A past session is shown in amber and its row
@@ -31,6 +33,7 @@ import { mayBeIncomplete, sessionRange, usePastSessions } from "../adapters/past
 import { useCopyFeedback } from "../adapters/buttonFeedback";
 import CopyFailNote from "../components/CopyFailNote";
 import SoonBadge from "../components/SoonBadge";
+import { telegramDraftUrl, TELEGRAM_HANDLE } from "../../lib/telegram";
 import PlatformEmblem from "../components/PlatformEmblem";
 import { LIVE_PICKER_MOTION, emblemMotionVars, emblemOutline, EMBLEM_SLUG, type PickerPlatform } from "../adapters/livePicker";
 import TikTokSendSheet from "../components/TikTokSendSheet";
@@ -399,6 +402,25 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
     </div>
   );
 
+  // Facebook tab for a seller WITHOUT the Receipt add-on (fb_receipt_access, through onReceiptFormat):
+  // a locked card + a real Telegram link with a ready message (the Website teaser's helper). Every
+  // plan and every build (iPhone too) gets the same words — no price, no "upgrade". A seller WITH
+  // the add-on keeps the card above, exactly as before.
+  const fbLocked = (
+    <div data-testid="ivc-fb-locked" style={{ ...card, display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
+      <span aria-hidden="true" data-testid="ivc-fb-lock-icon" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 12, background: "var(--accent-soft)", color: "var(--accent-fg)" }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" /></svg>
+      </span>
+      <div data-testid="ivc-fb-lock-title" style={{ fontSize: 15.5, fontWeight: 800, color: "var(--text)", lineHeight: 1.3 }}>{t.rd_ivc_fb_lock_title}</div>
+      <div data-testid="ivc-fb-lock-body" style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_ivc_fb_lock_body}</div>
+      <a data-testid="ivc-fb-lock-ask" href={telegramDraftUrl(t.rd_ivc_fb_lock_msg)} target="_blank" rel="noreferrer"
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "stretch", minHeight: 46, padding: "8px 16px", boxSizing: "border-box", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontSize: 14.5, fontWeight: 800, textAlign: "center", lineHeight: 1.25, textDecoration: "none", fontFamily: "var(--font-ui)" }}>
+        {t.rd_ivc_fb_lock_btn}
+      </a>
+      <div data-testid="ivc-fb-lock-hint" style={{ alignSelf: "stretch", textAlign: "center", fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{tpl(t.rd_ivc_fb_lock_hint, { handle: TELEGRAM_HANDLE })}</div>
+    </div>
+  );
+
   return (
     <div data-testid="invoicing-screen">
       <div style={headerBar}>
@@ -435,7 +457,7 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
             );
           })}
         </div>
-        {tab === "tiktok" ? tiktok : soon(tab)}
+        {tab === "tiktok" ? tiktok : tab === "facebook" && !onReceiptFormat ? fbLocked : soon(tab)}
       </div>
 
       {sheetRow && (

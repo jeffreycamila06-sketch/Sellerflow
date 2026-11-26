@@ -95,9 +95,12 @@ describe("sql/221 — the help guide when Invoicing opens", () => {
     expect(once.split("**Invoicing**").length - 1).toBe(1);
     expect(run(up221, after219.replace(`${LINE}\n`, ""))).toBe(after219.replace(`${LINE}\n`, ""));   // no old line → nothing is touched
   });
-  it("the new row is word for word the row of sql/116b = the guide file's section", () => {
-    expect(up221).toContain(seedRow[0]);
+  it("the new row + sql/224 (the Facebook tab line, applied after it) is word for word the row of sql/116b = the guide file's section", () => {
     expect(up221.split("('invoicing',").length - 1).toBe(1);
+    const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+    expect(md5(unq(r221[3]))).toBe("2dbd54d0909f9b6eb341745efb48a0d7");   // = the live row's body (read 2026-11-26)
+    expect(r221[1]).toBe(seedRow[1]);
+    expect(run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) })).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
     const a = guide.indexOf("## invoicing — ");
     const section = guide.slice(a, guide.indexOf("\n## ", a + 5));
     expect(section.split("\n")[0]).toBe(`## invoicing — ${unq(seedRow[1])}`);
@@ -128,5 +131,48 @@ describe("sql/221 — the help guide when Invoicing opens", () => {
     expect(body).not.toMatch(/\b(plan|upgrade|subscri\w*|price of)\b/i);
     expect(body).toContain("**Send next**");
     expect(body).toContain("**Message → Paste → Send**");
+  });
+});
+
+// sql/224 (Facebook tab locked card, 2026-11-26): the "invoicing" row's Facebook line + three search words.
+const up224 = read("sql/224_guide_fb_invoicing_lock.sql"), down224 = read("sql/224_guide_fb_invoicing_lock_rollback.sql");
+function run224(sql: string, row: { body: string; keywords: string }): { body: string; keywords: string } {
+  const rb = sql.match(new RegExp(`replace\\(body, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+  const rk = sql.match(new RegExp(`replace\\(keywords, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+  const must = sql.match(new RegExp(`position\\(${SQL_TEXT} in body\\) > 0`, "s"))!;
+  const mustNot = sql.match(new RegExp(`position\\(${SQL_TEXT} in body\\) = 0`, "s"));
+  if (!row.body.includes(unq(must[1]))) return row;
+  if (mustNot && row.body.includes(unq(mustNot[1]))) return row;
+  return { body: row.body.split(unq(rb[1])).join(unq(rb[2])), keywords: row.keywords.split(unq(rk[1])).join(unq(rk[2])) };
+}
+describe("sql/224 — the Facebook tab line in the invoicing row", () => {
+  const seedRow = (() => {
+    const a = seed.indexOf("  ('invoicing',");
+    return seed.slice(a).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+  })();
+  const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+  const live = { body: unq(r221[3]), keywords: unq(r221[2]) };
+  it("live row + sql/224 = sql/116b; twice = no change; the old line is gone and the new one is there once", () => {
+    const once = run224(up224, live);
+    expect(once).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
+    expect(run224(up224, once)).toEqual(once);
+    expect(once.body).not.toContain("Facebook, Instagram and Shopee invoices are coming soon.");
+    expect(once.body.split("**Ask Admin to turn it on**").length - 1).toBe(1);
+    const fbLine = once.body.split("\n").find((l) => l.startsWith("**Facebook tab**"))!;
+    expect(fbLine).not.toMatch(/NT\$|price|upgrade/i);
+  });
+  it("the rollback gives the live row back; twice = no change", () => {
+    const once = run224(up224, live);
+    expect(run224(down224, once)).toEqual(live);
+    expect(run224(down224, live)).toEqual(live);
+  });
+  it("only the invoicing row; one statement in one transaction; nothing else is written", () => {
+    for (const sql of [up224, down224]) {
+      expect([...new Set(sql.match(/where id = '([\w-]+)'/g))]).toEqual(["where id = 'invoicing'"]);
+      expect(sql.split("update public.support_guide").length - 1).toBe(1);
+      expect(sql).toMatch(/^begin;$/m);
+      expect(sql).toMatch(/^commit;$/m);
+      expect(sql).not.toMatch(/\b(drop|alter|insert|delete|app_settings|feature_access_emails|fb_receipt_access)\b/i);
+    }
   });
 });

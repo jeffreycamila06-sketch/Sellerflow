@@ -39,11 +39,13 @@ describe("Settings card: the support chat with a ready message", () => {
   });
   it("an empty message falls back to the plain chat link; no other Telegram link uses the draft", () => {
     expect(telegramDraftUrl("")).toBe(TELEGRAM_URL);
-    // the only caller in the app is the teaser card (every other Telegram link keeps TELEGRAM_URL)
+    // the only callers in the app: the Website teaser card and the locked Facebook invoicing card
+    // (every other Telegram link keeps TELEGRAM_URL)
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? (e.name === "__tests__" ? [] : files(`${dir}/${e.name}`)) : /\.tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : []));
     const callers = files("src").filter((f) => f !== "src/lib/telegram.ts" && readFileSync(f, "utf8").includes("telegramDraftUrl"));
-    expect(callers).toEqual(["src/redesign/screens/SettingsHub.tsx"]);
+    expect(callers.sort()).toEqual(["src/redesign/screens/Invoicing.tsx", "src/redesign/screens/SettingsHub.tsx"]);
     expect(readFileSync("src/redesign/screens/SettingsHub.tsx", "utf8").match(/telegramDraftUrl\(/g)).toHaveLength(1);
+    expect(readFileSync("src/redesign/screens/Invoicing.tsx", "utf8").match(/telegramDraftUrl\(/g)).toHaveLength(1);
   });
 });
 

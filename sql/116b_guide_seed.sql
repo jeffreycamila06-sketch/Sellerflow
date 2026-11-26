@@ -304,7 +304,7 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - You can also write the **Message** yourself (it starts in English). Tap **↺ Reset message** to get the automatic text back.
 - When it''s ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don''t see **Send**, ask Admin.'),
-  ('invoicing', 'Invoicing (send invoices on TikTok)', '2026-11-26'::date, 'invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can''t message, new item, past session, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單', 'Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer''s total.
+  ('invoicing', 'Invoicing (send invoices on TikTok)', '2026-11-26'::date, 'invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can''t message, new item, past session, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, facebook invoicing, messenger invoice, ask admin, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單', 'Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer''s total.
 
 **Another session** — tap **This session ▾** at the top and pick a past session to send its invoices. A past session is shown in amber. Tap the button again and pick **This session** to go back.
 
@@ -328,7 +328,9 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - **Payment note** — how the buyer pays you. It is added at the end of every invoice.
 - **Shipping fee** — added to every invoice. Leave it empty for none.
 
-Facebook, Instagram and Shopee invoices are coming soon.'),
+**Facebook tab** — sending invoices to Facebook buyers in Messenger is turned on by Admin. If it isn''t on for you, tap **Ask Admin to turn it on**: Telegram opens with a ready message.
+
+Instagram and Shopee invoices are coming soon.'),
   ('past-sessions', 'See orders from past lives', '2026-10-28'::date, 'past sessions, past live, previous session, old orders, reprint old sticker, nakaraang session, lumang orders, i-reprint, 过去的场次, 之前的直播, 過去場次, 舊訂單, 重印', '- On **Orders**, tap **🗓 Sessions ▾**, then pick a past session (its dates and order count are shown).
 - You see that session''s orders and buyer totals; type a buyer number to see one buyer.
 - Tap **Reprint** on an order to print its sticker again; confirm once per past session.
