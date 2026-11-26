@@ -6825,3 +6825,27 @@ button to the unchanged Receipt format screen for a `fbReceiptUi` seller). Pictu
   `click()` — Playwright's click scrolls a hidden container sideways in the dark theme (not a real-tap behaviour).
 - Not touched (0 lines): Orders.tsx, ReceiptFormat.tsx, server/, server.js, printing files, comment delivery, buyer
   numbers, chrome-extension/, mobile/. No app_settings VALUE is changed (one new row, 'false').
+
+## 2026-11-26 — INVOICING TABS: THE LIVE PICKER'S EMBLEMS + MOTION (branch `claude/invoicing-tab-emblems`, NOT merged; web only — no SQL, no Render)
+Settings → Invoicing tab bar: a small Live-picker emblem above each name (TikTok · Facebook · Instagram · Shopee).
+- **ONE emblem component — `components/PlatformEmblem.tsx`** (letters / colours / shape names in
+  `adapters/livePicker.ts`: `EMBLEM_LETTER`, `EMBLEM_BRAND`, `EMBLEM_SLUG`, `emblemOutline`, `emblemMotionVars`).
+  Dashboard's `lpkEmblem` = `<PlatformEmblem platform={p} />` (the only Dashboard change); the picker's markup is
+  byte-equal to main (`fixtures/livePicker.main.json`, recorded BEFORE the move) and its pixels + animations are
+  equal to main in a real browser (`docs/design/invoicing-tab-emblems/measured.txt`).
+  ⚠️ When the Live picker's tiles change ON PURPOSE later, re-record that fixture (the test's header says how:
+  render the picker with `livePicker shopeeEnabled shopeeShops=[{shopId:7,shopName:"Shop Seven"}]`, save
+  `lpk-picker` outerHTML before and after a tap on `lpk-tile-tt`).
+- **Tabs (`Invoicing.tsx`, CSS block "INVOICING TABS" in redesign.css):** `.sfl-ivc-tabs` / `.sfl-ivc-tab(.is-on)` /
+  `.sfl-ivc-emb` → `.sfl-ivc-emb-in` (the picker's full-size emblem, `--lpk-u: 1px`, scaled ×0.36 as a whole) →
+  the picker's `.sfl-lpk-emb--<slug>` + the shared emblem. Emblem `aria-hidden`; the tab's name is
+  `ivc-tab-name-<p>`. Tab 58 px tall. Selected = `2px solid` `emblemOutline(platform)` on `var(--surface)`
+  (TikTok's brand is black → `var(--text)`, seen in both themes). No LIVE tag.
+- **Motion = the picker's keyframes + durations** (no new keyframes): selected tab at the picker's speed
+  (`animation-duration: var(--lpk-<slug>)`), the others `--ivc-calm` (2.5) times slower. Off with
+  `LIVE_PICKER_MOTION` "off" (`sfl-ivc-tabs--m-off`), `[data-motion="off"]` and prefers-reduced-motion.
+  "Livelier / calm" was read as SPEED (the picker has one motion per platform) — one number to tune.
+- Tests: `screens/__tests__/Invoicing.tabEmblems.test.tsx` (13); `Invoicing.test.tsx` tab-names test reads the
+  name element; `Dashboard.livePicker.test.tsx` not edited. Help guide: no change (same tab names, same use).
+- Not touched (0 lines): Orders, Send next, saved status, sql/, server/, printing, chrome-extension/, the picker's CSS.
+

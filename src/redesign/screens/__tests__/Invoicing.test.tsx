@@ -448,7 +448,8 @@ describe("the other tabs", () => {
   });
   it("the four tabs are TikTok · Facebook · Instagram · Shopee, TikTok first", async () => {
     await open();
-    expect(Array.from(q("ivc-tabs")!.querySelectorAll("[role='tab']")).map((b) => b.textContent)).toEqual(["TikTok", "Facebook", "Instagram", "Shopee"]);
+    // the tab's words (its emblem above them is a picture, hidden from screen readers)
+    expect(Array.from(q("ivc-tabs")!.querySelectorAll("[role='tab'] [data-testid^='ivc-tab-name-']")).map((b) => b.textContent)).toEqual(["TikTok", "Facebook", "Instagram", "Shopee"]);
     expect(q("ivc-tab-tiktok")!.getAttribute("aria-selected")).toBe("true");
   });
 });

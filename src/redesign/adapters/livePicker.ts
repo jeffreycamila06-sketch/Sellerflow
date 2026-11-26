@@ -34,6 +34,26 @@ export const LIVE_PICKER_TIMING = {
 export type PickerPlatform = "TikTok" | "Facebook" | "Instagram" | "Shopee";
 export const PICKER_ORDER: PickerPlatform[] = ["TikTok", "Facebook", "Instagram", "Shopee"];
 
+// THE EMBLEMS (components/PlatformEmblem.tsx): one shape per platform, the chip's own letter mark and
+// brand colour. Shared by the Live picker's tiles and Settings → Invoicing's tab bar.
+export const EMBLEM_SLUG: Record<PickerPlatform, string> = { TikTok: "tt", Facebook: "fb", Instagram: "ig", Shopee: "sh" };
+export const EMBLEM_BRAND: Record<PickerPlatform, string> = { TikTok: "#000", Facebook: "#1877f2", Instagram: "#c13584", Shopee: "#ee4d2d" };
+export const EMBLEM_LETTER: Record<PickerPlatform, string> = { TikTok: "t", Facebook: "f", Instagram: "IG", Shopee: "S" };
+/** The colour a platform is OUTLINED with: its brand colour — TikTok's is black, so its outline is the
+ *  text colour (black on light, white on dark), the same choice the emblem's own ring makes. */
+export const emblemOutline = (p: PickerPlatform): string => (p === "TikTok" ? "var(--text)" : EMBLEM_BRAND[p]);
+/** The emblems' idle-motion settings as CSS variables — the same names and values the Live picker sets
+ *  (one duration per platform + how many times a loop runs). For anything else that shows the emblems. */
+export function emblemMotionVars(): Record<string, string> {
+  return {
+    "--lpk-tt": `${LIVE_PICKER_TIMING.idle.TikTok}ms`,
+    "--lpk-fb": `${LIVE_PICKER_TIMING.idle.Facebook}ms`,
+    "--lpk-ig": `${LIVE_PICKER_TIMING.idle.Instagram}ms`,
+    "--lpk-sh": `${LIVE_PICKER_TIMING.idle.Shopee}ms`,
+    "--lpk-iter": LIVE_PICKER_MOTION === "once" ? String(LIVE_PICKER_ONCE_ITERATIONS) : "infinite",
+  };
+}
+
 // classic = the old chip row (gate off, or 2+ sources connected/connecting)
 // picker  = the four tiles replace the empty comments card (State A / B)
 // body    = normal body (the board has comments, nothing live) + "Choose live source"

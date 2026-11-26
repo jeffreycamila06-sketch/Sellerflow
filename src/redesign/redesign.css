@@ -762,6 +762,29 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
   [data-redesign] .sfl-lpk, [data-redesign] .sfl-lpk *, [data-redesign] .sfl-lpk-fly { animation: none !important; transition: none !important; }
 }
 
+/* ── INVOICING TABS (Settings → Invoicing): the Live picker's emblems, small ──────────
+ * The emblem is drawn at the picker's FULL size (--lpk-u = 1px → 78×74) and scaled down as
+ * a whole, so its ring, letter and movement keep the picker's proportions. Motion = the
+ * picker's own keyframes and durations (--lpk-tt/fb/ig/sh, --lpk-iter): the selected tab at
+ * the picker's speed, the others --ivc-calm times slower. Off with the picker's mode "off",
+ * the app's motion switch and "reduce motion". No LIVE tag here. */
+[data-redesign] .sfl-ivc-tabs { --ivc-calm: 2.5; }
+[data-redesign] .sfl-ivc-emb { position: relative; flex-shrink: 0; width: 30px; height: 28px; }
+[data-redesign] .sfl-ivc-emb-in { --lpk-u: 1px; position: absolute; left: 50%; top: 50%; width: 78px; height: 74px; margin: -37px 0 0 -39px; transform: scale(.36); pointer-events: none; }
+[data-redesign] .sfl-ivc-tab:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab .sfl-lpk-emb--tt { animation: sflLpkBeat calc(var(--lpk-tt) * var(--ivc-calm)) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab .sfl-lpk-emb--fb { animation: sflLpkBob calc(var(--lpk-fb) * var(--ivc-calm)) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab .sfl-lpk-emb--ig { animation: sflLpkSway calc(var(--lpk-ig) * var(--ivc-calm)) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab .sfl-lpk-emb--sh { animation: sflLpkFlip calc(var(--lpk-sh) * var(--ivc-calm)) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab.is-on .sfl-lpk-emb--tt { animation-duration: var(--lpk-tt); }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab.is-on .sfl-lpk-emb--fb { animation-duration: var(--lpk-fb); }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab.is-on .sfl-lpk-emb--ig { animation-duration: var(--lpk-ig); }
+[data-redesign] .sfl-ivc-tabs:not(.sfl-ivc-tabs--m-off) .sfl-ivc-tab.is-on .sfl-lpk-emb--sh { animation-duration: var(--lpk-sh); }
+[data-redesign][data-motion="off"] .sfl-ivc-tabs, [data-redesign][data-motion="off"] .sfl-ivc-tabs * { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  [data-redesign] .sfl-ivc-tabs, [data-redesign] .sfl-ivc-tabs * { animation: none !important; transition: none !important; }
+}
+
 /* Help bot bubble — ONE gentle pulse when Settings opens (not a loop). */
 @keyframes sflHbPulse { 0% { transform: scale(1); } 35% { transform: scale(1.12); } 70% { transform: scale(.97); } 100% { transform: scale(1); } }
 [data-redesign] .sfl-hb-pulse { animation: sflHbPulse .9s ease-out .4s 1 both; }

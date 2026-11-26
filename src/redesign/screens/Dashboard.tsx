@@ -11,6 +11,7 @@ import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
 import { normHandle, type BuyerAlertView } from "../adapters/buyerAlert";
 import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
 import BuyerTagPill from "../components/BuyerTagPill";
+import PlatformEmblem from "../components/PlatformEmblem";
 import ShopeeLinkForm, { type ShopeeLinkProps } from "../components/ShopeeLinkForm";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
@@ -508,16 +509,8 @@ export default function Dashboard({
   // Emblems: the chips' own letter marks + brand colours, one shape per platform.
   // Emblems: the chips' own letter marks + brand colours, one shape per platform. All
   // sizes come from redesign.css (.sfl-lpk-shape--*), scaled to the tile height.
-  const lpkEmblem = (p: PickerPlatform) => {
-    const slug = lpkSlug[p];
-    const bg = p === "TikTok" ? "#000" : p === "Facebook" ? "#1877f2" : p === "Instagram" ? "#c13584" : "#ee4d2d";
-    const ch = p === "TikTok" ? "t" : p === "Facebook" ? "f" : p === "Instagram" ? "IG" : "S";
-    return (
-      <span className={`sfl-lpk-shape sfl-lpk-shape--${slug}`} style={{ background: bg, "--lpk-brand": bg } as CSSProperties}>
-        <span className="sfl-lpk-letter">{ch}</span>
-      </span>
-    );
-  };
+  // (components/PlatformEmblem.tsx — shared with Settings → Invoicing's tabs; same markup as before.)
+  const lpkEmblem = (p: PickerPlatform) => <PlatformEmblem platform={p} />;
   // The four tiles (State A) → chosen tile + its account panel (State B).
   const lpkPicker = (top?: ReactNode) => (
     <div data-testid="lpk-picker" className={`sfl-lpk sfl-lpk--m-${LIVE_PICKER_MOTION}${chosen ? " sfl-lpk--chosen" : ""}`}

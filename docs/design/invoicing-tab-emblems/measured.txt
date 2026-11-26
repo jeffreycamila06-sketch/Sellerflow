@@ -1,0 +1,64 @@
+— the tab bar: pictures —
+ok  tabs_iphone390_light.png: 390px · tabs TikTok 86x58 · Facebook 86x58 · Instagram 86x58 · Shopee 86x58 · emblems 23x23 21x21 24x24 19x19 inside their tabs, above the names=true · no name cut=true · no LIVE tag=true · selected tiktok: outline 2px rgb(28, 26, 53), background rgb(255, 255, 255) · sideways=false
+    motion (light): tiktok sflLpkBeat 1.7s (selected) · facebook sflLpkBob 7s · instagram sflLpkSway 8s · shopee sflLpkFlip 9.5s
+ok  tabs_facebook_iphone390_light.png: selected facebook · outline 2px rgb(24, 119, 242) · background rgb(255, 255, 255) · its emblem sflLpkBob 2.8s, the others 4.25s / 8s / 9.5s
+ok  tabs_instagram_iphone390_light.png: selected instagram · outline 2px rgb(193, 53, 132) · background rgb(255, 255, 255) · its emblem sflLpkSway 3.2s, the others 4.25s / 7s / 9.5s
+ok  tabs_shopee_iphone390_light.png: selected shopee · outline 2px rgb(238, 77, 45) · background rgb(255, 255, 255) · its emblem sflLpkFlip 3.8s, the others 4.25s / 7s / 8s
+ok  tabs_iphone390_dark.png: 390px · tabs TikTok 86x58 · Facebook 86x58 · Instagram 86x58 · Shopee 86x58 · emblems 23x23 21x21 24x24 19x19 inside their tabs, above the names=true · no name cut=true · no LIVE tag=true · selected tiktok: outline 2px rgb(230, 232, 238), background rgb(24, 27, 35) · sideways=false
+    motion (dark): tiktok sflLpkBeat 1.7s (selected) · facebook sflLpkBob 7s · instagram sflLpkSway 8s · shopee sflLpkFlip 9.5s
+ok  tabs_facebook_iphone390_dark.png: selected facebook · outline 2px rgb(24, 119, 242) · background rgb(24, 27, 35) · its emblem sflLpkBob 2.8s, the others 4.25s / 8s / 9.5s
+ok  tabs_instagram_iphone390_dark.png: selected instagram · outline 2px rgb(193, 53, 132) · background rgb(24, 27, 35) · its emblem sflLpkSway 3.2s, the others 4.25s / 7s / 9.5s
+ok  tabs_shopee_iphone390_dark.png: selected shopee · outline 2px rgb(238, 77, 45) · background rgb(24, 27, 35) · its emblem sflLpkFlip 3.8s, the others 4.25s / 7s / 8s
+ok  tabs_android360_light.png: 360px · tabs TikTok 78x58 · Facebook 78x58 · Instagram 78x58 · Shopee 78x58 · emblems 23x23 21x21 24x24 19x19 inside their tabs, above the names=true · no name cut=true · no LIVE tag=true · selected tiktok: outline 2px rgb(28, 26, 53), background rgb(255, 255, 255) · sideways=false
+ok  tabs_android360_dark.png: 360px · tabs TikTok 78x58 · Facebook 78x58 · Instagram 78x58 · Shopee 78x58 · emblems 23x23 21x21 24x24 19x19 inside their tabs, above the names=true · no name cut=true · no LIVE tag=true · selected tiktok: outline 2px rgb(230, 232, 238), background rgb(24, 27, 35) · sideways=false
+ok  tabs_laptop1280_light.png: 1280px · tabs TikTok 168x58 · Facebook 168x58 · Instagram 168x58 · Shopee 168x58 · emblems 23x23 21x21 24x24 19x19 inside their tabs, above the names=true · no name cut=true · no LIVE tag=true · selected tiktok: outline 2px rgb(28, 26, 53), background rgb(255, 255, 255) · sideways=false
+ok  tabs_laptop1280_dark.png: 1280px · tabs TikTok 168x58 · Facebook 168x58 · Instagram 168x58 · Shopee 168x58 · emblems 23x23 21x21 24x24 19x19 inside their tabs, above the names=true · no name cut=true · no LIVE tag=true · selected tiktok: outline 2px rgb(230, 232, 238), background rgb(24, 27, 35) · sideways=false
+
+— 4 tabs fit, every language —
+ok  360px en: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  360px fil: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  360px zh: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  360px zh-TW: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  360px vi: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  360px th: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  360px id: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  360px bg: tabs 78x58 78x58 78x58 78x58 · names whole=true · inside=true · sideways=false
+ok  390px en: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  390px fil: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  390px zh: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  390px zh-TW: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  390px vi: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  390px th: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  390px id: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  390px bg: tabs 86x58 86x58 86x58 86x58 · names whole=true · inside=true · sideways=false
+ok  430px en: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  430px fil: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  430px zh: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  430px zh-TW: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  430px vi: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  430px th: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  430px id: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  430px bg: tabs 96x58 96x58 96x58 96x58 · names whole=true · inside=true · sideways=false
+ok  1280px en: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+ok  1280px fil: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+ok  1280px zh: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+ok  1280px zh-TW: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+ok  1280px vi: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+ok  1280px th: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+ok  1280px id: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+ok  1280px bg: tabs 168x58 168x58 168x58 168x58 · names whole=true · inside=true · sideways=false
+
+— motion stops —
+ok  reduce motion (phone setting): animations none / none / none / none · the tabs look the same (4 tabs, emblems in place)=true
+ok  the app's motion switch off: animations none / none / none / none · the tabs look the same (4 tabs, emblems in place)=true
+
+— the Live picker: main vs this branch —
+ok  Live picker iphone390 light: picture main ffe5d1f7066ec22f = branch ffe5d1f7066ec22f → the same pixels · animations the same=true
+    tt sflLpkBeat 1.7s · name sflLpkWordBeat · 64x64 | fb sflLpkBob 2.8s · name sflLpkWordSlide · 58x58 | ig none 0s · name none · 58x58 | sh none 0s · name none · 53.7x53.7
+ok  Live picker iphone390 dark: picture main c3871827505c0c3d = branch c3871827505c0c3d → the same pixels · animations the same=true
+ok  Live picker android360 light: picture main 2a390123c606df0b = branch 2a390123c606df0b → the same pixels · animations the same=true
+ok  Live picker android360 dark: picture main dc87d7eec0e633c2 = branch dc87d7eec0e633c2 → the same pixels · animations the same=true
+ok  Live picker laptop1280 light: picture main 7d269725884920c5 = branch 7d269725884920c5 → the same pixels · animations the same=true
+ok  Live picker laptop1280 dark: picture main 8f6a1bc080adbf50 = branch 8f6a1bc080adbf50 → the same pixels · animations the same=true
+
+all checks ok
