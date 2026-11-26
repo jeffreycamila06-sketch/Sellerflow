@@ -5,6 +5,7 @@ root = sys.argv[1]
 A = "src/redesign/adapters/invoicing.ts"; S = "src/redesign/screens/Invoicing.tsx"; SH = "src/redesign/components/TikTokSendSheet.tsx"
 T = "src/redesign/adapters/__tests__/invoicing.test.ts"; TS = "src/redesign/screens/__tests__/Invoicing.test.tsx"
 TQ = "src/redesign/adapters/__tests__/invoicingSql.test.ts"; TG = "src/redesign/adapters/__tests__/invoicingGuideSql.test.ts"
+TN = "src/redesign/screens/__tests__/Invoicing.sessions.test.tsx"; TP = "src/redesign/screens/__tests__/pastSessions.test.tsx"; APP = "src/redesign/RedesignApp.tsx"
 TA = "src/redesign/__tests__/invoicingOpen.app.test.tsx"; TOFF = "src/redesign/__tests__/invoicing.app.test.tsx"; TH = "src/redesign/screens/__tests__/SettingsHub.invoicing.test.tsx"
 BREAKS = [
   ("Can't message buyers stay in Send next", A, '["not_sent", "new_item"].includes(', '["not_sent", "new_item", "skipped"].includes(', [T, TS]),
@@ -20,12 +21,29 @@ BREAKS = [
   ("Send next does not mark the buyer before", S, '    if (pending) status.mark(pending, "sent");\n', '', [TS, TA]),
   ("a double tap on Send next marks the buyer Sent", S, 'if (nowMs - lastTap.current < tapGuardMs) { e.preventDefault(); return; }', 'if (nowMs < 0) { e.preventDefault(); return; }', [TS]),
   ("a number-only id gets a profile link", S, 'const nextTarget = next ? chaseTarget(next.receipt.handle) : null;', 'const nextTarget = next ? { kind: "open" as const, url: `https://www.tiktok.com/@${next.receipt.handle}` } : null;', [TS]),
-  ("the status ignores the session", S, 'useInvoiceStatus(sessionKey, "tiktok", true)', 'useInvoiceStatus("same", "tiktok", true)', [TS]),
-  ("Send works before the format was read", S, 'const ready = status.state === "ready" && fmtState === "ready";', 'const ready = status.state === "ready";', [TS]),
+  ("the status ignores the session", S, 'useInvoiceStatus(activeKey, "tiktok", true)', 'useInvoiceStatus("same", "tiktok", true)', [TS, TN]),
+  ("Send works before the format was read", S, 'const ready = status.state === "ready" && fmtState === "ready" && pastState === "ready";', 'const ready = status.state === "ready" && pastState === "ready";', [TS]),
   ("the Facebook tab always shows Receipt format", S, '{p === "facebook" && onReceiptFormat && (', '{p === "facebook" && (', [TS]),
   ("the row sheet marks Sent although the copy failed", SH, '      if (ok) { setStatus(okText); invoice?.onSent(); return; }', '      invoice?.onSent();\n      if (ok) { setStatus(okText); return; }', [TS]),
   ("the row sheet overwrites Send to TikTok's remembered note", SH, 'if (!invoice) saveSendNote(sellerId, note);', 'saveSendNote(sellerId, note);', [TS]),
   ("the row sheet ignores the format's shipping fee", SH, 'useState(invoice?.shipping ?? "")', 'useState("")', [TS]),
+  # ── the follow-ups of 2026-11-26: the session picker, copy failed = not sent ──
+  ("a refused copy still counts as 'being sent'", S, 'if (ok) { setCopyFailed(key, null); setPending(key, row.id); }', 'setPending(key, row.id); if (ok) setCopyFailed(key, null);', [TN]),
+  ("the button moves on after a refused copy", A, '  if (failed) return { row: failed, again: true };\n', '', [T, TN]),
+  ("a buyer already Sent turns into Copy failed", A, '  if (row.id === copyFailedId && s !== "sent") return "copy_failed";', '  if (row.id === copyFailedId) return "copy_failed";', [T, TN]),
+  ("the row sheet does not report a refused copy", SH, '      invoice?.onCopyFailed?.();\n', '', [TN]),
+  ("'Copy failed' survives a copy that worked", S, 'if (ok) { setCopyFailed(key, null); setPending(key, row.id); }', 'if (ok) { setPending(key, row.id); }', [TN]),
+  ("Invoicing asks the old-session question", SH, 'const [oldOk, setOldOk] = useState(!pastRange);', 'const [oldOk, setOldOk] = useState(!(pastRange || invoice?.pastRange));', [TN]),
+  ("Orders loses its old-session question", SH, 'const [oldOk, setOldOk] = useState(!pastRange);', 'const [oldOk, setOldOk] = useState(true);', [TN, TP]),
+  ("a past session is saved under the running session", S, 'const activeKey = pastSel ? pastSel.id : sessionKey;', 'const activeKey = sessionKey;', [TN, TA]),
+  ("a past session lists the running session's buyers", S, 'const shownBuyers = pastSel ? past.buyers : buyers;', 'const shownBuyers = buyers;', [TN]),
+  ("the old session's tags show while the new one loads", A, '  if (loadedFor !== `${sessionKey}|${platform}`) return { state: "loading", saved: NO_SAVED, unsaved: 0, mark, retry, reload };\n', '', [TN]),
+  ("'Sending…' is one for all sessions", A, 'const pendingSlot = (sessionKey: string, platform: InvoicePlatform) => `${platform}|${sessionKey}`;', 'const pendingSlot = (_sessionKey: string, platform: InvoicePlatform) => `${platform}`;', [T, TN]),
+  ("a past session's message carries today's date", S, 'const dateOf = (r: InvoiceRow) => (pastSel ? pastRange : currentSessionDate(', 'const dateOf = (r: InvoiceRow) => (!r ? pastRange : currentSessionDate(', [TN]),
+  ("the past session button is not amber", S, 'style={pastSel ? { ...pickBtn, ...AMBER } : pickBtn}>', 'style={pickBtn}>', [TN]),
+  ("the picker is there without past sessions", S, 'const picker = pastSessions && (', 'const picker = !!sellerId && (', [TN, TA]),
+  ("the picker reads the list before it is opened", S, 'const pastSel = past.selected;', 'const pastSel = past.selected; useEffect(() => { void past.ensureList(); }, [past.ensureList]);', [TN]),
+  ("the app gives every seller the picker", APP, 'sessionId={sessionInstance.currentSessionId} pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}\n              {...(fbReceiptUi', 'sessionId={sessionInstance.currentSessionId} pastSessions\n              {...(fbReceiptUi', [TA, TP]),
   ("Invoicing is open with the switch off", "src/redesign/RedesignApp.tsx", 'const invoicingOn = invoicingVisible({ isAdmin, previewKey: hasFeature("invoicing"), switchOn: featureSw.invoicing });', 'const invoicingOn = true;', [TA, TOFF]),
   ("the Settings card loses Soon for everyone", "src/redesign/screens/SettingsHub.tsx", 'invoicingOpen = false,', 'invoicingOpen = true,', [TH, TOFF]),
   ("sql/220: every signed-in seller can read every row", "sql/220_invoicing.sql", "for select to authenticated using (user_id = (select auth.uid()))", "for select to authenticated using (true)", [TQ]),

@@ -88,7 +88,8 @@ export function invoiceMessage(row: InvoiceRow, o: { cur: string; note: string; 
 // ── status ──────────────────────────────────────────────────────────────────────────────────────────
 export interface SavedStatus { status: "sent" | "skipped"; sentAt: string | null; hash: string }
 export type InvoiceState = "sent" | "new_item" | "skipped" | "not_sent";
-export type InvoiceTag = InvoiceState | "next" | "sending";
+/** "sending" and "copy_failed" live on this phone only (never saved). */
+export type InvoiceTag = InvoiceState | "next" | "sending" | "copy_failed";
 
 /** What the saved row says about this buyer now. */
 export function stateOf(row: InvoiceRow, saved: SavedStatus | undefined): InvoiceState {
@@ -100,10 +101,24 @@ export function stateOf(row: InvoiceRow, saved: SavedStatus | undefined): Invoic
 export function sendQueue(rows: InvoiceRow[], saved: Map<string, SavedStatus>, pendingId: string | null): InvoiceRow[] {
   return rows.filter((r) => r.id !== pendingId && ["not_sent", "new_item"].includes(stateOf(r, saved.get(r.id))));
 }
-/** The tag of a row: being sent > what is saved > "Next" > "Not sent". */
-export function tagOf(row: InvoiceRow, saved: Map<string, SavedStatus>, pendingId: string | null, nextId: string | null): InvoiceTag {
-  if (row.id === pendingId) return "sending";
+/** The buyer whose message could not be copied on this phone: only while that row is still there and is
+ *  not Sent (a refused "Send again" on a Sent buyer leaves the buyer Sent). */
+export function copyFailedRow(rows: InvoiceRow[], saved: Map<string, SavedStatus>, copyFailedId: string | null): InvoiceRow | null {
+  const r = copyFailedId ? rows.find((x) => x.id === copyFailedId) : undefined;
+  return r && stateOf(r, saved.get(r.id)) !== "sent" ? r : null;
+}
+/** The buyer the big button is on: the one whose copy failed (it stays there until a copy works — `again`),
+ *  else the first of the queue. */
+export function sendTarget(rows: InvoiceRow[], saved: Map<string, SavedStatus>, pendingId: string | null, copyFailedId: string | null): { row: InvoiceRow | null; again: boolean } {
+  const failed = copyFailedRow(rows, saved, copyFailedId);
+  if (failed) return { row: failed, again: true };
+  return { row: sendQueue(rows, saved, pendingId)[0] ?? null, again: false };
+}
+/** The tag of a row: copy failed > being sent > what is saved > "Next" > "Not sent". */
+export function tagOf(row: InvoiceRow, saved: Map<string, SavedStatus>, pendingId: string | null, nextId: string | null, copyFailedId: string | null = null): InvoiceTag {
   const s = stateOf(row, saved.get(row.id));
+  if (row.id === copyFailedId && s !== "sent") return "copy_failed";
+  if (row.id === pendingId) return "sending";
   if (s !== "not_sent") return s;
   return row.id === nextId ? "next" : "not_sent";
 }
@@ -121,16 +136,31 @@ export const invoiceSessionKey = (sessionId: string | null | undefined, dayId: s
 };
 
 // ── the buyer being sent right now (this phone only) ────────────────────────────────────────────────
+// One per session + platform (the seller can look at a past session and come back): a small map, the
+// newest PENDING_KEEP sessions kept.
 const pendingKey = (userId: string) => `sfl_rd_invoice_pending:${userId || "anon"}`;
-export function loadPending(userId: string, sessionKey: string, platform: InvoicePlatform): string | null {
+const PENDING_KEEP = 12;
+const pendingSlot = (sessionKey: string, platform: InvoicePlatform) => `${platform}|${sessionKey}`;
+function readPendingMap(userId: string): Record<string, string> {
   try {
-    const p = JSON.parse(localStorage.getItem(pendingKey(userId)) || "null") as { s?: unknown; p?: unknown; id?: unknown } | null;
-    return p && p.s === sessionKey && p.p === platform && typeof p.id === "string" && p.id ? p.id : null;
-  } catch { return null; }
+    const p = JSON.parse(localStorage.getItem(pendingKey(userId)) || "null") as unknown;
+    if (!p || typeof p !== "object" || Array.isArray(p)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(p as Record<string, unknown>)) if (typeof v === "string" && v) out[k] = v;
+    return out;
+  } catch { return {}; }
+}
+export function loadPending(userId: string, sessionKey: string, platform: InvoicePlatform): string | null {
+  return readPendingMap(userId)[pendingSlot(sessionKey, platform)] ?? null;
 }
 export function savePending(userId: string, sessionKey: string, platform: InvoicePlatform, id: string | null): void {
   try {
-    if (id) localStorage.setItem(pendingKey(userId), JSON.stringify({ s: sessionKey, p: platform, id }));
+    const map = readPendingMap(userId);
+    const slot = pendingSlot(sessionKey, platform);
+    delete map[slot];
+    if (id) map[slot] = id;                                  // newest last
+    const keep = Object.entries(map).slice(-PENDING_KEEP);
+    if (keep.length) localStorage.setItem(pendingKey(userId), JSON.stringify(Object.fromEntries(keep)));
     else localStorage.removeItem(pendingKey(userId));
   } catch { /* this phone only — losing it shows the buyer as "Not sent" again */ }
 }
@@ -197,11 +227,15 @@ export interface InvoiceStatusApi {
  * mark, no timer. A mark shows at once; when the write fails it stays on screen, is counted in `unsaved`
  * and is sent again by retry() or by the next mark.
  */
+const NO_SAVED: Map<string, SavedStatus> = new Map();
 export function useInvoiceStatus(sessionKey: string, platform: InvoicePlatform, enabled: boolean): InvoiceStatusApi {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [saved, setSaved] = useState<Map<string, SavedStatus>>(() => new Map());
   const [unsaved, setUnsaved] = useState(0);
   const [turn, setTurn] = useState(0);
+  // which session + platform `saved` belongs to: after a switch (the session picker) the old session's
+  // tags are never shown for the new one, not even for one frame
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const failed = useRef(new Map<string, { row: { num: number; key: string; hash: string }; status: "sent" | "skipped" }>());
   const scope = useRef("");
   const open = useRef(true);
@@ -216,6 +250,7 @@ export function useInvoiceStatus(sessionKey: string, platform: InvoicePlatform, 
     void Promise.resolve().then(() => { if (alive) { setState("loading"); setUnsaved(0); } });
     void loadInvoiceSends(sessionKey, platform).then((m) => {
       if (!alive || scope.current !== mine) return;
+      setLoadedFor(`${sessionKey}|${platform}`);
       if (m) { setSaved(m); setState("ready"); } else { setSaved(new Map()); setState("error"); }
     });
     return () => { alive = false; };
@@ -245,6 +280,7 @@ export function useInvoiceStatus(sessionKey: string, platform: InvoicePlatform, 
   }, [write]);
 
   const reload = useCallback(() => setTurn((n) => n + 1), []);
+  if (loadedFor !== `${sessionKey}|${platform}`) return { state: "loading", saved: NO_SAVED, unsaved: 0, mark, retry, reload };
   return { state, saved, unsaved, mark, retry, reload };
 }
 

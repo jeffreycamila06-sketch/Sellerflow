@@ -56,4 +56,70 @@ ok  1280px th: 1280px · sideways=false · header 44px (one line) · Format 68x4
 ok  1280px id: 1280px · sideways=false · header 44px (one line) · Format 74x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
 ok  1280px bg: 1280px · sideways=false · header 44px (one line) · Format 78x44 inside=true · tabs whole=true · Send next inside=true 52px · 40 rows inside=true, smallest 58px · tag cut=false
 
+— session picker · a past session · Copy failed —
+ok  picker iphone390_light: button 44px "This session · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+    This session · 11/25 → 11/26  |  Past session · 11/23 → 11/24 · 2 days  |  Past session · 11/20 · 1 day  |  Past session · 11/17 → 11/18 · 2 days
+ok  past iphone390_light: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 of 14 sent · button "Send next · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed iphone390_light: tag "Copy failed" on 1 row, nobody "Sending…" · button "Copy again · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 of 40 sent (as before the tap: true) · sideways=false
+ok  picker iphone390_dark: button 44px "This session · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past iphone390_dark: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 of 14 sent · button "Send next · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed iphone390_dark: tag "Copy failed" on 1 row, nobody "Sending…" · button "Copy again · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 of 40 sent (as before the tap: true) · sideways=false
+ok  picker android360_light: button 44px "This session · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past android360_light: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 of 14 sent · button "Send next · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed android360_light: tag "Copy failed" on 1 row, nobody "Sending…" · button "Copy again · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 of 40 sent (as before the tap: true) · sideways=false
+ok  picker android360_dark: button 44px "This session · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past android360_dark: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 of 14 sent · button "Send next · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed android360_dark: tag "Copy failed" on 1 row, nobody "Sending…" · button "Copy again · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 of 40 sent (as before the tap: true) · sideways=false
+ok  picker laptop1280_light: button 44px "This session · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past laptop1280_light: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 of 14 sent · button "Send next · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed laptop1280_light: tag "Copy failed" on 1 row, nobody "Sending…" · button "Copy again · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 of 40 sent (as before the tap: true) · sideways=false
+ok  picker laptop1280_dark: button 44px "This session · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past laptop1280_dark: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 of 14 sent · button "Send next · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed laptop1280_dark: tag "Copy failed" on 1 row, nobody "Sending…" · button "Copy again · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 of 40 sent (as before the tap: true) · sideways=false
+ok  picker 360px fil: button 44px "Session na ito · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 360px fil: button 44px "Lumang session · 11/23 → 11/24" amber=true · line "Lumang session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 sa 14 ang naipadala · button "Ipadala ang susunod · #6 @mia.go · NT$298" 67px · sideways=false
+ok  copy failed 360px fil: tag "Hindi nakopya" on 1 row, nobody "Sending…" · button "Kopyahin ulit · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 sa 40 ang naipadala (as before the tap: true) · sideways=false
+ok  picker 360px zh: button 44px "本场直播 · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 360px zh: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 已发送 5 / 14 · button "发送下一位 · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 360px zh: tag "复制失败" on 1 row, nobody "Sending…" · button "重新复制 · #13 @mia.go" 52px inside=true · message shown=true selected=true · 已发送 12 / 40 (as before the tap: true) · sideways=false
+ok  picker 360px zh-TW: button 44px "本場直播 · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 360px zh-TW: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 已傳送 5 / 14 · button "傳送下一位 · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 360px zh-TW: tag "複製失敗" on 1 row, nobody "Sending…" · button "重新複製 · #13 @mia.go" 52px inside=true · message shown=true selected=true · 已傳送 12 / 40 (as before the tap: true) · sideways=false
+ok  picker 360px vi: button 44px "Phiên này · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 360px vi: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · Đã gửi 5 / 14 · button "Gửi tiếp · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 360px vi: tag "Sao chép lỗi" on 1 row, nobody "Sending…" · button "Sao chép lại · #13 @mia.go" 52px inside=true · message shown=true selected=true · Đã gửi 12 / 40 (as before the tap: true) · sideways=false
+ok  picker 360px th: button 44px "เซสชันนี้ · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 360px th: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · ส่งแล้ว 5 จาก 14 · button "ส่งคนถัดไป · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 360px th: tag "คัดลอกไม่สำเร็จ" on 1 row, nobody "Sending…" · button "คัดลอกอีกครั้ง · #13 @mia.go" 52px inside=true · message shown=true selected=true · ส่งแล้ว 12 จาก 40 (as before the tap: true) · sideways=false
+ok  picker 360px id: button 44px "Sesi ini · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 360px id: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 dari 14 terkirim · button "Kirim berikutnya · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 360px id: tag "Gagal menyalin" on 1 row, nobody "Sending…" · button "Salin lagi · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 dari 40 terkirim (as before the tap: true) · sideways=false
+ok  picker 360px bg: button 44px "Тази сесия · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 360px bg: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · Изпратени 5 от 14 · button "Следващ · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 360px bg: tag "Неуспешно копиране" on 1 row, nobody "Sending…" · button "Копирай пак · #13 @mia.go" 52px inside=true · message shown=true selected=true · Изпратени 12 от 40 (as before the tap: true) · sideways=false
+ok  picker 430px en: button 44px "This session · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px en: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 of 14 sent · button "Send next · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px en: tag "Copy failed" on 1 row, nobody "Sending…" · button "Copy again · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 of 40 sent (as before the tap: true) · sideways=false
+ok  picker 430px fil: button 44px "Session na ito · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px fil: button 44px "Lumang session · 11/23 → 11/24" amber=true · line "Lumang session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 sa 14 ang naipadala · button "Ipadala ang susunod · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px fil: tag "Hindi nakopya" on 1 row, nobody "Sending…" · button "Kopyahin ulit · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 sa 40 ang naipadala (as before the tap: true) · sideways=false
+ok  picker 430px zh: button 44px "本场直播 · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px zh: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 已发送 5 / 14 · button "发送下一位 · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px zh: tag "复制失败" on 1 row, nobody "Sending…" · button "重新复制 · #13 @mia.go" 52px inside=true · message shown=true selected=true · 已发送 12 / 40 (as before the tap: true) · sideways=false
+ok  picker 430px zh-TW: button 44px "本場直播 · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px zh-TW: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 已傳送 5 / 14 · button "傳送下一位 · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px zh-TW: tag "複製失敗" on 1 row, nobody "Sending…" · button "重新複製 · #13 @mia.go" 52px inside=true · message shown=true selected=true · 已傳送 12 / 40 (as before the tap: true) · sideways=false
+ok  picker 430px vi: button 44px "Phiên này · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px vi: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · Đã gửi 5 / 14 · button "Gửi tiếp · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px vi: tag "Sao chép lỗi" on 1 row, nobody "Sending…" · button "Sao chép lại · #13 @mia.go" 52px inside=true · message shown=true selected=true · Đã gửi 12 / 40 (as before the tap: true) · sideways=false
+ok  picker 430px th: button 44px "เซสชันนี้ · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px th: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · ส่งแล้ว 5 จาก 14 · button "ส่งคนถัดไป · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px th: tag "คัดลอกไม่สำเร็จ" on 1 row, nobody "Sending…" · button "คัดลอกอีกครั้ง · #13 @mia.go" 52px inside=true · message shown=true selected=true · ส่งแล้ว 12 จาก 40 (as before the tap: true) · sideways=false
+ok  picker 430px id: button 44px "Sesi ini · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px id: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · 5 dari 14 terkirim · button "Kirim berikutnya · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px id: tag "Gagal menyalin" on 1 row, nobody "Sending…" · button "Salin lagi · #13 @mia.go" 52px inside=true · message shown=true selected=true · 12 dari 40 terkirim (as before the tap: true) · sideways=false
+ok  picker 430px bg: button 44px "Тази сесия · 11/25 → 11/26" · list inside=true · 4 lines, lowest 44px, none cut=true · sideways=false
+ok  past 430px bg: button 44px "Past session · 11/23 → 11/24" amber=true · line "Past session · 11/23 → 11/24" · 14 rows, tags {"sent":5,"next":1,"not_sent":8} · Изпратени 5 от 14 · button "Следващ · #6 @mia.go · NT$298" 52px · sideways=false
+ok  copy failed 430px bg: tag "Неуспешно копиране" on 1 row, nobody "Sending…" · button "Копирай пак · #13 @mia.go" 52px inside=true · message shown=true selected=true · Изпратени 12 от 40 (as before the tap: true) · sideways=false
+
 all checks ok

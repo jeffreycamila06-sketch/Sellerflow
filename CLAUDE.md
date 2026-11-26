@@ -6790,10 +6790,37 @@ button to the unchanged Receipt format screen for a `fbReceiptUi` seller). Pictu
 - **Order:** sql/220 and the web merge in either order (before sql/220: no switch row, no key → closed; a Format save
   would say "Couldn't save") → add the test login to `feature_access_emails` ('invoicing') → test → switch 'true' →
   sql/221 LAST. Rollback: switch 'false' (instant) or `sql/220_invoicing_rollback.sql`.
-- **Known limits:** current session only (when it ends, its buyers leave the list — as on the Orders buyer cards);
-  "Sending…" is per phone (another phone shows that buyer as Next until the tap); a price edited in the row sheet is
-  for that message only, the row's total stays the order's; a copy refused on Send next still opens TikTok (the message
-  is shown selected to copy by hand) and the buyer counts as being sent.
+- **Known limits:** "Sending…" is per phone (another phone shows that buyer as Next until the tap); a price edited in
+  the row sheet is for that message only, the row's total stays the order's.
+- **Follow-ups (same branch, same day) — SESSION PICKER:** the TikTok tab starts with a button "This session · <date> ▾"
+  (`ivc-session-btn`); the list = this session, then past sessions newest first. It is the Orders tab's list and loader:
+  `usePastSessions(pastSessions, sessionId)` (adapters/pastSessions.ts — `my_session_summaries` when the list opens,
+  `loadPastSession(id)` when one is picked; its OWN hook state, so nothing in Orders or the live session moves).
+  Props `sessionId` + `pastSessions`; RedesignApp passes the SAME gate line as Orders
+  (`pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}` — now exactly
+  twice in RedesignApp, pinned by `pastSessions.test.tsx`). A past session: amber button + amber line
+  "Past session · range" (`ivc-past-line`), rows = `invoiceRows(past.buyers, …)`, message date = `sessionRange`, saved
+  status under THAT session's id (`activeKey = pastSel ? pastSel.id : sessionKey`). The row sheet gets
+  `invoice.pastRange` (amber line, NO "old session — send anyway?" question); Orders still passes the sheet's own
+  `pastRange` prop and keeps its question. `useInvoiceStatus` answers "loading" + an empty map until the read of the
+  session on screen has landed (`loadedFor`) — an old session's tags are never drawn for a new one.
+  "Sending…" is kept per session: localStorage `sfl_rd_invoice_pending:<userId>` = a map `"<platform>|<sessionKey>" → row id`
+  (newest 12; the first build's `{s,p,id}` shape reads as empty).
+  ⚠️ It goes back as far as Orders' Sessions picker: sessions whose order rows are still stored (sql/127: up to 7
+  finished sessions, 40 days at most) — NOT 3 months (the 3-month table `orders` has no buyer numbers / sessions).
+- **Follow-ups — COPY FAILED = NOT SENT:** a buyer is "being sent" only AFTER the copy really worked
+  (`copyFb.copy(text).then(ok => ok ? setPending : setCopyFailed)`); refused → in-memory `copyFailedId` (per session,
+  never saved, gone when the screen is left or another session is picked), tag `copy_failed` ("Copy failed", amber),
+  the message shown selected (CopyFailNote), and the big button stays on that buyer: `sendTarget(rows, saved, pendingId,
+  copyFailedId)` → `{ row, again }`, label `rd_ivc_copy_again` "Copy again · #{n} {who}". The buyer sent BEFORE that tap
+  is still marked Sent. A copy that works → normal flow. Row sheet: `invoice.onCopyFailed` (not for a buyer already
+  Sent — a refused "Send again" leaves them Sent). A Sent count never includes a failed copy.
+  The big button is a real link, so a press opens TikTok whether or not the copy worked. Known dead end: a phone that
+  never allows copying cannot mark a buyer Sent here (only "Can't message") — an "I sent it by hand" link is NOT built.
+  New texts: `rd_ivc_t_copy_failed`, `rd_ivc_copy_again`, `rd_ivc_ses_this`, `rd_ivc_summary_past`, `rd_ivc_empty_past` (8 languages).
+  Tests: `screens/__tests__/Invoicing.sessions.test.tsx` (31) + cases in `invoicing.test.ts` / `invoicingOpen.app.test.tsx`;
+  the fake database (`invoiceFakeDb.ts`) also answers `my_session_summaries` and `live_session_orders` from `s.orders`.
+  No SQL change (sql/220 untouched; sql/221's row regenerated from the guide).
 - Preview: `?ivc=40,12` in `src/dev/fakeSupabase.ts` (preview-only). ⚠️ In screenshot scripts tap with the page's own
   `click()` — Playwright's click scrolls a hidden container sideways in the dark theme (not a real-tap behaviour).
 - Not touched (0 lines): Orders.tsx, ReceiptFormat.tsx, server/, server.js, printing files, comment delivery, buyer

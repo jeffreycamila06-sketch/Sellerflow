@@ -31,7 +31,11 @@ const bigBtn: CSSProperties = { display: "block", boxSizing: "border-box", width
 //   • the main button reads Send / Send again and tells the caller when the message was really copied
 //     (onSent = that buyer is "Sent"); a copy that failed selects the message so it can be copied by hand;
 //   • one more button: "Can't message" (onSkip).
-export interface SendSheetInvoice { note: string; shipping: string; sent: boolean; onSent: () => void; onSkip: () => void }
+//   • onCopyFailed tells the caller that the main button's copy was refused (that buyer is NOT sent);
+//   • pastRange shows the "Past session" line WITHOUT the "OLD session … Send anyway?" question — in
+//     Invoicing the seller picked that session on purpose. (Orders passes the sheet's own pastRange prop
+//     and keeps its question.)
+export interface SendSheetInvoice { note: string; shipping: string; sent: boolean; onSent: () => void; onSkip: () => void; onCopyFailed?: () => void; pastRange?: string }
 
 // pastRange (e.g. "10/08 → 10/10"): the card is from a PAST session → the header says so and
 // the first copy asks one confirm ("This is an OLD session … Send anyway?").
@@ -78,6 +82,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
     void copy().then((ok) => {
       if (ok) { setStatus(okText); invoice?.onSent(); return; }
       setStatus(t.rd_tts_copy_failed);
+      invoice?.onCopyFailed?.();
       const box = previewRef.current;
       if (box) { try { box.scrollIntoView({ block: "center" }); } catch { /* not laid out */ } box.focus(); selectAll(box); }
     });
@@ -99,9 +104,9 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
             <span style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{t.rd_tts_title}</span>
             <button type="button" data-testid="tts-close" onClick={onClose} style={{ marginLeft: "auto", border: "none", background: "transparent", color: "var(--accent-fg)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
           </div>
-          {pastRange && (
+          {(pastRange || invoice?.pastRange) && (
             <div data-testid="tts-past" style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#92400e", background: "#fef3c7", borderRadius: 8, padding: "4px 9px", display: "inline-block" }}>
-              {tpl(t.rd_tts_past, { range: pastRange })}
+              {tpl(t.rd_tts_past, { range: pastRange || invoice?.pastRange || "" })}
             </div>
           )}
           <div data-testid="tts-header" style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>

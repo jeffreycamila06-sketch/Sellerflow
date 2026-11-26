@@ -29,8 +29,9 @@ vi.mock("../../supabase", async () => {
     apply: () => chain(),
   });
   const supabase = {
-    from: (table: string) => (table === "invoice_sends" || table === "seller_receipt_settings" ? DB.supabase.from(table) : chain()),
-    rpc: (name: string) => (name === "my_feature_access" ? Promise.resolve({ data: H.features.v, error: null }) : chain()),
+    // live_session_orders + my_session_summaries: what the session picker (and the Orders tab's) reads
+    from: (table: string) => (table === "invoice_sends" || table === "seller_receipt_settings" || table === "live_session_orders" ? DB.supabase.from(table) : chain()),
+    rpc: (name: string) => (name === "my_feature_access" ? Promise.resolve({ data: H.features.v, error: null }) : name === "my_session_summaries" ? DB.supabase.rpc(name) : chain()),
     auth: {
       getSession: DB.supabase.auth.getSession,
       getUser: async () => ({ data: { user: { id: "u1" } }, error: null }),
@@ -167,6 +168,41 @@ describe("switch on — every plan", () => {
     clock.mockRestore();
     expect(DB.s.sends.map((r) => [r.user_id, r.session_key, r.platform, r.buyer_number, r.status])).toEqual([["u1", "S1", "tiktok", 1, "sent"]]);
     expect(q("ivc-progress-text")!.textContent).toBe("1 of 2 sent");
+  });
+});
+
+describe("the session picker in the real app", () => {
+  const past = (n: number, handle: string, at: string) =>
+    ({ user_id: "u1", session_id: "OLD", session_date: at.slice(0, 10), created_at: at, buyer_number: n, handle, customer_name: handle.replace("@", ""), platform: "TikTok", product: "Old item", price: 100, qty: 1, comment_msg_id: null, auto_code: null });
+  beforeEach(() => { DB.s.orders = [past(1, "@dina", "2026-11-24T05:00:00.000Z"), past(1, "@dina", "2026-11-25T05:00:00.000Z"), past(2, "@efren", "2026-11-25T06:00:00.000Z")]; });
+  it("the Orders rule decides: past sessions on → the picker; a past session is shown in amber and saved under ITS id", async () => {
+    H.sw.v = { ...SWITCHES_OFF, invoicing: true, pastSessionsPublic: true };
+    await openSettingsTab();
+    fireEvent.click(card()); await flush();
+    expect(q("ivc-session-label")!.textContent).toBe("This session · 11/26");
+    fireEvent.click(q("ivc-session-btn")!); await flush();
+    const items = Array.from(document.querySelectorAll("[data-testid='ivc-session-item']")) as HTMLElement[];
+    expect(items.map((b) => b.textContent)).toEqual(["Past session · 11/24 → 11/25 · 2 days"]);
+    fireEvent.click(items[0]); await flush();
+    expect(q("ivc-session-label")!.textContent).toBe("Past session · 11/24 → 11/25");
+    expect(q("ivc-past-line")!.textContent).toBe("Past session · 11/24 → 11/25");
+    expect(q("ivc-send-next")!.textContent).toContain("#1 @dina");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(3_000_000);
+    fireEvent.click(q("ivc-send-next")!); await flush();
+    clock.mockReturnValue(3_000_000 + 5_000);
+    fireEvent.click(q("ivc-send-next")!); await flush();
+    clock.mockRestore();
+    expect(DB.s.sends.map((r) => [r.session_key, r.buyer_number, r.status])).toEqual([["OLD", 1, "sent"]]);
+    // the Orders tab is not moved by it: it still shows the running session
+    fireEvent.click(byText(t.rd_nav_orders)); await flush();
+    expect(q("ord-past-banner")).toBeNull();
+  });
+  it("past sessions off for this seller → no picker (the screen of the first build)", async () => {
+    H.sw.v = { ...SWITCHES_OFF, invoicing: true };
+    await openSettingsTab();
+    fireEvent.click(card()); await flush();
+    expect(q("ivc-session")).toBeNull();
+    expect(q("ivc-send-next")!.textContent).toContain("#1 @ana");
   });
 });
 

@@ -11,7 +11,7 @@ import { buildSendMessage, currentSessionDate, initialSendLines, messageTotal } 
 import { chaseTarget } from "../parcelTracking";
 import {
   buyerKeyOf, feeInput, feeText, inFilter, invoiceCounts, invoiceMessage, invoiceRows, invoiceSessionKey, invoicingVisible, linesHashOf, loadPending,
-  normalizeInvoiceFormat, savePending, sendQueue, sendRowsToMap, sentTime, shortHash, stateOf, tagOf, type SavedStatus,
+  copyFailedRow, normalizeInvoiceFormat, savePending, sendQueue, sendRowsToMap, sendTarget, sentTime, shortHash, stateOf, tagOf, type SavedStatus,
 } from "../invoicing";
 
 const LABELS = { hi: "Hi {name}!", order: "Your order ({date}):", total: "Total: {total}", shipping: "Shipping fee: {fee}" };
@@ -205,6 +205,31 @@ describe("session, the buyer being sent, the format", () => {
     expect(loadPending("u1", "S1", "tiktok")).toBeNull();
     localStorage.setItem("sfl_rd_invoice_pending:u1", "{broken");
     expect(loadPending("u1", "S1", "tiktok")).toBeNull();
+  });
+  it("copy failed (this phone only): that buyer keeps the button and the tag — never a Sent buyer", () => {
+    const rows = invoiceRows(buyersOf(THREE_DAYS), "tiktok", "");            // #1 @ana, #2 @ben.t, #4 (number-only id)
+    const [r1, r2, r4] = rows;
+    const none = new Map<string, SavedStatus>();
+    // nothing failed: the button is on the first of the queue
+    expect(sendTarget(rows, none, null, null)).toEqual({ row: r1, again: false });
+    // #2's copy failed: the button stays on #2 although #1 is before it in buyer-number order
+    expect(sendTarget(rows, none, null, r2.id)).toEqual({ row: r2, again: true });
+    expect(rows.map((r) => tagOf(r, none, null, r2.id, r2.id))).toEqual(["not_sent", "copy_failed", "not_sent"]);
+    // a buyer saved as Sent is never "copy failed" (a refused Send again leaves them Sent)
+    const sent = new Map<string, SavedStatus>([[r2.id, { status: "sent", sentAt: null, hash: r2.hash }]]);
+    expect(copyFailedRow(rows, sent, r2.id)).toBeNull();
+    expect(sendTarget(rows, sent, null, r2.id)).toEqual({ row: r1, again: false });
+    expect(tagOf(r2, sent, null, r1.id, r2.id)).toBe("sent");
+    // …but Sent with other lines (New item) or Can't message can be
+    const stale = new Map<string, SavedStatus>([[r2.id, { status: "sent", sentAt: null, hash: "other" }]]);
+    expect(tagOf(r2, stale, null, null, r2.id)).toBe("copy_failed");
+    const skipped = new Map<string, SavedStatus>([[r4.id, { status: "skipped", sentAt: null, hash: r4.hash }]]);
+    expect(sendTarget(rows, skipped, null, r4.id)).toEqual({ row: r4, again: true });
+    // a buyer who is no longer in the list
+    expect(sendTarget(rows, none, null, "99:gone")).toEqual({ row: r1, again: false });
+    // copy failed wins over "being sent" for the same buyer; the old 4-argument call is unchanged
+    expect(tagOf(r1, none, r1.id, null, r1.id)).toBe("copy_failed");
+    expect(tagOf(r1, none, r1.id, null)).toBe("sending");
   });
   it("the format row: the note is the receipt note; no fee saved = no shipping line", () => {
     expect(normalizeInvoiceFormat(null)).toEqual({ note: "", fee: "" });

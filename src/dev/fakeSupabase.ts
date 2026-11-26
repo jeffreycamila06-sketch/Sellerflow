@@ -227,7 +227,29 @@ if (IVC.length === 2) {
   }
   add(count + 1, "Maria Santos", "Maria Santos", "Facebook", ITEMS[0], at(count + 1));
   add(count + 2, "Joy Reyes", "Joy Reyes", "Facebook", ITEMS[1], at(count + 2));
-  tables.live_session_orders.push(...rows);
+  // two finished sessions for the session picker: a 2-day one (3 and 2 days ago, 14 TikTok buyers, the
+  // first 5 saved as Sent) and a 1-day one (6 days ago, 6 buyers) — next to the 2-day "past-1" above
+  const pastRows: Row[] = [];
+  const addPast = (sid: string, n: number, daysAgo: number, item: readonly [string, number], minute = 0) => {
+    const base = NAMES[(n + 6) % NAMES.length];
+    const t = `${day(-daysAgo)}T0${5 + (minute >= 60 ? 1 : 0)}:${String(minute % 60).padStart(2, "0")}:00.000Z`;
+    pastRows.push({ id: 8000 + pastRows.length, user_id: UID, session_id: sid, session_date: day(-daysAgo), created_at: t, buyer_number: n, handle: `@${base}`, customer_name: base.replace(/[._]/g, " "), platform: "TikTok", product: item[0], price: item[1], qty: 1, comment_msg_id: null, auto_code: null });
+  };
+  for (let n = 1; n <= 14; n++) { addPast("past-a", n, n <= 8 ? 3 : 2, ITEMS[n % ITEMS.length], n * 4); if (n % 4 === 0) addPast("past-a", n, 2, ITEMS[(n + 3) % ITEMS.length], 30 + n); }
+  for (let n = 1; n <= 6; n++) addPast("past-b", n, 6, ITEMS[(n + 2) % ITEMS.length], n * 5);
+  tables.live_session_orders.push(...rows, ...pastRows);
+  // the list the database function answers: one line per session of this seller (as sql/128 groups)
+  const groups = new Map<string, { session_id: string; first_day: string; last_day: string; orders: number; latest: string }>();
+  for (const r of tables.live_session_orders as Row[]) {
+    const sid = String(r.session_id), d = String(r.session_date), c = String(r.created_at);
+    const g = groups.get(sid);
+    if (!g) { groups.set(sid, { session_id: sid, first_day: d, last_day: d, orders: 1, latest: c }); continue; }
+    if (d < g.first_day) g.first_day = d;
+    if (d > g.last_day) g.last_day = d;
+    if (c > g.latest) g.latest = c;
+    g.orders += 1;
+  }
+  RPC.my_session_summaries = [...groups.values()];
   tables.app_settings.push({ key: "invoicing_enabled", value: "true" });
   tables.seller_session_config = [{ user_id: UID, current_session_id: IVC_SESSION, session_started_at: new Date(now - 26 * 3_600_000).toISOString(), session_window_days: 2, session_ended_at: null, window_days: 1, window_start: null }];
   tables.seller_receipt_settings = [{ user_id: UID, opening: "", note: "Pay by bank transfer within 24 hours.\nBank 012 · 0000-1234-5678", qr_image: null, invoice_shipping_fee: 38, updated_at: iso(3) }];
@@ -244,6 +266,9 @@ if (IVC.length === 2) {
       ...list.slice(0, sent).map((r, i) => row(r, i, "sent")),
       ...(list[sent + 2] ? [row(list[sent + 2], 0, "skipped")] : []),
       ...(list[sent + 3] ? [row(list[sent + 3], sent + 3, "sent", "before")] : []),
+      // the 2-day past session: its first 5 buyers were sent
+      ...invoiceRows(rebuildSessionFromRows(pastRows.filter((r) => r.session_id === "past-a") as never).buyers, "tiktok", "").slice(0, 5)
+        .map((r, i) => ({ ...row(r, i, "sent"), session_key: "past-a" })),
     ];
   };
 }
