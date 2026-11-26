@@ -37,7 +37,7 @@ Keywords: settings, tiles, shop tools, account, general settings, customers, log
 Tap **Settings** in the bottom bar. You will see tiles:
 
 - **Invite friends** — your invite code, the friends you invited, and a place to add a friend's code.
-- **Invoicing** — sending invoices to buyers is coming soon.
+- **Invoicing** — send each buyer their invoice on TikTok after your live. If it shows **Soon**, it is not open for your account yet.
 - **General Settings** — profile, live setup options, look, language, channels, printer, subscription, support, delete account.
 - **Customers** — your buyers list with search.
 - **Parcel Scan** (7-11 / FamilyMart), **Customer Details**, **Pickup Status** — Taiwan tools. Parcel Scan tiles may show **Soon**. Customer Details and Pickup Status open or show 🔒.
@@ -424,6 +424,33 @@ Keywords: send to tiktok, send message, message buyer, copy message, edit item, 
 - You can also write the **Message** yourself (it starts in English). Tap **↺ Reset message** to get the automatic text back.
 - When it's ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don't see **Send**, ask Admin.
+
+## invoicing — Invoicing (send invoices on TikTok)
+Last checked: 2026-11-26
+Keywords: invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can't message, new item, past session, copy failed, copy again, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單
+
+Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer's total.
+
+**Another session** — tap **This session ▾** at the top and pick a past session to send its invoices. A past session is shown in amber. Tap the button again and pick **This session** to go back.
+
+**Send one by one**
+1. Tap **Send next**. That buyer's message is copied and TikTok opens on the buyer.
+2. In TikTok: **Message → Paste → Send**. Then come back to the app.
+3. Tap **Send next** again. The buyer before is marked **Sent** and the next buyer opens. After the last buyer, tap **Done**.
+
+- A buyer shown as numbers only has no TikTok link. The message is still copied — find the buyer in TikTok yourself and paste it.
+- If the message can't be copied, the buyer shows **Copy failed** and is not marked Sent. The message is shown selected so you can copy it by hand. Tap **Copy again** to try that buyer again.
+- Tap a row to change the items or prices in that buyer's message, send it again, or tap **Can't message** to skip the buyer.
+- **⚠ New item · send again** means the buyer ordered again after you sent the invoice.
+- **All · Not sent · Sent** filter the list. What you sent is saved, so your other phone shows it too.
+- Each session keeps its own Sent marks. A new session starts with every buyer **Not sent**.
+- Nothing here changes an order.
+
+**Format** (top right)
+- **Payment note** — how the buyer pays you. It is added at the end of every invoice.
+- **Shipping fee** — added to every invoice. Leave it empty for none.
+
+Facebook, Instagram and Shopee invoices are coming soon.
 
 ## past-sessions — See orders from past lives
 Last checked: 2026-10-28

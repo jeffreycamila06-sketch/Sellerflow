@@ -73,6 +73,8 @@ import BuyerAlertSheet from "./components/BuyerAlertSheet";
 import BlacklistSheet from "./components/BlacklistSheet";
 import { blacklistSeen, blacklistVisible, blMapKey, markBlacklistSeen, useBlacklist, type BlEntry } from "./adapters/blacklist";
 import ReceiptFormat from "./screens/ReceiptFormat";
+import Invoicing from "./screens/Invoicing";
+import { invoiceSessionKey, invoicingVisible } from "./adapters/invoicing";
 import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
 import { useBuyerTags } from "./adapters/buyerTag";
 import LiveConnectModal from "./components/LiveConnectModal";
@@ -197,11 +199,11 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts" | "shopeeshops"
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts" | "shopeeshops" | "invoicing"
   | "website" | "websitepay" | "invite" | "blacklist";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite", "blacklist", "shopeeshops"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite", "blacklist", "shopeeshops", "invoicing"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -1022,6 +1024,8 @@ export default function RedesignApp() {
   const shopeeView = shopeeSellerView({ isAdmin, access: shopeeBetaAcc, paidActive: isShopeeEligible(auth.profile), marketOk: shopeeBetaMarketOk(market), publicOn: shopeePublic });
   const shopeeLinkOn = shopeeView.linkOn;
   const platformLocks = shopeeView.locks;
+  // Settings → Invoicing (sql/220): the switch, the preview list, or an admin. Off = the card as it is today.
+  const invoicingOn = invoicingVisible({ isAdmin, previewKey: hasFeature("invoicing"), switchOn: featureSw.invoicing });
   const blacklistOn = blacklistVisible({ country: market.market.country, adminUnion: market.adminUnion, switchOn: featureSw.blacklist, isAdmin, hasKey: hasFeature("blacklist") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
@@ -3207,6 +3211,7 @@ export default function RedesignApp() {
               pickupLocked={pickupLocked}
               onParcelUpsell={() => setUpsellOpen(true)}
               onInvoicing={fbReceiptUi ? () => setScreen("receiptformat") : () => setToast({ msg: tApp.rd_invoice_soon_note, kind: "ok", ms: 4000 })}
+              {...(invoicingOn ? { onInvoicing: () => setScreen("invoicing"), invoicingOpen: true } : {})}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
               onWebsite={sellerWebsiteOn ? () => setScreen("website") : undefined}
@@ -3309,6 +3314,12 @@ export default function RedesignApp() {
           {screen === "customerdata" && <CustomerData onBack={() => goBack()} onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal onBack={() => goBack(authed ? "menu" : anonScreen())} />}
           {screen === "invite" && authed && <InviteFriends onBack={() => goBack()} ios={ios} />}
+          {screen === "invoicing" && invoicingOn && (
+            <Invoicing cur={cur} onBack={() => goBack()} buyers={liveSession.session.buyers} sessionKey={invoiceSessionKey(sessionInstance.currentSessionId, liveSession.dayId)}
+              sellerId={auth.profile?.authUserId || ""} sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} todayId={liveSession.dayId}
+              sessionId={sessionInstance.currentSessionId} pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
+              {...(fbReceiptUi ? { onReceiptFormat: () => setScreen("receiptformat") } : {})} />
+          )}
           {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => goBack()} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
           {screen === "delete" && <DeleteAccount onBack={() => goBack()} email={auth.profile?.email} onConfirm={onDeleteAccount} />}
           {screen === "printersettings" && (

@@ -162,10 +162,14 @@ describe("separation (source contract)", () => {
     const src = readFileSync("src/redesign/adapters/pastSessions.ts", "utf8").replace(/\/\/.*$/gm, "");
     expect(src).not.toMatch(/useLiveSession|applyOrder|createOrder|useOrders|printSlip|printing|salesTab|shipping|insert\(|update\(|upsert\(|delete\(/);
     // RedesignApp passes the GATE boolean only (pastSessionsAllowed) — never the data; everything
-    // else that mentions pastSessions lives in Orders.
-    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8")
+    // else that mentions pastSessions lives in Orders and in Invoicing's session picker (2026-11-26:
+    // the same gate line, twice — once for each screen).
+    const GATE = 'pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}';
+    const raw = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    expect(raw.split(GATE).length - 1).toBe(2);                    // Orders + Invoicing, nothing else
+    const app = raw
       .replace('import { pastSessionsAllowed } from "./adapters/pastSessions";', "")
-      .replace('pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}', "");
-    expect(app).not.toMatch(/pastSessions/);                       // only Orders uses it
+      .replaceAll(GATE, "");
+    expect(app).not.toMatch(/pastSessions/);                       // only those two screens get it
   });
 });
