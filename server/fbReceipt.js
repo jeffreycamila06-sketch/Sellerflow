@@ -4,7 +4,8 @@
 //   recipient = { comment_id }   message = { attachment: { type: "image", payload: { url } } }
 // and nothing else (no messaging_type, no tag).
 //
-// Gate: fb_receipt_access only (store.hasReceiptAccess). fb_receipts_enabled is NOT read here.
+// Gate: store.hasReceiptAccess = the fb_receipt_access row AND the plan not ended (server/fbReceiptAccess.js,
+// rule 2 of 2026-11-26). fb_receipts_enabled is NOT read here.
 // Everything about WHICH comment and WHICH page comes from the database (live_session_orders +
 // fb_pages); the client only says which buyer of which session and supplies the picture.
 // The fb_receipts table (sql/75) has a unique index on comment_id where status <> 'failed', so
@@ -469,22 +470,34 @@ export function createFbReceipt(deps) {
   // sendLocked sends it with the preflight. → { status, json } like send(); skips are 200
   // { ok:false, skipped:<reason> }.
   async function autoSend(userId, target, makePng, preflight) {
+    return lockedOne(userId, target, makePng, preflight, true);
+  }
+
+  // Send all (server/fbSendAll.js, Invoicing → Facebook): the SAME lock, skip rules, claim, upload
+  // and Graph call as autoSend. The one difference: a failed try counts like the MANUAL Send
+  // (a 10/2018300 "another chat app" refusal does not use the comment up), because a Send all job
+  // tries each buyer once per tap — the seller decides when to try again.
+  async function sendOne(userId, target, makePng, preflight) {
+    return lockedOne(userId, target, makePng, preflight, false);
+  }
+
+  async function lockedOne(userId, target, makePng, preflight, auto) {
     if (!(await hasAccess(userId))) return { status: 403, json: { ok: false, error: "no_access" } };
     const lockKey = `${userId}|${target.sessionId}|${target.buyerNumber}`;
     if (sending.has(lockKey)) return { status: 409, json: { ok: false, error: "busy" } };
     sending.add(lockKey);
     try {
-      const g = await gather(userId, target.sessionId, target.buyerNumber, true);
+      const g = await gather(userId, target.sessionId, target.buyerNumber, auto);
       if (hasAutoBlockingRow(g.rows, userId)) return { status: 200, json: { ok: false, skipped: "has_receipt" } };
       if (g.orders.length === 0) return { status: 200, json: { ok: false, skipped: "no_orders" } };
       if (g.mixed) return { status: 200, json: { ok: false, skipped: "mixed_buyer" } };
       if (g.candidates.length === 0) return { status: 200, json: { ok: false, skipped: "none_left" } };
       const png = await makePng();
-      return await sendLocked(userId, target, png, { preflight, auto: true });
+      return await sendLocked(userId, target, png, { preflight, auto });
     } finally {
       sending.delete(lockKey);
     }
   }
 
-  return { info, send, autoSend, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts, _sending: sending, _ownerReadDone: () => ownerReadDone };
+  return { info, send, autoSend, sendOne, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts, _sending: sending, _ownerReadDone: () => ownerReadDone };
 }

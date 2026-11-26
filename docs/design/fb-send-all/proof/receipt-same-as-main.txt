@@ -1,0 +1,17 @@
+(1) AFTER-LIVE automatic receipt: main vs branch, the same inputs (no labels, no shipping fee — what fbAutoReceipt passes)
+  SAME  one line, en  (21618 bytes, sha256 cc491123167a9af4)
+  SAME  three lines + note, fil  (36205 bytes, sha256 1241940e7481e9b4)
+  SAME  zh-TW name + opening  (23142 bytes, sha256 2dec4952666abd79)
+  SAME  th name  (15444 bytes, sha256 ae86076e96e92c14)
+  SAME  bg name, price 0 (to be confirmed)  (23043 bytes, sha256 665e13ee33998e94)
+  SAME  long item + QR  (41383 bytes, sha256 5ad06e948dbb5a75)
+
+(2) Send all picture (the app's words + shipping fee 38) — pictures/sendall_<lang>.png
+  en: 57441 bytes
+  fil: 63582 bytes
+  zh: 54210 bytes
+  zh-TW: 54506 bytes
+  vi: 64884 bytes
+  th: 56084 bytes
+  id: 59362 bytes
+  bg: 58407 bytes

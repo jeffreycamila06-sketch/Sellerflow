@@ -60,6 +60,10 @@ export function receiptInputFromRows(rows, settings = {}) {
     buyerName: name || handle,
     lines,
     labels: RECEIPT_LABELS[settings.lang] || RECEIPT_LABELS.en,
+    // Send all (server/fbSendAll.js) only: the app's full word list (shipping / how to pay / scan to
+    // pay) and the Invoicing shipping fee. The automatic receipt passes neither → the same input as before.
+    ...(settings.labels && typeof settings.labels === "object" ? { labels: { ...(RECEIPT_LABELS[settings.lang] || RECEIPT_LABELS.en), ...settings.labels } } : {}),
+    ...(Number(settings.shippingFee) > 0 ? { shippingFee: Number(settings.shippingFee) } : {}),
   };
 }
 

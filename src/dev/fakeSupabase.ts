@@ -229,7 +229,10 @@ if (/[?&]ra=1\b/.test(Q)) {
 //   one "Can't message", one "New item" (sent before a later order), a number-only TikTok id further down,
 //   and a saved format (payment note + shipping fee 38). Absent = nothing below is touched.
 const IVC = (/[?&]ivc=(\d+),(\d+)/.exec(Q) || []).slice(1).map(Number);
-const IVC_SESSION = "preview-invoice";
+// &fbsa=1 (FB-2 Send all, docs/design/fb-send-all): the running session gets a real session id (Send all needs
+// one) and 4 more Facebook buyers; one of them is saved "Sent by hand" on the Facebook tab.
+const FBSA = /[?&]fbsa=1/.test(Q);
+const IVC_SESSION = FBSA ? "5e551011-0000-4000-8000-00000000fb2a" : "preview-invoice";
 if (IVC.length === 2) {
   const [count, sent] = IVC;
   const NAMES = ["ana.cruz", "ben.t", "cara_shop", "dina.ukay", "ella.m", "faye88", "gina.lim", "hana_tw", "ivy.chen", "joy.reyes", "kim.dc", "lea.santos", "mia.go", "nina_p", "olive.tan", "pia.lopez", "queenie.w", "rica.m", "sam.yu", "tina.ong"];
@@ -249,6 +252,13 @@ if (IVC.length === 2) {
   }
   add(count + 1, "Maria Santos", "Maria Santos", "Facebook", ITEMS[0], at(count + 1));
   add(count + 2, "Joy Reyes", "Joy Reyes", "Facebook", ITEMS[1], at(count + 2));
+  if (FBSA) {
+    add(count + 3, "Lea Santos", "Lea Santos", "Facebook", ITEMS[2], at(count + 3));
+    add(count + 3, "Lea Santos", "Lea Santos", "Facebook", ITEMS[3], at(count + 3, 5 * 60_000));
+    add(count + 4, "Kim Dela Cruz", "Kim Dela Cruz", "Facebook", ITEMS[5], at(count + 4));
+    add(count + 5, "Rica Mendoza", "Rica Mendoza", "Facebook", ITEMS[6], at(count + 5));
+    add(count + 6, "Nina Perez", "Nina Perez", "Facebook", ITEMS[4], at(count + 6));
+  }
   // two finished sessions for the session picker: a 2-day one (3 and 2 days ago, 14 TikTok buyers, the
   // first 5 saved as Sent) and a 1-day one (6 days ago, 6 buyers) — next to the 2-day "past-1" above
   const pastRows: Row[] = [];
@@ -291,6 +301,8 @@ if (IVC.length === 2) {
       // the 2-day past session: its first 5 buyers were sent
       ...invoiceRows(rebuildSessionFromRows(pastRows.filter((r) => r.session_id === "past-a") as never).buyers, "tiktok", "").slice(0, 5)
         .map((r, i) => ({ ...row(r, i, "sent"), session_key: "past-a" })),
+      // &fbsa=1: the last Facebook buyer was sent by hand
+      ...(FBSA ? invoiceRows(rebuildSessionFromRows(rows as never).buyers, "facebook", "").slice(-1).map((r) => ({ ...row(r, 0, "sent"), platform: "facebook" })) : []),
     ];
   };
 }

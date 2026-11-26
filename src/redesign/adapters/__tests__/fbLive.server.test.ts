@@ -869,12 +869,16 @@ describe("sql/73 mirror", () => {
     expect(code).toMatch(/values \('fb_receipts_enabled', 'false'\)\s+on conflict \(key\) do nothing/);
     expect(code).not.toMatch(/\bdrop\b/);
   });
-  it("server store reads fb_receipt_access with enabled = true and fails closed", () => {
+  it("server store reads fb_receipt_access with enabled = true (+ the plan end date, rule 2) and fails closed", () => {
     const src = readFileSync("server.js", "utf8");
-    const fn = src.slice(src.indexOf("async hasReceiptAccess(userId)"), src.indexOf("async listPages(userId)"));
+    const at = src.indexOf("const receiptAccess = makeReceiptAccess({");
+    const fn = src.slice(at, src.indexOf("const store = {", at));
     expect(fn).toContain('.from("fb_receipt_access")');
     expect(fn).toContain('.eq("enabled", true)');
-    expect(fn).toContain("return !error && !!data;");
-    expect(fn).toContain("catch { return false; }");
+    expect(fn).toContain('.from("seller_profiles").select("plan, plan_expiry")');
+    expect(fn).toMatch(/if \(error\) throw new Error\("receipt_access_read"\)/);
+    expect(src).toContain("hasReceiptAccess: (userId) => receiptAccess.hasReceiptAccess(userId),");
+    // fail closed: server/fbReceiptAccess.js catches every error → false (fbSendAll.server.test.ts)
+    expect(readFileSync("server/fbReceiptAccess.js", "utf8")).toContain("} catch { return false; }");
   });
 });

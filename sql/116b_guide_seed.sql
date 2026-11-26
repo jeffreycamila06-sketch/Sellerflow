@@ -304,7 +304,7 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - You can also write the **Message** yourself (it starts in English). Tap **↺ Reset message** to get the automatic text back.
 - When it''s ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don''t see **Send**, ask Admin.'),
-  ('invoicing', 'Invoicing (send invoices on TikTok)', '2026-11-26'::date, 'invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can''t message, new item, past session, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, facebook invoicing, messenger invoice, ask admin, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單', 'Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer''s total.
+  ('invoicing', 'Invoicing (send invoices on TikTok)', '2026-11-26'::date, 'invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can''t message, new item, past session, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, facebook invoicing, messenger invoice, ask admin, send all, messenger, other chat app, conversation routing, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單', 'Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer''s total.
 
 **Another session** — tap **This session ▾** at the top and pick a past session to send its invoices. A past session is shown in amber. Tap the button again and pick **This session** to go back.
 
@@ -329,6 +329,21 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - **Shipping fee** — added to every invoice. Leave it empty for none.
 
 **Facebook tab** — sending invoices to Facebook buyers in Messenger is turned on by Admin. If it isn''t on for you, tap **Ask Admin to turn it on**: Telegram opens with a ready message.
+
+When it is on:
+1. Pick the session at the top (the same list as the TikTok tab).
+2. Tap **Send all in Messenger**. Each buyer gets their receipt picture in Messenger, one by one. You can close the app — sending continues.
+
+- Tap **✎ View** to see the exact picture the buyer gets, then **Send to #N in Messenger**, **I sent it by hand** or **Buyer cancelled**.
+- **Send** on a row sends to that buyer only.
+- Buyers already sent, sent by hand or cancelled are skipped.
+- **Can''t message** — Facebook does not allow a message to that buyer (for example, the comment is older than 7 days). Message them yourself, then tap **✎ View → I sent it by hand**.
+- **Other chat app** — another app is handling that buyer''s Messenger chat with your Page, so Facebook refused the receipt. Tap **How** for the steps:
+  1. Open Meta Business Suite for your Page → Settings.
+  2. In your inbox / messaging settings, find "Conversation routing" (or "Default routing app") and choose SellerFlowLive.
+  3. Turn off or remove any other app that answers Messenger chats for your Page (a chatbot, an auto-reply or a sales app). An old app can still be connected under Business settings → Integrations → Apps.
+  4. Come back and tap **Send** again. Meta sometimes renames these menus — look for the same words.
+- Messenger receipts stop when your account expires.
 
 Instagram and Shopee invoices are coming soon.'),
   ('past-sessions', 'See orders from past lives', '2026-10-28'::date, 'past sessions, past live, previous session, old orders, reprint old sticker, nakaraang session, lumang orders, i-reprint, 过去的场次, 之前的直播, 過去場次, 舊訂單, 重印', '- On **Orders**, tap **🗓 Sessions ▾**, then pick a past session (its dates and order count are shown).

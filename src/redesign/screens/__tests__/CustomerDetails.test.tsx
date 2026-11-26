@@ -9,7 +9,7 @@ import { TProvider } from "../../i18n";
 import type { ParcelCustomer } from "../../adapters/parcelCustomers";
 
 const { recent, search, saveParcelScan, updateParcelCustomer, deleteParcelCustomer, countPending, countTotal } = vi.hoisted(() => ({
-  recent: { current: { ok: true, rows: [] as ParcelCustomer[] } as { ok: boolean; rows: ParcelCustomer[]; error?: string } },
+  recent: { current: { ok: true, rows: [] as ParcelCustomer[] } as { ok: boolean; rows: ParcelCustomer[]; error?: string }, delayMs: 0 },
   search: { current: { ok: true, rows: [] as ParcelCustomer[] } as { ok: boolean; rows: ParcelCustomer[]; error?: string } },
   saveParcelScan: vi.fn(async (_fields: unknown, _raw: unknown) => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
   updateParcelCustomer: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
@@ -19,7 +19,7 @@ const { recent, search, saveParcelScan, updateParcelCustomer, deleteParcelCustom
 }));
 
 vi.mock("../../adapters/parcelCustomers", () => ({
-  loadRecentParcelCustomers: async () => recent.current,
+  loadRecentParcelCustomers: async () => { if (recent.delayMs) await new Promise((r) => setTimeout(r, recent.delayMs)); return recent.current; },
   searchParcelCustomers: async () => search.current,
   updateParcelCustomer: (...a: unknown[]) => updateParcelCustomer(...(a as [])),
   deleteParcelCustomer: (...a: unknown[]) => deleteParcelCustomer(...(a as [])),
@@ -42,6 +42,7 @@ const view = () => render(<TProvider lang="en"><CustomerDetails cur="NT$" /></TP
 
 beforeEach(() => {
   recent.current = { ok: true, rows: [] };
+  recent.delayMs = 0;
   search.current = { ok: true, rows: [] };
   saveParcelScan.mockClear(); saveParcelScan.mockResolvedValue({ ok: true, id: "new-1" });
   updateParcelCustomer.mockClear(); updateParcelCustomer.mockResolvedValue({ ok: true });
@@ -238,10 +239,12 @@ describe("row numbers + full total count", () => {
 
   it("refreshes the total after a delete (re-queried, drops)", async () => {
     recent.current = { ok: true, rows: [mk()] };
+    // the list answers AFTER the total (CI run 1987 hit this order): the row must be waited for, not assumed
+    recent.delayMs = 30;
     countTotal.mockResolvedValueOnce({ ok: true, count: 5 }).mockResolvedValue({ ok: true, count: 4 });
     const r = view();
     await waitFor(() => expect(r.getByTestId("cd-total").textContent).toBe("5 customers"));
-    fireEvent.click(r.getByTestId("cd-row-main"));
+    fireEvent.click(await r.findByTestId("cd-row-main"));
     await waitFor(() => expect(r.getByTestId("cd-delete")).toBeTruthy());
     fireEvent.click(r.getByTestId("cd-delete"));
     await waitFor(() => expect(r.getByTestId("cd-del-go")).toBeTruthy());

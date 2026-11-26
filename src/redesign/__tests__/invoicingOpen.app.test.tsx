@@ -308,3 +308,40 @@ describe("the Facebook tab inside the real app", () => {
     });
   }
 });
+
+// FB-2 (Jeff, 2026-11-26): "Send all in Messenger" on the Facebook tab — a seller with the add-on, ANY plan.
+// Switch fb_send_all_enabled off → admins only (everyone else keeps today's tab); on → every add-on holder.
+describe("Send all in Messenger — who gets it inside the real app", () => {
+  const openFb = async () => {
+    await openSettingsTab();
+    fireEvent.click(card()); await flush();
+    fireEvent.click(q("ivc-tab-facebook")!); await flush();
+  };
+  beforeEach(() => { H.access.v = { facebook: true, receipt: true }; H.sw.v = { ...SWITCHES_OFF, invoicing: true }; });
+  it("switch off, a seller with the add-on: today's Facebook tab (Soon + Receipt format), no Send all", async () => {
+    H.plan.v = "pro";
+    await openFb();
+    expect(q("ivc-fb")).toBeNull();
+    expect(q("ivc-soon-facebook")).not.toBeNull();
+    expect(q("ivc-receipt-format")).not.toBeNull();
+  });
+  it("switch off, an admin with the add-on: Send all", async () => {
+    H.role.v = "admin";
+    await openFb();
+    expect(q("ivc-fb")).not.toBeNull();
+    expect(q("ivc-soon-facebook")).toBeNull();
+  });
+  for (const plan of ["free", "basic", "plus", "pro", "master"]) {
+    it(`switch on, ${plan} plan with the add-on: Send all`, async () => {
+      H.plan.v = plan; H.sw.v = { ...SWITCHES_OFF, invoicing: true, fbSendAll: true };
+      await openFb();
+      expect(q("ivc-fb")).not.toBeNull();
+    });
+  }
+  it("switch on, no add-on: the locked card (never Send all)", async () => {
+    H.access.v = { facebook: true, receipt: false }; H.sw.v = { ...SWITCHES_OFF, invoicing: true, fbSendAll: true };
+    await openFb();
+    expect(q("ivc-fb")).toBeNull();
+    expect(q("ivc-fb-locked")).not.toBeNull();
+  });
+});

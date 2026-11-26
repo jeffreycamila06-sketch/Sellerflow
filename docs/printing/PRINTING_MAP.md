@@ -97,6 +97,39 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
 - **Server automatic receipt:** `server/fbAutoReceipt.js:18,79` → `drawReceiptPng` (server/receiptDraw.js:95, @napi-rs/canvas, bundled Noto Sans / TC / SC / Thai). It uses the raw `live_session_orders` rows, so **edits made in the manual sheet are not used** (receiptDraw.js:9-10).
 - **Shared pure layout:** `src/lib/receiptLayout.js` (`layoutReceipt`, caps 400 lines and 12000 px).
 - **Send endpoints:** `POST /fb/receipt/info` and `/fb/receipt/send` (server/fbReceipt.js:462-464).
+- **Invoicing → Facebook "Send all in Messenger" (FB-2, 2026-11-26, branch `claude/fb-send-all`) — a THIRD user of the
+  server drawing, no new drawer:** `server/fbSendAll.js` draws each buyer with the SAME `drawReceiptPng` (from the raw
+  `live_session_orders` rows minus the lines cancelled for the invoice) and sends it through `fbReceipt.sendOne` (the
+  automatic receipt's lock / claim / upload / one Graph call, manual fail counting). `server/receiptDraw.js`
+  `receiptInputFromRows` gained two OPTIONAL pass-throughs at the end: `settings.labels` (merged over
+  `RECEIPT_LABELS[lang]`) and `settings.shippingFee` (> 0). Send all passes `SEND_ALL_LABELS[lang]` (shipping / how to
+  pay / scan to pay = the app's `rd_rc_pic_*`, test-pinned ×8) + the Invoicing shipping fee
+  (`seller_receipt_settings.invoice_shipping_fee`) → the same card / shipping row / labels the phone sheet draws. The
+  automatic receipt passes neither → **its picture is byte-identical to main** (proof:
+  `docs/design/fb-send-all/proof/receipt-same-as-main.txt`, 6 inputs incl. zh-TW / th / bg / price 0 / QR, main's
+  `receiptDraw.js` vs the branch's → SAME bytes; test `fbSendAll.server.test.ts` "the after-live receipt's picture input
+  is unchanged"). The ✎ View sheet shows `/fb/sendall/preview` = the job's own drawing (test: preview draw args ===
+  job draw args). Pictures in all 8 languages: `docs/design/fb-send-all/pictures/sendall_<lang>.png`.
+  `receiptLayout.js`, `receiptImage.ts`, `ReceiptSheet.tsx`, `fbAutoReceipt.js` and every sticker / slip / laptop path:
+  0 lines (git diff). Render deploy needed (server half).
+  - **Rule 2 reaches every Messenger message, not only Send all:** `store.hasReceiptAccess` (server/fbReceiptAccess.js)
+    = the add-on row AND the plan not ended (`plan_expiry` empty / in the future; a **Free** plan never ends — its
+    `plan_expiry` is not read). It gates the Orders → Send, the automatic receipt, the sold-out message, `/fb/access`
+    and Send all. The Facebook sign-in keeps the row-only check (Messenger permission kept for a renewal). On
+    2026-11-26 all 10 add-on sellers are paid with a future end date → nobody loses the receipt at the deploy.
+  - **Three routes, three pictures of the same buyer (known, by design today):** Orders sheet = the phone's drawing
+    from the sheet's own lines, shipping box empty every open; automatic receipt = server drawing, raw rows, no shipping
+    row, no "How to pay" / "Scan to pay" labels; Send all = server drawing, raw rows minus invoice-cancelled lines, the
+    Invoicing shipping fee + the app's labels.
+  - **Emoji:** Send all removes them (`fbSendAll.js noEmoji`, name / items / opening / note) before drawing — the
+    server fonts have none. The automatic receipt does not (unchanged; an emoji draws as a box there).
+  - **Scripts the SERVER fonts cannot draw** (`server/fonts`: Noto Sans, TC, SC, Thai — checked by the
+    printer-guardian against the font tables): Korean Hangul ❌, Arabic ❌ (a box in the picture, automatic receipt AND
+    Send all); kana, Thai, Cyrillic, Vietnamese, full-width forms, CJK punctuation and "…" ✅. The phone's Orders sheet
+    uses the device fonts and draws them. Open item: add Noto Sans KR (+ Arabic) to `SERVER_FONTS` (changes the
+    automatic receipt for those inputs → its own branch).
+  - **Thai "How to pay" label** is letter-spaced (the `label` op's `letterSpacing`, same on the phone sheet) — cosmetic,
+    open item for `receiptLayout.js` (own branch).
 - **Facebook error 10 / 2018300 (2026-11-24, branch `claude/fb-receipt-thread-owner`) — NO drawing change, NO change to the request sent:**
   `server/fbReceipt.js` and `src/redesign/adapters/fbReceipt.ts` are edited for the case "Facebook refused the
   receipt with `10/2018300`" only:
@@ -332,6 +365,8 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 
 | Name | Kind | Default | Read at | Effect |
 |---|---|---|---|---|
+| `fb_send_all_enabled` (sql/225, NOT applied) | app_settings | OFF (admins see Send all) | server/fbSendAll.js `allowed` (cached 60 s); RedesignApp `featureSw.fbSendAll` | P10 Send all only: who may start the server job / see the Invoicing → Facebook Send all. Never the automatic receipt. |
+| `seller_receipt_settings.invoice_shipping_fee` (sql/220) | DB column (Invoicing → Format) | empty = none | server.js `getSendAllSettings` → fbSendAll `picture()` | P10 Send all picture only: a shipping row + added to the total. The automatic receipt and the Orders sheet do not read it. |
 | `STICKER_LAYOUT_V2_PUBLIC` | code const | **true** | printing.ts:143, 146, 151 | `printCommentFullWidth` on image paths. Allowlist feature `sticker_v2` when false. |
 | `STICKER_SPACING_PUBLIC` | code const | **true** | printing.ts:164, 166 | half gaps + compact. Feature `sticker_spacing` when false. |
 | `STICKER_SPACING_CHOICE_VISIBLE` / `STICKER_SPACING_FIXED` | code const | false / "compact" | printing.ts:177-183 | the stored `pp.spacing` is ignored |
@@ -382,7 +417,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | P7 iOS LAN sticker | printerRouting.test.ts, nativePrintQueue.test.ts, printing.failure.test.ts (routing only). Bytes share P2's goldens via `buildTsplSticker`. | ⚠ no test of the TCP path |
 | P8 ESC/POS slip | printing.test.ts:65-75 (payload shape only), receiptGate / i18nWiring (bridge mocks) | **❌ no byte test of `buildEscPosSlip` (Java or Swift). No Big5 test.** |
 | P9 web | printing.test.ts:77-180 (HTML string asserts), printing.webQr.test.ts, webPrintQueue.test.ts, kioskLauncher.test.ts, notPrintedStore.test.ts, useOrders.kioskFalseSave.test.tsx, Dashboard.notPrinted.test.tsx | **❌ no rendered-picture check.** The string tests *pin the gaps* (trunc 14, no multipliers). |
-| P10 receipt picture | receiptImage.test.ts, receiptDraw.server.test.ts, buyerReceipt.test.ts, receiptSettings.test.ts, ReceiptFormat.qrPicture.test.tsx, receiptSheetLayout / Lines / receiptSend / receiptGate (.tsx), fbAutoReceipt*.server.test.ts; send path (no drawing): fbReceipt.server.test.ts, fbReceiptSameAsMain.server.test.ts (main vs branch), fbThreadOwner.server.test.ts, fbReceiptFailText.test.ts | ⚠ layout ops tested; no pixel diff phone vs server |
+| P10 receipt picture | receiptImage.test.ts, receiptDraw.server.test.ts, buyerReceipt.test.ts, receiptSettings.test.ts, ReceiptFormat.qrPicture.test.tsx, receiptSheetLayout / Lines / receiptSend / receiptGate (.tsx), fbAutoReceipt*.server.test.ts; send path (no drawing): fbReceipt.server.test.ts, fbReceiptSameAsMain.server.test.ts (main vs branch), fbThreadOwner.server.test.ts, fbReceiptFailText.test.ts | ⚠ layout ops tested; no pixel diff phone vs server ; FB-2 Send all: fbSendAll.server.test.ts, Invoicing.fbSendAll.test.tsx, fbSendAll.test.ts, docs/design/fb-send-all/proof/receipt-same-as-main.mjs |
 | P11 previews | backButton.app.test.tsx, BackButton.screens.test.tsx (header Back, 2026-11-11), PrintPattern.test / .honestSteps / .shopName / .spacing / .v2, stickerSpacing.compactDefault.test.tsx, stickerQrMove.test.tsx | ⚠ **no test asserts preview pixels == print pixels per path/size.** Nothing covers compact v2, font C or Niimbot in the preview. |
 | P12 test prints | backButton.app.test.tsx, BackButton.screens.test.tsx (header Back, 2026-11-11), testPrintComment.test.tsx, printerSetupFlow.test.tsx, PrinterSettings.test.tsx, PrinterModal.test.tsx, btOff.test.tsx, adminLangTest.print.test.ts (admin language test: new-sticker input = the preview's for all 11 samples on the D520 picture; Today's = today's bytes on a saved device, D520 — generic / Niimbot / laptop by code reading), OneStickerPattern.adminLang.test.tsx (admin-only gate, chip → preview + notes, route + unsaved flag) | ⚠ WiFi `testPrint` shim untested; native test pages untested |
 | TikTok / Facebook view | stickerView.tiktokMain.test.ts (TikTok view Printer Test = main's bytes on D520 / TSPL / ESC-POS / CPCL / Niimbot / laptop — fingerprints taken on main 8253c004), stickerView.facebook.test.ts (Facebook view Printer Test = a real Facebook order through `printSlip`, same bytes, same 6 paths, both handle shapes), OneStickerPattern.view.test.tsx (buttons, Soon ×8 languages, default TikTok, not saved), stickerView.fallback.test.ts (the test print's fallback to today's sticker = a real order's: D520 / TSPL picture-failed, Niimbot too-wide, D520 old-Bluetooth send failed → TEXT; Facebook and TikTok) | ✅ the bytes handed to the bridge (laptop: the picture). Pictures: docs/design/pattern-view/. TEXT / WiFi phone: not byte-tested (same `printSlip` call as an order). |
@@ -515,6 +550,8 @@ Image paths (P1, P1c, P3-5, P6 and the exact preview) keep ONLY: ASCII, CJK **id
 | Vietnamese / Latin accents | Nguyễn | ✅ atlas | ⚠ transliterated | ⚠ | ✅ | ✅ unchanged | ✅ Sans |
 | Cyrillic (Bulgarian) | Мария | ✅ generic/Niimbot · ❌ D520 (→ handle) | ⚠ | ⚠ | ✅ | ✅ also on the D520 | ✅ Sans |
 | Emoji | 🔥 | stripped (by design) | stripped | stripped | ❌ prints (not stripped) | stripped (as today) | removed; fancy 𝓐𝓶𝔂 → Amy |
+
+**P10 Messenger receipt picture (server drawing — automatic receipt + Send all; the phone's Orders sheet uses device fonts and draws every script):** Latin, Vietnamese, Cyrillic, Traditional + Simplified Chinese, Japanese kana, CJK punctuation, full-width forms, Thai ✅ · Korean Hangul ❌ box · Arabic ❌ box · Emoji: Send all removes them ✅, automatic receipt ❌ box (unchanged).
 
 - **All-scripts bottom safety B (Nov 9 2026):** only when kana / Hangul / Thai / Arabic (the synthetic all-scripts letters) appear anywhere on the sticker; Chinese, Latin, Vietnamese and Cyrillic alone are never touched. Changes D520 ≥ 60×40 and generic ≥ 70×50 fixed-cell only (the @username one size smaller); font C, Niimbot, TEXT, slip and web unchanged.
 - **"…" on today's fixed-cell font:** U+2026 is only in the Cyrillic atlas. The all-scripts bottom-safety
