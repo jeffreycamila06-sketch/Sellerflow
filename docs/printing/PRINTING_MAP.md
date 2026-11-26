@@ -97,6 +97,21 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
 - **Server automatic receipt:** `server/fbAutoReceipt.js:18,79` → `drawReceiptPng` (server/receiptDraw.js:95, @napi-rs/canvas, bundled Noto Sans / TC / SC / Thai). It uses the raw `live_session_orders` rows, so **edits made in the manual sheet are not used** (receiptDraw.js:9-10).
 - **Shared pure layout:** `src/lib/receiptLayout.js` (`layoutReceipt`, caps 400 lines and 12000 px).
 - **Send endpoints:** `POST /fb/receipt/info` and `/fb/receipt/send` (server/fbReceipt.js:462-464).
+- **Invoicing → Facebook "Send all in Messenger" (FB-2, 2026-11-26, branch `claude/fb-send-all`) — a THIRD user of the
+  server drawing, no new drawer:** `server/fbSendAll.js` draws each buyer with the SAME `drawReceiptPng` (from the raw
+  `live_session_orders` rows minus the lines cancelled for the invoice) and sends it through `fbReceipt.sendOne` (the
+  automatic receipt's lock / claim / upload / one Graph call, manual fail counting). `server/receiptDraw.js`
+  `receiptInputFromRows` gained two OPTIONAL pass-throughs at the end: `settings.labels` (merged over
+  `RECEIPT_LABELS[lang]`) and `settings.shippingFee` (> 0). Send all passes `SEND_ALL_LABELS[lang]` (shipping / how to
+  pay / scan to pay = the app's `rd_rc_pic_*`, test-pinned ×8) + the Invoicing shipping fee
+  (`seller_receipt_settings.invoice_shipping_fee`) → the same card / shipping row / labels the phone sheet draws. The
+  automatic receipt passes neither → **its picture is byte-identical to main** (proof:
+  `docs/design/fb-send-all/proof/receipt-same-as-main.txt`, 6 inputs incl. zh-TW / th / bg / price 0 / QR, main's
+  `receiptDraw.js` vs the branch's → SAME bytes; test `fbSendAll.server.test.ts` "the after-live receipt's picture input
+  is unchanged"). The ✎ View sheet shows `/fb/sendall/preview` = the job's own drawing (test: preview draw args ===
+  job draw args). Pictures in all 8 languages: `docs/design/fb-send-all/pictures/sendall_<lang>.png`.
+  `receiptLayout.js`, `receiptImage.ts`, `ReceiptSheet.tsx`, `fbAutoReceipt.js` and every sticker / slip / laptop path:
+  0 lines (git diff). Render deploy needed (server half).
 - **Facebook error 10 / 2018300 (2026-11-24, branch `claude/fb-receipt-thread-owner`) — NO drawing change, NO change to the request sent:**
   `server/fbReceipt.js` and `src/redesign/adapters/fbReceipt.ts` are edited for the case "Facebook refused the
   receipt with `10/2018300`" only:
