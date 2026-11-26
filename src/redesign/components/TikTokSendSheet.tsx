@@ -32,10 +32,12 @@ const bigBtn: CSSProperties = { display: "block", boxSizing: "border-box", width
 //     (onSent = that buyer is "Sent"); a copy that failed selects the message so it can be copied by hand;
 //   • one more button: "Can't message" (onSkip).
 //   • onCopyFailed tells the caller that the main button's copy was refused (that buyer is NOT sent);
+//   • onSentByHand (only while that buyer is Copy failed / Sending…) shows a small "I sent it by hand" link:
+//     the caller marks the buyer Sent and closes the sheet;
 //   • pastRange shows the "Past session" line WITHOUT the "OLD session … Send anyway?" question — in
 //     Invoicing the seller picked that session on purpose. (Orders passes the sheet's own pastRange prop
 //     and keeps its question.)
-export interface SendSheetInvoice { note: string; shipping: string; sent: boolean; onSent: () => void; onSkip: () => void; onCopyFailed?: () => void; pastRange?: string }
+export interface SendSheetInvoice { note: string; shipping: string; sent: boolean; onSent: () => void; onSkip: () => void; onCopyFailed?: () => void; pastRange?: string; onSentByHand?: () => void }
 
 // pastRange (e.g. "10/08 → 10/10"): the card is from a PAST session → the header says so and
 // the first copy asks one confirm ("This is an OLD session … Send anyway?").
@@ -184,6 +186,12 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
             <button type="button" data-testid="tts-skip" onClick={() => { invoice.onSkip(); onClose(); }}
               style={{ ...bigBtn, flex: 1, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--warn)" }}>{t.rd_ivc_skip}</button>
           </div>
+          {invoice.onSentByHand && (
+            <button type="button" data-testid="tts-by-hand" onClick={invoice.onSentByHand}
+              style={{ display: "block", margin: "6px auto 0", minHeight: 44, padding: "0 12px", border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 13, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+              {t.rd_ivc_by_hand}
+            </button>
+          )}
           </>) : (<>
           {target.kind === "open"
             ? <a href={target.url} target="_blank" rel="noreferrer" data-testid="tts-copy-open" onClick={onCopyOpen}

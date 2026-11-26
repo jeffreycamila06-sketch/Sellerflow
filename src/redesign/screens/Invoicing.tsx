@@ -30,7 +30,7 @@ import TikTokSendSheet from "../components/TikTokSendSheet";
 import InvoiceFormatSheet from "../components/InvoiceFormatSheet";
 import {
   EMPTY_INVOICE_FORMAT, INVOICE_PLATFORMS, PLATFORM_NAME, inFilter, invoiceCounts, invoiceMessage, invoiceRows, loadInvoiceFormat, loadPending,
-  savePending, sendTarget, sentTime, stateOf, tagOf, useInvoiceStatus,
+  byHandAllowed, itemCount, savePending, sendTarget, sentTime, stateOf, tagOf, useInvoiceStatus,
   type InvoiceFilter, type InvoiceFormat, type InvoicePlatform, type InvoiceRow, type InvoiceTag,
 } from "../adapters/invoicing";
 
@@ -183,6 +183,7 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
     : tag === "skipped" ? t.rd_ivc_t_skip
     : tag === "copy_failed" ? t.rd_ivc_t_copy_failed
     : t.rd_ivc_f_not;
+  const itemsText = (n: number) => (n === 1 ? t.rd_ivc_items_1 : tpl(t.rd_ivc_items, { n }));
 
   const sheetRow = sheetId ? rows.find((r) => r.id === sheetId) ?? null : null;
   const shown = rows.filter((r) => inFilter(stateOf(r, status.saved.get(r.id)), filter));
@@ -306,15 +307,27 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
           {shown.map((r, i) => {
             const tag = tagOf(r, status.saved, pending?.id ?? null, next?.id ?? null, copyFailedId);
             return (
-              <button key={r.id} type="button" data-testid="ivc-row" data-buyer={r.num} data-tag={tag} onClick={() => setSheetId(r.id)}
-                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", minHeight: 56, padding: "9px 12px", border: "none", borderTop: i ? "1px solid var(--border)" : "none", background: "transparent", textAlign: "left", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+              // The whole row opens the buyer's sheet; "✎ View" (a real button, 44px tap area) does the same — the
+              // row is a plain container so the View button is not a button inside a button.
+              <div key={r.id} data-testid="ivc-row" data-buyer={r.num} data-tag={tag} onClick={() => setSheetId(r.id)}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", minHeight: 56, padding: "9px 12px", borderTop: i ? "1px solid var(--border)" : "none", background: "transparent", textAlign: "left", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
                 <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 600, color: "var(--text)", minWidth: 38, flexShrink: 0 }}>#{r.num}</span>
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                   <span data-testid="ivc-row-handle" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.receipt.handle}</span>
-                  <span data-testid="ivc-row-tag" style={{ alignSelf: "flex-start", maxWidth: "100%", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, lineHeight: 1.35, ...TAG_LOOK[tag] }}>{tagText(tag, r)}</span>
+                  <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 6, rowGap: 2, minWidth: 0 }}>
+                    <span data-testid="ivc-row-tag" style={{ maxWidth: "100%", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, lineHeight: 1.35, ...TAG_LOOK[tag] }}>{tagText(tag, r)}</span>
+                    <span data-testid="ivc-row-items" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap", lineHeight: 1.35 }}>· {itemsText(itemCount(r))}</span>
+                  </span>
                 </span>
-                <span data-testid="ivc-row-total" style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>{money(r.total)}</span>
-              </button>
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
+                  <span data-testid="ivc-row-total" style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" }}>{money(r.total)}</span>
+                  <button type="button" data-testid="ivc-row-view" className="sfl-tap44" aria-label={`${t.rd_ivc_view} #${r.num}`}
+                    onClick={(e) => { e.stopPropagation(); setSheetId(r.id); }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1.5px solid var(--accent)", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "var(--font-ui)", lineHeight: 1 }}>
+                    <span aria-hidden="true">✎</span>{t.rd_ivc_view}
+                  </button>
+                </span>
+              </div>
             );
           })}
         </div>
@@ -392,6 +405,16 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
               if (pendingId === sheetRow.id) setPending(activeKey, null);
               setCopyFailed(activeKey, sheetRow.id);
             },
+            // "I sent it by hand": only while this buyer is Copy failed or Sending… — saved like a normal Sent
+            ...(byHandAllowed(tagOf(sheetRow, status.saved, pending?.id ?? null, next?.id ?? null, copyFailedId)) ? {
+              onSentByHand: () => {
+                status.mark(sheetRow, "sent");
+                if (pendingId === sheetRow.id) setPending(activeKey, null);
+                if (copyFailedId === sheetRow.id) setCopyFailed(activeKey, null);
+                track("invoice_send", { platform: "tiktok", via: "hand" });
+                setSheetId(null);
+              },
+            } : {}),
           }} />
       )}
       {formatOpen && (

@@ -18,7 +18,7 @@
 begin;
 
 insert into public.support_guide (id, title, checked, keywords, body) values
-  ('invoicing', 'Invoicing (send invoices on TikTok)', '2026-11-26'::date, 'invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can''t message, new item, past session, copy failed, copy again, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單', 'Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer''s total.
+  ('invoicing', 'Invoicing (send invoices on TikTok)', '2026-11-26'::date, 'invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can''t message, new item, past session, copy failed, copy again, view, sent it by hand, items, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單', 'Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer''s total.
 
 **Another session** — tap **This session ▾** at the top and pick a past session to send its invoices. A past session is shown in amber. Tap the button again and pick **This session** to go back.
 
@@ -29,7 +29,8 @@ insert into public.support_guide (id, title, checked, keywords, body) values
 
 - A buyer shown as numbers only has no TikTok link. The message is still copied — find the buyer in TikTok yourself and paste it.
 - If the message can''t be copied, the buyer shows **Copy failed** and is not marked Sent. The message is shown selected so you can copy it by hand. Tap **Copy again** to try that buyer again.
-- Tap a row to change the items or prices in that buyer''s message, send it again, or tap **Can''t message** to skip the buyer.
+- Each row shows how many items the buyer has. Tap the row or **✎ View** to change the items or prices in that buyer''s message, send it again, or tap **Can''t message** to skip the buyer.
+- If you sent the message yourself but the buyer still shows **Copy failed** or **Sending…**, tap **✎ View**, then **I sent it by hand**. The buyer is marked **Sent**.
 - **⚠ New item · send again** means the buyer ordered again after you sent the invoice.
 - **All · Not sent · Sent** filter the list. What you sent is saved, so your other phone shows it too.
 - Each session keeps its own Sent marks. A new session starts with every buyer **Not sent**.

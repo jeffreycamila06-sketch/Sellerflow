@@ -6849,3 +6849,21 @@ Settings → Invoicing tab bar: a small Live-picker emblem above each name (TikT
   name element; `Dashboard.livePicker.test.tsx` not edited. Help guide: no change (same tab names, same use).
 - Not touched (0 lines): Orders, Send next, saved status, sql/, server/, printing, chrome-extension/, the picker's CSS.
 
+
+## 2026-11-26 — INVOICING ROWS: ITEM COUNT + "✎ VIEW" + "I SENT IT BY HAND" (branch `claude/invoicing-view`, NOT merged; web only — no SQL to apply, no Render)
+- **Row:** `· N items` after the tag (`rd_ivc_items_1` / `rd_ivc_items`, 8 langs). N = `itemCount(row)` =
+  `row.receipt.lines.length` = the lines the row sheet shows (one per order; a qty x2 order = 1 line = 1).
+  Long tag → the count wraps under it (flex-wrap), never widens the row.
+- **✎ View** (`ivc-row-view`, `rd_ivc_view`): real button under the total, accent outline, 30 px drawn +
+  `.sfl-tap44` (44 px tap), `stopPropagation` → `setSheetId(r.id)`. The row `ivc-row` is now a `<div>` with
+  the same onClick (no button inside a button); keyboard users reach the sheet through View.
+- **I sent it by hand** (`tts-by-hand`, `rd_ivc_by_hand`): `SendSheetInvoice.onSentByHand`, passed by
+  Invoicing ONLY when `byHandAllowed(tagOf(...))` (= copy_failed | sending). Marks Sent via `status.mark`
+  (same saved row as a normal Sent), clears pending + copy-failed, closes the sheet, track `via: "hand"`.
+  Send next unchanged. Orders' sheet never shows it.
+- Guide: invoicing section (2 lines) + 116b regenerated; **sql/221 (still NOT applied — production had no
+  invoicing row, checked 2026-11-26) row updated to match** (guide text only).
+- Proof: `Invoicing.view.test.tsx` (17), `docs/design/invoicing-view/` (pictures, measured 360/390/430/1280 ×
+  8 langs, 18/18 breaks). Preview `?ivc=40,12&ivclong=1`.
+- Not touched (0 lines): Orders, Live picker, sql/220 / saved-status table, server, printing, chrome-extension/,
+  app_settings.

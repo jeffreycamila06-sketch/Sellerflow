@@ -1,0 +1,40 @@
+iphone390 light: sending row #13, by-hand shown; errors 0
+iphone390 dark: sending row #13, by-hand shown; errors 0
+android360 light: sending row #13, by-hand shown; errors 0
+android360 dark: sending row #13, by-hand shown; errors 0
+laptop1280 light: sending row #13, by-hand shown; errors 0
+laptop1280 dark: sending row #13, by-hand shown; errors 0
+copy refused light: row #13 copy_failed → by hand → sheet open false, tag sent; errors 0
+copy refused dark: row #13 copy_failed → by hand → sheet open false, tag sent; errors 0
+360 en: ok wide=false longCut=cut  errors=0
+360 fil: ok wide=false longCut=cut  errors=0
+360 zh: ok wide=false longCut=cut  errors=0
+360 zh-TW: ok wide=false longCut=cut  errors=0
+360 vi: ok wide=false longCut=cut  errors=0
+360 th: ok wide=false longCut=cut  errors=0
+360 id: ok wide=false longCut=cut  errors=0
+360 bg: ok wide=false longCut=cut  errors=0
+390 en: ok wide=false longCut=cut  errors=0
+390 fil: ok wide=false longCut=cut  errors=0
+390 zh: ok wide=false longCut=cut  errors=0
+390 zh-TW: ok wide=false longCut=cut  errors=0
+390 vi: ok wide=false longCut=cut  errors=0
+390 th: ok wide=false longCut=cut  errors=0
+390 id: ok wide=false longCut=cut  errors=0
+390 bg: ok wide=false longCut=cut  errors=0
+430 en: ok wide=false longCut=cut  errors=0
+430 fil: ok wide=false longCut=cut  errors=0
+430 zh: ok wide=false longCut=cut  errors=0
+430 zh-TW: ok wide=false longCut=cut  errors=0
+430 vi: ok wide=false longCut=cut  errors=0
+430 th: ok wide=false longCut=cut  errors=0
+430 id: ok wide=false longCut=cut  errors=0
+430 bg: ok wide=false longCut=cut  errors=0
+1280 en: ok wide=false longCut=whole  errors=0
+1280 fil: ok wide=false longCut=whole  errors=0
+1280 zh: ok wide=false longCut=whole  errors=0
+1280 zh-TW: ok wide=false longCut=whole  errors=0
+1280 vi: ok wide=false longCut=whole  errors=0
+1280 th: ok wide=false longCut=whole  errors=0
+1280 id: ok wide=false longCut=whole  errors=0
+1280 bg: ok wide=false longCut=whole  errors=0
