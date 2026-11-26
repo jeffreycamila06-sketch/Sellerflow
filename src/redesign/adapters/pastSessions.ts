@@ -131,10 +131,46 @@ export async function loadPastSession(sessionId: string): Promise<PastSessionDat
 }
 const EMPTY: PastSessionData = { buyers: [], orders: [], rows: new Map() };
 
+// ── A session's platform (Invoicing only). Every session belongs to ONE platform — switching platform
+// starts a new session (live data 2026-11-27: 0 sessions with more than one) — so ONE stored row of the
+// session tells it. Read once per session (≤ 12 sessions per seller, one tiny "limit 1" read each) and
+// kept for the app's life: a session's platform never changes. The Orders tab never asks for it.
+const platformCache = new Map<string, string | null>();
+/** Test-only: forget the remembered platforms. */
+export function __resetSessionPlatforms(): void { platformCache.clear(); }
+async function readSessionPlatform(id: string): Promise<string | null | undefined> {
+  if (!supabase) return undefined;
+  try {
+    const { data, error } = await supabase.from("live_session_orders").select("platform")
+      .eq("session_id", id).not("platform", "is", null).limit(1);
+    if (error) { log.error("Load session platform error:", error.message); return undefined; }
+    const row = Array.isArray(data) ? (data[0] as { platform?: string | null } | undefined) : undefined;
+    return row?.platform ? String(row.platform) : null;
+  } catch (e) {
+    log.error("Load session platform error:", e instanceof Error ? e.message : String(e));
+    return undefined;
+  }
+}
+/** The platform of each session ("TikTok" / "Facebook" / … — the name the orders carry; null = the session
+ *  has no stored row). null = a read failed (the list is not shown half-filtered). */
+export async function loadSessionPlatforms(ids: string[]): Promise<Map<string, string | null> | null> {
+  if (!isSupabaseConfigured || !supabase) return new Map(ids.map((id) => [id, null]));
+  const missing = ids.filter((id) => !platformCache.has(id));
+  const got = await Promise.all(missing.map(async (id) => [id, await readSessionPlatform(id)] as const));
+  if (got.some(([, p]) => p === undefined)) return null;
+  for (const [id, p] of got) platformCache.set(id, p as string | null);
+  return new Map(ids.map((id) => [id, platformCache.get(id) ?? null]));
+}
+/** Only the sessions of that platform (case does not matter). PURE. */
+export const sessionsOfPlatform = (list: SessionSummary[], platforms: ReadonlyMap<string, string | null>, platform: string): SessionSummary[] =>
+  list.filter((s) => String(platforms.get(s.id) || "").toLowerCase() === platform.toLowerCase());
+
 export type LoadState = "idle" | "loading" | "ready" | "error";
 
-/** Picker state. `selected` null = Current (the Orders screen exactly as before). */
-export function usePastSessions(enabled: boolean, currentId: string | null) {
+/** Picker state. `selected` null = Current (the Orders screen exactly as before).
+ *  `platform` (Invoicing only — "TikTok" / "Facebook" …): the list keeps only that platform's sessions.
+ *  Without it (the Orders tab) the list is exactly the my_session_summaries list, as before. */
+export function usePastSessions(enabled: boolean, currentId: string | null, platform?: string) {
   const [list, setList] = useState<SessionSummary[]>([]);
   const [listState, setListState] = useState<LoadState>("idle");
   const [selected, setSelected] = useState<SessionSummary | null>(null);
@@ -149,12 +185,16 @@ export function usePastSessions(enabled: boolean, currentId: string | null) {
     if (!enabled || loadingRef.current) return;
     loadingRef.current = true;
     setListState("loading");
-    const next = await loadSummaries(currentId);
+    let next = await loadSummaries(currentId);
+    if (next !== null && platform) {
+      const kinds = await loadSessionPlatforms(next.map((x) => x.id));
+      next = kinds === null ? null : sessionsOfPlatform(next, kinds, platform);
+    }
     loadingRef.current = false;
     if (next === null) { setListState("error"); return; }
     setList(next);
     setListState("ready");
-  }, [enabled, currentId]);
+  }, [enabled, currentId, platform]);
 
   const pick = useCallback(async (s: SessionSummary | null) => {
     if (!s || s.current) { pickedRef.current = null; setSelected(null); setData(EMPTY); setBuyersState("idle"); return; } // back to Current

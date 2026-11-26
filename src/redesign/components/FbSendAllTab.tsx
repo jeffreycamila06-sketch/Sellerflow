@@ -110,8 +110,13 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   return (
     <div data-testid="ivc-fb" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {picker}
-      {!okSession && (
+      {/* no session id: a real old session (it has Facebook buyers) can't be sent from here; a session with
+          no Facebook buyer yet just says so */}
+      {!okSession && rows.length > 0 && (
         <div data-testid="ivc-fb-old" style={{ ...card, fontSize: 13.5, color: "var(--text-dim)", lineHeight: 1.45 }}>{t.rd_ivc_fb_old}</div>
+      )}
+      {!okSession && rows.length === 0 && (
+        <div data-testid="ivc-fb-empty" style={{ ...card, fontSize: 13.5, color: "var(--text-dim)", lineHeight: 1.45 }}>{isPast ? t.rd_ivc_fb_empty_past : t.rd_ivc_fb_empty}</div>
       )}
       {okSession && loading && !loadErr && (
         <div data-testid="ivc-fb-loading" style={{ ...card, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_loading}</div>

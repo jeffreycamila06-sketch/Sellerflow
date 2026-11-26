@@ -26,6 +26,20 @@ export type InvoicePlatform = (typeof INVOICE_PLATFORMS)[number];
 /** The platform name the orders carry (Buyer.platform). */
 export const PLATFORM_NAME: Record<InvoicePlatform, string> = { tiktok: "TikTok", facebook: "Facebook", instagram: "Instagram", shopee: "Shopee" };
 
+/** The platform the RUNNING session belongs to (every session is one platform — switching platform starts
+ *  a new one): the platform of its orders, else the one platform live now, else null (no orders, not live
+ *  — then "This session" is offered on every tab). PURE. */
+export function currentSessionPlatform(buyers: Buyer[], live: Partial<Record<InvoicePlatform, boolean>>): InvoicePlatform | null {
+  for (const b of buyers || []) {
+    const hit = INVOICE_PLATFORMS.find((p) => PLATFORM_NAME[p].toLowerCase() === String(b.platform || "").toLowerCase());
+    if (hit) return hit;
+  }
+  const on = INVOICE_PLATFORMS.filter((p) => live[p] === true);
+  return on.length === 1 ? on[0] : null;
+}
+/** Does that tab offer "This session"? Its own platform's tab, or every tab while it has none. PURE. */
+export const sessionOnTab = (sessionPlatform: InvoicePlatform | null | undefined, tab: InvoicePlatform): boolean => !sessionPlatform || sessionPlatform === tab;
+
 // ── a short one-way mark (not a secret, not reversible to the text in practice): cyrb53 → base36 ──
 export function shortHash(s: string): string {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;

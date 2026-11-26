@@ -25,18 +25,23 @@ export function makeInvoiceDb() {
     failCancelReads: false, failCancelWrites: false, failIdReads: false,
     /** sql/222 not applied yet: 'cancelled' is refused like the sql/220 check refuses it */
     noCancelStatus: false,
+    /** a session's platform read (live_session_orders …limit(1)) fails */
+    failPlatformReads: false,
   };
   const reset = () => {
     s.uid = "u1"; s.sends = []; s.settings = new Map(); s.failReads = false; s.failWrites = false; s.failFormatRead = false; s.failFormatWrite = false;
     s.now = "2026-11-26T01:12:00.000Z"; s.calls = [];
     s.orders = []; s.failSummaries = false; s.failPast = false;
     s.lineCancels = []; s.failCancelReads = false; s.failCancelWrites = false; s.failIdReads = false; s.noCancelStatus = false;
+    s.failPlatformReads = false;
   };
   const err = { message: "boom" };
   const from = (table: string) => {
     const filters: Record<string, unknown> = {};
     const since: Record<string, string> = {};
     let range: [number, number] | null = null;
+    let lim: number | null = null;
+    const notNull: string[] = [];
     const rows = () => {
       if (table === "invoice_sends") {
         return s.sends
@@ -55,6 +60,7 @@ export function makeInvoiceDb() {
           .filter((r) => r.user_id === s.uid)
           .filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v))
           .filter((r) => Object.entries(since).every(([k, v]) => String(r[k]) >= v))
+          .filter((r) => notNull.every((k) => r[k] != null))
           .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
       }
       const row = s.uid ? s.settings.get(s.uid) : undefined;
@@ -66,6 +72,8 @@ export function makeInvoiceDb() {
       gte: (k: string, v: string) => { since[k] = v; return read; },
       order: () => read,
       range: (a: number, b: number) => { range = [a, b]; return read; },
+      not: (k: string, op: string, v: unknown) => { if (op === "is" && v === null) notNull.push(k); return read; },
+      limit: (n: number) => { lim = n; return read; },
       maybeSingle: async () => {
         s.calls.push({ table, op: "select", filters: { ...filters } });
         if (table === "seller_receipt_settings" ? s.failFormatRead : s.failReads) return { data: null, error: err };
@@ -73,11 +81,12 @@ export function makeInvoiceDb() {
       },
       then: (ok: (v: { data: unknown[] | null; error: unknown }) => unknown) => {
         s.calls.push({ table, op: "select", filters: { ...filters } });
-        const failNow = table === "live_session_orders" ? (filters.platform !== undefined ? s.failIdReads : s.failPast)
+        const failNow = table === "live_session_orders" ? (lim !== null ? s.failPlatformReads : filters.platform !== undefined ? s.failIdReads : s.failPast)
           : table === "invoice_line_cancels" ? s.failCancelReads : s.failReads;
         if (failNow) return Promise.resolve({ data: null, error: err }).then(ok);
         const all = rows();
-        return Promise.resolve({ data: range ? all.slice(range[0], range[1] + 1) : all, error: null }).then(ok);
+        const cut = range ? all.slice(range[0], range[1] + 1) : all;
+        return Promise.resolve({ data: lim !== null ? cut.slice(0, lim) : cut, error: null }).then(ok);
       },
     };
     return {

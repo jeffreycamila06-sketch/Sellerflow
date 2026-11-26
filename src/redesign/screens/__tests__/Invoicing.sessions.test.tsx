@@ -231,11 +231,11 @@ describe("a past session", () => {
     await tap("ivc-past-retry");
     expect(qa("ivc-row").length).toBe(3);
   });
-  it("a past session with no TikTok buyer says so", async () => {
+  it("a Facebook-only session is not in the TikTok tab's list (each tab lists its own platform's sessions)", async () => {
     DB.s.orders.push(row("fb-only", "2026-11-22T05:00:00.000Z", 1, "Fb Only", "F", 10, "Facebook"));
     await open();
-    await pick("fb-only");
-    expect(q("ivc-empty")!.textContent).toBe(t.rd_ivc_empty_past);
+    await tap("ivc-session-btn");
+    expect(qa("ivc-session-item").map((b) => b.getAttribute("data-session"))).toEqual([P2, P1]);
   });
 });
 

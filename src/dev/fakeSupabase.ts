@@ -233,6 +233,9 @@ const IVC = (/[?&]ivc=(\d+),(\d+)/.exec(Q) || []).slice(1).map(Number);
 // one) and 4 more Facebook buyers; one of them is saved "Sent by hand" on the Facebook tab.
 const FBSA = /[?&]fbsa=1/.test(Q);
 const IVC_SESSION = FBSA ? "5e551011-0000-4000-8000-00000000fb2a" : "preview-invoice";
+// &ivcplat=1 (docs/design/invoicing-session-platform): the running session is TikTok only, and two finished
+// Facebook sessions exist (4 and 7 days ago) — each Invoicing tab lists its own platform's sessions.
+const IVCPLAT = /[?&]ivcplat=1/.test(Q);
 if (IVC.length === 2) {
   const [count, sent] = IVC;
   const NAMES = ["ana.cruz", "ben.t", "cara_shop", "dina.ukay", "ella.m", "faye88", "gina.lim", "hana_tw", "ivy.chen", "joy.reyes", "kim.dc", "lea.santos", "mia.go", "nina_p", "olive.tan", "pia.lopez", "queenie.w", "rica.m", "sam.yu", "tina.ong"];
@@ -250,9 +253,9 @@ if (IVC.length === 2) {
     if (n % 3 === 0) add(n, handle, name, "TikTok", ITEMS[(n + 2) % ITEMS.length], at(n, 4 * 60_000));
     if (n % 7 === 0) add(n, handle, name, "TikTok", ITEMS[(n + 4) % ITEMS.length], at(n, 20 * 3_600_000));   // again on day 2
   }
-  add(count + 1, "Maria Santos", "Maria Santos", "Facebook", ITEMS[0], at(count + 1));
-  add(count + 2, "Joy Reyes", "Joy Reyes", "Facebook", ITEMS[1], at(count + 2));
-  if (FBSA) {
+  if (!IVCPLAT) add(count + 1, "Maria Santos", "Maria Santos", "Facebook", ITEMS[0], at(count + 1));
+  if (!IVCPLAT) add(count + 2, "Joy Reyes", "Joy Reyes", "Facebook", ITEMS[1], at(count + 2));
+  if (FBSA && !IVCPLAT) {
     add(count + 3, "Lea Santos", "Lea Santos", "Facebook", ITEMS[2], at(count + 3));
     add(count + 3, "Lea Santos", "Lea Santos", "Facebook", ITEMS[3], at(count + 3, 5 * 60_000));
     add(count + 4, "Kim Dela Cruz", "Kim Dela Cruz", "Facebook", ITEMS[5], at(count + 4));
@@ -269,6 +272,15 @@ if (IVC.length === 2) {
   };
   for (let n = 1; n <= 14; n++) { addPast("past-a", n, n <= 8 ? 3 : 2, ITEMS[n % ITEMS.length], n * 4); if (n % 4 === 0) addPast("past-a", n, 2, ITEMS[(n + 3) % ITEMS.length], 30 + n); }
   for (let n = 1; n <= 6; n++) addPast("past-b", n, 6, ITEMS[(n + 2) % ITEMS.length], n * 5);
+  if (IVCPLAT) {
+    const FBN = ["Maria Santos", "Joy Reyes", "Lea Santos", "Kim Dela Cruz", "Rica Mendoza", "Nina Perez"];
+    const addFb = (sid: string, n: number, daysAgo: number, k: number) => {
+      const t = `${day(-daysAgo)}T06:${String(n * 3 + k).padStart(2, "0")}:00.000Z`, item = ITEMS[(n + k) % ITEMS.length];
+      pastRows.push({ id: 8500 + pastRows.length, user_id: UID, session_id: sid, session_date: day(-daysAgo), created_at: t, buyer_number: n, handle: FBN[n - 1], customer_name: FBN[n - 1], platform: "Facebook", product: item[0], price: item[1], qty: 1, comment_msg_id: null, auto_code: null });
+    };
+    for (let n = 1; n <= 6; n++) { addFb("5e5510f1-0000-4000-8000-0000000000f1", n, 4, 0); if (n % 2 === 0) addFb("5e5510f1-0000-4000-8000-0000000000f1", n, 4, 1); }
+    for (let n = 1; n <= 3; n++) addFb("5e5510f2-0000-4000-8000-0000000000f2", n, 7, 0);
+  }
   tables.live_session_orders.push(...rows, ...pastRows);
   // the list the database function answers: one line per session of this seller (as sql/128 groups)
   const groups = new Map<string, { session_id: string; first_day: string; last_day: string; orders: number; latest: string }>();

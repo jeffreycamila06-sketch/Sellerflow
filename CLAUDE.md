@@ -6982,3 +6982,26 @@ everywhere; (3) NO automatic send after a live (`fb_auto_receipt_enabled` and th
   minute, same seller two sessions one after the other with no stale_running), `Invoicing.fbSendAll.test.tsx` (21), `fbSendAll.test.ts` (9),
   `invoicingOpen.app.test.tsx` (gate in the real app), `scripts/sql225-behaviour.mjs` (PGlite, 36),
   `docs/design/fb-send-all/` (pictures + measured).
+
+## 2026-11-27 — INVOICING: SESSION PICKER PER PLATFORM (branch `claude/invoicing-session-platform`, NOT merged; sql/227 = guide row, NOT applied; web only — Vercel)
+Live data (2026-11-27): every session belongs to ONE platform. Before, every Invoicing tab showed the same list.
+- **List per tab:** `usePastSessions(enabled, currentId, platform?)` (adapters/pastSessions.ts) — with a platform
+  ("TikTok" / "Facebook") the `my_session_summaries` list is kept to that platform's sessions; each session's
+  platform = ONE stored row (`live_session_orders … session_id = id, platform not null, limit 1`, at most ~12 per
+  seller, module cache `platformCache` for the app's life; any failed read → the list shows the error + Try again).
+  **Orders calls it with two arguments → its list and reads are exactly as before** (test-pinned).
+- **Invoicing** keeps TWO hook instances (TikTok + Facebook) → each tab keeps its own pick. Prop `sessionPlatform`
+  (RedesignApp: `currentSessionPlatform(buyers, {tiktok: ttEff, facebook: fbEff, instagram: igEff, shopee: shopeeEff})`
+  = the platform of the session's orders, else the ONE platform live, else null) + `sessionOnTab` → "This session"
+  only on that tab; null = every tab. A tab without "This session" reads its list when shown and opens on its newest
+  session; none → `rd_ivc_no_sessions` "No {p} sessions yet." (8 langs). Without the picker (Orders rule says no) =
+  as before.
+- **Facebook tab:** no session id + no Facebook buyer → `rd_ivc_fb_empty`; the `rd_ivc_fb_old` note only with
+  Facebook buyers (a real old session).
+- ⚠️ `adapters/__tests__/invoiceFakeDb.ts` must NOT import `pastSessions` (circular with the mocked supabase → the
+  test file freezes); tests call `__resetSessionPlatforms()` themselves.
+- **Guide:** "Another session" line + the Facebook step 1 (sql/226, not applied, edited); 116b regenerated;
+  **sql/227** = a phrase swap of the live "Another session" line (+ rollback; independent of sql/226, either order).
+- Proof: `Invoicing.sessionPlatform.test.tsx` (15), `Invoicing.sessions.test.tsx` (a Facebook-only session is not on
+  the TikTok tab), `invoicingGuideSql.test.ts`; pictures `docs/design/invoicing-session-platform/` (preview `&ivcplat=1`).
+- Not touched: Orders, Send all server, printing, buyer numbers, chrome-extension/, app_settings.

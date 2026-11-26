@@ -42,9 +42,11 @@ import FbSendAllTab from "../components/FbSendAllTab";
 import type { BlAddResult } from "../adapters/blacklist";
 import {
   EMPTY_INVOICE_FORMAT, INVOICE_PLATFORMS, PLATFORM_NAME, inFilter, invoiceCounts, invoiceMessage, invoiceRows, loadInvoiceFormat, loadPending,
-  byHandAllowed, pieceCount, savePending, sendTarget, sentTime, stateOf, tagOf, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus,
+  byHandAllowed, pieceCount, savePending, sendTarget, sentTime, sessionOnTab, stateOf, tagOf, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus,
   type InvoiceFilter, type InvoiceFormat, type InvoicePlatform, type InvoiceRow, type InvoiceTag,
 } from "../adapters/invoicing";
+
+type PastApi = ReturnType<typeof usePastSessions>;
 
 /** A second tap on Send next this soon after the first is a double tap: it does nothing (it would mark the
  *  buyer just opened as Sent and open the next one). Coming back from TikTok always takes longer. */
@@ -70,7 +72,7 @@ const pickBtn: CSSProperties = { display: "flex", alignItems: "center", gap: 8, 
 const pickItem = (on: boolean): CSSProperties => ({ display: "block", width: "100%", boxSizing: "border-box", minHeight: 44, padding: "10px 14px", border: "none", borderTop: "1px solid var(--border)", background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent-fg)" : "var(--text)", fontSize: 13.5, fontWeight: on ? 800 : 600, textAlign: "left", cursor: "pointer", fontFamily: "var(--font-ui)", lineHeight: 1.35, overflowWrap: "anywhere" });
 const pickNote: CSSProperties = { padding: "10px 14px", borderTop: "1px solid var(--border)", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.4 };
 
-export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, sessionStartedAt = null, sessionWindowDays = null, todayId, onReceiptFormat, tapGuardMs = SEND_NEXT_GUARD_MS, sessionId = null, pastSessions = false, onBlacklistAdd, fbSendAll }: {
+export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, sessionStartedAt = null, sessionWindowDays = null, todayId, onReceiptFormat, tapGuardMs = SEND_NEXT_GUARD_MS, sessionId = null, pastSessions = false, sessionPlatform = null, onBlacklistAdd, fbSendAll }: {
   cur: string; onBack: () => void;
   /** the current session's buyers — the same list the Orders tab gets */
   buyers: Buyer[];
@@ -85,6 +87,9 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   /** the running session's id (null = none) and whether this seller has past sessions — the SAME rule
    *  and the same list as the Orders tab's Sessions picker */
   sessionId?: string | null; pastSessions?: boolean;
+  /** the platform the running session belongs to (adapters/invoicing.ts currentSessionPlatform): "This
+   *  session" is offered on that tab only; null (no orders, not live) = on every tab */
+  sessionPlatform?: InvoicePlatform | null;
   /** the Blacklist screen's own add (RedesignApp: blacklist.add, reason "Not checked out"); absent = the
    *  seller has no Blacklist → no question after "Buyer cancelled" */
   onBlacklistAdd?: (handle: string) => Promise<BlAddResult>;
@@ -103,8 +108,13 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   const [line, setLine] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const copyFb = useCopyFeedback();
-  // the session on screen: the running one, or the past one picked here
-  const past = usePastSessions(pastSessions, sessionId);
+  // the session on screen: the running one, or the past one picked here. Each tab lists only its own
+  // platform's sessions and keeps its own pick (the same loader as the Orders tab, asked per platform).
+  const past = usePastSessions(pastSessions, sessionId, PLATFORM_NAME.tiktok);
+  const fbPast = usePastSessions(pastSessions, sessionId, PLATFORM_NAME.facebook);
+  const ttHere = sessionOnTab(sessionPlatform, "tiktok");
+  const fbHere = sessionOnTab(sessionPlatform, "facebook");
+  const fbTabLive = !!fbSendAll && !!onReceiptFormat;   // the Facebook tab with its own session list
   const pastSel = past.selected;
   const activeKey = pastSel ? pastSel.id : sessionKey;
   const status = useInvoiceStatus(activeKey, "tiktok", true);
@@ -191,12 +201,33 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
     track("invoice_send", { platform: "tiktok", via: again ? "again" : "next", link: link.kind === "open" });
   };
 
-  const pickSession = (s: (typeof past.list)[number] | null) => {
+  const pickSession = (pp: PastApi, s: (typeof past.list)[number] | null) => {
     setPickerOpen(false);
     setSheetId(null);
     setLine("");
     copyFb.clear();
-    void past.pick(s);
+    void pp.pick(s);
+  };
+
+  // A tab whose platform is not the running session's: its newest session of that platform is shown
+  // (the list is read when the tab opens). None → "No <platform> sessions yet."
+  const ttList = past.list, ttListState = past.listState, ttEnsure = past.ensureList, ttPick = past.pick;
+  const fbList = fbPast.list, fbListState = fbPast.listState, fbEnsure = fbPast.ensureList, fbPick = fbPast.pick;
+  const ttPicked = !!past.selected, fbPicked = !!fbPast.selected;
+  useEffect(() => {
+    if (!pastSessions) return;
+    const on = tab === "tiktok" ? { here: ttHere, picked: ttPicked, list: ttList, st: ttListState, ensure: ttEnsure, pick: ttPick }
+      : tab === "facebook" && fbTabLive ? { here: fbHere, picked: fbPicked, list: fbList, st: fbListState, ensure: fbEnsure, pick: fbPick } : null;
+    if (!on || on.here || on.picked) return;
+    if (on.st === "idle") { void on.ensure(); return; }
+    const first = on.st === "ready" ? on.list.find((x) => !x.current) : undefined;
+    if (first) void on.pick(first);
+  }, [tab, pastSessions, fbTabLive, ttHere, fbHere, ttPicked, fbPicked, ttList, fbList, ttListState, fbListState, ttEnsure, fbEnsure, ttPick, fbPick]);
+  const gateOf = (pp: PastApi, here: boolean): null | "loading" | "none" | "error" => {
+    if (!pastSessions || here || pp.selected) return null;
+    if (pp.listState === "error") return "error";
+    if (pp.listState === "ready" && !pp.list.some((x) => !x.current)) return "none";
+    return "loading";
   };
 
   // "Buyer cancelled": saved as 'cancelled' (the lines it was sent with are kept), the sheet closes, and
@@ -240,30 +271,36 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   const nextLabel = !next ? ""
     : again ? tpl(t.rd_ivc_copy_again, { n: next.num, who: next.receipt.handle })
     : tpl(t.rd_ivc_send_next, { n: next.num, who: next.receipt.handle, total: money(next.total) });
-  const pastList = past.list.filter((x) => !x.current);
   const sessionLabel = (x: (typeof past.list)[number]) => tpl(t.rd_psn_row, { range: sessionRange(x), days: x.days === 1 ? t.rd_psn_day1 : tpl(t.rd_psn_days, { n: x.days }) });
 
-  const picker = pastSessions && (
+  // the session picker of one tab: `here` = "This session" belongs on this tab
+  const renderPicker = (pp: PastApi, here: boolean) => {
+    const sel = pp.selected;
+    const pastList = pp.list.filter((x) => !x.current);
+    const range = sel ? sessionRange(sel) : "";
+    return pastSessions && (
     <div data-testid="ivc-session">
-      <button type="button" data-testid="ivc-session-btn" data-past={pastSel ? "1" : "0"} aria-haspopup="menu" aria-expanded={pickerOpen}
-        onClick={() => { const opening = !pickerOpen; setPickerOpen(opening); if (opening) void past.ensureList(); }}
-        style={pastSel ? { ...pickBtn, ...AMBER } : pickBtn}>
+      <button type="button" data-testid="ivc-session-btn" data-past={sel ? "1" : "0"} aria-haspopup="menu" aria-expanded={pickerOpen}
+        onClick={() => { const opening = !pickerOpen; setPickerOpen(opening); if (opening) void pp.ensureList(); }}
+        style={sel ? { ...pickBtn, ...AMBER } : pickBtn}>
         <span data-testid="ivc-session-label" style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-          {pastSel ? tpl(t.rd_psn_btn, { range: pastRange }) : tpl(t.rd_ivc_ses_this, { range: thisDate })}
+          {sel ? tpl(t.rd_psn_btn, { range }) : tpl(t.rd_ivc_ses_this, { range: thisDate })}
         </span>
         <span aria-hidden="true" style={{ flexShrink: 0 }}>▾</span>
       </button>
       {pickerOpen && (
         <div role="menu" data-testid="ivc-session-menu" style={{ marginTop: 6, border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", boxShadow: "var(--shadow)", overflow: "hidden", maxHeight: "60vh", overflowY: "auto" }}>
-          <button type="button" role="menuitem" data-testid="ivc-session-current" aria-current={!pastSel} onClick={() => pickSession(null)} style={{ ...pickItem(!pastSel), borderTop: "none" }}>
-            {tpl(t.rd_ivc_ses_this, { range: thisDate })}
-          </button>
-          <div style={{ ...pickNote, fontSize: 11, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase" }}>{t.rd_psn_past}</div>
-          {past.listState === "loading" && pastList.length === 0 && <div data-testid="ivc-session-loading" style={pickNote}>{t.rd_psn_loading}</div>}
-          {past.listState === "error" && <div role="alert" data-testid="ivc-session-error" style={{ ...pickNote, color: "var(--danger)" }}>{t.rd_psn_failed}</div>}
-          {past.listState === "ready" && pastList.length === 0 && <div data-testid="ivc-session-none" style={pickNote}>{t.rd_psn_none}</div>}
+          {here && (
+            <button type="button" role="menuitem" data-testid="ivc-session-current" aria-current={!sel} onClick={() => pickSession(pp, null)} style={{ ...pickItem(!sel), borderTop: "none" }}>
+              {tpl(t.rd_ivc_ses_this, { range: thisDate })}
+            </button>
+          )}
+          <div style={{ ...pickNote, fontSize: 11, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase", ...(here ? {} : { borderTop: "none" }) }}>{t.rd_psn_past}</div>
+          {pp.listState === "loading" && pastList.length === 0 && <div data-testid="ivc-session-loading" style={pickNote}>{t.rd_psn_loading}</div>}
+          {pp.listState === "error" && <div role="alert" data-testid="ivc-session-error" style={{ ...pickNote, color: "var(--danger)" }}>{t.rd_psn_failed}</div>}
+          {pp.listState === "ready" && pastList.length === 0 && <div data-testid="ivc-session-none" style={pickNote}>{t.rd_psn_none}</div>}
           {pastList.map((x) => (
-            <button key={x.id} type="button" role="menuitem" data-testid="ivc-session-item" data-session={x.id} aria-current={pastSel?.id === x.id} onClick={() => pickSession(x)} style={pickItem(pastSel?.id === x.id)}>
+            <button key={x.id} type="button" role="menuitem" data-testid="ivc-session-item" data-session={x.id} aria-current={sel?.id === x.id} onClick={() => pickSession(pp, x)} style={pickItem(sel?.id === x.id)}>
               {sessionLabel(x)}
               {mayBeIncomplete(x) && <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#b45309", marginTop: 2 }}>{t.rd_psn_incomplete}</span>}
             </button>
@@ -271,9 +308,24 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
         </div>
       )}
     </div>
+    );
+  };
+  const picker = renderPicker(past, ttHere);
+  // a tab with no session to show yet: its list is loading, failed, or has none of that platform
+  const gateCard = (pp: PastApi, gate: "loading" | "none" | "error", name: string) => (
+    gate === "none" ? <div data-testid="ivc-no-sessions" style={{ ...card, fontSize: 13.5, color: "var(--text-dim)", lineHeight: 1.45 }}>{tpl(t.rd_ivc_no_sessions, { p: name })}</div>
+    : gate === "error" ? (
+      <div role="alert" data-testid="ivc-sessions-error" style={{ ...card, borderColor: "var(--danger)" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)", lineHeight: 1.4 }}>{t.rd_psn_failed}</div>
+        <button type="button" data-testid="ivc-sessions-retry" onClick={() => void pp.ensureList()} style={{ ...chipBtn(true), marginTop: 10 }}>{t.rd_fb_try_again}</button>
+      </div>
+    )
+    : <div data-testid="ivc-sessions-loading" style={{ ...card, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_psn_loading}</div>
   );
+  const ttGate = gateOf(past, ttHere);
+  const fbGate = gateOf(fbPast, fbHere);
 
-  const tiktok = (
+  const tiktok = ttGate ? <div data-testid="ivc-tiktok" style={{ display: "flex", flexDirection: "column", gap: 12 }}>{gateCard(past, ttGate, PLATFORM_NAME.tiktok)}</div> : (
     <div data-testid="ivc-tiktok" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {picker}
       {pastSel && pastState === "error" && (
@@ -448,7 +500,7 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
             const brand = PLATFORM_NAME[p] as PickerPlatform;
             const on = tab === p;
             return (
-              <button key={p} type="button" role="tab" aria-selected={on} data-testid={`ivc-tab-${p}`} onClick={() => setTab(p)}
+              <button key={p} type="button" role="tab" aria-selected={on} data-testid={`ivc-tab-${p}`} onClick={() => { setTab(p); setPickerOpen(false); }}
                 className={`sfl-ivc-tab${on ? " is-on" : ""}`}
                 style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, minHeight: 56, minWidth: 0, padding: "5px 1px 4px", boxSizing: "border-box", borderRadius: 11, border: `2px solid ${on ? emblemOutline(brand) : "transparent"}`, background: on ? "var(--surface)" : "transparent", color: on ? "var(--text)" : "var(--text-muted)", boxShadow: on ? "var(--shadow)" : "none", cursor: "pointer", fontFamily: "var(--font-ui)", overflow: "hidden" }}>
                 <span aria-hidden="true" data-testid={`ivc-tab-emblem-${p}`} className="sfl-ivc-emb">
@@ -463,12 +515,13 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
         </div>
         {tab === "tiktok" ? tiktok
           : tab === "facebook" && !onReceiptFormat ? fbLocked
+          : tab === "facebook" && fbSendAll && fbGate ? <div data-testid="ivc-fb" style={{ display: "flex", flexDirection: "column", gap: 12 }}>{gateCard(fbPast, fbGate, PLATFORM_NAME.facebook)}</div>
           : tab === "facebook" && fbSendAll ? (
-            <FbSendAllTab picker={picker} isPast={!!pastSel} sessionKey={activeKey} sessionId={pastSel ? pastSel.id : sessionId}
-              pastBanner={pastSel ? (
-                <div data-testid="ivc-fb-past-line" style={{ display: "inline-block", marginBottom: 8, padding: "4px 9px", borderRadius: 8, fontSize: 12.5, fontWeight: 800, lineHeight: 1.35, overflowWrap: "anywhere", ...AMBER }}>{tpl(t.rd_psn_banner, { range: pastRange })}</div>
+            <FbSendAllTab picker={renderPicker(fbPast, fbHere)} isPast={!!fbPast.selected} sessionKey={fbPast.selected ? fbPast.selected.id : sessionKey} sessionId={fbPast.selected ? fbPast.selected.id : sessionId}
+              pastBanner={fbPast.selected ? (
+                <div data-testid="ivc-fb-past-line" style={{ display: "inline-block", marginBottom: 8, padding: "4px 9px", borderRadius: 8, fontSize: 12.5, fontWeight: 800, lineHeight: 1.35, overflowWrap: "anywhere", ...AMBER }}>{tpl(t.rd_psn_banner, { range: sessionRange(fbPast.selected) })}</div>
               ) : null}
-              buyers={shownBuyers} fee={fee} money={money} lang={fbSendAll.lang} cur={cur} buyersState={pastState} fallback={soon("facebook")} />
+              buyers={fbPast.selected ? fbPast.buyers : buyers} fee={fee} money={money} lang={fbSendAll.lang} cur={cur} buyersState={fbPast.selected ? fbPast.buyersState : "ready"} fallback={soon("facebook")} />
           )
           : soon(tab)}
       </div>

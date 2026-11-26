@@ -74,7 +74,7 @@ import BlacklistSheet from "./components/BlacklistSheet";
 import { blacklistSeen, blacklistVisible, blMapKey, markBlacklistSeen, useBlacklist, type BlEntry } from "./adapters/blacklist";
 import ReceiptFormat from "./screens/ReceiptFormat";
 import Invoicing from "./screens/Invoicing";
-import { invoiceSessionKey, invoicingVisible } from "./adapters/invoicing";
+import { currentSessionPlatform, invoiceSessionKey, invoicingVisible } from "./adapters/invoicing";
 import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
 import { useBuyerTags } from "./adapters/buyerTag";
 import LiveConnectModal from "./components/LiveConnectModal";
@@ -3318,6 +3318,7 @@ export default function RedesignApp() {
             <Invoicing cur={cur} onBack={() => goBack()} buyers={liveSession.session.buyers} sessionKey={invoiceSessionKey(sessionInstance.currentSessionId, liveSession.dayId)}
               sellerId={auth.profile?.authUserId || ""} sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} todayId={liveSession.dayId}
               sessionId={sessionInstance.currentSessionId} pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
+              sessionPlatform={currentSessionPlatform(liveSession.session.buyers, { tiktok: ttEff, facebook: fbEff, instagram: igEff, shopee: shopeeEff })}
               {...(blacklistOn ? { onBlacklistAdd: (handle: string) => blacklist.add("tiktok", handle, "not_checked_out") } : {})}
               {...(fbReceiptUi ? { onReceiptFormat: () => setScreen("receiptformat") } : {})}
               {...(fbReceiptUi && (isAdmin || featureSw.fbSendAll) ? { fbSendAll: { lang } } : {})} />

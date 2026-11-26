@@ -1,0 +1,8 @@
+tiktok iphone390 light: label="This session · 11/25 → 11/26" thisSession=true list=[Past session · 11/23 → 11/24 · 2 days | Past session · 11/20 · 1 day | Past session · 11/17 → 11/18 · 2 days] wide=false rowsUnder44=0
+facebook iphone390 light: label="Past session · 11/22" thisSession=false list=[Past session · 11/22 · 1 day | Past session · 11/19 · 1 day] wide=false rowsUnder44=0 errors=0
+tiktok iphone390 dark: label="This session · 11/25 → 11/26" thisSession=true list=[Past session · 11/23 → 11/24 · 2 days | Past session · 11/20 · 1 day | Past session · 11/17 → 11/18 · 2 days] wide=false rowsUnder44=0
+facebook iphone390 dark: label="Past session · 11/22" thisSession=false list=[Past session · 11/22 · 1 day | Past session · 11/19 · 1 day] wide=false rowsUnder44=0 errors=0
+tiktok android360 light: label="This session · 11/25 → 11/26" thisSession=true list=[Past session · 11/23 → 11/24 · 2 days | Past session · 11/20 · 1 day | Past session · 11/17 → 11/18 · 2 days] wide=false rowsUnder44=0
+facebook android360 light: label="Past session · 11/22" thisSession=false list=[Past session · 11/22 · 1 day | Past session · 11/19 · 1 day] wide=false rowsUnder44=0 errors=0
+tiktok laptop1280 light: label="This session · 11/25 → 11/26" thisSession=true list=[Past session · 11/23 → 11/24 · 2 days | Past session · 11/20 · 1 day | Past session · 11/17 → 11/18 · 2 days] wide=false rowsUnder44=0
+facebook laptop1280 light: label="Past session · 11/22" thisSession=false list=[Past session · 11/22 · 1 day | Past session · 11/19 · 1 day] wide=false rowsUnder44=0 errors=0
