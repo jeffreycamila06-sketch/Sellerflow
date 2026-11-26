@@ -19,7 +19,7 @@ update public.support_guide
 Instagram and Shopee invoices are coming soon.', 'ready message.
 
 When it is on:
-1. Pick the session at the top (the same list as the TikTok tab).
+1. Pick the session at the top (only your Facebook sessions are listed).
 2. Tap **Send all in Messenger**. Each buyer gets their receipt picture in Messenger, one by one. You can close the app — sending continues.
 
 - Tap **✎ View** to see the exact picture the buyer gets, then **Send to #N in Messenger**, **I sent it by hand** or **Buyer cancelled**.
