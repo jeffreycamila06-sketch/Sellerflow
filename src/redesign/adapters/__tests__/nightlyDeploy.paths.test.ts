@@ -34,9 +34,9 @@ function loadedFrom(entry: string) {
 
 describe("P the server-code list covers what the Render server really loads", () => {
   const server = loadedFrom("server.js");
-  it("Render starts the server with: node server.js", () => {
+  it("Render starts the server with: node server.js (exec: no shell left between npm and node, so a stop signal reaches the server)", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-    expect(pkg.scripts.start).toBe("node server.js");
+    expect(pkg.scripts.start).toBe("exec node server.js");
   });
   it("the walk works: it finds the server's own files and no import that leads nowhere", () => {
     expect(server.files.length).toBeGreaterThan(50);

@@ -4,6 +4,7 @@
 //   C. the level: each change, the lines, readings in a row, no flapping
 //   D. one message per change, no repeat, a failed send, the switch, Telegram off
 //   E. the unexpected restart: clean vs unclean, the old run still up, no double report, a crash loop
+//   E2. the handover (2026-11-26): old and new were up together = a planned restart, marked clean, no alarm
 //   F. nothing here can hurt the server; the wiring in server.js
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -195,6 +196,7 @@ function world(o: { rows?: RunRow[]; enabled?: boolean; silenced?: boolean; tabl
     begin: async (row: RunRow) => guard("begin", false, () => { w.rows.push({ ended_clean_at: null, alarmed_at: null, ...row }); return true; }),
     beat: async (id: string, patch: Partial<RunRow>) => guard("beat", false, () => { Object.assign(w.rows.find((r) => r.run_id === id)!, patch); return true; }),
     markClean: async (id: string, iso: string) => guard("markClean", false, () => { Object.assign(w.rows.find((r) => r.run_id === id)!, { ended_clean_at: iso, heartbeat_at: iso }); return true; }),
+    markHandover: async (id: string, beatIso: string) => guard("markHandover", false, () => { const r = w.rows.find((x) => x.run_id === id && !x.ended_clean_at && !x.alarmed_at); if (!r) return false; r.ended_clean_at = beatIso; return true; }),
     recent: async (since: string) => guard("recent", null, () => w.rows.filter((r) => r.heartbeat_at >= since).map((r) => ({ ...r }))),
     claim: async (ids: string[], iso: string) => guard("claim", null, () => { const got = w.rows.filter((r) => ids.includes(r.run_id) && !r.alarmed_at && !r.ended_clean_at); for (const r of got) r.alarmed_at = iso; return got.map((r) => ({ ...r })); }),
     purge: async () => guard("purge", false, () => true),
@@ -363,7 +365,7 @@ describe("E. the unexpected restart", () => {
     expect(j([{ heartbeat_at: iso(T0 + MIN - RUN_LOOK_BACK_MS - 1) }])).toMatchObject({ dead: [], waiting: 0 });      // more than 6 h ago: no longer news
     expect(j([{ started_at: iso(T0 + 1) }])).toMatchObject({ dead: [], waiting: 0 });                                 // a run that started AFTER this one
     expect(j([{ run_id: "aaaaaaaaaaaaaaaa" }])).toMatchObject({ dead: [], waiting: 0 });                              // itself
-    expect(judgeRuns(null as never, me, T0)).toEqual({ dead: [], waiting: 0, lastAlarmAt: 0 });
+    expect(judgeRuns(null as never, me, T0)).toEqual({ dead: [], waiting: 0, handover: [], lastAlarmAt: 0 });
     expect(judgeRuns([null, {}, { run_id: "x", started_at: "junk", heartbeat_at: "junk" }] as never, me, T0).dead).toEqual([]);
     expect(RUN_DEAD_AFTER_MS).toBe(150000);
   });
@@ -409,13 +411,15 @@ describe("E. the unexpected restart", () => {
     await read(30, 30);
     expect(alert.fire).not.toHaveBeenCalled();
   });
-  it("…but if that old instance then dies WITHOUT saying so, the alarm comes", async () => {
-    const { w, alarm, read } = world({ rows: [oldRun({ heartbeat_at: iso(T0 - 5000), lives: 12, mem_pct: 61 })] });
+  it("…and if that old instance then stops WITHOUT saying so (2026-11-26: the stop never reached it), it was still a planned handover → silent, marked clean", async () => {
+    const { w, alarm, alert, read } = world({ rows: [oldRun({ heartbeat_at: iso(T0 - 5000), lives: 12, mem_pct: 61 })] });
     await alarm.start();
     const old = w.rows[0];
     for (let i = 0; i < 3; i++) { await read(30); old.heartbeat_at = iso(w.now - 5000); }
-    await read(30, 3);
-    expect(w.fired.map((f) => f.value)).toEqual([{ lives: 12, times: 1, lastPct: 61 }]);
+    const last = old.heartbeat_at;
+    await read(30, 30);
+    expect(alert.fire).not.toHaveBeenCalled();
+    expect(old).toMatchObject({ ended_clean_at: last, heartbeat_at: last, alarmed_at: null });
   });
   it("two runs never report one death twice; an unreadable table reports nothing", async () => {
     const a = world({ rows: [oldRun()] });
@@ -538,6 +542,158 @@ describe("E. the unexpected restart", () => {
   });
 });
 
+// ── E2. THE HANDOVER (2026-11-26) ────────────────────────────────────────────────────────────────────────────
+// Production, table server_runs: two planned restarts (Render's daily restart, a deploy) each sent NAG-RESTART.
+// The old run kept its heartbeat ~2 minutes AFTER the new run started and never wrote a clean end (the stop
+// never reached the node process). Rule: a last heartbeat AFTER a later run's start = old and new were up
+// together = planned → marked ended_clean_at = that heartbeat, no alarm. A heartbeat that stopped BEFORE the
+// next start = a crash → the alarm, exactly as before.
+describe("E2. the handover: old and new up together = a planned restart, never an alarm", () => {
+  const at = (s: string) => Date.parse(s);
+  // a run that beats once a minute from its start until `lastBeat`, seen by a new run that starts at `newStart`
+  async function story(o: { oldStart: string; lastBeat: string; newStart: string; lives: number; pct: number; readings?: number }) {
+    const beatAt = (now: number) => {                                  // the newest beat on the old run's own minute grid, never after its last
+      const k = Math.floor((Math.min(now, at(o.lastBeat)) - at(o.oldStart)) / MIN);
+      return iso(at(o.oldStart) + k * MIN + (at(o.lastBeat) - at(o.oldStart)) % MIN);
+    };
+    const x = world({ rows: [oldRun({ run_id: "0ld0ld0ld0ld0ld0", started_at: iso(at(o.oldStart)), heartbeat_at: o.lastBeat, lives: o.lives, mem_pct: o.pct })] });
+    const old = x.w.rows[0];
+    x.w.now = at(o.newStart);
+    old.heartbeat_at = beatAt(x.w.now);
+    await x.alarm.start();
+    for (let i = 0; i < (o.readings ?? 30); i++) {
+      if (!old.ended_clean_at) old.heartbeat_at = beatAt(x.w.now + MIN);   // the old run's beat lands before this run's next reading
+      await x.read(30);
+    }
+    return { ...x, old };
+  }
+
+  it("PRODUCTION 1 — the daily restart: old run's last heartbeat 20:03:15, new run started 20:01:32 → NO alarm, the old run is marked clean at its heartbeat", async () => {
+    const s = await story({ oldStart: "2026-11-25T00:30:15.390Z", lastBeat: "2026-11-25T20:03:15.390Z", newStart: "2026-11-25T20:01:32.295Z", lives: 3, pct: 30 });
+    expect(s.alert.fire).not.toHaveBeenCalled();
+    expect(s.w.sent).toEqual([]);
+    expect(s.old).toMatchObject({ heartbeat_at: "2026-11-25T20:03:15.390Z", ended_clean_at: "2026-11-25T20:03:15.390Z", alarmed_at: null });
+    expect(s.w.calls).not.toContain("claim");                          // nothing was ever counted as a death
+    expect(s.w.logs.filter((l) => l.includes("handover"))).toEqual(["[CAPACITY] handover runs=1 marked clean (planned restart, no alarm)"]);
+    expect(s.w.calls.filter((c) => c === "markHandover")).toHaveLength(1);   // once, then the row is clean
+  });
+  it("PRODUCTION 2 — the deploy: old run's last heartbeat 00:18:32, new run started 00:16:58 → NO alarm, marked clean", async () => {
+    const s = await story({ oldStart: "2026-11-25T20:01:32.295Z", lastBeat: "2026-11-26T00:18:32.295Z", newStart: "2026-11-26T00:16:58.303Z", lives: 2, pct: 24 });
+    expect(s.alert.fire).not.toHaveBeenCalled();
+    expect(s.w.sent).toEqual([]);
+    expect(s.old).toMatchObject({ ended_clean_at: "2026-11-26T00:18:32.295Z", alarmed_at: null });
+  });
+  it("it waits like before while the old run may still be up: nothing is marked until its heartbeat is 150 s old", async () => {
+    const s = await story({ oldStart: "2026-11-25T20:01:32.295Z", lastBeat: "2026-11-26T00:18:32.295Z", newStart: "2026-11-26T00:16:58.303Z", lives: 2, pct: 24, readings: 3 });
+    expect(s.old.ended_clean_at).toBe(null);                           // 00:19:58 — the last beat is 86 s old
+    await s.read(30);                                                  // 00:20:58 — 146 s old
+    expect(s.old.ended_clean_at).toBe(null);
+    await s.read(30);                                                  // 00:21:58 — 206 s old
+    expect(s.old.ended_clean_at).toBe("2026-11-26T00:18:32.295Z");
+    expect(s.alert.fire).not.toHaveBeenCalled();
+  });
+  it("A CRASH — the heartbeat stopped 2 minutes BEFORE the new run started (no overlap) → ONE alarm, as before", async () => {
+    const s = await story({ oldStart: "2026-11-25T20:01:32.295Z", lastBeat: "2026-11-26T00:14:32.295Z", newStart: "2026-11-26T00:16:32.295Z", lives: 9, pct: 97 });
+    expect(s.w.fired.map((f) => f.value)).toEqual([{ lives: 9, times: 1, lastPct: 97 }]);
+    expect(s.w.fired[0].text).toBe("🔴 SellerFlowLive server — NAG-RESTART\nNaputol: 9 live. Kailangang mag-Connect ulit ang mga seller.\nHuling memory bago naputol: 97%.");
+    expect(s.old.ended_clean_at).toBe(null);
+    expect(s.old.alarmed_at).toBeTruthy();
+    expect(s.w.calls).not.toContain("markHandover");
+    expect(s.w.logs.some((l) => l.includes("handover"))).toBe(false);
+  });
+  it("judgeRuns: the line is the later run's start — a beat at or before it = died, a beat after it = handover; a fresh beat still waits", () => {
+    const me = { runId: "aaaaaaaaaaaaaaaa", startedAt: iso(T0) };
+    const j = (beat: number, now = T0 + 10 * MIN) => judgeRuns([oldRun({ heartbeat_at: iso(beat) })], me, now);
+    expect(j(T0 - 1)).toMatchObject({ dead: [{ run_id: "bbbbbbbbbbbbbbbb" }], handover: [], waiting: 0 });
+    expect(j(T0)).toMatchObject({ dead: [{ run_id: "bbbbbbbbbbbbbbbb" }], handover: [] });          // exactly at the start: no overlap
+    expect(j(T0 + 1)).toMatchObject({ dead: [], handover: [{ run_id: "bbbbbbbbbbbbbbbb" }], waiting: 0 });
+    expect(j(T0 + 2 * MIN, T0 + 3 * MIN)).toMatchObject({ dead: [], handover: [], waiting: 1 });   // 60 s old: may still be up
+    // a clean end or an alarm already on the row: neither list
+    expect(judgeRuns([oldRun({ heartbeat_at: iso(T0 + 1), ended_clean_at: iso(T0 + 1) })], me, T0 + 10 * MIN)).toMatchObject({ dead: [], handover: [] });
+    expect(judgeRuns([oldRun({ heartbeat_at: iso(T0 + 1), alarmed_at: iso(T0 + 5 * MIN) })], me, T0 + 10 * MIN)).toMatchObject({ dead: [], handover: [] });
+    // more than 6 hours ago: not looked at
+    expect(judgeRuns([oldRun({ started_at: iso(T0 - 9 * 60 * MIN), heartbeat_at: iso(T0 - 7 * 60 * MIN) })], { ...me, startedAt: iso(T0 - 8 * 60 * MIN) }, T0)).toMatchObject({ dead: [], handover: [] });
+  });
+  it("a chain: A handed over to B, then B crashed before it marked A → this run alarms for B only; A is marked clean", async () => {
+    const { w, alarm, read } = world({ rows: [
+      oldRun({ run_id: "a0a0a0a0a0a0a0a0", started_at: iso(T0 - 5 * 60 * MIN), heartbeat_at: iso(T0 - 28 * MIN), lives: 40, mem_pct: 35 }),   // still beating 2 minutes after B started
+      oldRun({ run_id: "b0b0b0b0b0b0b0b0", started_at: iso(T0 - 30 * MIN), heartbeat_at: iso(T0 - 4 * MIN), lives: 7, mem_pct: 96 }),          // stopped 4 minutes before this start
+    ] });
+    await alarm.start();
+    await read(30, 5);
+    expect(w.fired.map((f) => f.value)).toEqual([{ lives: 7, times: 1, lastPct: 96 }]);
+    expect(w.rows.find((r) => r.run_id === "a0a0a0a0a0a0a0a0")).toMatchObject({ ended_clean_at: iso(T0 - 28 * MIN), alarmed_at: null });
+    expect(w.rows.find((r) => r.run_id === "b0b0b0b0b0b0b0b0")).toMatchObject({ ended_clean_at: null });
+  });
+  it("the mark fails (database down): still no alarm; it is tried again at the next look and logged once", async () => {
+    const { w, alarm, alert, store, read } = world({ rows: [oldRun({ heartbeat_at: iso(T0 + 30000) })] });   // beat 30 s after this start, then nothing
+    const real = store.markHandover;
+    let tries = 0;
+    store.markHandover = async () => { tries += 1; return false; };
+    await alarm.start();
+    await read(30, 5);
+    expect(tries).toBeGreaterThanOrEqual(2);
+    expect(alert.fire).not.toHaveBeenCalled();
+    expect(w.rows[0].ended_clean_at).toBe(null);
+    store.markHandover = () => { throw new Error("x"); };
+    await read(30);
+    expect(alert.fire).not.toHaveBeenCalled();
+    store.markHandover = real;
+    await read(30, 5);
+    expect(w.rows[0].ended_clean_at).toBe(iso(T0 + 30000));
+    expect(w.logs.filter((l) => l.includes("handover"))).toHaveLength(1);
+    expect(alert.fire).not.toHaveBeenCalled();
+  });
+  it("the memory alarms are untouched by a handover: the warning still goes out with its numbers", async () => {
+    const { w, alarm, alert, read } = world({ rows: [oldRun({ heartbeat_at: iso(T0 + 30000) })] });
+    await alarm.start();
+    await read(30, 4);
+    expect(w.rows[0].ended_clean_at).toBe(iso(T0 + 30000));
+    await read(62, 2);
+    expect(kinds(w)).toEqual(["mem_warning"]);
+    expect(w.sent[0].value).toMatchObject({ pct: 62, limitMb: 512 });
+    expect(alert.fire).not.toHaveBeenCalled();
+  });
+  it("the store's mark: only that run, only while it has no clean end and no alarm, clean end = the heartbeat given; true only when a row changed", async () => {
+    const seen: unknown[] = [];
+    const sb = (rows: unknown[], error: unknown = null) => ({ from: (t: string) => ({ update: (patch: unknown) => ({ eq: (c: string, v: string) => ({ is: (c1: string, v1: null) => ({ is: (c2: string, v2: null) => ({ select: async (cols: string) => { seen.push([t, patch, c, v, c1, v1, c2, v2, cols]); return { data: rows, error }; } }) }) }) }) }) });
+    expect(await createRunStore(sb([{ run_id: "x" }]) as never).markHandover("x", "2026-11-26T00:18:32.372Z")).toBe(true);
+    expect(seen).toEqual([[RUNS_TABLE, { ended_clean_at: "2026-11-26T00:18:32.372Z" }, "run_id", "x", "ended_clean_at", null, "alarmed_at", null, "run_id"]]);
+    expect(await createRunStore(sb([]) as never).markHandover("x", "t")).toBe(false);            // another run got there first
+    expect(await createRunStore(sb([{ run_id: "x" }], { message: "no" }) as never).markHandover("x", "t")).toBe(false);
+  });
+  it("SIGTERM: ONE log line with the result of the clean-end write (true / false + ms) — and none when the alarm never started", async () => {
+    const a = world();
+    await a.alarm.start();
+    await a.alarm.tick();
+    a.w.logs.length = 0;
+    expect(await a.alarm.markCleanExit()).toBe(true);
+    expect(a.w.logs).toEqual(["[CAPACITY] clean end written=true ms=0"]);
+    const b = world();
+    await b.alarm.start();
+    await b.alarm.tick();
+    b.w.logs.length = 0;
+    b.store.markClean = async () => { b.w.now += 240; return false; };
+    expect(await b.alarm.markCleanExit()).toBe(false);
+    expect(b.w.logs).toEqual(["[CAPACITY] clean end written=false ms=240"]);
+    const c = world({ table: false });                                 // started, but this run never got its row
+    await c.alarm.start();
+    c.w.logs.length = 0;
+    expect(await c.alarm.markCleanExit()).toBe(false);
+    expect(c.w.logs).toEqual(["[CAPACITY] clean end written=false ms=0 (no run row)"]);
+    const d = world({ enabled: false });                               // Telegram env not set: the alarm never started
+    await d.alarm.start();
+    d.w.logs.length = 0;
+    expect(await d.alarm.markCleanExit()).toBe(false);
+    expect(d.w.logs).toEqual([]);
+    for (const l of [...a.w.logs, ...b.w.logs, ...c.w.logs]) expect(l).not.toMatch(/[0-9a-f]{8}/);   // never a run id
+  });
+  it("package.json: `npm start` hands the process to node itself (exec) — with a shell in between, Render's stop never reaches the server", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    expect(pkg.scripts.start).toBe("exec node server.js");
+  });
+});
+
 describe("F. it can never hurt the server", () => {
   it("Telegram throws, hangs or refuses; the database fails; memory or the live counters throw — tick() always resolves, nothing escapes", async () => {
     const { w, alarm, alert, read } = world({ rows: [oldRun()] });
@@ -604,6 +760,7 @@ describe("F. it can never hurt the server", () => {
     expect(await s.begin({})).toBe(false);
     expect(await s.beat("x", {})).toBe(false);
     expect(await s.markClean("x", "t")).toBe(false);
+    expect(await s.markHandover("x", "t")).toBe(false);
     expect(await s.recent("t")).toBe(null);
     expect(await s.claim(["x"], "t")).toBe(null);
     expect(await s.purge("t")).toBe(false);

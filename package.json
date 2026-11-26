@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server.js",
-    "start": "node server.js",
+    "start": "exec node server.js",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
