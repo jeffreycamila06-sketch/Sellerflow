@@ -1,5 +1,6 @@
 // Messenger receipt step 1 — the gates and the "no writes" rule.
-//   • SettingsHub: the Receipt format tile only when onReceiptFormat is passed;
+//   • SettingsHub: no "Receipt format" tile any more (2026-11-26) — the Invoicing card opens the screen
+//     for a seller who has it (SettingsHub.invoicing.test.tsx, invoicing.app.test.tsx);
 //   • Orders: the Messenger receipt button only for a Facebook buyer AND fbReceipt;
 //     otherwise the receipt box HTML is identical to before;
 //   • editing in the sheet writes nothing (no order / session / customer / settings write);
@@ -94,16 +95,18 @@ describe("Receipt sheet — edits write nothing", () => {
 
 describe("SettingsHub tile gate", () => {
   const hub = (extra: Record<string, unknown> = {}) => render(<TProvider lang="en"><SettingsHub onGeneral={vi.fn()} onCustomers={vi.fn()} onAdmin={vi.fn()} onCustomerData={vi.fn()} onLegal={vi.fn()} onDelete={vi.fn()} onLogout={vi.fn()} {...extra} /></TProvider>);
-  it("no onReceiptFormat → no tile; with it → the tile opens the screen", () => {
+  it("the Receipt format tile is gone; the Invoicing card is what opens the screen", () => {
     expect(hub().container.querySelector("[data-testid='tile-receipt-format']")).toBeNull();
     const open = vi.fn();
-    const { container } = hub({ onReceiptFormat: open });
-    fireEvent.click(container.querySelector("[data-testid='tile-receipt-format']")!);
+    const { container } = hub({ onInvoicing: open });
+    expect(container.querySelector("[data-testid='tile-receipt-format']")).toBeNull();
+    fireEvent.click(container.querySelector("[data-testid='tile-invoicing']")!);
     expect(open).toHaveBeenCalledTimes(1);
   });
-  it("RedesignApp passes the tile, the screen and the Orders button only for FB preview accounts or /fb/access receipt", () => {
+  it("RedesignApp opens the screen from the Invoicing card, and shows the screen and the Orders button, only for FB preview accounts or /fb/access receipt", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(src).toContain('onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}');
+    expect(src).toContain('onInvoicing={fbReceiptUi ? () => setScreen("receiptformat") : () => setToast({ msg: tApp.rd_invoice_soon_note, kind: "ok", ms: 4000 })}');
+    expect(src).not.toContain("onReceiptFormat");
     expect(src).toContain('{screen === "receiptformat" && fbReceiptUi && <ReceiptFormat');
     expect(src).toContain("fbReceipt={fbReceiptUi}");
     expect(src).toContain("const fbPreview = fbPreviewEnabled(auth.profile?.email);");

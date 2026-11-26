@@ -6721,3 +6721,26 @@ Production Nov 25–26: two planned restarts (the daily restart, a deploy) each 
 - Tests: `capacityAlarm.server.test.ts` block E2 (both production stories, a crash 2 min before the new start,
   the boundary, a chain, a failed mark, the store filter, the log line); 8 on-purpose breaks caught; main's file
   fails 12. `nightlyDeploy.paths.test.ts` pins the new start script. Doc: `docs/ops/server-alarms.md`.
+
+## 2026-11-26 — SETTINGS TAB: ONE "INVOICING" CARD (Soon) REPLACES THE "RECEIPT FORMAT" TILE (branch `claude/invoicing-soon`, NOT merged; sql/219 NOT applied; web only, no Render)
+- **SettingsHub:** the "Receipt format" tile is gone (prop `onReceiptFormat` removed). ONE full-width card
+  `tile-invoicing` right after the Website card (open card, its "Soon" teaser, or straight after Invite friends),
+  always drawn — every plan, iPhone, Android, web. Filled accent chip (`invoicing-chip`, receipt icon), title
+  `rd_invoice_title`, sub-line `rd_invoice_sub`, `SoonBadge plain testid="invoicing-soon"`, 1.5px accent border,
+  `maxWidth: calc(100vw - 28px)` (at 320 px the tile pairs can be wider than the screen in fil / bg / id — old,
+  not changed; the card must not follow them).
+- **Tap (RedesignApp, prop `onInvoicing`):** `fbReceiptUi` (the same gate as before) → `setScreen("receiptformat")`;
+  everyone else → the app toast with `rd_invoice_soon_note` for 4 s (`toast.ms`, new optional field; other toasts
+  keep 1.8 s / 3.2 s). No link, no request. The screen `receiptformat` itself is still gated by `fbReceiptUi`.
+- ⚠️ Text keys are `rd_invoice_*` — `rd_inv_*` is the Invite friends prefix. Chinese says 账单 / 帳單 (a bill),
+  not 发票 / 發票 (the official tax receipt). New texts are drafts in every language but English.
+- `SoonBadge` got an optional `testid` (a second plain badge on one screen; default unchanged).
+- **Guide:** no row (file or live table, checked 2026-11-26) sends sellers to "Receipt format" in Settings →
+  no path to change. One line added to `settings-tiles`: "**Invoicing** — sending invoices to buyers is coming
+  soon." + 116b regenerated. `sql/219_guide_invoicing.sql` (+ rollback) = that line only, on that row only.
+- Not touched (0 lines): Orders.tsx and its sheets, ReceiptFormat.tsx, server, printing, chrome-extension/.
+- Preview only: `src/dev/fakeSupabase.ts` `?web=1` (Website card) / `?web=soon` (its teaser).
+- Tests: `SettingsHub.invoicing.test.tsx` · `invoicing.app.test.tsx` (real RedesignApp) ·
+  `invoicingGuideSql.test.ts` · `receiptGate.test.tsx` (tile block updated). 10 on-purpose breaks caught.
+  Pictures + measured widths: `docs/design/invoicing-soon/`.
+- **Order:** merge (Vercel) → sql/219 on Jeff's go.

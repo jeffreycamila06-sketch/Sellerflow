@@ -13,10 +13,11 @@ const base: CSSProperties = {
 };
 
 // `plain` = the word only, no hover note (the Seller Website teaser: no explanation).
-export default function SoonBadge({ label, style, plain = false }: { label?: string; style?: CSSProperties; plain?: boolean }) {
+// `testid` = its own test id (a second plain badge on one screen, e.g. the Invoicing card).
+export default function SoonBadge({ label, style, plain = false, testid }: { label?: string; style?: CSSProperties; plain?: boolean; testid?: string }) {
   const t = useT();
   return (
-    <span style={{ ...base, ...style }} title={plain ? undefined : t.rd_soon_title} data-testid={plain ? "soon-badge" : undefined}>
+    <span style={{ ...base, ...style }} title={plain ? undefined : t.rd_soon_title} data-testid={testid ?? (plain ? "soon-badge" : undefined)}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warn)" }} />
       {label ?? t.rd_soon}
     </span>

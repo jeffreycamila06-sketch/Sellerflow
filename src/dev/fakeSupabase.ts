@@ -107,6 +107,9 @@ const tables: Record<string, Row[]> = {
 // ?inv=free (has a code, free plan) / default (has a code + invites). ?admin=1 = admin role.
 const Q = typeof location !== "undefined" ? location.search : "";
 const INV = (/[?&]inv=(\w+)/.exec(Q) || [])[1] || "";
+// Settings tab previews (docs/design/invoicing-soon): ?web=1 = the Website card is shown · ?web=soon = its "Soon" teaser.
+if (/[?&]web=1\b/.test(Q)) tables.app_settings.push({ key: "seller_website_enabled", value: "true" });
+if (/[?&]web=soon\b/.test(Q)) tables.app_settings.push({ key: "website_teaser_enabled", value: "true" });
 const monthStart = (add: number) => { const d = new Date(now + 8 * 3_600_000); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + add, 1)).toISOString().slice(0, 10); };
 // ?quota=used,limit,locked → the "Accounts used: x of y" line (docs/design/account-limits-v2); absent = no line.
 const QUOTA = typeof location !== "undefined" ? new URLSearchParams(location.search).get("quota") : null;
