@@ -79,7 +79,7 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false, onBlacklist, blacklistNew = false,
+  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onInvoicing, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false, onBlacklist, blacklistNew = false,
 }: {
   onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
   onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
@@ -99,7 +99,10 @@ export default function SettingsHub({
   parcelLocked?: boolean; // basic/free: show Parcel Scan + Customer Details as LOCKED upsell tiles
   pickupLocked?: boolean; // basic/free, TW, no access: show Pickup Status as a LOCKED upsell tile (parcelTrackingLocked)
   onParcelUpsell?: () => void; // locked-tile click → neutral contact-support popup (never opens the screen)
-  onReceiptFormat?: () => void; // Messenger receipt format — passed ONLY for FB preview accounts
+  // INVOICING (2026-11-26) — the card is shown to EVERYONE (every plan, iPhone, Android, web), right after the
+  // Website card, with "Soon". The tap is decided by the app: a seller who has the Receipt format screen opens
+  // it (as the old "Receipt format" tile did); everyone else gets a short "coming soon" note. No tile is hidden.
+  onInvoicing?: () => void;
   // Taiwan market only (same market rule that lets Parcel Scan appear at all; admin sees it).
   // Shows the FamilyMart "Coming soon" tile, and a "Coming soon" 7-11 tile for a seller who has
   // neither the working nor the locked 7-11 tile. A tap only shows a short note.
@@ -147,6 +150,18 @@ export default function SettingsHub({
               <SoonBadge plain style={{ marginLeft: "auto", flexShrink: 0 }} />
             </a>
           )}
+          {/* Invoicing — one full-width card right after the Website card, for everyone. Accent border + a filled
+              accent chip so it stands out; "Soon" on the right. The sub-line wraps (fits a 320 px phone).
+              maxWidth = the screen minus this tab's 14 px sides: on a 320 px phone the tile pairs below can be
+              wider than the screen in some languages (long labels), and this card must never follow them. */}
+          <button type="button" onClick={onInvoicing} style={{ ...tile, gridColumn: "1 / -1", border: "1.5px solid var(--accent)", maxWidth: "calc(100vw - 28px)" }} data-testid="tile-invoicing">
+            <span data-testid="invoicing-chip" style={{ ...chip("accent"), background: "var(--accent)", color: "var(--accent-text)" }}>{ic.receipt}</span>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span style={tileLabel}>{t.rd_invoice_title}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.25 }}>{t.rd_invoice_sub}</span>
+            </span>
+            <SoonBadge plain testid="invoicing-soon" style={{ marginLeft: "auto", flexShrink: 0 }} />
+          </button>
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
           {onBlacklist && (
@@ -193,7 +208,6 @@ export default function SettingsHub({
             ? <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onCustomerDetails} testid="tile-customerdetails" />
             : parcelLocked && onParcelUpsell && <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onParcelUpsell} locked testid="tile-customerdetails-locked" />}
           {/* Pickup Status (Part 5) — the prop IS the gate (parcelTrackingVisible: admin/googletest). No locked variant. */}
-          {onReceiptFormat && <Tile icon={ic.receipt} label={t.rd_rc_title} onClick={onReceiptFormat} testid="tile-receipt-format" />}
           {onParcelTracking
             ? <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelTracking} testid="tile-parceltracking" />
             : pickupLocked && onParcelUpsell && <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelUpsell} locked testid="tile-parceltracking-locked" />}

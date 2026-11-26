@@ -1097,7 +1097,7 @@ export default function RedesignApp() {
   useEffect(() => { setNativePrintAlertText(tApp.rd_print_native_failed); }, [tApp]);
   // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
   // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
-  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err"; ms?: number } | null>(null);   // ms = a longer note (optional)
   // Choose price: the session ended / changed, the switch went off or Same price came on while
   // comments were still waiting → they are dropped for good, with ONE toast saying how many
   // (adjust-during-render: no effect, no extra pass with stale items on screen).
@@ -1117,7 +1117,7 @@ export default function RedesignApp() {
     return () => setOneStickerNoticeHandler(null);
   }, [tApp]);
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.ms ?? (toast.kind === "err" ? 3200 : 1800)); return () => clearTimeout(id); }, [toast]);
   // P3 — OAuth return (?shopee=connected|error&code=…): toast + strip the query +
   // reload the shop list so a freshly-authorized shop appears. After toast/tApp so
   // the strings localize; re-runs are no-ops (the param is stripped). Note: tApp is
@@ -3206,7 +3206,7 @@ export default function RedesignApp() {
               parcelLocked={parcelLocked}
               pickupLocked={pickupLocked}
               onParcelUpsell={() => setUpsellOpen(true)}
-              onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
+              onInvoicing={fbReceiptUi ? () => setScreen("receiptformat") : () => setToast({ msg: tApp.rd_invoice_soon_note, kind: "ok", ms: 4000 })}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
               onWebsite={sellerWebsiteOn ? () => setScreen("website") : undefined}

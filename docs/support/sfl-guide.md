@@ -31,12 +31,13 @@ The bar at the bottom of the app has five buttons:
 Every other screen has **‹ Back** at the top left. It takes you back to where you came from. Tapping a button in the bottom bar always starts fresh from that tab.
 
 ## settings-tiles — The Settings screen
-Last checked: 2026-11-15
+Last checked: 2026-11-26
 Keywords: settings, tiles, shop tools, account, general settings, customers, log out, setting, ayos, 设置, 設定, 账号
 
 Tap **Settings** in the bottom bar. You will see tiles:
 
 - **Invite friends** — your invite code, the friends you invited, and a place to add a friend's code.
+- **Invoicing** — sending invoices to buyers is coming soon.
 - **General Settings** — profile, live setup options, look, language, channels, printer, subscription, support, delete account.
 - **Customers** — your buyers list with search.
 - **Parcel Scan** (7-11 / FamilyMart), **Customer Details**, **Pickup Status** — Taiwan tools. Parcel Scan tiles may show **Soon**. Customer Details and Pickup Status open or show 🔒.
