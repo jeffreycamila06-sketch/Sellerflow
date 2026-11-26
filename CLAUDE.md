@@ -6696,3 +6696,28 @@ opened the photo picker. This draws the SAME live scanner inside the web page. `
   the switch goes on, "In the latest phone app the camera opens" may want a reword — as its own phrase-swap SQL.
 - **Order:** merge (Vercel) and sql/218 in either order (no row = off) → `update … set value = 'true'` to turn it on;
   open apps see it after a full close-open. Rollback: the switch `'false'` (instant) or the rollback file.
+
+## 2026-11-26 — FALSE "NAG-RESTART" ON PLANNED RESTARTS (branch `claude/restart-alarm-false`, NOT merged; no SQL; needs a Render deploy)
+Production Nov 25–26: two planned restarts (the daily restart, a deploy) each sent NAG-RESTART.
+- **Cause (Supabase API log + local run):** the old run's clean-end write NEVER reached the database (its last
+  request was a normal heartbeat). Locally: with `npm start`, npm runs `sh -c "node server.js"`; a SIGTERM to npm
+  ends npm and the shell, node never gets it (no `[SHUTDOWN]` line, no write). `node server.js` directly, or
+  `npm start` with the script `exec node server.js`, → the handler runs and the write lands in ~5 ms.
+  ⚠️ Render's Start Command is a dashboard setting — NOT seen from the session. If the two log lines below are
+  still missing at a restart after the deploy, set the Start Command to `node server.js`.
+- **Fix 1 (`package.json`):** `"start": "exec node server.js"` (no shell left between npm and node).
+  `npm run server` is unchanged (`node server.js`).
+- **Fix 2, the backstop (`server/capacityAlarm.js` `judgeRuns` → `handover`):** a run with no clean end whose last
+  heartbeat is AFTER a later run's `started_at` (old and new were up together) and is 150 s old → the new run
+  marks it `ended_clean_at = its heartbeat` (`store.markHandover`, only while it has no clean end and no alarm),
+  log `[CAPACITY] handover runs=N marked clean…`, NO alarm. Heartbeat at or before the next start = a crash →
+  the alarm as before. Memory alarms, the database alarm, texts: untouched. `server.js`: 0 lines.
+- **Log lines at SIGTERM:** the existing `[SHUTDOWN] SIGTERM at …` (receipt) + NEW
+  `[CAPACITY] clean end written=true|false ms=<n>` (none when the alarm never started).
+- The run live at the deploy was started the old way → it gets no clean end → the new run marks it by the
+  backstop (silent). A row marked by the backstop has `ended_clean_at = heartbeat_at` on the run's minute grid;
+  one written by the server itself is off the grid (the SIGTERM moment).
+- Known: a real crash during the 1–2 minutes when the new instance is already up counts as the planned restart.
+- Tests: `capacityAlarm.server.test.ts` block E2 (both production stories, a crash 2 min before the new start,
+  the boundary, a chain, a failed mark, the store filter, the log line); 8 on-purpose breaks caught; main's file
+  fails 12. `nightlyDeploy.paths.test.ts` pins the new start script. Doc: `docs/ops/server-alarms.md`.

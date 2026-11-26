@@ -23,6 +23,12 @@
 //   A row with no clean end whose heartbeat is still moving = the old instance is still up (Render starts
 //   the new one before it stops the old one) → wait, look again each minute (for 20 minutes, then stop).
 //   At most one restart alarm per 15 minutes (a crash loop is summed into the next one).
+//   THE HANDOVER (2026-11-26): a row with no clean end whose LAST heartbeat is AFTER a later run started —
+//   the old and the new instance were up together — is Render's planned restart, never a crash (after a
+//   crash the next run can only start once the old one is gone). It is marked ended_clean_at = its last
+//   heartbeat and NO alarm is sent. This covers a stop that never reached this process (the signal lost
+//   in an `npm start` / shell wrapper — the cause of the false alarms of Nov 25–26). A run whose
+//   heartbeat stopped BEFORE the next run started still alarms as above.
 //
 // SWITCH: app_settings.server_alarms_enabled — exactly 'false' = nothing is sent (the readings and the
 //   heartbeat go on). Missing row, any other text or a failed read = alarms on.
@@ -103,12 +109,21 @@ const toldAfter = (kind) => (kind === "mem_danger" ? "danger" : kind === "mem_wa
 /**
  * PURE — what the runs before this one say. rows: server_runs rows (any order); me = { runId, startedAt }.
  * → { dead: [rows that ended uncleanly and were not reported], waiting: n (no clean end, heartbeat still fresh),
+ *     handover: [rows with no clean end whose last heartbeat is AFTER a later run started = old and new were up
+ *                together = a planned restart: to be marked clean, never an alarm],
  *     lastAlarmAt: ms of the newest restart alarm any run sent (0 = none) }
  */
 export function judgeRuns(rows, me, nowMs) {
-  const out = { dead: [], waiting: 0, lastAlarmAt: 0 };
+  const out = { dead: [], waiting: 0, handover: [], lastAlarmAt: 0 };
   const mine = Date.parse(me?.startedAt || "");
-  for (const r of Array.isArray(rows) ? rows : []) {
+  const list = Array.isArray(rows) ? rows : [];
+  // when every run started (this one too): a run that was still beating after a later one started overlapped it
+  const starts = Number.isFinite(mine) ? [mine] : [];
+  for (const r of list) {
+    const s = r && r.run_id !== me?.runId ? Date.parse(r.started_at || "") : NaN;
+    if (Number.isFinite(s)) starts.push(s);
+  }
+  for (const r of list) {
     if (!r || r.run_id === me?.runId) continue;
     const alarmed = Date.parse(r.alarmed_at || "");
     if (Number.isFinite(alarmed)) out.lastAlarmAt = Math.max(out.lastAlarmAt, alarmed);
@@ -118,8 +133,9 @@ export function judgeRuns(rows, me, nowMs) {
     if (Number.isFinite(mine) && started >= mine) continue;          // only the runs BEFORE this one
     if (r.ended_clean_at || r.alarmed_at) continue;                  // ended cleanly, or already reported
     if (nowMs - beat > RUN_LOOK_BACK_MS) continue;                   // too old to be news
-    if (nowMs - beat > RUN_DEAD_AFTER_MS) out.dead.push(r);
-    else out.waiting += 1;
+    if (nowMs - beat <= RUN_DEAD_AFTER_MS) { out.waiting += 1; continue; }   // may still be up: look again
+    const overlapped = starts.some((s) => s > started && s < beat);
+    (overlapped ? out.handover : out.dead).push(r);
   }
   out.dead.sort((a, b) => Date.parse(b.heartbeat_at) - Date.parse(a.heartbeat_at));   // newest first
   return out;
@@ -150,6 +166,13 @@ export function createRunStore(sb) {
     },
     async markClean(runId, nowIso) {
       try { const r = await runs().update({ ended_clean_at: nowIso, heartbeat_at: nowIso }).eq("run_id", runId); return !r.error; } catch { return false; }
+    },
+    // a planned handover that never said so: clean end = its last heartbeat. true only when THIS call changed the row
+    async markHandover(runId, beatIso) {
+      try {
+        const r = await runs().update({ ended_clean_at: beatIso }).eq("run_id", runId).is("ended_clean_at", null).is("alarmed_at", null).select("run_id");
+        return !r.error && Array.isArray(r.data) && r.data.length > 0;
+      } catch { return false; }
     },
     async recent(sinceIso) {
       try {
@@ -284,6 +307,14 @@ export function createCapacityAlarm({
       }
     }
     const j = judgeRuns(rows, { runId, startedAt: iso(startedAt) }, t);
+    // old and new were up together = a planned restart whose clean end was never written: marked clean, no alarm
+    if (j.handover.length > 0) {
+      let marked = 0;
+      for (const x of j.handover) {
+        try { if ((await store.markHandover(x.run_id, iso(Date.parse(x.heartbeat_at)))) === true) marked += 1; } catch { /* the next look tries again */ }
+      }
+      if (marked > 0) say(`handover runs=${marked} marked clean (planned restart, no alarm)`);
+    }
     if (j.dead.length === 0) return;
     if (j.lastAlarmAt && t - j.lastAlarmAt < RESTART_ALARM_GAP_MS) return;      // the next look sums them
     const mine = await store.claim(j.dead.map((x) => x.run_id), iso(t));
@@ -338,14 +369,24 @@ export function createCapacityAlarm({
       try { timer = unref(setTimer(() => { void tick().catch(() => {}); }, sampleMs)); } catch { timer = null; }
       return tick().catch(() => {});
     },
-    /** SIGTERM: write the clean end. Resolves true / false, within CLEAN_EXIT_WAIT_MS, never rejects. */
+    /** SIGTERM: write the clean end + one log line with the result. Resolves true / false, within CLEAN_EXIT_WAIT_MS, never rejects. */
     markCleanExit() {
       stopped = true;
       try { if (timer) clearTimer(timer); } catch { /* nothing */ }
-      if (!store || !runReady) return Promise.resolve(false);
+      if (!store || !runReady) {
+        if (startedAt) say("clean end written=false ms=0 (no run row)");
+        return Promise.resolve(false);
+      }
+      const asked = now();
       return new Promise((resolve) => {
         let done = false;
-        const finish = (v) => { if (!done) { done = true; resolve(v === true); } };
+        // ONE log line with the result — it tells a stop that reached this process from one that never did
+        const finish = (v) => {
+          if (done) return;
+          done = true;
+          say(`clean end written=${v === true} ms=${safeInt(now() - asked, 99999)}`);
+          resolve(v === true);
+        };
         unref(setTimeout(() => finish(false), CLEAN_EXIT_WAIT_MS));
         try { store.markClean(runId, iso(now())).then(finish, () => finish(false)); } catch { finish(false); }
       });

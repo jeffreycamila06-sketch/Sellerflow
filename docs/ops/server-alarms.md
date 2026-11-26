@@ -21,6 +21,24 @@ when it is really back to normal.
 A deploy, the nightly deploy, Render's own restart: Render asks the server to stop, the server notes "ended
 cleanly", and the next start stays silent.
 
+Second safety (2026-11-26): on a planned restart Render starts the new server BEFORE it stops the old one, so
+for a minute or two both are up. If the old server's last heartbeat is AFTER the new server started, it is a
+planned restart even when the old one never noted "ended cleanly" — the new server marks it clean (clean end =
+that last heartbeat) and sends nothing. After a real crash the new server can only start once the old one is
+gone, so its last heartbeat is BEFORE the new start: that still sends NAG-RESTART.
+
+### Did the stop reach the server? (Render logs, at any restart)
+
+```
+[SHUTDOWN] SIGTERM at …            ← the server got Render's stop
+[CAPACITY] clean end written=true ms=…   ← and noted "ended cleanly" in the database
+```
+
+Both lines there = all good. NEITHER line at a restart = Render's stop is not reaching the server (it happened
+on Nov 25–26: with the Start Command `npm start`, npm got the stop and a shell in between dropped it — the
+`start` script is now `exec node server.js`, which removes that shell). If the lines are still missing after
+the deploy: Render → the service → Settings → Start Command → set it to `node server.js`.
+
 ## Turn them off / on (no deploy)
 
 ```sql
@@ -59,6 +77,8 @@ select level, streak, told, last_used, last_max, last_result, updated_at from pu
 - A crash and a kill for memory look the same (no clean end). The last line of the restart message gives the
   memory % of the last heartbeat as a hint.
 - If Render stops the server because it thinks it is unhealthy, that is a clean stop: no alarm.
+- A server that crashes during the minute or two when the new one is already up (a planned restart in
+  progress) is counted as that planned restart: no alarm.
 - If the server does not come back at all, nothing can be sent from it.
 - The restart alarm arrives about 2–3 minutes after the new start (it waits to be sure the old one is gone).
 - The database alarm counts connections inside Postgres. It does not see clients waiting at Supabase's pooler.
