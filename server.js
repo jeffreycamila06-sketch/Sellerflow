@@ -2503,7 +2503,7 @@ try {
       },
     });
     // Rule 2 (server/fbReceiptAccess.js): the add-on row AND the plan not ended (plan_expiry empty or
-    // in the future). Any error = no. receiptAddonRow = the row alone (the Facebook sign-in only).
+    // in the future; a Free plan never ends). Any error = no. receiptAddonRow = the row alone (the Facebook sign-in only).
     const receiptAccess = makeReceiptAccess({
       readAccess: async (uid) => {
         const { data, error } = await serviceSb.from("fb_receipt_access").select("enabled").eq("user_id", uid).eq("enabled", true).maybeSingle();
@@ -2511,7 +2511,7 @@ try {
         return data || null;
       },
       readProfile: async (uid) => {
-        const { data, error } = await serviceSb.from("seller_profiles").select("plan_expiry").eq("auth_user_id", uid).maybeSingle();
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan, plan_expiry").eq("auth_user_id", uid).maybeSingle();
         if (error) throw new Error("receipt_plan_read");
         return data || null;
       },

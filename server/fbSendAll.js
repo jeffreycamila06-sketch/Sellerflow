@@ -49,6 +49,18 @@ export const SEND_ALL_LABELS = {
   bg: { shipping: "Доставка", howToPay: "Как да платите", scanToPay: "Сканирайте, за да платите" },
 };
 
+// Emoji (and their joiners / skin tones / flags / keycaps) out of a text for the Send all picture: the server's
+// bundled Noto fonts have no emoji, so they would show as boxes. Letters of every script are kept. Spaces left
+// doubled by a removed emoji are made single, and the ends trimmed. PURE.
+const EMOJI_RE = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\u20E3]/gu;
+export function noEmoji(s) {
+  if (typeof s !== "string" || !s) return s ?? "";
+  if (!EMOJI_RE.test(s)) { EMOJI_RE.lastIndex = 0; return s; }
+  EMOJI_RE.lastIndex = 0;
+  return s.replace(EMOJI_RE, "").replace(/[ \t]{2,}/g, " ").split("\n").map((l) => l.trim()).join("\n").trim();
+}
+export const noEmojiRow = (r) => ({ ...r, customer_name: noEmoji(r.customer_name), handle: noEmoji(r.handle), product: noEmoji(r.product) });
+
 // The tags the phone can get. sendable = the phone may offer "Send" / count it in "K left".
 export const SEND_ALL_TAGS = ["not_sent", "sending", "sent", "other_app", "cant_message", "unknown"];
 export const tagSendable = (tag) => tag === "not_sent" || tag === "other_app";
@@ -166,10 +178,11 @@ export function createSendAllRunner(deps) {
     try { return (await store.isAdmin(uid)) === true; } catch { return false; }
   };
 
-  // ONE buyer's picture, from that buyer's rows (lines cancelled for the invoice left out).
+  // ONE buyer's picture, from that buyer's rows (lines cancelled for the invoice left out). Emoji are taken out
+  // first (the server's fonts have none — they would be boxes in the buyer's Messenger).
   async function picture(rows, settings, lang, currency) {
-    return draw(rows, {
-      opening: settings.opening, note: settings.note, qrImage: settings.qrImage, shippingFee: settings.shippingFee,
+    return draw(rows.map(noEmojiRow), {
+      opening: noEmoji(settings.opening), note: noEmoji(settings.note), qrImage: settings.qrImage, shippingFee: settings.shippingFee,
       lang, currency, labels: SEND_ALL_LABELS[lang] || SEND_ALL_LABELS.en,
     });
   }

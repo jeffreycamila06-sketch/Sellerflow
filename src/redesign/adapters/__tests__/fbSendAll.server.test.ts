@@ -10,7 +10,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createFbReceipt } from "../../../../server/fbReceipt.js";
-import { createSendAllRunner, buyerTag, parseSendAllBody, tagSendable, jobView, SEND_ALL_LABELS, SEND_ALL_RATE_MAX, SEND_ALL_TAGS } from "../../../../server/fbSendAll.js";
+import { createSendAllRunner, buyerTag, parseSendAllBody, tagSendable, jobView, noEmoji, SEND_ALL_LABELS, SEND_ALL_RATE_MAX, SEND_ALL_TAGS } from "../../../../server/fbSendAll.js";
 import { receiptAccessAllowed, makeReceiptAccess } from "../../../../server/fbReceiptAccess.js";
 import { createFbAccessHandler } from "../../../../server/fbAccess.js";
 import { receiptInputFromRows } from "../../../../server/receiptDraw.js";
@@ -102,7 +102,12 @@ describe("rule 2: the add-on + the plan not ended (server/fbReceiptAccess.js)", 
   const NOW = Date.parse("2026-11-26T00:00:00Z");
   it("any plan with the add-on; no end date or a future one = yes; ended / unreadable / no profile / no row = no", () => {
     const on = { enabled: true };
-    expect(receiptAccessAllowed(on, { plan_expiry: null }, NOW)).toBe(true);           // a Free plan has no end date
+    expect(receiptAccessAllowed(on, { plan_expiry: null }, NOW)).toBe(true);           // no end date
+    // a FREE plan never ends: an old plan_expiry (Admin's "Free" sets now + 31 days; a paid plan turned Free keeps its date) is not read
+    expect(receiptAccessAllowed(on, { plan: "free", plan_expiry: "2026-01-01T00:00:00Z" }, NOW)).toBe(true);
+    expect(receiptAccessAllowed(on, { plan: " Free ", plan_expiry: "2026-01-01T00:00:00Z" }, NOW)).toBe(true);
+    expect(receiptAccessAllowed({ enabled: false }, { plan: "free", plan_expiry: null }, NOW)).toBe(false);   // still needs the add-on
+    expect(receiptAccessAllowed(on, { plan: "plus", plan_expiry: "2026-01-01T00:00:00Z" }, NOW)).toBe(false);
     expect(receiptAccessAllowed(on, { plan_expiry: "" }, NOW)).toBe(true);
     expect(receiptAccessAllowed(on, { plan_expiry: "2026-12-01T00:00:00Z" }, NOW)).toBe(true);
     expect(receiptAccessAllowed(on, { plan_expiry: "2026-11-25T23:59:59Z" }, NOW)).toBe(false);
@@ -360,6 +365,21 @@ describe("the picture: the preview = what the job sends", () => {
       const t = buildT(lang);
       expect(SEND_ALL_LABELS[lang]).toEqual({ shipping: t.rd_rc_pic_shipping, howToPay: t.rd_rc_pic_howto, scanToPay: t.rd_rc_pic_scan });
     }
+  });
+  it("emoji are taken out of the name, items and note (the server's fonts have none); every script's letters stay", async () => {
+    expect(noEmoji("Maria 🌸 Cruz")).toBe("Maria Cruz");
+    expect(noEmoji("❤️ dress")).toBe("dress");
+    expect(noEmoji("👍🏽ok 🇵🇭")).toBe("ok");
+    expect(noEmoji("Pay 📱\n0917 💳 now")).toBe("Pay\n0917 now");
+    for (const keep of ["陳小美", "สมหญิง", "Nguyễn Thị Lan", "Иванка", "田中さん", "A1 dress x2", "NT$120"]) expect(noEmoji(keep)).toBe(keep);
+    const w = world(1);
+    w.rows[0].customer_name = "Ana 🌸"; w.rows[0].product = "🔥 Dress";
+    w.store.getSendAllSettings = async () => ({ opening: "Hi 👋", note: "GCash 📱 0917", qrImage: null, shippingFee: 0 });
+    await w.runner.preview(U, { sessionId: S, buyerNumber: 1 });
+    const [rows, settings] = w.draws[0] as [Row[], Row];
+    expect(rows[0]).toMatchObject({ customer_name: "Ana", product: "Dress" });
+    expect(settings).toMatchObject({ opening: "Hi", note: "GCash 0917" });
+    expect(w.rows[0].customer_name).toBe("Ana 🌸");             // the order rows themselves are not changed
   });
   it("a buyer with every line cancelled has no picture", async () => {
     const w = world(1, { cancels: [10] });

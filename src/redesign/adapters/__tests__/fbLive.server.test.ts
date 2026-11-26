@@ -875,7 +875,7 @@ describe("sql/73 mirror", () => {
     const fn = src.slice(at, src.indexOf("const store = {", at));
     expect(fn).toContain('.from("fb_receipt_access")');
     expect(fn).toContain('.eq("enabled", true)');
-    expect(fn).toContain('.from("seller_profiles").select("plan_expiry")');
+    expect(fn).toContain('.from("seller_profiles").select("plan, plan_expiry")');
     expect(fn).toMatch(/if \(error\) throw new Error\("receipt_access_read"\)/);
     expect(src).toContain("hasReceiptAccess: (userId) => receiptAccess.hasReceiptAccess(userId),");
     // fail closed: server/fbReceiptAccess.js catches every error → false (fbSendAll.server.test.ts)
