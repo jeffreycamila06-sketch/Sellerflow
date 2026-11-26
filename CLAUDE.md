@@ -7005,3 +7005,23 @@ Live data (2026-11-27): every session belongs to ONE platform. Before, every Inv
 - Proof: `Invoicing.sessionPlatform.test.tsx` (15), `Invoicing.sessions.test.tsx` (a Facebook-only session is not on
   the TikTok tab), `invoicingGuideSql.test.ts`; pictures `docs/design/invoicing-session-platform/` (preview `&ivcplat=1`).
 - Not touched: Orders, Send all server, printing, buyer numbers, chrome-extension/, app_settings.
+
+## 2026-11-26 — ADMIN FREE TIER: ACTIVE ON TOP + LOOK-ALIKE WARNING (branch `claude/free-tier-active`, NOT merged; sql/228 NOT applied; web only, no Render)
+Admin → Free tier list (`components/AdminFreeTier.tsx`, logic `adapters/freeTierList.ts`; the old
+`FreeUserList` in Admin.tsx is gone). Admin texts `rd_adm_ft_*` = English in all 8 languages.
+- **Groups:** Using now (0 < used < cap, newest last order) · Finished (used ≥ cap, newest last order) ·
+  No orders yet (used 0, newest joined). Chips All / Active 7 days (last order ≤ 7 days) / ⚠ Look-alike.
+  Row: "Last order <ago>" (green ≤ 24 h) / "No orders yet" / "Last order over 3 months ago" (used > 0,
+  no stored order — `orders` keeps ~3 months).
+- **Look-alike (`lookalikeKey`):** NFKC, lower case, a leading @ and digits . _ - spaces removed, keys < 4
+  ignored; keys = each TikTok username (`accountList`) + the shop name; 2+ FREE rows sharing a key (union,
+  chains too) → amber row, "⚠ N look-alike" (N = group size), tap → portal sheet (side by side + "Free
+  orders used together"). Only the free list is compared — paid sellers never. Display only.
+- **sql/228 (+ rollback, NOT applied):** `admin_free_tier_activity()` SECURITY DEFINER, `is_admin()`
+  first, plan = 'free' rows, email + max(orders.created_at); execute authenticated only. Read ONCE per
+  panel open, no timer. Missing → the list shows in server order + "Last order times couldn't be read."
+- Proof: `Admin.freeTier.test.tsx` (22), `freeTierActivitySql.test.ts`, `scripts/sql228-behaviour.mjs`
+  (PGlite 16), `docs/design/free-tier-active/` (preview `?admin=1&ft=1`). Production 2026-11-26: 499 free,
+  45 flagged. No help-guide change (Admin only). Not touched: free-order counting, plans, seller screens,
+  server, printing, chrome-extension/, app_settings.
+- **Order:** merge (Vercel) and sql/228 in either order.
