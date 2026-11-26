@@ -1,0 +1,42 @@
+tab iphone390 light: wide=false out=false bigButtonH=52 cut=false under44=none tap44=true errors=0
+tab iphone390 dark: wide=false out=false bigButtonH=52 cut=false under44=none tap44=true errors=0
+tab android360 light: wide=false out=false bigButtonH=52 cut=false under44=none tap44=true errors=0
+tab android360 dark: wide=false out=false bigButtonH=52 cut=false under44=none tap44=true errors=0
+tab laptop1280 light: wide=false out=false bigButtonH=52 cut=false under44=none tap44=true errors=0
+tab laptop1280 dark: wide=false out=false bigButtonH=52 cut=false under44=none tap44=true errors=0
+running iphone390: button="Sending in Messenger… 3 of 6"
+view iphone390 light: picture=720x534 buttons=ivc-fb-sheet-close:44 ivc-fb-sheet-send:48 ivc-fb-sheet-hand:48 ivc-fb-sheet-cancel:48
+view android360 dark: picture=720x488 buttons=ivc-fb-sheet-close:44 ivc-fb-sheet-send:48 ivc-fb-sheet-hand:48 ivc-fb-sheet-cancel:48
+view laptop1280 light: picture=720x534 buttons=ivc-fb-sheet-close:44 ivc-fb-sheet-send:48 ivc-fb-sheet-hand:48 ivc-fb-sheet-cancel:48
+360 en: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+360 fil: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+360 zh: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+360 zh-TW: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+360 vi: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+360 th: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+360 id: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+360 bg: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 en: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 fil: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 zh: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 zh-TW: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 vi: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 th: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 id: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+390 bg: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 en: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 fil: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 zh: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 zh-TW: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 vi: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 th: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 id: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+430 bg: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 en: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 fil: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 zh: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 zh-TW: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 vi: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 th: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 id: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0
+1280 bg: ok wide=false out=false bigButtonH=52 cut=false under44=none errors=0

@@ -6929,3 +6929,45 @@ it ends with the seller's plan (`plan_expiry`). Admin adds / removes it.
   `docs/design/fb-addon-lock/`. Not touched: server, Messenger receipt sending, TikTok tab, Orders,
   printing, buyer numbers, chrome-extension/, app_settings values, fb_receipt_access rows.
 
+
+## 2026-11-26 — FB-2: INVOICING → FACEBOOK "SEND ALL IN MESSENGER" (branch `claude/fb-send-all`, NOT merged; sql/225 + sql/226 NOT applied; needs Vercel + a Render deploy)
+Jeff's rules: (1) any seller with `fb_receipt_access.enabled`, ANY plan; (2) plan ended = Messenger receipt stops
+everywhere; (3) NO automatic send after a live (`fb_auto_receipt_enabled` and the after-live job untouched);
+(4) "Other chat app" (10/2018300) = amber note + "How".
+- **Rule 2 (`server/fbReceiptAccess.js`):** `store.hasReceiptAccess` = the add-on row AND `seller_profiles.plan_expiry`
+  empty or in the future; any read error / no profile / bad date = no. Covers the Orders receipt Send, Send all,
+  `/fb/access` (→ the Facebook tab shows the locked card) and the sold-out message. The Facebook sign-in
+  (`/fb/oauth/start`, fbRuntime gets `{ ...store, hasReceiptAccess: receiptAddonRow }`) keeps the ROW-only check, so a
+  seller whose plan ended does not lose the Page's Messenger permission for the renewal.
+- **Server (`server/fbSendAll.js`, routes `/fb/sendall/{start,status,preview}`, timer every 15 s):** a job per tap in
+  `fb_send_all_jobs` (sql/225; partial unique index = ONE waiting/running job per seller session → a second tap =
+  `already:true`). Each buyer: `fbReceipt.sendOne` = autoSend's lock / skip rules / claim / upload / one Graph call +
+  can_reply_privately preflight, but MANUAL fail counting (10/2018300 does not use the comment up). Picture =
+  `drawReceiptPng` with the seller's format + Invoicing shipping fee (`receiptDraw` got two optional pass-throughs:
+  `labels`, `shippingFee` — the after-live input is byte-identical) and the order lines minus `invoice_line_cancels`
+  (platform facebook). Skipped: already sent / pending / no-private-reply (autoSend's rule), invoice_sends
+  sent/skipped/cancelled (platform facebook, session_key = the session id), every line cancelled, mixed buyer.
+  10 sends a minute per seller (waits with a heartbeat). Gate per request and per buyer: `fb_send_all_enabled` = 'true'
+  OR admin (`seller_profiles.role`), AND rule 2. Heartbeat older than 3 min → re-queued (max 3 tries) by
+  `claim_fb_send_all_jobs`, which also deletes finished jobs after 30 days.
+- **The phone gets** per buyer NUMBER `{n, tag, at?}` + the job's counts. Tags: not_sent · sending · sent · other_app ·
+  cant_message · unknown (a 'pending' row older than 2 min = delivery unknown, shown as Can't message, never retried —
+  avoids a double message). Never a PSID, comment id, token or Facebook text (test-pinned).
+- **App (`components/FbSendAllTab.tsx`, `adapters/fbSendAll.ts`):** Invoicing gets `fbSendAll={{ lang }}` only when
+  `fbReceiptUi && (isAdmin || featureSw.fbSendAll)` (RedesignApp); the server answering `allowed:false` → the tab as
+  before. Session picker shared with TikTok; needs a uuid session (else one line). Tag on screen = `fbTagOf`: Cancelled
+  (invoice_sends) > Sent (server) > Sent by hand (invoice_sends sent) > the server's tag. Status read again every 4 s
+  only while a job waits/runs and the page is in front. ✎ View = `/fb/sendall/preview` (the server's picture).
+- **Error → tag (can it be tried again?):** sent → Sent · pending fresh → Sending… · pending old → Can't message (no) ·
+  10/2018300 → Other chat app (YES, not counted) · no_private_reply/0 (preflight) → Can't message (no) · 10903, 10900,
+  100/1893060: count toward 2 tries per comment → Not sent while another comment / try is left (yes), then Can't
+  message (no) · retryable codes (1,2,4,17,32,190,613,80001,80006) leave no row → Not sent (yes) · mixed buyer / no
+  comment in the last 7 days → Can't message (no).
+- **Switch:** `insert into app_settings (key, value) values ('fb_send_all_enabled', 'true') on conflict (key) do update set value = excluded.value;`
+  (sql/225 creates it 'false'; NOT flipped).
+- **Order:** sql/225 → Render deploy (quiet window) → Vercel merge → test as admin → flip the switch → sql/226 (guide).
+  Web before Render = the tab shows "Couldn't load" for admins only (the switch is off). Rollback: switch 'false' or
+  `sql/225_fb_send_all_rollback.sql`.
+- Proof: `fbSendAll.server.test.ts` (38), `Invoicing.fbSendAll.test.tsx` (21), `fbSendAll.test.ts` (9),
+  `invoicingOpen.app.test.tsx` (gate in the real app), `scripts/sql225-behaviour.mjs` (PGlite, 36),
+  `docs/design/fb-send-all/` (pictures + measured).
