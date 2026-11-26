@@ -88,7 +88,8 @@ describe("the session picker", () => {
     expect(q("ivc-session-btn")!.getAttribute("data-past")).toBe("0");
     expect(q("ivc-session-menu")).toBeNull();
     expect(DB.s.calls.some((c) => c.op === "rpc")).toBe(false);
-    expect(DB.s.calls.some((c) => c.table === "live_session_orders")).toBe(false);
+    // (the order-id read of the CURRENT session — invoicing-cancel, it has a platform filter — is not the past list)
+    expect(DB.s.calls.some((c) => c.table === "live_session_orders" && c.filters?.platform === undefined)).toBe(false);
   });
   it("opened: the current session first, then the past ones newest first, a multi-day one as a range", async () => {
     await open();
@@ -168,7 +169,8 @@ describe("a past session", () => {
     expect(qa("ivc-row").map((r) => `${r.getAttribute("data-buyer")}|${r.querySelector("[data-testid='ivc-row-handle']")!.textContent}|${r.querySelector("[data-testid='ivc-row-total']")!.textContent}`))
       .toEqual(want.map((r) => `${r.num}|${r.receipt.handle}|₱${r.total.toLocaleString("en-US")}`));
     // one read of that session's stored rows, by its id — the read the Orders tab makes
-    const reads = DB.s.calls.filter((c) => c.table === "live_session_orders");
+    // (the small order-id reads — invoicing-cancel, they have a platform filter — are counted apart)
+    const reads = DB.s.calls.filter((c) => c.table === "live_session_orders" && c.filters?.platform === undefined);
     expect(reads.length).toBe(1);
     expect(reads[0].filters).toMatchObject({ user_id: "u1", session_id: P2 });
   });

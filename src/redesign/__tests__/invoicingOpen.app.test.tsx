@@ -30,7 +30,7 @@ vi.mock("../../supabase", async () => {
   });
   const supabase = {
     // live_session_orders + my_session_summaries: what the session picker (and the Orders tab's) reads
-    from: (table: string) => (table === "invoice_sends" || table === "seller_receipt_settings" || table === "live_session_orders" ? DB.supabase.from(table) : chain()),
+    from: (table: string) => (table === "invoice_sends" || table === "invoice_line_cancels" || table === "seller_receipt_settings" || table === "live_session_orders" ? DB.supabase.from(table) : chain()),
     rpc: (name: string) => (name === "my_feature_access" ? Promise.resolve({ data: H.features.v, error: null }) : name === "my_session_summaries" ? DB.supabase.rpc(name) : chain()),
     auth: {
       getSession: DB.supabase.auth.getSession,

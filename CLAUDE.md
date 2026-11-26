@@ -6867,3 +6867,28 @@ Settings → Invoicing tab bar: a small Live-picker emblem above each name (TikT
   8 langs, 18/18 breaks). Preview `?ivc=40,12&ivclong=1`.
 - Not touched (0 lines): Orders, Live picker, sql/220 / saved-status table, server, printing, chrome-extension/,
   app_settings.
+
+## 2026-11-26 — INVOICING: "BUYER CANCELLED" + CANCEL ONE ITEM (branch `claude/invoicing-cancel`, on top of `claude/invoicing-view`, NOT merged; sql/222 NOT applied; web only, no Render)
+- **Buyer cancelled** (row sheet `tts-cancel-buyer`): invoice_sends status `'cancelled'` → tag Cancelled, row dimmed,
+  total struck; skipped by Send next; `invoiceCounts` → `{ all, active, sent, notSent, cancelled }` — "X of N" + the
+  summary use `active`, the All chip `all`; `inFilter` keeps cancelled under All only. Then "Add @x to Blacklist?"
+  (`ivc-bl-ask`) ONLY with prop `onBlacklistAdd` = RedesignApp `blacklistOn ? blacklist.add("tiktok", h, "not_checked_out")`.
+  **Undo cancel** → `status.mark(row,"sent",prev.hash)` when `prev.sentAt` (sql/222 keeps it), else `status.clear(row)`
+  (deletes the row = Not sent).
+- **Cancel one item:** the sheet's × on a line WITH an order id → `cancels.set(id, true)` (table
+  `invoice_line_cancels`, keyed by `live_session_orders.id`); struck + Undo (`tts-line-cancelled`), left out of message
+  + total (`InvoiceRow.lines` = kept lines; `orderIds` / `cancelled` per receipt line). Ids from
+  `useInvoiceOrderIds` = one read of the session's rows (only a uuid session id scopes it; else created_at ≥ oldest −
+  60 s) paired by `matchPaidRows` (the Orders Paid flag's rule), incremental re-read when the order count grows. No id
+  → today's × (message only). Last line → "Cancel the whole buyer?". `InvoiceRow.hashes` = current hash + the hash with
+  any of up to 6 cancelled lines back in → a line cancelled after the send never makes "New item". With no line
+  cancelled `hash === linesHashOf(receipt)` (old saved rows still match).
+- **sql/222 (+ rollback):** status check + `'cancelled'`; `invoice_sends_stamp` = sql/220 + the keep-time rule;
+  `invoice_line_cancels` (own-row RLS ×4, no FK to live_session_orders, database time); `privacy_retention_purge` =
+  sql/220 + one 3-month loop. Guards: stamp a9e642e4… → 9c9174b6…, purge be07f0fe… → 365b824b… (live read 2026-11-26).
+  ⚠️ The NEXT file that changes either function must start from sql/222's text; sql/220's rollback refuses after it.
+- **Either order is safe:** web before sql/222 → a cancel is refused, shown and counted in "N not saved yet" (retried);
+  the cancelled-lines read fails → the error card with Try again (Send next waits for it).
+- Guide: invoicing section (2 lines) + 116b + sql/221 row (still NOT applied).
+- Proof: `Invoicing.cancel.test.tsx`, `invoicingCancelSql.test.ts`, `scripts/sql222-behaviour.mjs` (PGlite 54),
+  `docs/design/invoicing-cancel/` (pictures, measured 360/390/430/1280 × 8, 20/20 breaks).
