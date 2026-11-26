@@ -3,13 +3,16 @@
 import subprocess, sys
 INV = "src/redesign/screens/Invoicing.tsx"; AD = "src/redesign/adapters/invoicing.ts"; SH = "src/redesign/components/TikTokSendSheet.tsx"
 BREAKS = [
-  ("count adds up quantities instead of lines", AD, "r.receipt.lines.length", "r.receipt.lines.reduce((s, l) => s + (l.qty || 1), 0)"),
-  ("count off by one", AD, "r.receipt.lines.length", "r.receipt.lines.length + 1"),
-  ("'1 items' instead of '1 item'", INV, "n === 1 ? t.rd_ivc_items_1 : ", ""),
-  ("count line not shown", INV, "· {itemsText(itemCount(r))}", ""),
+  # since invoicing-cancel the row count is PIECES (sum of quantities, cancelled lines / buyers left out)
+  ("pieces count lines, not quantities", AD, "(r.cancelled?.[i] ? n : n + qtyOf(l.qty))", "(r.cancelled?.[i] ? n : n + 1)"),
+  ("pieces off by one", AD, "r.receipt.lines.reduce((n, l, i) => (r.cancelled?.[i] ? n : n + qtyOf(l.qty)), 0)", "r.receipt.lines.reduce((n, l, i) => (r.cancelled?.[i] ? n : n + qtyOf(l.qty)), 1)"),
+  ("'1 pcs' instead of '1 pc'", INV, "n === 1 ? t.rd_ivc_pcs_1 : ", ""),
+  ("count line not shown", INV, "· {piecesText(pieceCount(r))}", ""),
+  ("cancelled lines still counted", AD, "(r.cancelled?.[i] ? n : n + qtyOf(l.qty))", "(n + qtyOf(l.qty))"),
+  ("a cancelled buyer still shows a count", INV, "{!off && <span data-testid=\"ivc-row-pcs\"", "{true && <span data-testid=\"ivc-row-pcs\""),
   ("View opens the first row, not its own", INV, "e.stopPropagation(); setSheetId(r.id);", "e.stopPropagation(); setSheetId(shown[0].id);"),
   ("View opens nothing", INV, "e.stopPropagation(); setSheetId(r.id);", "e.stopPropagation();"),
-  ("row tap no longer opens the sheet", INV, 'data-tag={tag} onClick={() => setSheetId(r.id)}', "data-tag={tag}"),
+  ("row tap no longer opens the sheet", INV, 'data-cancelled={off ? "1" : undefined} onClick={() => setSheetId(r.id)}', 'data-cancelled={off ? "1" : undefined}'),
   ("View loses its 44px tap area", INV, 'className="sfl-tap44"', ""),
   ("View without the accent outline", INV, 'border: "1.5px solid var(--accent)", background: "transparent", color: "var(--accent-fg)", fontSize: 12', 'border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 12'),
   ("by hand also for Next", AD, 'tag === "copy_failed" || tag === "sending"', 'tag === "copy_failed" || tag === "sending" || tag === "next"'),
@@ -28,7 +31,7 @@ for name, f, old, new in BREAKS:
     if old not in src: print(f"SKIP (text not found): {name}"); continue
     open(f, "w").write(src.replace(old, new, 1))
     try:
-        r = subprocess.run(["npx", "vitest", "run", "src/redesign/screens/__tests__/Invoicing.view.test.tsx"], capture_output=True, text=True)
+        r = subprocess.run(["npx", "vitest", "run", "src/redesign/screens/__tests__/Invoicing.view.test.tsx", "src/redesign/screens/__tests__/Invoicing.cancel.test.tsx"], capture_output=True, text=True)
     finally:
         open(f, "w").write(src)
     ok = r.returncode != 0

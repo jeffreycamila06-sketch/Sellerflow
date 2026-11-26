@@ -1,7 +1,9 @@
-caught: count adds up quantities instead of lines
-caught: count off by one
-caught: '1 items' instead of '1 item'
+caught: pieces count lines, not quantities
+caught: pieces off by one
+caught: '1 pcs' instead of '1 pc'
 caught: count line not shown
+caught: cancelled lines still counted
+caught: a cancelled buyer still shows a count
 caught: View opens the first row, not its own
 caught: View opens nothing
 caught: row tap no longer opens the sheet
@@ -16,4 +18,4 @@ caught: by hand leaves the sheet open
 caught: by hand leaves 'Copy failed' on the row
 caught: sheet ignores the by-hand rule (always shown in Invoicing)
 caught: by hand shown in the Orders sheet too
-18 of 18 caught
+20 of 20 caught

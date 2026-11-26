@@ -6890,5 +6890,8 @@ Settings → Invoicing tab bar: a small Live-picker emblem above each name (TikT
 - **Either order is safe:** web before sql/222 → a cancel is refused, shown and counted in "N not saved yet" (retried);
   the cancelled-lines read fails → the error card with Try again (Send next waits for it).
 - Guide: invoicing section (2 lines) + 116b + sql/221 row (still NOT applied).
+- **Row count = PIECES** (`pieceCount`: sum of each kept line's quantity, a line with no quantity = 1, x2 = 2;
+  cancelled lines left out; a cancelled buyer shows no count). `· N pcs` / `1 pc` (`rd_ivc_pcs` / `rd_ivc_pcs_1`):
+  en / fil / id "pcs", zh / zh-TW 件, vi cái, th ชิ้น, bg бр. Replaces the View branch's "N items".
 - Proof: `Invoicing.cancel.test.tsx`, `invoicingCancelSql.test.ts`, `scripts/sql222-behaviour.mjs` (PGlite 54),
   `docs/design/invoicing-cancel/` (pictures, measured 360/390/430/1280 × 8, 20/20 breaks).

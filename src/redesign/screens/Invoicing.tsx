@@ -38,7 +38,7 @@ import InvoiceFormatSheet from "../components/InvoiceFormatSheet";
 import type { BlAddResult } from "../adapters/blacklist";
 import {
   EMPTY_INVOICE_FORMAT, INVOICE_PLATFORMS, PLATFORM_NAME, inFilter, invoiceCounts, invoiceMessage, invoiceRows, loadInvoiceFormat, loadPending,
-  byHandAllowed, itemCount, savePending, sendTarget, sentTime, stateOf, tagOf, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus,
+  byHandAllowed, pieceCount, savePending, sendTarget, sentTime, stateOf, tagOf, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus,
   type InvoiceFilter, type InvoiceFormat, type InvoicePlatform, type InvoiceRow, type InvoiceTag,
 } from "../adapters/invoicing";
 
@@ -225,7 +225,7 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
     : tag === "copy_failed" ? t.rd_ivc_t_copy_failed
     : tag === "cancelled" ? t.rd_ivc_t_cancelled
     : t.rd_ivc_f_not;
-  const itemsText = (n: number) => (n === 1 ? t.rd_ivc_items_1 : tpl(t.rd_ivc_items, { n }));
+  const piecesText = (n: number) => (n === 1 ? t.rd_ivc_pcs_1 : tpl(t.rd_ivc_pcs, { n }));
 
   const sheetRow = sheetId ? rows.find((r) => r.id === sheetId) ?? null : null;
   const shown = rows.filter((r) => inFilter(stateOf(r, status.saved.get(r.id)), filter));
@@ -365,7 +365,7 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
                   <span data-testid="ivc-row-handle" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.receipt.handle}</span>
                   <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 6, rowGap: 2, minWidth: 0 }}>
                     <span data-testid="ivc-row-tag" style={{ maxWidth: "100%", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, lineHeight: 1.35, ...TAG_LOOK[tag] }}>{tagText(tag, r)}</span>
-                    <span data-testid="ivc-row-items" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap", lineHeight: 1.35 }}>· {itemsText(itemCount(r))}</span>
+                    {!off && <span data-testid="ivc-row-pcs" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap", lineHeight: 1.35 }}>· {piecesText(pieceCount(r))}</span>}
                   </span>
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>

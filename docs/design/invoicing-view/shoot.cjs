@@ -59,7 +59,7 @@ const measure = (p) => p.evaluate(() => {
     const rr = r.getBoundingClientRect();
     const total = r.querySelector("[data-testid=ivc-row-total]");
     const view = r.querySelector("[data-testid=ivc-row-view]");
-    const items = r.querySelector("[data-testid=ivc-row-items]");
+    const items = r.querySelector("[data-testid=ivc-row-pcs]");
     const handle = r.querySelector("[data-testid=ivc-row-handle]");
     const tr = total.getBoundingClientRect(), vr = view.getBoundingClientRect();
     const lh = (el) => parseFloat(getComputedStyle(el).lineHeight) || 16;
@@ -128,10 +128,11 @@ const measure = (p) => p.evaluate(() => {
     const counts = await p.evaluate(async () => {
       const bad = [];
       for (const r of [...document.querySelectorAll("[data-testid=ivc-row]")].slice(0, 6)) {
-        const n = Number(r.querySelector("[data-testid=ivc-row-items]").textContent.replace(/\D/g, ""));
+        const n = Number(r.querySelector("[data-testid=ivc-row-pcs]").textContent.replace(/\D/g, ""));
         r.querySelector("[data-testid=ivc-row-view]").click();
         await new Promise((ok) => setTimeout(ok, 120));
-        const lines = document.querySelectorAll("[data-testid=tts-line]").length;
+        // pieces since invoicing-cancel: the sum of each line's quantity ("x2" = 2)
+        const lines = [...document.querySelectorAll("[data-testid=tts-line]")].reduce((k, l) => k + Number((l.querySelector("[data-testid=tts-qty]")?.textContent || "1").replace(/\D/g, "") || 1), 0);
         if (lines !== n) bad.push(`#${r.getAttribute("data-buyer")} count ${n} sheet ${lines}`);
         document.querySelector("[data-testid=tts-close]").click();
         await new Promise((ok) => setTimeout(ok, 80));

@@ -431,9 +431,9 @@ export function sentTime(iso: string | null | undefined): string {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-/** The number of items in a row = the order lines its sheet shows (one per order; an order with qty x2
- *  is ONE line with "x2" in the sheet, so it counts as 1). */
-export const itemCount = (r: InvoiceRow): number => r.receipt.lines.filter((_, i) => !r.cancelled?.[i]).length;
+/** The PIECES in a row = the sum of each line's quantity (a line without a quantity counts 1; "x2" = 2).
+ *  Cancelled lines are not counted (a cancelled buyer's row shows no count at all). */
+export const pieceCount = (r: InvoiceRow): number => r.receipt.lines.reduce((n, l, i) => (r.cancelled?.[i] ? n : n + qtyOf(l.qty)), 0);
 /** "I sent it by hand" is offered only for a buyer whose copy failed or who is being sent right now. */
 export const byHandAllowed = (tag: InvoiceTag): boolean => tag === "copy_failed" || tag === "sending";
 

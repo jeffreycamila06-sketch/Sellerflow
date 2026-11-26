@@ -1,7 +1,7 @@
-// Settings → INVOICING rows (2026-11-26, follow-up): "· N items" under the handle, a visible "✎ View"
+// Settings → INVOICING rows (2026-11-26, follow-up): "· N pcs" under the handle, a visible "✎ View"
 // button that opens the SAME row sheet a row tap opens, and "I sent it by hand" in that sheet — only
-// while the buyer is "Copy failed" or "Sending…". N = the order lines the sheet shows (one line per
-// order; an order with qty x2 is ONE line with "x2", so it counts as 1).
+// while the buyer is "Copy failed" or "Sending…". N = PIECES: the sum of each line's quantity (a line
+// without a quantity counts 1; "x2" = 2). Cancelled lines / a cancelled buyer: Invoicing.cancel.test.tsx.
 // Database = the in-memory stand-in (invoiceFakeDb.ts), which also answers the past-session reads.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
@@ -22,7 +22,7 @@ import TikTokSendSheet from "../../components/TikTokSendSheet";
 import { DB, type FakeOrderRow } from "../../adapters/__tests__/invoiceFakeDb";
 import { rebuildSessionFromRows, type LiveSessionRow } from "../../../lib/orderLogic";
 import type { Buyer } from "../../../lib/orderTypes";
-import { byHandAllowed, itemCount, invoiceRows, type InvoiceTag } from "../../adapters/invoicing";
+import { byHandAllowed, pieceCount, invoiceRows, type InvoiceTag } from "../../adapters/invoicing";
 
 const t = buildT("en");
 const CUR = "cur-session", P2 = "past-two-day";
@@ -53,7 +53,6 @@ const tags = () => qa("ivc-row").map((r) => `${r.getAttribute("data-buyer")}:${r
 const sends = () => DB.s.sends.map((r) => `${r.buyer_number}:${r.status}`).sort();
 const tap = async (el: HTMLElement) => { fireEvent.click(el); await flush(); };
 const tapNext = async () => tap((q("ivc-send-next") || q("ivc-done"))!);
-const sheetLines = () => qa("tts-line").length + qa("tts-line-added").length;
 
 function Screen() {
   return (
@@ -77,47 +76,57 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("item count in the row", () => {
-  it("every row: '· N items' after the tag, N = the lines its sheet shows — multi-day buyers too", async () => {
+describe("pieces in the row", () => {
+  // the pieces of the sheet's lines: a line's "x2" = 2, no quantity = 1
+  const sheetPieces = () => qa("tts-line").reduce((n, l) => n + Number(l.querySelector("[data-testid='tts-qty']")?.textContent?.replace(/\D/g, "") || 1), 0);
+  it("every row: '· N pcs' after the tag, N = the sum of the quantities its sheet shows — multi-day buyers too", async () => {
     await open();
     expect(qa("ivc-row").map((r) => r.getAttribute("data-buyer"))).toEqual(["1", "2", "3"]);
-    expect(inRow(1, "ivc-row-items").textContent).toBe("· 2 items");     // Nov 25 + Nov 26, one row
-    expect(inRow(2, "ivc-row-items").textContent).toBe("· 1 item");      // singular
-    expect(inRow(3, "ivc-row-items").textContent).toBe("· 3 items");
+    expect(inRow(1, "ivc-row-pcs").textContent).toBe("· 2 pcs");      // Nov 25 + Nov 26, one row
+    expect(inRow(2, "ivc-row-pcs").textContent).toBe("· 2 pcs");      // ONE order, qty x2
+    expect(inRow(3, "ivc-row-pcs").textContent).toBe("· 3 pcs");
     for (const n of [1, 2, 3]) {
-      const shown = Number(inRow(n, "ivc-row-items").textContent!.replace(/\D/g, ""));
+      const shown = Number(inRow(n, "ivc-row-pcs").textContent!.replace(/\D/g, ""));
       await tap(rowOf(n));
-      expect(sheetLines()).toBe(shown);
+      expect(sheetPieces()).toBe(shown);
       await tap(q("tts-close")!);
     }
   });
-  it("an order with qty x2 is ONE line (the sheet shows it once, with 'x2') → counts as 1", async () => {
+  it("an order with qty x2 = 2 pcs (one line in the sheet, with 'x2'); a line without a quantity = 1", async () => {
     await open();
     await tap(rowOf(2));
     expect(qa("tts-line")).toHaveLength(1);
     expect(q("tts-qty")!.textContent).toBe("x2");
-    expect(inRow(2, "ivc-row-items").textContent).toBe("· 1 item");
-    expect(itemCount(invoiceRows(buyersOf(CUR_ROWS), "tiktok", "")[1])).toBe(1);
+    expect(inRow(2, "ivc-row-pcs").textContent).toBe("· 2 pcs");
+    const rows = invoiceRows(buyersOf(CUR_ROWS), "tiktok", "");
+    expect(pieceCount(rows[1])).toBe(2);
+    const noQty = { ...rows[0], receipt: { ...rows[0].receipt, lines: rows[0].receipt.lines.map((l) => ({ item: l.item, total: l.total })) } };
+    expect(pieceCount(noQty)).toBe(2);
+  });
+  it("one piece reads '1 pc'", async () => {
+    render(<TProvider lang="en"><div data-redesign=""><Invoicing cur="₱" onBack={() => {}} buyers={buyersOf([CUR_ROWS[3]])} sessionKey={CUR} sessionId={CUR} pastSessions sellerId="u1" todayId="2026-11-26" sessionStartedAt="2026-11-25T04:00:00.000Z" sessionWindowDays={2} tapGuardMs={0} /></div></TProvider>);
+    await flush();
+    expect(inRow(3, "ivc-row-pcs").textContent).toBe("· 1 pc");
   });
   it("the count sits after the tag, on the tag's line", async () => {
     await open();
-    const tag = inRow(1, "ivc-row-tag"), items = inRow(1, "ivc-row-items");
-    expect(tag.parentElement).toBe(items.parentElement);
-    expect(tag.compareDocumentPosition(items) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const tag = inRow(1, "ivc-row-tag"), pcs = inRow(1, "ivc-row-pcs");
+    expect(tag.parentElement).toBe(pcs.parentElement);
+    expect(tag.compareDocumentPosition(pcs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
-  it("a past (two-day) session: its own counts, and its sheet shows the same lines", async () => {
+  it("a past (two-day) session: its own counts, and its sheet shows the same pieces", async () => {
     await open();
     await pickPast();
-    expect(inRow(1, "ivc-row-items").textContent).toBe("· 2 items");     // Nov 24 + Nov 25
-    expect(inRow(2, "ivc-row-items").textContent).toBe("· 1 item");
+    expect(inRow(1, "ivc-row-pcs").textContent).toBe("· 2 pcs");      // Nov 24 + Nov 25
+    expect(inRow(2, "ivc-row-pcs").textContent).toBe("· 1 pc");
     await tap(inRow(1, "ivc-row-view"));
-    expect(sheetLines()).toBe(2);
+    expect(sheetPieces()).toBe(2);
   });
   it("the words exist in all 8 languages", () => {
     for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as const) {
       const tl = buildT(lang);
-      expect(tl.rd_ivc_items_1.trim()).not.toBe("");
-      expect(tl.rd_ivc_items).toContain("{n}");
+      expect(tl.rd_ivc_pcs_1).toContain("1");
+      expect(tl.rd_ivc_pcs).toContain("{n}");
       expect(tl.rd_ivc_view.trim()).not.toBe("");
       expect(tl.rd_ivc_by_hand.trim()).not.toBe("");
     }

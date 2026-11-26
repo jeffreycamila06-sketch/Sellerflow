@@ -85,6 +85,7 @@ describe("Buyer cancelled", () => {
     expect(rowOf(2).getAttribute("data-cancelled")).toBe("1");
     expect(inRow(2, "ivc-row-tag").textContent).toBe("Cancelled");
     expect(inRow(2, "ivc-row-total").style.textDecoration).toBe("line-through");
+    expect(inRow(2, "ivc-row-pcs")).toBeNull();                         // a cancelled buyer's pieces are not counted
     expect(q("ivc-progress-text")!.textContent).toBe("0 of 2 sent");
     expect(q("ivc-summary-line")!.textContent).toBe(tpl(t.rd_ivc_summary, { date: "11/25 → 11/26", n: 2, sum: "₱570" }));
     expect(sends()).toEqual(["2:cancelled"]);
@@ -199,7 +200,7 @@ describe("cancel one item", () => {
     expect((q("tts-total") as HTMLInputElement).value).toBe("120");
     await tap(q("tts-close"));
     expect(inRow(1, "ivc-row-total").textContent).toBe("₱120");
-    expect(inRow(1, "ivc-row-items").textContent).toBe("· 1 item");
+    expect(inRow(1, "ivc-row-pcs").textContent).toBe("· 1 pc");      // the cancelled line's piece is not counted
   });
   it("kept after a reload and on another phone (nothing on the phone)", async () => {
     await open();
