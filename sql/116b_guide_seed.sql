@@ -527,9 +527,23 @@ Who has it:
 - **Tap the buyer''s name** to see their parcels. **Forgive** removes a return that wasn''t the buyer''s fault; **Undo** puts it back.
 - Orders are **not** blocked. 1-Click, Auto mode and printing work as usual.
 - For Taiwan sellers who use **Pickup Status**.'),
-  ('shipping', 'Shipping (Coming soon)', '2026-10-11'::date, 'shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送', 'The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
+  ('shipping', 'Shipping (Coming soon)', '2026-11-27'::date, 'shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送', 'The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. For TikTok Shop waybills in the Philippines, see **Waybill username**.
 
 There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.'),
+  ('waybill-username', 'Waybill username (TikTok Shop, Philippines)', '2026-11-27'::date, 'waybill, waybill username, shipping label, label, j&t, tiktok shop, buyer username, username on waybill, pangalan sa waybill, resi, 运单, 託運單, 用户名, 帳號', 'Waybill username puts each buyer''s **@username** on their TikTok Shop waybill, so you know whose bag it is. It is for sellers in the Philippines. Open **Settings → Shipping → Waybill username**.
+
+1. In TikTok Shop Seller Center, download the order list (**Orders → Export → CSV**) and the waybills (**Shipping labels → Print / download**).
+2. Tap **Choose order list (CSV)** and pick the CSV. Tap **Choose waybill PDF** and pick the PDF.
+3. Tap **Add usernames**.
+4. Check the list. A green **@username** is ready. **Pick buyer** means you choose: pick from your buyers of today and yesterday, or search. **No match — leave blank** prints that waybill without a username.
+5. On a phone, tap **Download PDF** and save or share the file. On a laptop, tap **Print** or **Download PDF**.
+
+- Buyers come from your TikTok lives today and yesterday.
+- Tap a green @username to change it.
+- **Couldn''t place the username on this waybill**: that waybill prints as it is, without a username.
+- **Not in the order list**: download the order list again so it has that order.
+- You can do this many times a day. Your files are not saved.
+- In Taiwan, Waybill username shows **Soon**.'),
   ('manage-accounts', 'Manage TikTok accounts (4-hour lock)', '2026-11-25'::date, 'manage accounts, change username, tiktok username, locked, unlock, 4 hours, palitan account, naka-lock, 更改账号, 換帳號, 锁定', 'Go to **Settings → General Settings → TikTok Live** (or **Manage / add accounts** on the Live screen). This opens **Manage TikTok channels**.
 
 - Type your username in an empty row (lowercase letters, numbers, underscores and periods) and tap **Save profile**.
@@ -659,5 +673,5 @@ on conflict (id) do update set
   body = excluded.body, updated_at = now()
 where (support_guide.title, support_guide.checked, support_guide.keywords, support_guide.body)
   is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body);
-delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'choose-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'invoicing', 'past-sessions', 'sales', 'miners-customers', 'blacklist', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'invite-friends', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
+delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'choose-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'invoicing', 'past-sessions', 'sales', 'miners-customers', 'blacklist', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'waybill-username', 'manage-accounts', 'password-reset', 'signup', 'invite-friends', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support', 'website');
 commit;

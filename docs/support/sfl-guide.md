@@ -739,12 +739,31 @@ Keywords: buyer alert, returns, returned parcels, bogus buyer, joy reserver, pic
 - For Taiwan sellers who use **Pickup Status**.
 
 ## shipping — Shipping (Coming soon)
-Last checked: 2026-10-11
+Last checked: 2026-11-27
 Keywords: shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送
 
-The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
+The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. For TikTok Shop waybills in the Philippines, see **Waybill username**.
 
 There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.
+
+## waybill-username — Waybill username (TikTok Shop, Philippines)
+Last checked: 2026-11-27
+Keywords: waybill, waybill username, shipping label, label, j&t, tiktok shop, buyer username, username on waybill, pangalan sa waybill, resi, 运单, 託運單, 用户名, 帳號
+
+Waybill username puts each buyer's **@username** on their TikTok Shop waybill, so you know whose bag it is. It is for sellers in the Philippines. Open **Settings → Shipping → Waybill username**.
+
+1. In TikTok Shop Seller Center, download the order list (**Orders → Export → CSV**) and the waybills (**Shipping labels → Print / download**).
+2. Tap **Choose order list (CSV)** and pick the CSV. Tap **Choose waybill PDF** and pick the PDF.
+3. Tap **Add usernames**.
+4. Check the list. A green **@username** is ready. **Pick buyer** means you choose: pick from your buyers of today and yesterday, or search. **No match — leave blank** prints that waybill without a username.
+5. On a phone, tap **Download PDF** and save or share the file. On a laptop, tap **Print** or **Download PDF**.
+
+- Buyers come from your TikTok lives today and yesterday.
+- Tap a green @username to change it.
+- **Couldn't place the username on this waybill**: that waybill prints as it is, without a username.
+- **Not in the order list**: download the order list again so it has that order.
+- You can do this many times a day. Your files are not saved.
+- In Taiwan, Waybill username shows **Soon**.
 
 ## manage-accounts — Manage TikTok accounts (4-hour lock)
 Last checked: 2026-11-25

@@ -147,15 +147,19 @@ describe("the real app (Taiwan seller)", () => {
     expect(shippingScreenOpen()).toBe(false);
   });
 
-  it("admin: the Settings tile opens Shipping, and so does the Orders button", async () => {
+  it("admin: Settings → SHIPPING → Shipping → the 7-11 row opens Shipping, and so does the Orders button", async () => {
+    // Since Waybill username (sql/231) admins always see the SHIPPING group; the old "Shipping" tile is inside it
+    // (Settings never shows two "Shipping" entries). Same gate (shippingGate "open") for that row.
     H.role = "admin";
     render(<RedesignApp />);
     await flush();
     nav(t.rd_nav_settings);
     await flush();
-    fireEvent.click(screen.getByTestId("tile-shipping"));
+    expect(screen.queryByTestId("tile-shipping")).toBeNull();
+    fireEvent.click(screen.getByTestId("tile-shiphub"));
     await flush();
-    expect(screen.queryByTestId("tile-shipping")).toBeNull();             // left Settings
+    fireEvent.click(screen.getByTestId("shub-711"));
+    await flush();
     expect(shippingScreenOpen()).toBe(true);
     nav(t.rd_nav_orders);
     await flush();
@@ -169,7 +173,8 @@ describe("the real app (Taiwan seller)", () => {
     expect(src).toContain("const shippingGate = shippingAccess(isAdmin, hideShipping);");
     expect(src).toContain('{screen === "shipping" && shippingGate === "open" && <Shipping ');
     expect(src).toContain('onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}');
-    expect(src).toContain('onShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined}');
-    expect(src.match(/setScreen\("shipping"\)/g)).toHaveLength(2);       // no other way in
+    expect(src).toContain('onShipping={!shipHubOn && shippingGate === "open" ? () => setScreen("shipping") : undefined}');
+    expect(src).toContain('on711={shippingGate === "open" ? () => setScreen("shipping") : undefined}'); // the row inside the SHIPPING group's screen
+    expect(src.match(/setScreen\("shipping"\)/g)).toHaveLength(3);       // no other way in
   });
 });

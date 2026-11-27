@@ -1,0 +1,8 @@
+laptop1280_1_settings.png · sideways scroll 0 px
+laptop1280_2_shipping_ph.png · sideways scroll 0 px
+laptop1280_3_upload_empty.png · sideways scroll 0 px
+laptop1280_4_upload_ready.png · sideways scroll 0 px
+laptop1280_5_results.png · sideways scroll 0 px
+laptop1280_6_pick_sheet.png · sideways scroll 0 px
+laptop1280_7_pick_selected.png · sideways scroll 0 px
+laptop1280_8_after_pick.png · sideways scroll 0 px

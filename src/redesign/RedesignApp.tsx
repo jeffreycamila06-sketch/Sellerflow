@@ -22,6 +22,9 @@ import { claimSignupCode, takePendingInvite } from "./adapters/invite";
 import GeneralSettings from "./screens/GeneralSettings";
 import Customers from "./screens/Customers";
 import Blacklist from "./screens/Blacklist";
+import ShippingHub from "./screens/ShippingHub";
+import WaybillUsername from "./screens/WaybillUsername";
+import { waybillAccess, seen, markSeen, SHIP_HUB_SEEN_KEY, WAYBILL_SEEN_KEY } from "./adapters/waybillGate";
 import Subscription from "./screens/Subscription";
 import Support from "./screens/Support";
 import Admin, { AdminPanel, type AdminPanelKind } from "./screens/Admin";
@@ -200,10 +203,10 @@ type Screen =
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
   | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts" | "shopeeshops" | "invoicing"
-  | "website" | "websitepay" | "invite" | "blacklist";
+  | "website" | "websitepay" | "invite" | "blacklist" | "shiphub" | "waybill";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite", "blacklist", "shopeeshops", "invoicing"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite", "blacklist", "shopeeshops", "invoicing", "shiphub", "waybill"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -976,6 +979,12 @@ export default function RedesignApp() {
   // classicTextCardShown). Set in THIS render (not an effect) so oneStickerDevicePath below — the Live print
   // pattern screen's "this phone prints the older sticker" note — always agrees with what the printer gets.
   const printerFlowV2 = printerFlowV2Enabled(isAdmin, hasFeature("test_printers"), featureSw.printerFlowV2);
+  // WAYBILL USERNAME (sql/231): Philippines = Settings → SHIPPING → Shipping → Waybill username; Taiwan = the
+  // same row with "Soon". Off (no switch / key / admin) → "hidden" → Settings exactly as before.
+  const waybillAcc = waybillAccess({ market, isAdmin, switchOn: featureSw.waybillUsername, hasKey: hasFeature("waybill_username") });
+  const shipHubOn = waybillAcc !== "hidden";
+  const [shipHubSeen, setShipHubSeen] = useState(() => seen(SHIP_HUB_SEEN_KEY));
+  const [waybillSeen, setWaybillSeen] = useState(() => seen(WAYBILL_SEEN_KEY));
   const sellerWebsiteOn = sellerWebsiteVisible(featureSw.sellerWebsite, hasFeature("seller_website")); // Seller Website Phase 1 (sql/163)
   // Seller Website teaser (sql/169): "Soon" card / Sales row for sellers without the website (never admins)
   const websiteTeaserOn = websiteTeaserVisible({ switchOn: featureSw.websiteTeaser, hasWebsite: sellerWebsiteOn, isAdmin });
@@ -3197,8 +3206,9 @@ export default function RedesignApp() {
               onGeneral={() => setScreen("settings")}
               onCustomers={() => setScreen("customers")}
               onAdmin={() => setScreen("admin")}
-              onShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined}
-              shippingSoon={shippingGate === "soon"}
+              onShipping={!shipHubOn && shippingGate === "open" ? () => setScreen("shipping") : undefined}
+              shippingSoon={!shipHubOn && shippingGate === "soon"}
+              {...(shipHubOn ? { onShippingHub: () => { markSeen(SHIP_HUB_SEEN_KEY); setShipHubSeen(true); setScreen("shiphub"); }, shippingHubNew: !shipHubSeen } : {})}
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
@@ -3295,6 +3305,12 @@ export default function RedesignApp() {
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
+          {screen === "shiphub" && waybillAcc !== "hidden" && (
+            <ShippingHub onBack={() => goBack()} access={waybillAcc} waybillNew={!waybillSeen}
+              onWaybill={waybillAcc === "full" ? () => { markSeen(WAYBILL_SEEN_KEY); setWaybillSeen(true); setScreen("waybill"); } : undefined}
+              on711={shippingGate === "open" ? () => setScreen("shipping") : undefined} sub711={tApp.rd_shp_sub} />
+          )}
+          {screen === "waybill" && waybillAcc === "full" && <WaybillUsername onBack={() => goBack()} userId={authUserId || ""} cur={cur} />}
           {screen === "blacklist" && blacklistOn && (
             <Blacklist onBack={() => goBack()} rows={blacklist.rows} error={blacklist.error} onReload={() => void blacklist.reload()} webScan={webScannerAvailable(webQrOn)}
               onAdd={blacklist.add} onUndo={blacklist.undo} onRemove={blacklist.remove} liveScan={nativeScannerAvailable(featureSw.nativeQrScanner)} />
