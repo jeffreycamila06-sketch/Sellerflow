@@ -1079,10 +1079,10 @@ export default function RedesignApp() {
   // still-mounted landing (web only; the APK starts at screen "login" and never sets this).
   const [authModal, setAuthModal] = useState<"" | "login" | "signup">("");
   const [adminPanel, setAdminPanel] = useState<AdminPanelKind | null>(null);
-  // Business Pulse — WEB-ONLY admin activity view (admin_business_pulse RPC).
-  // Enabled ONLY while the pulse panel is open (read-on-open) and never in the app
-  // shell (isAppShell → phone/APK/iOS) → zero polling, zero phone egress.
-  const pulse = useBusinessPulse(authed && isAdmin && !isAppShell() && adminPanel === "pulse");
+  // Business Pulse — admin activity view (admin_business_pulse RPC), on the web AND in the phone
+  // apps (2026-11-27). Enabled ONLY while the pulse panel is open (read-on-open) → zero polling.
+  // Counts only — no price or revenue anywhere in the panel.
+  const pulse = useBusinessPulse(authed && isAdmin && adminPanel === "pulse");
   // Announcements — ONE read of the latest 10 rows on app open (zero poll);
   // banner + 🔔 bell state. Admin publish/unpublish flow through the same hook.
   const ann = useAnnouncements(authed);

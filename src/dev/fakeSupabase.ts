@@ -247,6 +247,20 @@ if (/[?&]ft=1\b/.test(Q)) {
   RPC.admin_free_tier_activity = list.map((f) => ({ email: f.email, last_order_at: f.lastAgoMs == null ? null : new Date(now - f.lastAgoMs).toISOString() }));
 }
 
+// Admin → Live Pulse previews (docs/design/pulse-tile): ?pulse=1 — made-up activity for the Live Pulse panel.
+if (/[?&]pulse=1\b/.test(Q)) {
+  RPC.admin_business_pulse = {
+    ok: true, generated_at: new Date(now).toISOString(),
+    summary: { active_15m: 7, active_60m: 11, orders_60m: 184, orders_today: 2316, active_today: 23 },
+    hourly: [8, 9, 10, 11, 12, 13, 14].map((hr, i) => ({ hr, orders: [40, 120, 260, 310, 280, 330, 184][i] })),
+    sellers: [
+      { store_name: "Lia Closet", email: "lia.closet@example.com", orders_today: 412, orders_60m: 38, last_order_at: new Date(now - 60_000).toISOString() },
+      { store_name: "Mika Thrift Corner", email: "mika.thrift@example.com", orders_today: 301, orders_60m: 22, last_order_at: new Date(now - 240_000).toISOString() },
+      { store_name: "Dee Store", email: "dee.store@example.com", orders_today: 96, orders_60m: 0, last_order_at: new Date(now - 7_200_000).toISOString() },
+    ],
+  };
+}
+
 // Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
 //   = the switch invoicing_enabled on, a running 2-day session with that many TikTok buyers (+ 2 Facebook
 //   buyers, who are not in the TikTok list), the first <sent> saved as Sent, then one Next, one Not sent,

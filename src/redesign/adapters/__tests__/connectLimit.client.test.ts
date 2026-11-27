@@ -188,8 +188,8 @@ describe("10 + 12. the rollback app's readable text; the admin comment placement
   });
   it("12. the Business Pulse comment sits right above PulsePanel again (not above the TikTok limit card)", () => {
     const admin = src("src/redesign/screens/Admin.tsx");
-    const c = admin.indexOf("// Business Pulse — WEB-ONLY admin activity view.");
-    expect(admin.indexOf("// Business Pulse — WEB-ONLY")).toBe(admin.lastIndexOf("// Business Pulse — WEB-ONLY"));
+    const c = admin.indexOf("// Business Pulse — admin activity view (web + phone apps).");
+    expect(admin.indexOf("// Business Pulse — admin activity view")).toBe(admin.lastIndexOf("// Business Pulse — admin activity view"));
     expect(admin.slice(c, admin.indexOf("function PulsePanel(")).split("\n").length).toBe(4);   // 3 comment lines, then the function
     expect(admin.slice(admin.indexOf("export function TikTokLimitCard()") - 400, admin.indexOf("export function TikTokLimitCard()"))).not.toContain("Business Pulse");
   });

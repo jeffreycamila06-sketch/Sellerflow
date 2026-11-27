@@ -24,6 +24,7 @@ import SoonBadge from "../components/SoonBadge";
 import ContactChip from "../components/ContactChip";
 import { AdminCountryPicker, CountryPill, CountryTag } from "../components/AdminCountry";
 import { FreeTierList } from "../components/AdminFreeTier";
+import AdminPulseTile from "../components/AdminPulseTile";
 import { AdminCountryCtx, type AdminCountryApi, type CountryInfo } from "../adapters/adminCountryCtx";
 import { useAdminCountries, resolveUserCountry } from "../adapters/adminCountry";
 import AdminHelpChat from "../components/AdminHelpChat";
@@ -168,9 +169,9 @@ export default function Admin({ onBack, onOpenPanel, counts, live = false, userB
         )}
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "2px 2px 10px" }}>{t.rd_adm_controls}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 16 }}>
-          {/* Live Pulse — WEB-ONLY (hidden in the APK / phone shell, incl. iOS which
-              carries Capacitor → isAppShell()). Activity counts only, no revenue. */}
-          {!isAppShell() && <Ctrl icon={cic.pulse} label={t.rd_pulse_ctrl} onClick={() => onOpenPanel("pulse")} />}
+          {/* Live Pulse — FIRST, on the web AND in the phone apps (2026-11-27). The tile shows how many
+              TikTok lives run now against the limit (components/AdminPulseTile.tsx). Counts only, no money. */}
+          <AdminPulseTile onOpen={() => onOpenPanel("pulse")} />
           <Ctrl icon={cic.sellers} label={t.rd_adm_ctrl_sellers} onClick={() => onOpenPanel("sellers")} />
           {/* C2 (audit) — the Plans/Payments panels were removed: they only ever
               rendered fabricated sample data (no payments backend by design —
@@ -905,7 +906,7 @@ export function TikTokLimitCard() {
   );
 }
 
-// Business Pulse — WEB-ONLY admin activity view. Counts + timestamps only (NO
+// Business Pulse — admin activity view (web + phone apps). Counts + timestamps only (NO
 // prices/revenue → coexists with the iOS payment-hiding gate). Data from the
 // admin_business_pulse RPC; read-on-open + manual Refresh (zero polling).
 function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; state: PulseState; onRefresh?: () => void }) {
@@ -1685,7 +1686,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
 
           {/* WEB-ONLY (defensive: the tile is hidden in the app shell, but guard the
               body too so the panel never renders on a phone / APK / iOS). */}
-          {panel === "pulse" && !isAppShell() && <PulsePanel pulse={pulse} state={pulseState} onRefresh={onRefreshPulse} />}
+          {panel === "pulse" && <PulsePanel pulse={pulse} state={pulseState} onRefresh={onRefreshPulse} />}
 
         </div>
       </div>

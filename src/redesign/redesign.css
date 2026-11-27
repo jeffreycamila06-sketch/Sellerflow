@@ -886,3 +886,10 @@ html.pt-dragbar::-webkit-scrollbar, html.pt-dragbar body::-webkit-scrollbar { di
   .sfl-cg-status.on::before { background: var(--ok); opacity: 1; }
   .sfl-cg-chev { display: inline; font-size: 18px; color: var(--text-muted); flex-shrink: 0; }
 }
+
+/* Admin → Live Pulse monitor tile: the pill's dot pulses. Off with the in-app motion switch and
+   prefers-reduced-motion (a still dot). */
+@keyframes sflLptDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+.sfl-lpt-dot { animation: sflLptDot 1.6s ease-in-out infinite; }
+[data-redesign][data-motion="off"] .sfl-lpt-dot { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .sfl-lpt-dot { animation: none !important; } }
