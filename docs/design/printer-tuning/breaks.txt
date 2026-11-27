@@ -20,3 +20,10 @@ RED   | built-in controls enabled
 RED   | save without the in-page question
 RED   | covered message never shown
 RED   | error line cleared on every read
+
+Guardian fixes (breaks2.sh, clean tree, 2026-11-27):
+RED   | tuning applies to any printer name (7 tests failed)
+RED   | no re-read before the setup test print (1 failed)
+RED   | report keeps the version read at screen open
+RED   | previous user's tuning kept on a user switch
+RED   | Admin can save with no test print
