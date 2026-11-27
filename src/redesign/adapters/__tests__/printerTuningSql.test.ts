@@ -51,11 +51,16 @@ describe("sql/230 — printer tuning", () => {
     expect(s).toContain("raise exception 'stale_version'");
     expect(s).toContain("public.printer_tuning_clean(p_settings)");
   });
-  it("my_printer_tuning: settings only while the switch is exactly 'true' or the caller is a tester", () => {
+  it("my_printer_tuning: the caller's own row; switch 'off' = null for everyone", () => {
     const m = fn("my_printer_tuning");
-    expect(m).toContain("coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '') = 'true'");
-    expect(m).toContain("'settings', case when v_on or v_tester then t.settings else null end");
+    expect(m).toContain("'enabled', v_sw = 'true'");
+    expect(m).toContain("'settings', case when v_sw <> 'off' then t.settings else null end");
     expect(m).toContain("where user_id = uid");
+  });
+  it("set: while the switch is not exactly 'true', only a printer tester may get a NEW setting", () => {
+    const s = fn("admin_printer_tuning_set");
+    expect(s).toContain("<> 'true'\n     and not public.printer_tuning_is_tester(p_email) then\n    raise exception 'not_tester'");
+    expect(s.indexOf("not_tester")).toBeLessThan(s.indexOf("printer_tuning_clean(p_settings)"));
   });
   it("admin_printer_test_reports = sql/160's text + tuning_version (md5 guard on the live text)", () => {
     const old = fn("admin_printer_test_reports", readFileSync(resolve(root, "sql/160_printer_testers.sql"), "utf8"));

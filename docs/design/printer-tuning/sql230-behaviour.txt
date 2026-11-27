@@ -5,13 +5,14 @@ ok   missing row → inserted as 'false'; running the file twice is fine
 ok   no other app_settings key touched
 md5s after sql/230:
   admin_printer_test_reports = 6993f8e8054b203045cfa45c3e537f6b
-  admin_printer_tuning_get = fc217e540923531bca1a9a4d47e87192
+  admin_printer_tuning_get = 85bfae914f518678725c4da9dc4b2ff7
   admin_printer_tuning_reset = 8c1b89fc5eb65ad8f2e0f5d8bd619b19
-  admin_printer_tuning_set = 7a71f0f9490963d61ef5f268f7632d3c
+  admin_printer_tuning_set = 87f009f7af54e0952bc981d882572356
   admin_printer_tuning_undo = 10df672c727001992924bd77007cde68
-  my_printer_tuning = 80eb6ff291bb683bed48dae00002ebd3
+  my_printer_tuning = 4122b4113c79f31a2e1fe6e7be4048f8
   printer_name_is_built_in = 5c1241f1cb3036923a4cd91e8a3d608c
   printer_tuning_clean = 44d60cb099aa17d4e807524f1f83a72e
+  printer_tuning_is_tester = be1e0cdc8eb9537183f195d1cb393bff
   printer_tuning_latest_name = c03dedd14c0b76b8765f3386b3097574
   printer_tuning_top_version = 5343733e3dd2a40a3baefcea6410a3c4
   printer_tuning_user = ba733c001053f3eaa58c8403867c742e
@@ -26,10 +27,13 @@ ok   seller → admin_printer_tuning_reset → forbidden
 ok   anon → admin_printer_tuning_reset → no execute
 ok   anon → my_printer_tuning → no execute
 ok   seller → printer_tuning_clean → no execute
+ok   seller → printer_tuning_is_tester → no execute
 ok   seller → printer_name_is_built_in → no execute
 ok   seller → printer_tuning_user → no execute
 ok   seller → printer_tuning_valid → no execute
 ok   unknown email → no_user
+ok   switch 'false' + seller not a tester → not_tester (nothing saved)
+ok   the refused save left no row
 ok   first set (expected 0) → version 1
 ok   get: settings, version, tester ✗, not built-in, the locked model named
 ok   history row: before none → after {gap 3}
@@ -73,13 +77,17 @@ ok   seller: insert → permission denied
 ok   seller: delete → permission denied
 ok   seller: history → permission denied
 ok   even an admin reads history only through the RPC
-ok   switch off + not tester → settings null
-ok   switch off + tester → own settings + version
+ok   switch 'false' + a tester → saved
+ok   switch 'false': a row saved earlier still prints (seller not a tester)
+ok   switch 'false' + tester → own settings + version
 ok   switch on + not tester → own settings + version
 ok   switch on + tester → own settings
 ok   no row → settings null
-ok   only the exact value 'true' turns it on
-ok   tester removed + switch off → settings null (the row stays)
+ok   only the exact value 'true' says enabled (the row still prints)
+ok   switch 'off' → settings null for everyone (instant stop)
+ok   switch 'off' → also null for a tester
+ok   tester removed (switch 'false') → the saved tuning KEEPS printing
+ok   …but Admin can't save a new setting for them until the switch is on
 ok   the removed tester's row is kept
 ok   undo with a stale version → stale_version
 ok   undo → version 5
@@ -110,4 +118,4 @@ ok   admin_printer_test_reports = the live text again (md5)
 ok   rollback removes the switch row only
 ok   reports kept
 
-97 passed, 0 failed
+104 passed, 0 failed

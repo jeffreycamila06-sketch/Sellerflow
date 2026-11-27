@@ -82,7 +82,7 @@ await db.exec("delete from app_settings where key='printer_tuning_enabled'");
 await db.exec(src("230_printer_tuning.sql")); // twice = same
 ok((await db.query("select value from app_settings where key='printer_tuning_enabled'")).rows[0].value === "false", "missing row → inserted as 'false'; running the file twice is fine");
 ok((await db.query("select count(*)::int n from app_settings")).rows[0].n === 3, "no other app_settings key touched");
-const md5s = (await db.query("select proname, md5(pg_get_functiondef(oid)) m from pg_proc where proname in ('printer_tuning_valid','printer_tuning_clean','printer_name_is_built_in','printer_tuning_user','printer_tuning_top_version','printer_tuning_latest_name','admin_printer_tuning_get','admin_printer_tuning_set','admin_printer_tuning_undo','admin_printer_tuning_reset','my_printer_tuning','admin_printer_test_reports') order by 1")).rows;
+const md5s = (await db.query("select proname, md5(pg_get_functiondef(oid)) m from pg_proc where proname in ('printer_tuning_valid','printer_tuning_clean','printer_name_is_built_in','printer_tuning_user','printer_tuning_top_version','printer_tuning_latest_name','printer_tuning_is_tester','admin_printer_tuning_get','admin_printer_tuning_set','admin_printer_tuning_undo','admin_printer_tuning_reset','my_printer_tuning','admin_printer_test_reports') order by 1")).rows;
 console.log("md5s after sql/230:\n" + md5s.map((r) => `  ${r.proname} = ${r.m}`).join("\n"));
 
 // ── who may call what ─────────────────────────────────────────────────────────────────────
@@ -94,10 +94,15 @@ for (const [fn, args] of [["admin_printer_tuning_get", "'aiyin@x.com'"], ["admin
 }
 ok(/permission denied/.test((await err(() => db.exec("set role anon; select public.my_printer_tuning()"))) || ""), "anon → my_printer_tuning → no execute");
 await db.exec("reset role");
-for (const f of ["printer_tuning_clean('{}'::jsonb)", "printer_name_is_built_in('x')", "printer_tuning_user('a@x.com')", "printer_tuning_valid('{}'::jsonb)"]) {
+for (const f of ["printer_tuning_clean('{}'::jsonb)", "printer_tuning_is_tester('a@x.com')", "printer_name_is_built_in('x')", "printer_tuning_user('a@x.com')", "printer_tuning_valid('{}'::jsonb)"]) {
   ok(/permission denied/.test((await err(() => as(A, `select public.${f}`))) || ""), `seller → ${f.split("(")[0]} → no execute`);
 }
 ok(/no_user/.test((await err(() => get("nobody@x.com"))) || ""), "unknown email → no_user");
+
+// ── the switch limits who may be tuned ─────────────────────────────────────────────────────
+ok(/not_tester/.test((await err(() => set("aiyin@x.com", { gap_mm: 3 }, 0))) || ""), "switch 'false' + seller not a tester → not_tester (nothing saved)");
+ok((await get("aiyin@x.com")).version === 0, "the refused save left no row");
+await db.exec("update app_settings set value='true' where key='printer_tuning_enabled'");
 
 // ── set: clamps, refuses unknown keys / wrong types ─────────────────────────────────────────
 ok((await set("aiyin@x.com", { gap_mm: 3 }, 0)).rows[0].v === 1, "first set (expected 0) → version 1");
@@ -145,22 +150,26 @@ for (const q of [`update public.printer_seller_tuning set settings='{}'`, `inser
 ok(/permission denied/.test((await err(() => as(A, "select * from public.printer_seller_tuning_history"))) || ""), "seller: history → permission denied");
 ok(/permission denied/.test((await err(() => as(ADMIN, "select * from public.printer_seller_tuning_history"))) || ""), "even an admin reads history only through the RPC");
 
-// ── my_printer_tuning: switch off / on × tester / not tester ───────────────────────────────
-await set("tester@x.com", { gap_mm: 4 }, 0);
+// ── my_printer_tuning: switch off / on / 'off' × tester / not tester ─────────────────────────
 const sw = (v) => db.exec(`update app_settings set value='${v}' where key='printer_tuning_enabled'`);
 await sw("false");
-let m = await mine(A); ok(m.enabled === false && m.tester === false && m.settings === null && m.version === null, "switch off + not tester → settings null");
-m = await mine(T); ok(m.enabled === false && m.tester === true && m.settings.gap_mm === 4 && m.version === 1, "switch off + tester → own settings + version");
+ok((await set("tester@x.com", { gap_mm: 4 }, 0)).rows[0].v === 1, "switch 'false' + a tester → saved");
+let m = await mine(A); ok(m.enabled === false && m.tester === false && m.settings.gap_mm === 3 && m.version === 4, "switch 'false': a row saved earlier still prints (seller not a tester)");
+m = await mine(T); ok(m.enabled === false && m.tester === true && m.settings.gap_mm === 4 && m.version === 1, "switch 'false' + tester → own settings + version");
 await sw("true");
 m = await mine(A); ok(m.enabled === true && m.tester === false && m.settings.gap_mm === 3 && m.version === 4, "switch on + not tester → own settings + version");
 m = await mine(T); ok(m.enabled === true && m.tester === true && m.settings.gap_mm === 4, "switch on + tester → own settings");
 m = await mine(BI); ok(m.settings === null && m.version === null, "no row → settings null");
-await sw("TRUE"); m = await mine(A); ok(m.enabled === false && m.settings === null, "only the exact value 'true' turns it on");
+await sw("TRUE"); m = await mine(A); ok(m.enabled === false && m.settings.gap_mm === 3, "only the exact value 'true' says enabled (the row still prints)");
+await sw("off"); m = await mine(A); ok(m.enabled === false && m.settings === null && m.version === null, "switch 'off' → settings null for everyone (instant stop)");
+m = await mine(T); ok(m.settings === null && m.tester === true, "switch 'off' → also null for a tester");
 await sw("false");
 await db.exec("delete from feature_access_emails where email='tester@x.com'");
-m = await mine(T); ok(m.tester === false && m.settings === null, "tester removed + switch off → settings null (the row stays)");
+m = await mine(T); ok(m.tester === false && m.settings.gap_mm === 4 && m.version === 1, "tester removed (switch 'false') → the saved tuning KEEPS printing");
+ok(/not_tester/.test((await err(() => set("tester@x.com", { gap_mm: 5 }, 1))) || ""), "…but Admin can't save a new setting for them until the switch is on");
 ok((await db.query(`select count(*)::int n from printer_seller_tuning where user_id='${T}'`)).rows[0].n === 1, "the removed tester's row is kept");
 await db.exec("insert into feature_access_emails(feature,email) values ('printer_tester','tester@x.com')");
+await sw("true");
 
 // ── undo: walks back, to nothing, never repeats a version ──────────────────────────────────
 // A: v1 {gap 3} → v2 {…clamped} → v3 {gap 2.5, shift 1.5, density 8} → v4 {gap 3}
@@ -197,7 +206,7 @@ ok(/row-level security|permission denied/.test((await err(() => as(A, `insert in
 
 // ── rollback ──────────────────────────────────────────────────────────────────────────────
 ok((await err(() => db.exec(src("230_printer_tuning_rollback.sql")))) === null, "rollback applies");
-const left = (await db.query("select count(*)::int n from pg_proc where proname in ('printer_tuning_valid','printer_tuning_clean','printer_name_is_built_in','printer_tuning_user','printer_tuning_top_version','printer_tuning_latest_name','admin_printer_tuning_get','admin_printer_tuning_set','admin_printer_tuning_undo','admin_printer_tuning_reset','my_printer_tuning')")).rows[0].n;
+const left = (await db.query("select count(*)::int n from pg_proc where proname in ('printer_tuning_valid','printer_tuning_clean','printer_name_is_built_in','printer_tuning_user','printer_tuning_top_version','printer_tuning_latest_name','printer_tuning_is_tester','admin_printer_tuning_get','admin_printer_tuning_set','admin_printer_tuning_undo','admin_printer_tuning_reset','my_printer_tuning')")).rows[0].n;
 ok(left === 0, "rollback drops every tuning function");
 ok((await db.query("select to_regclass('public.printer_seller_tuning') a, to_regclass('public.printer_seller_tuning_history') b")).rows.every((r) => !r.a && !r.b), "rollback drops both tables");
 ok((await db.query("select count(*)::int n from information_schema.columns where table_name='printer_test_reports' and column_name='tuning_version'")).rows[0].n === 0, "rollback drops the report column");

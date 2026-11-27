@@ -9,6 +9,7 @@ drop function if exists public.admin_printer_tuning_reset(text, int);
 drop function if exists public.admin_printer_tuning_undo(text, int);
 drop function if exists public.admin_printer_tuning_set(text, jsonb, int);
 drop function if exists public.admin_printer_tuning_get(text);
+drop function if exists public.printer_tuning_is_tester(text);
 drop function if exists public.printer_tuning_latest_name(uuid);
 drop function if exists public.printer_tuning_top_version(uuid);
 drop function if exists public.printer_tuning_user(text);

@@ -13,8 +13,12 @@
 --      'built_in_printer' when the seller's latest tested printer is a built-in name, 'stale_version' when
 --      someone else saved first, 'bad_settings' for an unknown key / a wrong type. Numbers are CLAMPED to
 --      the ranges and rounded to the steps (never refused for being out of range).
---   6. my_printer_tuning() → {enabled, tester, settings, version}: settings + version only while the switch
---      is 'true' OR the caller is on the printer testers list; otherwise null (= today's bytes).
+--   6. my_printer_tuning() → {enabled, tester, settings, version}: the caller's OWN row (rows are only ever
+--      made by an Admin) — it keeps printing after the seller leaves the testers list. Switch value 'off' =
+--      settings null for everyone (instant stop = today's bytes).
+--   7. The switch app_settings.printer_tuning_enabled (created 'false'): 'true' = Admin may tune any seller;
+--      anything else = Admin may save a NEW setting only for a seller on the printer testers list
+--      ('not_tester'); 'off' = additionally nothing is applied anywhere.
 -- Settings keys (all optional): gap_mm 0–6 step 0.5 · sensor gap|bline|continuous · shift_mm -5..5 step 0.5
 -- (+ = left, - = right) · flip true|false · density 0–15 · speed 1–6 · send_speed normal|slow.
 -- The built-in names = printerModels.ts WHITELIST + NIIMBOT_NAME_PREFIXES + BUILT_IN (pinned by
@@ -191,6 +195,13 @@ returns text language sql stable security definer set search_path = public, pg_t
                     order by r.created_at desc limit 1), '');
 $$;
 
+-- is this login email on the printer testers list (sql/160 feature_access_emails, prefix rows too)
+create or replace function public.printer_tuning_is_tester(p_email text)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from public.feature_access_emails f where f.feature = 'printer_tester'
+                   and (f.email = lower(btrim(coalesce(p_email, ''))) or (f.is_prefix and left(lower(btrim(coalesce(p_email, ''))), length(f.email)) = f.email)));
+$$;
+
 create or replace function public.admin_printer_tuning_get(p_email text)
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare uid uuid; t public.printer_seller_tuning%rowtype; latest text; e text;
@@ -205,8 +216,7 @@ begin
     'version', coalesce(t.version, 0),
     'updated_at', t.updated_at,
     'switch_on', coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '') = 'true',
-    'tester', exists (select 1 from public.feature_access_emails f where f.feature = 'printer_tester'
-                        and (f.email = e or (f.is_prefix and left(e, length(f.email)) = f.email))),
+    'tester', public.printer_tuning_is_tester(e),
     'printer_name', nullif(latest, ''),
     'built_in', public.printer_name_is_built_in(latest),
     'locked_name', (select a.model from public.approved_printers a where a.active and a.locked and latest <> ''
@@ -232,6 +242,10 @@ begin
   perform pg_advisory_xact_lock(hashtext('printer_tuning_' || uid::text));
   if public.printer_name_is_built_in(public.printer_tuning_latest_name(uid)) then
     raise exception 'built_in_printer' using errcode = '22023';
+  end if;
+  if coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '') <> 'true'
+     and not public.printer_tuning_is_tester(p_email) then
+    raise exception 'not_tester' using errcode = '22023';
   end if;
   clean := public.printer_tuning_clean(p_settings);
   select * into cur from public.printer_seller_tuning where user_id = uid for update;
@@ -308,17 +322,17 @@ $$;
 -- 6) the seller's read ---------------------------------------------------------------------
 create or replace function public.my_printer_tuning()
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
-declare uid uuid := auth.uid(); v_on boolean; v_tester boolean; t public.printer_seller_tuning%rowtype;
+declare uid uuid := auth.uid(); v_sw text; v_tester boolean; t public.printer_seller_tuning%rowtype;
 begin
   if uid is null then return jsonb_build_object('enabled', false, 'tester', false, 'settings', null, 'version', null); end if;
-  v_on := coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '') = 'true';
+  v_sw := coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '');
   v_tester := public.is_printer_tester();
   select * into t from public.printer_seller_tuning where user_id = uid;
   return jsonb_build_object(
-    'enabled', v_on,
+    'enabled', v_sw = 'true',
     'tester', v_tester,
-    'settings', case when v_on or v_tester then t.settings else null end,
-    'version', case when (v_on or v_tester) and t.user_id is not null then t.version else null end);
+    'settings', case when v_sw <> 'off' then t.settings else null end,
+    'version', case when v_sw <> 'off' and t.user_id is not null then t.version else null end);
 end;
 $$;
 
@@ -328,6 +342,7 @@ revoke all on function public.printer_name_is_built_in(text) from public, anon, 
 revoke all on function public.printer_tuning_user(text) from public, anon, authenticated;
 revoke all on function public.printer_tuning_latest_name(uuid) from public, anon, authenticated;
 revoke all on function public.printer_tuning_top_version(uuid) from public, anon, authenticated;
+revoke all on function public.printer_tuning_is_tester(text) from public, anon, authenticated;
 revoke all on function public.admin_printer_tuning_get(text) from public, anon;
 revoke all on function public.admin_printer_tuning_set(text, jsonb, int) from public, anon;
 revoke all on function public.admin_printer_tuning_undo(text, int) from public, anon;
