@@ -8,7 +8,10 @@
 // autoCode (Auto Mode Rule 1, OPTIONAL + additive): the code token this auto order
 // was created from (e.g. "A1"), used to dedup one order per (session, handle, code).
 // Manual/enterprise orders leave it undefined → never counted for dedup.
-export interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; autoCode?:string; }
+// ref + cancelled (Cancel order, sql/234, OPTIONAL + additive): ref = the order's tag (order_ref on its
+// live_session_orders row AND its ledger row), set only on orders made while order_ref_enabled is on;
+// cancelled = the order was cancelled in the Orders tab (kept for buyer numbering, left out everywhere else).
+export interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; autoCode?:string; ref?:string; cancelled?:boolean; }
 export interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 // platform: TikTok/Facebook + Shopee (P3 — additive 3rd live source). LiveOrder/Buyer
 // platform stay `string`, so widening this union is downstream-safe (no exhaustive switch).

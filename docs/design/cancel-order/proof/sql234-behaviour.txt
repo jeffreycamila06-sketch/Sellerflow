@@ -1,0 +1,69 @@
+ok   the starting texts are production's (md5 of all seven functions)
+ok   before: Sales today = 4 orders, 500
+ok   a reader is not the expected text → refused
+ok   … and nothing was applied (no column)
+ok   miners_report back to the live text
+ok   sql/234 applies — every function has the expected new text (md5)
+ok   applying it twice changes nothing
+ok   switches: order_cancel_enabled 'false', order_ref_enabled 'true'
+ok   applying again keeps a switch Jeff already turned on
+ok   no login is put on the preview list
+ok   my_feature_access = the live 30 keys + order_cancel
+ok   with nothing cancelled, all six readers answer exactly as before
+ok   tagged orders, nothing cancelled → still exactly as before
+ok   switch off + not listed → not_allowed
+ok   … and nothing changed
+ok   check: not_allowed too
+ok   listed login → check answers ok
+ok   … sent false (nothing sent yet)
+ok   an invoice sent to buyer #1 this session → sent true
+ok   … buyer #2 still false
+ok   a Messenger receipt sent to buyer #2 → sent true
+ok   check: unknown order → not_found
+ok   an admin sees only own rows → not_found
+ok   cancel R1 → cancelled, ledger row marked, no stock (manual order)
+ok   the row is marked, its comment id taken off and kept
+ok   the ledger row is marked
+ok   no row was deleted
+ok   Customers: Ann 2 → 1 order, 350 → 200
+ok   cancel R1 again → already (nothing changes twice)
+ok   … Customers not lowered twice
+ok   check says cancelled
+ok   Sales today: 3 orders, 350
+ok   Sales by platform (session rows): 3, 350
+ok   Sales by platform (ledger): 3, 350
+ok   Top buyers: 3 orders, 350
+ok   Sessions list: 3 orders
+ok   Busiest hour: the cancelled order is left out
+ok   seller B (not listed) → not_allowed
+ok   seller B (listed) cannot cancel A's order → not_found
+ok   … A's order untouched
+ok   not signed in (anon) cannot call cancel_order
+ok   no tag → not_found (orders from before the release cannot be cancelled)
+ok   cancel R2 → stock back
+ok   A's A1 stock 4 → 5
+ok   B's product with the same code untouched
+ok   the Auto code is taken off the row and kept
+ok   the same comment (m2) and Auto code (A1) for Ann can be saved again after the cancel
+ok   Undo R1 → restored with its comment id
+ok   … comment id m1 back on the row
+ok   … ledger row no longer cancelled
+ok   … Customers +150 back (R2 still cancelled: 0 → 150)
+ok   Undo R2 after the comment was ordered again → restored, without the comment id
+ok   … the order counts again; the new order keeps m2 / A1
+ok   … stock 5 → 4
+ok   Undo again → not_cancelled
+ok   Undo unknown → not_found
+ok   Customers never go below 0
+ok   a case-variant order cancels
+ok   … Customers row '@cid' untouched (the app never counted '@CID' on it)
+ok   … Undo leaves it untouched too
+ok   rollback while an order is cancelled → refused
+ok   … nothing was changed
+ok   rollback: every function back to the live text (md5)
+ok   rollback: the new columns are gone
+ok   rollback: the four functions are gone
+ok   rollback: switches + preview logins gone
+ok   the file applies again after the rollback
+
+67 passed, 0 failed

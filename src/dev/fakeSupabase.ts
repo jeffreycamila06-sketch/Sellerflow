@@ -376,6 +376,15 @@ if (IVC.length === 2) {
     for (let n = 1; n <= 6; n++) { addFb("5e5510f1-0000-4000-8000-0000000000f1", n, 4, 0); if (n % 2 === 0) addFb("5e5510f1-0000-4000-8000-0000000000f1", n, 4, 1); }
     for (let n = 1; n <= 3; n++) addFb("5e5510f2-0000-4000-8000-0000000000f2", n, 7, 0);
   }
+  // &cx=1 (docs/design/cancel-order): Cancel order (sql/234) — every order of this session has a tag; buyer #2's
+  // first order is already cancelled; the check says an invoice was already sent to that buyer.
+  if (/[?&]cx=1\b/.test(Q)) {
+    rows.forEach((r, i) => { r.order_ref = `0cd30000-0000-4000-8000-${String(i).padStart(12, "0")}`; });
+    const two = rows.find((r) => r.buyer_number === 2);
+    if (two) two.cancelled_at = new Date(now - 3_600_000).toISOString();
+    tables.app_settings.push({ key: "order_cancel_enabled", value: "true" }, { key: "order_ref_enabled", value: "true" });
+    Object.assign(RPC, { order_cancel_check: { result: "ok", sent: /[?&]cxsent=1\b/.test(Q) }, cancel_order: { result: "cancelled", ledger: 1, stock_back: false }, uncancel_order: { result: "restored", comment_back: true } });
+  }
   tables.live_session_orders.push(...rows, ...pastRows);
   // the list the database function answers: one line per session of this seller (as sql/128 groups)
   const groups = new Map<string, { session_id: string; first_day: string; last_day: string; orders: number; latest: string }>();

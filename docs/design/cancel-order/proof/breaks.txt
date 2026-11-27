@@ -1,0 +1,17 @@
+On-purpose breaks (2026-11-28): each line breaks ONE thing in the code, runs the tests named for it, then puts the code back.
+CAUGHT = a test went red. 14 of 14 caught. (Two first tries were bad breaks — a renamed word and only one of two double-tap guards — and were redone.)
+
+CAUGHT visibleSession keeps cancelled  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT Orders total counts cancelled  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT export keeps cancelled  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT ⋯ on untagged orders  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT no sent warning  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT db: no retry without tag  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT tag not on ledger write  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT comment not released  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT withCancelCols no fallback  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT server filter missing  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT SQL: customers by lower()  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT SQL: switch created ON  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT getBuyers from the visible session (numbering would reuse a cancelled buyer's number)  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+CAUGHT double tap: no busy check AND button not disabled  — ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

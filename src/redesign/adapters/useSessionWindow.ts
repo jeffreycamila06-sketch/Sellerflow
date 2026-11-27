@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { fetchAllPages } from "../../lib/fetchAllPages";
+import { withCancelCols } from "./orderCancel";
 import type { LiveSessionRow } from "../../lib/orderLogic";
 import { log } from "../../lib/log";
 
@@ -124,22 +125,27 @@ export const SESSION_PAGE_SIZE = 1000;
 // One page of the window read. Split out so the pager below is a pure loop.
 async function loadSessionPage(userId: string, start: string, end: string, page: number): Promise<LiveSessionRow[] | null> {
   const from = page * SESSION_PAGE_SIZE;
-  const { data, error } = await supabase!
+  // comment_msg_id (sql/18, orderable earlier-comments): additive column read
+  // for the ordered-check Set; rows are still typed LiveSessionRow — the extra
+  // field is consumed adapter-side only (buildOrderedMsgIds), lib untouched.
+  // order_ref,cancelled_at (sql/234): asked only while the columns exist (see withCancelCols).
+  const base = "buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id,qty,auto_code";
+  const { data, error } = await withCancelCols(base, (cols) => supabase!
     .from("live_session_orders")
-    // comment_msg_id (sql/18, orderable earlier-comments): additive column read
-    // for the ordered-check Set; rows are still typed LiveSessionRow — the extra
-    // field is consumed adapter-side only (buildOrderedMsgIds), lib untouched.
-    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id,qty,auto_code")
+    .select(cols)
     .eq("user_id", userId)
     .gte("session_date", start)
     .lte("session_date", end)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
-    .range(from, from + SESSION_PAGE_SIZE - 1);
+    .range(from, from + SESSION_PAGE_SIZE - 1));
   if (error) { log.error("Load live session window error:", error.message); return null; }
-  return (data || []) as LiveSessionRow[];
+  return (data || []) as unknown as LiveSessionRow[];
 }
 
+// Cancel order (sql/234): read the order's tag + cancel mark with every session read. Before sql/234 is
+// applied the columns do not exist and the WHOLE read is refused — then the same read is made again
+// without them (exactly today's request) and the app stops asking for them. Never a failed board.
 // Pure pager over an injected page fetcher — unit-tested with a >1,000-row
 // scenario. Accumulates pages until a short page; null (page error) → null
 // (load FAILED — Batch D #8; never partial). Post-D/E follow-up: the loop now
@@ -181,14 +187,14 @@ export async function loadLiveSessionDay(day: string): Promise<LiveSessionRow[] 
 async function loadSessionPageById(userId: string, sessionId: string, page: number, withId = false): Promise<LiveSessionRow[] | null> {
   const from = page * SESSION_PAGE_SIZE;
   const cols = "buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id,qty,auto_code";
-  const { data, error } = await supabase!
+  const { data, error } = await withCancelCols((withId ? `id,${cols}` : cols) as string, (c) => supabase!
     .from("live_session_orders")
-    .select((withId ? `id,${cols}` : cols) as string)
+    .select(c)
     .eq("user_id", userId)
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
-    .range(from, from + SESSION_PAGE_SIZE - 1);
+    .range(from, from + SESSION_PAGE_SIZE - 1));
   if (error) { log.error("Load live session by id error:", error.message); return null; }
   return (data || []) as unknown as LiveSessionRow[];
 }

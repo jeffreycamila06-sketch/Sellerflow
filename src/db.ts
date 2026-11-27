@@ -28,6 +28,9 @@ export async function saveOrderToDatabase(order: {
   // sql/96: the live order's platform. Sent only when it is one of the four values the
   // column's CHECK allows; anything else (or absent) is omitted → NULL, never a failed insert.
   platform?: string;
+  // sql/234 (Cancel order): the order's tag, the same on its live_session_orders row. OPTIONAL +
+  // additive: absent → the insert is byte-identical to before.
+  order_ref?: string;
 }) {
   if (!isSupabaseConfigured || !supabase) {
     log.info("Supabase is not configured. Order kept in local app state.", order);
@@ -40,19 +43,23 @@ export async function saveOrderToDatabase(order: {
     return { success: false, error: noSessionError() };
   }
 
-  const { data, error } = await supabase
+  const row = {
+    customer_name: order.customer_name,
+    product: order.product,
+    total_amount: order.total_amount,
+    status: order.status || "Pending",
+    user_id: userId,
+    ...(order.platform && ORDER_PLATFORMS.includes(order.platform) ? { platform: order.platform } : {}),
+  };
+  let { data, error } = await supabase
     .from("orders")
-    .insert([
-      {
-        customer_name: order.customer_name,
-        product: order.product,
-        total_amount: order.total_amount,
-        status: order.status || "Pending",
-        user_id: userId,
-        ...(order.platform && ORDER_PLATFORMS.includes(order.platform) ? { platform: order.platform } : {}),
-      },
-    ])
+    .insert([order.order_ref ? { ...row, order_ref: order.order_ref } : row])
     .select();
+  // sql/234 not applied yet → the column does not exist and NOTHING was saved: save the same order
+  // without the tag (exactly today's insert). The order then cannot be cancelled; it is never lost.
+  if (error && order.order_ref && missingTagColumn(error)) {
+    ({ data, error } = await supabase.from("orders").insert([row]).select());
+  }
 
   if (error) {
     log.error("Supabase save order error:", error.message);
@@ -179,6 +186,14 @@ export interface LiveSessionOrderInput {
   // (user, session, handle, code) — the Rule 1 cross-device backstop.
   qty?: number;
   auto_code?: string;
+  // sql/234 (Cancel order): the order's tag, the same on its ledger row. OPTIONAL + additive.
+  order_ref?: string;
+}
+
+// sql/234: the insert was refused only because the tag column does not exist yet (nothing was saved).
+function missingTagColumn(error: { code?: string; message?: string }): boolean {
+  const msg = String(error?.message || "");
+  return /order_ref/.test(msg) && (error?.code === "PGRST204" || error?.code === "42703" || /does not exist|could not find/i.test(msg));
 }
 
 // Fire-and-forget write on the 1-click order create. One INSERT per order; no
@@ -195,28 +210,31 @@ export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
     return { success: false, error: noSessionError() };
   }
 
-  const { data, error } = await supabase
+  const liveRow = {
+    user_id: userId,
+    session_date: order.session_date || taipeiDayId(),
+    buyer_number: order.buyer_number,
+    handle: order.handle,
+    customer_name: order.customer_name,
+    platform: order.platform,
+    product: order.product,
+    price: order.price,
+    comment_msg_id: order.comment_msg_id || null,
+    session_id: order.session_id || null,
+    platform_meta: order.platform_meta || null, // sql/48 — FB { page_id, live_video_id }, else NULL
+    // Rule 2 qty (default 1 in the DB when absent) + Rule 1 auto_code (NULL for
+    // manual/legacy). Only Auto Mode passes these; every other caller omits them.
+    ...(order.qty != null ? { qty: order.qty } : {}),
+    auto_code: order.auto_code || null,
+  };
+  let { data, error } = await supabase
     .from("live_session_orders")
-    .insert([
-      {
-        user_id: userId,
-        session_date: order.session_date || taipeiDayId(),
-        buyer_number: order.buyer_number,
-        handle: order.handle,
-        customer_name: order.customer_name,
-        platform: order.platform,
-        product: order.product,
-        price: order.price,
-        comment_msg_id: order.comment_msg_id || null,
-        session_id: order.session_id || null,
-        platform_meta: order.platform_meta || null, // sql/48 — FB { page_id, live_video_id }, else NULL
-        // Rule 2 qty (default 1 in the DB when absent) + Rule 1 auto_code (NULL for
-        // manual/legacy). Only Auto Mode passes these; every other caller omits them.
-        ...(order.qty != null ? { qty: order.qty } : {}),
-        auto_code: order.auto_code || null,
-      },
-    ])
+    .insert([order.order_ref ? { ...liveRow, order_ref: order.order_ref } : liveRow])
     .select();
+  // sql/234 not applied yet → save the same row without the tag (exactly today's insert).
+  if (error && order.order_ref && missingTagColumn(error)) {
+    ({ data, error } = await supabase.from("live_session_orders").insert([liveRow]).select());
+  }
 
   if (error) {
     log.error("Supabase save live session order error:", error.message);

@@ -175,8 +175,8 @@ describe("the screens that use it", () => {
       expect(bare, f).toEqual([]);
     }
   });
-  it("the number of timers moved to it, per file (16 in all, + 1 for the Scan QR '2 stickers' toast of 2026-11-20, + 3 for the native scanner of 2026-11-22: ParcelScan 2 toasts, Orders 1 scan message, + 2 for the in-page scanner of 2026-11-25: ParcelScan 2 toasts)", () => {
+  it("the number of timers moved to it, per file (16 in all, + 1 for the Scan QR '2 stickers' toast of 2026-11-20, + 3 for the native scanner of 2026-11-22: ParcelScan 2 toasts, Orders 1 scan message, + 2 for the in-page scanner of 2026-11-25: ParcelScan 2 toasts, + 1 for Cancel order of 2026-11-28: the Orders 'cancelled / back' toast)", () => {
     const count = (f: string) => (codeOf(f).match(/\blater\(/g) || []).length;
-    expect(SCREENS.map(count)).toEqual([2, 4, 1, 1, 10, 1, 3]);
+    expect(SCREENS.map(count)).toEqual([2, 4, 1, 1, 10, 1, 4]);
   });
 });

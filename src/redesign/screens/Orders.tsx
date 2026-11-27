@@ -44,6 +44,8 @@ import { readQrFromFile, warmQrReader, type QrOutcome } from "../adapters/qrDeco
 import { nativeQrScanner, runStickerScan, scannerTexts } from "../adapters/nativeQrScanner";
 import { useWebQrScan, webQrScanner, webScanFallbackText } from "../adapters/webQrScanner";
 import { blacklistHandleFromQr } from "../adapters/blacklist";
+import { createPortal } from "react-dom";
+import type { CancelCheck, CancelResult, UndoResult } from "../adapters/orderCancel";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -59,8 +61,12 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
   tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow, posts, postsLocked = false, onPostsLocked,
-  liveScan = false, webScan = false,
+  liveScan = false, webScan = false, cancel,
 }: {
+  // CANCEL ORDER (sql/234) — admin, the "order_cancel" list, or every seller while order_cancel_enabled is
+  // on (RedesignApp passes it only then). Absent = no ⋯ / Undo buttons (a cancelled order is still shown
+  // struck through and left out of the totals). Only orders with a tag (ref) can be cancelled.
+  cancel?: { onCheck: (o: Order) => Promise<CancelCheck>; onCancel: (o: Order) => Promise<CancelResult>; onUndo: (o: Order) => Promise<UndoResult> };
   // The in-page live scanner (the Android app WITHOUT the built-in scanner, web_qr_scanner_enabled on —
   // RedesignApp: webScannerAvailable). It also shows the Scan button, and adds the hidden photo input its
   // "Take a photo instead" opens. Absent/false = nothing of it on the page.
@@ -135,6 +141,15 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const openPosts = () => { setPostsView("posts"); if (postsDot) { markPostsSeen(); setPostsDot(false); } };
   const [reprintingKey, setReprintingKey] = useState("");
   const later = useScreenTimers(); // ends the 2 s "Printing…" rest of the Reprint button; stopped when the screen closes
+  // CANCEL ORDER: what this screen changed since the lists were read (ref → cancelled), the confirm sheet,
+  // and one line of feedback. A cancelled order = its own flag, or this screen's newer answer.
+  const [cxOver, setCxOver] = useState<Map<string, boolean>>(() => new Map());
+  const isCx = (o: Order) => (o.ref && cxOver.has(o.ref) ? !!cxOver.get(o.ref) : !!o.cancelled);
+  const [cxAsk, setCxAsk] = useState<{ o: Order; check: "loading" | CancelCheck } | null>(null);
+  const [cxBusy, setCxBusy] = useState("");
+  const [cxErr, setCxErr] = useState("");
+  const [cxToast, setCxToast] = useState("");
+  const showCxToast = (m: string) => { setCxToast(m); later(() => setCxToast(""), 2600); };
   // Batch 1 — TOP-OF-SCREEN view controls (all additive; rows/Reprint untouched).
   const [platformFilterRaw, setPlatformFilter] = useState<PlatformFilter>("all"); // F2
   // A hidden Facebook pill can never stay selected (an admin switching "View as platform").
@@ -162,7 +177,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const [paidBusy, setPaidBusy] = useState("");
   const [paidErr, setPaidErr] = useState(false);
   const [openedAt] = useState(() => Date.now()); // "Expired" is judged at screen open (Orders remounts per visit)
-  const unpaidPick = (o: Order) => { const r = paid.map.get(orderKey(o)); return !!r && !r.paidAt; };
+  const unpaidPick = (o: Order) => { if (isCx(o)) return false; const r = paid.map.get(orderKey(o)); return !!r && !r.paidAt; };
   const searching = query.trim().length > 0;
   // A pure-digit query that EXACTLY matches a buyer# → show the receipt box ONLY
   // (Option A). EXACT `num ===`, so "1" is buyer #1, never #10/#11 (contains).
@@ -224,7 +239,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
     : [];
   const shownHist = paidUi && unpaidOnly ? shownHistAll.filter(unpaidPick) : shownHistAll;
   const matchCount = shown.length + shownHist.length;
-  const summary = orderSummary([...shown, ...shownHist]); // F3 — over the visible set
+  const summary = orderSummary([...shown, ...shownHist].filter((o) => !isCx(o))); // F3 — over the visible set (cancelled orders left out)
   // Legacy header count chip — shown ONLY in the default view (session + all), where
   // it is byte-identical to today; when a filter is active the summary bar carries
   // the accurate counts.
@@ -232,7 +247,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // Sessions mode counts by session ("Session · N"); everyone else keeps "Today · N".
   const badgeWord = sessionsMode ? t.rd_ord_badge_session : t.rd_ord_today;
   const badge = state === "loading" ? `${badgeWord} · …`
-    : searching ? `${receipt ? receipt.count : scanActive ? matches.reduce((n, m) => n + m.count, 0) : matchCount}` : `${badgeWord} · ${orders.length}`;
+    : searching ? `${receipt ? receipt.count : scanActive ? matches.reduce((n, m) => n + m.count, 0) : matchCount}` : `${badgeWord} · ${orders.filter((o) => !isCx(o)).length}`;
 
   // Scan: the phone app's live scanner (adapters/nativeQrScanner) — the button exists only when it is
   // there (liveScan). Its "Take a photo instead" goes through the same reader as Parcel Scan's Scan QR.
@@ -313,7 +328,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
       { header: t.rd_prd_platform, width: 12 },
       { header: t.rd_ord_col_time, width: 12 },
     ];
-    const vis = [...shown, ...shownHist];
+    const vis = [...shown, ...shownHist].filter((o) => !isCx(o)); // a cancelled order is not exported
     const rows = vis.map((o) => [o.id, o.buyer, fbHandleIsId(o.platform, o.buyer, o.handle) ? o.buyer : o.handle, o.items, isFreeOrder({ price: o.total, item: o.items }) ? t.rd_cpp_free : `${cur}${fmt(o.total)}`, o.status === "New" ? t.rd_ord_st_new : o.status, o.platform, o.time]);
     const s = orderSummary(vis);
     const smry = [
@@ -375,26 +390,28 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap", flexShrink: 0 }}>{o.date.slice(5).replace("-", "/")}</span>
             )}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.items}</div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...(isCx(o) ? { textDecoration: "line-through" } : null) }}>{o.items}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{o.id}</div>
           {isFreeOrder({ price: o.total, item: o.items })
             ? <div data-testid="ord-free" style={{ fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 800, color: "var(--ok)", marginTop: 1 }}>{t.rd_cpp_free}</div>
-            : <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 1 }}>{cur}{fmt(o.total)}</div>}
+            : <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 1, ...(isCx(o) ? { color: "var(--text-muted)", textDecoration: "line-through" } : null) }}>{cur}{fmt(o.total)}</div>}
         </div>
       </div>
       <div data-testid="ord-row-foot" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)", ...(fbPolish ? { flexWrap: "wrap" as const, rowGap: 6 } : null) }}>
         {/* F-batch i18n: canonical status value ("New") stays English for
             statusColor state-equality; only the DISPLAY translates. */}
-        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: statusColor(o.status), background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 7 }}>{o.status === "New" ? t.rd_ord_st_new : o.status}</span>
+        {isCx(o)
+          ? <span data-testid="ord-cx-chip" style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: "var(--danger)", background: "var(--surface-2)", border: "1px solid var(--danger)", padding: "3px 9px", borderRadius: 7 }}>{t.rd_oc_chip}</span>
+          : <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: statusColor(o.status), background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 7 }}>{o.status === "New" ? t.rd_ord_st_new : o.status}</span>}
         <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{o.platform}</span>
         <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{pastSel ? pastOrderStamp(o.orderNum) : live || hist ? o.time : `${o.time} ${t.rd_ord_ago}`}</span>
         {/* ↻ Reprint — the torn-sticker workflow's last step. Zero-write path
             (resolveReprintRow → performReprint = printSlip only); available on
             every result row that carries an orderNum. stopPropagation so the
             row's go-to-Print onClick never co-fires. */}
-        {(pastSel ? !!onReprintRow && !!past.rowFor(o.rowId) : onReprintOrder && o.orderNum != null) && (
+        {!isCx(o) && (pastSel ? !!onReprintRow && !!past.rowFor(o.rowId) : onReprintOrder && o.orderNum != null) && (
           <button
             onClick={(e) => { e.stopPropagation(); reprint(o); }}
             disabled={!!reprintingKey}
@@ -403,10 +420,60 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             ↻ {reprintingKey === (pastSel ? reprintKeyOf(o) : `${o.orderNum}`) ? t.rd_dash_reprinting : t.rd_dash_reprint}
           </button>
         )}
-        {paidUi && paidControls(o)}
+        {paidUi && !isCx(o) && paidControls(o)}
+        {cancel && o.ref && (isCx(o)
+          ? <button type="button" data-testid="ord-cx-undo" disabled={!!cxBusy} onClick={(e) => { e.stopPropagation(); void undoCx(o); }}
+              style={{ fontSize: 11.5, fontWeight: 800, color: "var(--accent-fg)", background: "transparent", border: "1.5px solid var(--accent)", padding: "4px 10px", borderRadius: 8, cursor: cxBusy ? "default" : "pointer", fontFamily: "var(--font-ui)", whiteSpace: "nowrap", flexShrink: 0, opacity: cxBusy && cxBusy !== o.ref ? 0.55 : 1 }}>↶ {t.rd_oc_undo}</button>
+          : <button type="button" data-testid="ord-more" className="sfl-tap44" aria-label={t.rd_oc_more} title={t.rd_oc_more} disabled={!!cxBusy} onClick={(e) => { e.stopPropagation(); openCx(o); }}
+              style={{ width: 38, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, lineHeight: 1, fontWeight: 900, color: "var(--text-muted)", background: "transparent", border: "1.5px solid var(--border)", borderRadius: 8, cursor: cxBusy ? "default" : "pointer", flexShrink: 0, padding: 0, fontFamily: "var(--font-ui)" }}>⋯</button>)}
       </div>
     </div>
   );
+
+  // CANCEL ORDER — open the question (one check: still there? already cancelled on another phone?
+  // an invoice / receipt already sent to this buyer?), then cancel / undo. One database call each.
+  const setCx = (ref: string, on: boolean) => setCxOver((m) => { const n = new Map(m); n.set(ref, on); return n; });
+  const openCx = (o: Order) => {
+    if (!cancel || !o.ref || cxBusy) return;
+    setCxErr("");
+    setCxAsk({ o, check: "loading" });
+    void cancel.onCheck(o).then((c) => {
+      if (!aliveRef.current) return;
+      if (c.result === "cancelled") { setCx(o.ref!, true); setCxAsk(null); return; }
+      if (c.result === "not_found") setCxErr(t.rd_oc_not_ready);
+      setCxAsk((cur) => (cur && cur.o.ref === o.ref ? { o, check: c } : cur));
+    });
+  };
+  const confirmCx = async () => {
+    const ask = cxAsk;
+    if (!cancel || !ask || !ask.o.ref || cxBusy) return;
+    setCxBusy(ask.o.ref); setCxErr("");
+    const r = await cancel.onCancel(ask.o);
+    if (!aliveRef.current) return;
+    setCxBusy("");
+    if (r === "cancelled" || r === "already") {
+      setCx(ask.o.ref, true);
+      setCxAsk(null);
+      showCxToast(tpl(t.rd_oc_done, { n: ask.o.id }));
+      if (pastSel) void past.reload();
+      return;
+    }
+    setCxErr(r === "not_found" ? t.rd_oc_not_ready : t.rd_oc_failed);
+  };
+  const undoCx = async (o: Order) => {
+    if (!cancel || !o.ref || cxBusy) return;
+    setCxBusy(o.ref);
+    const r = await cancel.onUndo(o);
+    if (!aliveRef.current) return;
+    setCxBusy("");
+    if (r === "restored" || r === "not_cancelled") {
+      setCx(o.ref, false);
+      showCxToast(tpl(t.rd_oc_back, { n: o.id }));
+      if (pastSel) void past.reload();
+      return;
+    }
+    showCxToast(t.rd_oc_undo_failed);
+  };
 
   // B2 — "Expired" (unpaid > 24 h, display only) + the Mark paid / Paid toggle. Only for an order
   // whose database row was found; one write per tap, nothing is sent to the buyer.
@@ -725,6 +792,45 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <div key={scanMsg} role="status" className="sfl-toast-in" data-testid="ord-scan-toast" style={{ maxWidth: "100%", background: "var(--danger)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>⚠ {scanMsg}</div>
         </div>
       )}
+      {cxToast && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 90, display: "flex", justifyContent: "center", padding: "0 16px", zIndex: 1200, pointerEvents: "none" }}>
+          <div key={cxToast} role="status" className="sfl-toast-in" data-testid="ord-cx-toast" style={{ maxWidth: "100%", background: "#0f172a", color: "#fff", border: "1px solid rgba(255,255,255,.22)", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>✓ {cxToast}</div>
+        </div>
+      )}
+      {cxAsk && createPortal(
+        <div data-testid="ord-cx-sheet" onClick={() => { if (!cxBusy) setCxAsk(null); }} style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(15,23,42,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div role="dialog" aria-modal="true" aria-label={t.rd_oc_title} onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", background: "var(--surface)", borderRadius: "20px 20px 0 0", padding: "18px 18px calc(18px + env(safe-area-inset-bottom))", boxShadow: "0 -10px 40px rgba(0,0,0,.25)", fontFamily: "var(--font-ui)" }}>
+            <div style={{ width: 40, height: 4, borderRadius: 99, background: "var(--border-strong)", margin: "0 auto 14px" }} />
+            <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{t.rd_oc_title}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 12, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface-2)" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 11, background: avColor(cxAsk.o.buyer), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(cxAsk.o.buyer)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cxAsk.o.buyer} {!fbNameOnly(cxAsk.o.platform, cxAsk.o.buyer) && <span style={{ fontSize: 11.5, color: "var(--handle)", fontWeight: 600 }}>{cxAsk.o.handle}</span>}</div>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cxAsk.o.items}</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-muted)" }}>{cxAsk.o.id}</div>
+                {isFreeOrder({ price: cxAsk.o.total, item: cxAsk.o.items })
+                  ? <div style={{ fontSize: 14, fontWeight: 800, color: "var(--ok)" }}>{t.rd_cpp_free}</div>
+                  : <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(cxAsk.o.total)}</div>}
+              </div>
+            </div>
+            <ul style={{ margin: "12px 0 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.5, color: "var(--text-dim)" }}>
+              <li>{t.rd_oc_l1}</li>
+              <li>{tpl(t.rd_oc_l2, { n: cxAsk.o.id })}</li>
+              <li>{t.rd_oc_l3}</li>
+              <li>{t.rd_oc_l4}</li>
+            </ul>
+            {cxAsk.check !== "loading" && cxAsk.check.sent && (
+              <div data-testid="ord-cx-sent" role="note" style={{ marginTop: 10, padding: "9px 12px", borderRadius: 10, background: "#fef3c7", color: "#92400e", border: "1px solid #f59e0b", fontSize: 12.5, fontWeight: 700, lineHeight: 1.4 }}>⚠ {t.rd_oc_sent}</div>
+            )}
+            {cxErr && <div role="alert" data-testid="ord-cx-error" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 700, color: "var(--danger)" }}>{cxErr}</div>}
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button type="button" data-testid="ord-cx-keep" disabled={!!cxBusy} onClick={() => setCxAsk(null)} style={{ flex: 1, minHeight: 46, borderRadius: 12, border: "1.5px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontSize: 14, fontWeight: 800, cursor: cxBusy ? "default" : "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_oc_keep}</button>
+              <button type="button" data-testid="ord-cx-yes" disabled={!!cxBusy || cxAsk.check === "loading"} onClick={() => void confirmCx()} style={{ flex: 1, minHeight: 46, borderRadius: 12, border: "none", background: "#be123c", color: "#fff", fontSize: 14, fontWeight: 800, cursor: cxBusy ? "default" : "pointer", fontFamily: "var(--font-ui)", opacity: cxAsk.check === "loading" ? 0.6 : 1 }}>{cxBusy ? t.rd_oc_busy : t.rd_oc_yes}</button>
+            </div>
+          </div>
+        </div>, (typeof document !== "undefined" && (document.querySelector("[data-redesign]") as HTMLElement)) || document.body)}
     </div>
   );
 }

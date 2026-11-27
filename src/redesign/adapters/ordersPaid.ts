@@ -3,6 +3,7 @@
 // Orders reads id + paid_at + created_at of the same orders with ONE small query (read on open,
 // zero poll) and pairs each order with its row. An order without a row yet (still being saved)
 // simply shows no paid control.
+import { withCancelCols, keepNotCancelled } from "./orderCancel";
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import type { Order } from "../data";
@@ -58,12 +59,13 @@ async function loadRows(sinceIso: string): Promise<DbRow[] | null> {
     if (!uid) return null;
     const out: DbRow[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from("live_session_orders")
-        .select("id,buyer_number,handle,platform,product,price,qty,created_at,paid_at")
+      const sb = supabase;
+      const { data, error } = await withCancelCols("id,buyer_number,handle,platform,product,price,qty,created_at,paid_at", (cols) => sb.from("live_session_orders")
+        .select(cols)
         .eq("user_id", uid).gte("created_at", sinceIso)
-        .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999);
+        .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999));
       if (error) return null;
-      out.push(...((data || []) as DbRow[]));
+      out.push(...keepNotCancelled((data || []) as unknown as DbRow[])); // a cancelled order is never paired (sql/234)
       if (!data || data.length < 1000) return out;
     }
   } catch { return null; }

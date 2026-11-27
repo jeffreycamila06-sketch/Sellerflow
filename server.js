@@ -5,6 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
+import { readWithoutCancelled } from "./server/orderCancelFilter.js";
 import { readFile } from "fs/promises";
 import { answerQuestion, callClaude, createGuideSource, isPaidPlanRow } from "./server/helpBot.js";
 import { normPlatform } from "./src/lib/helpBotGuard.js";
@@ -2581,10 +2582,10 @@ try {
       async listSessionFbRows(userId, sessionId) {
         const out = [];
         for (let from = 0; ; from += 1000) {
-          const { data, error } = await serviceSb.from("live_session_orders")
+          const { data, error } = await readWithoutCancelled((f) => f(serviceSb.from("live_session_orders")
             .select("id, session_id, buyer_number, handle, customer_name, product, price, qty, created_at, comment_msg_id, platform_meta")
-            .eq("user_id", String(userId)).eq("session_id", String(sessionId)).eq("platform", "Facebook")
-            .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999);
+            .eq("user_id", String(userId)).eq("session_id", String(sessionId)).eq("platform", "Facebook"))
+            .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999)); // sql/234: no cancelled order
           if (error) throw new Error("send_all_rows");
           out.push(...(data || []));
           if (!data || data.length < 1000) return out;
@@ -2736,10 +2737,10 @@ try {
       async listLiveRows(userId, liveVideoId) {
         const out = [];
         for (let from = 0; ; from += 1000) {
-          const { data, error } = await serviceSb.from("live_session_orders")
+          const { data, error } = await readWithoutCancelled((f) => f(serviceSb.from("live_session_orders")
             .select("id, session_id, buyer_number, handle, customer_name, product, price, qty, created_at")
-            .eq("user_id", String(userId)).eq("platform", "Facebook").eq("platform_meta->>live_video_id", String(liveVideoId))
-            .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999);
+            .eq("user_id", String(userId)).eq("platform", "Facebook").eq("platform_meta->>live_video_id", String(liveVideoId)))
+            .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999)); // sql/234: no cancelled order
           if (error) throw new Error("auto_receipt_rows");
           out.push(...(data || []));
           if (!data || data.length < 1000) return out;

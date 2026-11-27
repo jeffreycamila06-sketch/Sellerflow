@@ -74,6 +74,8 @@ export function liveOrdersToRedesign(rebuilt: RebuiltSession): Order[] {
       // rows + earlier days of a multi-day window).
       orderNum: o.orderNum,
       date: o.date,
+      ...(o.ref ? { ref: o.ref } : {}),           // Cancel order (sql/234) — absent = byte-identical
+      ...(o.cancelled ? { cancelled: true } : {}),
     }))
     .reverse();
 }

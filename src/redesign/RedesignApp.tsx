@@ -193,6 +193,7 @@ import { FREE_TIER_CAP, freeOrdersLeft } from "../lib/freeTier";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
 import { useFeatureAccess, hasFeature, featureAccessOk } from "./adapters/featureAccess";
+import { orderCancelVisible, checkOrderCancel, cancelOrder, undoCancelOrder } from "./adapters/orderCancel";
 import { usePostSales, usePostOrdersExist } from "./adapters/usePostSales";
 import { postSalesAccess, postPrintSettings, givePostWaitlist, postItemStock, postLabel } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
@@ -896,6 +897,9 @@ export default function RedesignApp() {
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
   // builder + db writes; updates the live session optimistically. 5f: soft-block
   // when capped, resync counter after write, surface hard popup on trigger reject.
+  // Cancel order (sql/234): the tag switch, read by the order builder at tap time (set below once the
+  // switches are read; false until then → an order made in the first moments has no tag).
+  const orderRefOnRef = useRef(false);
   const orders = useOrders({
     getBuyers: liveSession.getBuyers,
     applyOrder: liveSession.applyOrder,
@@ -915,10 +919,13 @@ export default function RedesignApp() {
     // Session-numbering fix (gate on only): no order while the board is pending / failed /
     // unknown. Off → not passed → no gate (today's behaviour).
     ...(sessionFix ? { canOrder: liveSession.canOrder, onOrderBlocked: () => setOrderBlocked((c) => c + 1) } : {}),
+    tagOrders: () => orderRefOnRef.current,
   });
   // Orders tab + Dashboard summary now share ONE source (the live session), so a
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
-  const ordersList = liveOrdersToRedesign(liveSession.session);
+  // Cancel order: the Orders tab lists every order, cancelled ones struck through (fullSession);
+  // every other reader gets liveSession.session (cancelled orders left out).
+  const ordersList = liveOrdersToRedesign(liveSession.fullSession ?? liveSession.session);
   // 🛒 basket counts — per-buyer order count for the feed rows, derived from the
   // SAME window-scoped session state (Buyer.totalOrders). ONE map per session
   // change; each feed row is an O(1) lookup. New window/reset → empty → all 0.
@@ -964,6 +971,7 @@ export default function RedesignApp() {
   const salesTab = useSalesTab(authed);
   // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
   const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  useEffect(() => { orderRefOnRef.current = !!featureSw.orderRef; }, [featureSw.orderRef]);
   // Native QR scanner (phone app builds with the SellerFlowScanner plugin): the kill switch
   // native_qr_scanner_enabled. Off / not read / laptop / older build → every Scan opens today's photo flow.
   useEffect(() => { setNativeQrScannerOn(featureSw.nativeQrScanner); }, [featureSw.nativeQrScanner]);
@@ -1035,6 +1043,32 @@ export default function RedesignApp() {
   const platformLocks = shopeeView.locks;
   // Settings → Invoicing (sql/220): the switch, the preview list, or an admin. Off = the card as it is today.
   const invoicingOn = invoicingVisible({ isAdmin, previewKey: hasFeature("invoicing"), switchOn: featureSw.invoicing });
+  // CANCEL ORDER (sql/234) — Orders tab only. One database call each; on success this device's session
+  // marks the order (every total / receipt / Invoicing / Live board count leaves it out) and its comment
+  // may be ordered again (decision 5). Undo puts both back.
+  const orderCancelOn = orderCancelVisible({ isAdmin, previewKey: hasFeature("order_cancel"), switchOn: featureSw.orderCancel });
+  const { setOrderCancelled } = liveSession;
+  const { releaseMsgId, holdMsgId } = orders;
+  // (tests may replace these hooks with older shapes — every use below is optional)
+  const orderCancelUi = useMemo(() => (orderCancelOn ? {
+    onCheck: (o: RDOrder) => checkOrderCancel(o.ref || ""),
+    onCancel: async (o: RDOrder) => {
+      const r = await cancelOrder(o.ref || "");
+      if ((r === "cancelled" || r === "already") && o.ref) {
+        for (const m of setOrderCancelled?.(o.ref, true) ?? []) releaseMsgId?.(m);
+        track("order_cancel", { result: r });
+      }
+      return r;
+    },
+    onUndo: async (o: RDOrder) => {
+      const r = await undoCancelOrder(o.ref || "");
+      if ((r === "restored" || r === "not_cancelled") && o.ref) {
+        for (const m of setOrderCancelled?.(o.ref, false) ?? []) holdMsgId?.(m);
+        track("order_uncancel", { result: r });
+      }
+      return r;
+    },
+  } : undefined), [orderCancelOn, setOrderCancelled, releaseMsgId, holdMsgId]);
   const blacklistOn = blacklistVisible({ country: market.market.country, adminUnion: market.adminUnion, switchOn: featureSw.blacklist, isAdmin, hasKey: hasFeature("blacklist") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
@@ -3186,7 +3220,7 @@ export default function RedesignApp() {
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
             tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
             pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
-            sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(postSales ? { posts: postSales } : postAccess === "locked" ? { postsLocked: true, onPostsLocked: () => setUpsellOpen(true) } : {})} />}
+            sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(orderCancelUi ? { cancel: orderCancelUi } : {})} {...(postSales ? { posts: postSales } : postAccess === "locked" ? { postsLocked: true, onPostsLocked: () => setUpsellOpen(true) } : {})} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} websiteSoon={websiteTeaserOrdersOn ? tApp.rd_wor_tab : undefined} />} />}
           {screen === "orders" && ordersTab === "website" && sellerWebsiteOn && (
             <Suspense fallback={null}><WebsiteOrders cur={cur} liveTick={webLiveTick} subdomainReady={featureSw.websiteSubdomainReady} onNewCount={setWebNew} onToast={(msg) => setToast({ msg, kind: "ok" })} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={{ label: tApp.rd_wor_tab, count: webNew }} />} /></Suspense>

@@ -7224,3 +7224,42 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   `?ivc=0,0&fbsa=1&fbedit=1&admin=1`).
 - **Order:** sql/233 → merge (Vercel) → Render deploy (quiet time). Before sql/233 the editor works but saves fail
   ("Couldn't save"); before the Render deploy Send all ignores saved edits (sends the orders' receipt).
+
+## 2026-11-28 — CANCEL ORDER (Orders tab only) (merged to main; sql/234 APPLIED 2026-11-28 + both indexes; sql/235 NOT applied; server half needs a Render deploy)
+Jeff's decisions (2026-11-28): free order NOT given back · stock goes back (Auto mode orders) · allowed while the
+order is shown in the Orders tab · allowed after an invoice / receipt was sent (amber warning) · the same Live
+comment can be ordered again · a new column on the `orders` ledger is OK. Nothing in the Live tab.
+- **Tag:** every new order tap gets `order_ref` (uuid, made by the app) on BOTH the `live_session_orders` row and the
+  ledger `orders` row (`useOrders` `tagOrders`, switch `order_ref_enabled`, sql/234 creates it 'true'). Orders from
+  before have no tag → no ⋯. Before sql/234: both inserts retry WITHOUT the tag on a missing-column refusal
+  (`db.ts` `missingTagColumn`) and the loaders retry without `order_ref,cancelled_at` (`withCancelCols`) — the
+  order is never lost.
+- **sql/234 (+ rollback):** columns `order_ref`, `cancelled_at`, `cancel_msg_id`, `cancel_auto_code` (lso) +
+  `order_ref`, `cancelled_at` (orders); RPCs `order_cancel_check` / `cancel_order` / `uncancel_order` (SECURITY
+  DEFINER, every read/write `user_id = auth.uid()`, anon revoked). Cancel = ONE transaction: marks the rows, moves
+  comment_msg_id / auto_code into cancel_* (the comment can be ordered again), lowers the Customers row with the
+  EXACT handle (the app's own save key; the table is unique on lower(handle)), puts Auto-mode stock back by
+  live_code. Undo = the reverse; a comment / code taken meanwhile stays with the new order (unique_violation
+  caught). Nothing deleted, free counters untouched. Six readers get ONE condition each (md5-guarded text
+  replace): sales_report, sales_by_platform(_orders), miners_report, peak_hour_orders, my_session_summaries.
+  ⚠️ The NEXT file that changes one of these six or `my_feature_access` must start from sql/234's text.
+  Rollback refuses while any order is cancelled.
+- **Gate:** `orderCancelVisible({ isAdmin, previewKey: hasFeature("order_cancel"), switchOn: featureSw.orderCancel })`
+  — switch `order_cancel_enabled` (created 'false'), feature key `order_cancel`, admins always.
+- **App:** `useLiveSession` → `session` (cancelled left out — every reader) + `fullSession` (the Orders tab list);
+  `getBuyers` = FULL session (a cancelled buyer's number is never reused). `setOrderCancelled(ref, on)` + the
+  comment's msgId leaves / re-enters the ordered map; `useOrders.releaseMsgId / holdMsgId`. Orders tab:
+  ⋯ → portal sheet (check → `sent` warning) → Cancelled chip + ↶ Undo; totals / badge / export / Unpaid leave it out;
+  a past session is re-read after a cancel (`usePastSessions().reload`). Invoicing line ids + the Paid flag read
+  without cancelled rows. Server (Render): Send all + after-live receipt readers `readWithoutCancelled`
+  (`server/orderCancelFilter.js`, missing column → today's read).
+- **Known:** a ledger insert that lands AFTER its cancel is not marked (both writes start together); the Invoicing
+  tag "New item · send again" can show after a line of an already-sent buyer is cancelled; another phone shows the
+  order until it reloads. `approvedShift.bytes.test.ts` fails 5 tests on main too (clock/zone in the container).
+- **Guide:** orders-search section + 116b; **sql/235** = that one line (phrase swap; apply LAST, after the switch).
+- **Order:** sql/234 (DONE) → merge (Vercel; Render deploys main) → Render deploy (quiet window, Business Pulse
+  check) → test (admins see ⋯ already) → switch 'true' → sql/235. Before the Render deploy, Send all / the
+  after-live receipt still include a cancelled Facebook order (only admins can cancel until the switch).
+  The two indexes are built CONCURRENTLY after the commit (sql/234 step 7) — never inside the transaction
+  (orders ≈ 630k rows).
+- Proof: `docs/design/cancel-order/` (pictures 360/390/412/1280 + dark, measured, 14/14 breaks, PGlite 67 + 6).

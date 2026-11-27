@@ -8,6 +8,7 @@
 //   • one order line cancelled from the invoice — table invoice_line_cancels (sql/222), keyed by the
 //     ORDER'S OWN DATABASE ID (live_session_orders.id), never by its text. The order itself is untouched.
 // No buyer name, username or message text is logged or sent anywhere by this module.
+import { withCancelCols, keepNotCancelled } from "./orderCancel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { fetchAllPages } from "../../lib/fetchAllPages";
@@ -563,12 +564,15 @@ export async function loadOrderIdRows(scope: { sessionId: string | null; sinceIs
     const sid = scope.sessionId && UUID_RE.test(scope.sessionId) ? scope.sessionId : null;
     if (!sid && !scope.sinceIso) return [];
     return await fetchAllPages<OrderIdRow>(async (page) => {
-      let q = sb.from("live_session_orders").select("id,buyer_number,handle,platform,product,price,qty,created_at")
-        .eq("user_id", uid).eq("platform", PLATFORM_NAME[platform]);
-      if (sid) q = q.eq("session_id", sid);
-      if (scope.sinceIso) q = q.gte("created_at", scope.sinceIso);
-      const { data, error } = await q.order("created_at", { ascending: true }).order("id", { ascending: true }).range(page * PAGE, page * PAGE + PAGE - 1);
-      return error ? null : ((data || []) as OrderIdRow[]);
+      // a cancelled order (sql/234) is left out, so its id is never paired with a line on screen
+      const { data, error } = await withCancelCols("id,buyer_number,handle,platform,product,price,qty,created_at", (cols) => {
+        let q = sb.from("live_session_orders").select(cols)
+          .eq("user_id", uid).eq("platform", PLATFORM_NAME[platform]);
+        if (sid) q = q.eq("session_id", sid);
+        if (scope.sinceIso) q = q.gte("created_at", scope.sinceIso);
+        return q.order("created_at", { ascending: true }).order("id", { ascending: true }).range(page * PAGE, page * PAGE + PAGE - 1);
+      });
+      return error ? null : keepNotCancelled((data || []) as unknown as OrderIdRow[]);
     }, PAGE);
   } catch { return null; }
 }

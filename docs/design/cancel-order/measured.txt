@@ -1,0 +1,21 @@
+iphone-390 list: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+iphone-390 sheet: no sideways scroll sheet 390px buttons 46/46px ⋯ 38×28 drawn, tap area 44×44
+iphone-390 after cancel: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+iphone-390 chips=2 undo=2 errors=none
+android-412 list: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+android-412 sheet: no sideways scroll sheet 412px buttons 46/46px ⋯ 38×28 drawn, tap area 44×44
+android-412 after cancel: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+android-412 chips=2 undo=2 errors=none
+phone-360 list: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+phone-360 sheet: no sideways scroll sheet 360px buttons 46/46px ⋯ 38×28 drawn, tap area 44×44
+phone-360 after cancel: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+phone-360 chips=2 undo=2 errors=none
+laptop-1280 list: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+laptop-1280 sheet: no sideways scroll sheet 480px buttons 46/46px ⋯ 38×28 drawn, tap area 44×44
+laptop-1280 after cancel: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+laptop-1280 chips=2 undo=2 errors=none
+iphone-390-dark list: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+iphone-390-dark sheet: no sideways scroll sheet 390px buttons 46/46px ⋯ 38×28 drawn, tap area 44×44
+iphone-390-dark after cancel: no sideways scroll   ⋯ 38×28 drawn, tap area 44×44
+iphone-390-dark chips=2 undo=2 errors=none
+plain sheet warning lines=0
