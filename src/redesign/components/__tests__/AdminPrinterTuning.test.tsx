@@ -111,6 +111,16 @@ describe("the panel", () => {
     expect(screen.getByTestId("ptu-version").textContent).toContain("v1");
     expect(screen.getAllByTestId("ptu-history-row")).toHaveLength(1);
   });
+  it("a save on top of an existing tuning sends the version it read (not 0)", async () => {
+    const db = fakeDb({ settings: { density: 10 }, version: 4, top: 4 });
+    open();
+    fireEvent.click(await screen.findByTestId("ptu-chip-upside_down"));
+    fireEvent.click(screen.getByTestId("ptu-save"));
+    fireEvent.click(screen.getByTestId("ptu-save-ask-yes"));
+    await waitFor(() => expect(screen.getByTestId("ptu-note").textContent).toBe(t.rd_ptu_saved));
+    expect(calls("admin_printer_tuning_set")[0][1]).toEqual({ p_email: "seller@x.com", p_settings: { density: 10, flip: true }, p_expected_version: 4 });
+    expect(db.version).toBe(5);
+  });
   it("Cancel in the question saves nothing", async () => {
     fakeDb();
     open();
