@@ -193,6 +193,16 @@ describe("a saved edit → Send all, the single Send and the preview draw the ed
 
 // ── the phone's editor and the server build the SAME input (→ the same layout) ─────────────────────
 describe("the editor's picture = the server's picture (same input, same layout)", () => {
+  it("a line cancelled for the invoice: the editor starts without it, as the server leaves it out", () => {
+    const rows = orderRows();
+    const receipt = buyerReceipt(rebuildSessionFromRows(rows as never).buyers, 2)!;
+    const start = originalState(receipt, [false, true], { opening: "Hi! 🎉 Thank you", note: "Pay by Friday\nBank 123" }, "");
+    expect(start.lines.map((l) => l.item)).toEqual(["Bag 👜"]);
+    const t = buildT("en") as unknown as Record<string, string>;
+    const labels = { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more, shipping: t.rd_rc_pic_shipping, howToPay: t.rd_rc_pic_howto, scanToPay: t.rd_rc_pic_scan };
+    const kept = rows.filter((r) => r.buyer_number === 2 && r.id !== 21);     // the server's keptRows with cancel 21
+    expect(fbPictureInput(start, { receipt, qrImage: null, cur: "NT$", labels })).toEqual(receiptInputFromRows(kept.map(noEmojiRow), s({})));
+  });
   const fakeMeasure = (txt: string, font: string) => txt.length * (Number(/(\d+)px/.exec(font)?.[1]) || 10) * 0.55;
   const appLabels = (lang: string) => {
     const t = buildT(lang as never) as unknown as Record<string, string>;
