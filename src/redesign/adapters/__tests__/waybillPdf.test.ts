@@ -31,9 +31,10 @@ async function streams(pdf: Uint8Array): Promise<{ boxes: number[][]; pages: str
 }
 // the stamp as read back: the text piece that starts with "@"
 const stampRun = (read: PageRead) => read.texts.find((t) => t.str.startsWith("@"));
+const PAGE: Box = { x0: 0, y0: 0, x1: A6[0], y1: A6[1] };
 const obstaclesOf = (read: PageRead, labelH: number) => [
-  ...read.texts.filter((t) => !t.str.startsWith("@") && t.str.trim() && !isIgnorable(t, labelH)),
-  ...read.marks.filter((m) => !isIgnorable(m, labelH)),
+  ...read.texts.filter((t) => !t.str.startsWith("@") && t.str.trim() && !isIgnorable(t, labelH, PAGE)),
+  ...read.marks.filter((m) => !isIgnorable(m, labelH, PAGE)),
 ];
 
 describe("reading the waybills", () => {
@@ -174,5 +175,38 @@ describe("writing @username", () => {
     const out = await stampWaybills(pdf, await scan(pdf), new Map());
     expect(out.placed).toEqual([]);
     expect((await streams(out.bytes)).pages).toEqual((await streams(pdf)).pages);
+  });
+});
+
+// A REAL TikTok/J&T label (measured on one Nov 27 2026): the whole frame + logos are ONE picture under
+// everything, and "COD" is three separate huge letters the reader sees as dark. Before this fix every
+// real page answered "no_space" (nothing was ever stamped).
+describe("a real-shaped label (full-page background picture + dark letter-by-letter COD)", () => {
+  it("finds the free space and stamps it, clear of text and barcodes, ≥ 9 pt left of the barcode column", async () => {
+    const pdf = await buildWaybillPdf([P(1, { realLabel: true })]);
+    const [info] = await scan(pdf);
+    expect(info.orderId).toBe("580000000000004821");
+    expect(info.slot.ok).toBe(true);
+    if (!info.slot.ok) return;
+    const out = await stampWaybills(pdf, [info], new Map([[0, "ana_ukay8"]]));
+    expect(out.placed).toEqual([0]);
+    const [back] = (await readWaybillPages(out.bytes))!;
+    const st = stampRun(back.read)!;
+    expect(st).toBeTruthy();
+    const labelH = info.slot.slot.labelH;
+    for (const o of obstaclesOf(back.read, labelH)) expect(overlap(st, o)).toBe(false);
+    const bars = back.read.marks.filter((m) => m.kind === "path" && m.x0 >= 230);
+    expect(Math.min(...bars.map((b) => b.x0)) - st.x1).toBeGreaterThanOrEqual(9);
+    expect(st.h).toBeGreaterThanOrEqual(STAMP_MIN_SIZE);
+  });
+  it("isIgnorable: a page-size picture only when the page is known; a small picture never; huge dark text yes, normal text no", () => {
+    const img = (x0: number, y0: number, x1: number, y1: number) => ({ kind: "image" as const, light: false, x0, y0, x1, y1 });
+    expect(isIgnorable(img(12.3, 2.8, 287.1, 417.6), 8.3, PAGE)).toBe(true);
+    expect(isIgnorable(img(12.3, 2.8, 287.1, 417.6), 8.3)).toBe(false);
+    expect(isIgnorable(img(100, 60, 150, 90), 8.3, PAGE)).toBe(false);
+    const txt = (h: number, str: string) => ({ str, h, x0: 0, y0: 0, x1: 10, y1: h, bx: 0, by: 0, horizontal: true, light: false, hidden: false });
+    expect(isIgnorable(txt(53.6, "C"), 8.3)).toBe(true);
+    expect(isIgnorable(txt(8.3, "Weight:"), 8.3)).toBe(false);
+    expect(isIgnorable(txt(20, "X"), 8.3)).toBe(false);
   });
 });

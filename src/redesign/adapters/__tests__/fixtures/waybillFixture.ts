@@ -25,6 +25,8 @@ export interface FixturePage {
   lineAcrossBand?: boolean;  // a box line drawn through the free space (no room → not stamped)
   splitLabels?: boolean;     // "Weight:" drawn letter by letter with kerning (TJ)
   receiver?: string;
+  realLabel?: boolean;       // like a REAL TikTok/J&T label (measured Nov 27 2026): the frame + logos are ONE
+                             // full-page picture under everything, and "COD" is three separate huge DARK letters
 }
 export interface FixtureOptions {
   font?: "cid" | "std";      // cid = Type0 + ToUnicode (default); std = Helvetica, no ToUnicode, no Widths
@@ -76,7 +78,8 @@ function pageRuns(p: FixturePage): { runs: Run[]; draw: string[] } {
   rect(165, L.blockTop, 19, 19); rect(184, L.blockTop, 19, 19); rect(203, L.blockTop, 20, 19);
   t(172, 138, 11, "1"); t(191, 138, 11, "2"); t(210, 138, 11, "3");
   // the bottom block
-  t(98, 92, 32, "COD", 0.83); // the grey watermark (drawn first, under the text)
+  if (p.realLabel) { t(58.9, 35.8 + 40, 53.6, "C", 0); t(98, 35.8 + 40, 53.6, "O", 0); t(140, 35.8 + 40, 53.6, "D", 0); }
+  else t(98, 92, 32, "COD", 0.83); // the grey watermark (drawn first, under the text)
   const ys = [0, 1, 2, 3, 4].map((k) => L.weightY - k * L.lineGap);
   if (p.labels !== false) {
     if (p.splitLabels) runs.push({ x: 17, y: ys[0], size: L.size, text: "Weight:", tj: true });
@@ -157,10 +160,12 @@ export async function buildWaybillPdf(pages: FixturePage[], opts: FixtureOptions
     encode = (s) => `(${escPdf(s)}) Tj`;
     encodeTj = (s) => `[${[...s].map((c) => `(${escPdf(c)})`).join(" -12 ")}] TJ`;
   }
-  for (const { runs, draw } of all) {
+  const bgRef = ctx.register(ctx.stream(new Uint8Array([255]), { Type: "XObject", Subtype: "Image", Width: 1, Height: 1, ColorSpace: "DeviceGray", BitsPerComponent: 8 }));
+  for (const [k, { runs, draw }] of all.entries()) {
     const page = doc.addPage(A6);
-    page.node.set(PDFName.of("Resources"), ctx.obj({ Font: ctx.obj({ F1: fontRef }) }));
-    const body: string[] = ["q", ...draw, "Q"];
+    const real = pages[k].realLabel === true;
+    page.node.set(PDFName.of("Resources"), ctx.obj(real ? { Font: ctx.obj({ F1: fontRef }), XObject: ctx.obj({ Im1: bgRef }) } : { Font: ctx.obj({ F1: fontRef }) }));
+    const body: string[] = [...(real ? ["q 274.8 0 0 414.8 12.3 2.8 cm /Im1 Do Q"] : []), "q", ...draw, "Q"];
     for (const r of runs) {
       body.push(`BT ${r.grey ?? 0} g /F1 ${r.size} Tf 1 0 0 1 ${r.x} ${r.y} Tm ${r.tj ? encodeTj(r.text) : encode(r.text)} ET`);
     }

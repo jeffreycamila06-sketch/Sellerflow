@@ -470,15 +470,25 @@ function labelRun(lines: Line[], re: RegExp): { line: Line; run: TextRun[] } | n
 
 // What may sit under the stamp: a big light text (the grey "COD" watermark), any light
 // paint (white / light grey backgrounds), text that does not print.
-export function isIgnorable(o: TextRun | Mark, labelH: number): boolean {
+// Real TikTok / J&T waybills (checked on a real label, Nov 27 2026): the grey "COD" is drawn as three
+// separate huge letters whose colour the reader sees as dark, and the whole label frame + logos is ONE
+// picture under everything. So: text ≥ 4× the label height is a watermark, and a picture covering most
+// of the page is the label's own background (never an obstacle — the text and barcodes on top of it are).
+export const WATERMARK_TEXT_FACTOR = 4;
+export const BACKGROUND_IMAGE_SHARE = 0.8;
+const area = (b: Box) => Math.max(0, b.x1 - b.x0) * Math.max(0, b.y1 - b.y0);
+export function isIgnorable(o: TextRun | Mark, labelH: number, page?: Box): boolean {
   if ("str" in o) {
     if (o.hidden) return true;
+    if (o.h >= WATERMARK_TEXT_FACTOR * labelH) return true;
     const big = o.h >= 2 * labelH;
     return big && (o.light || /^\s*cod\s*$/i.test(o.str));
   }
+  if (o.kind === "image" && page && area(page) > 0 && area(o) >= BACKGROUND_IMAGE_SHARE * area(page)) return true;
   return o.light;
 }
 
+export const RIGHT_GAP_MIN = 9;
 export function findSlot(read: PageRead, page: Box): SlotResult {
   const lines = textLines(read.texts);
   const w = labelRun(lines, /\bweight\b/i);
@@ -496,15 +506,17 @@ export function findSlot(read: PageRead, page: Box): SlotResult {
   const left = valueEnd + Math.max(0.6 * labelH, 3);
   const band: Box = { x0: left, y0: bottom, x1: page.x1, y1: top };
   const obstacles: Box[] = [
-    ...read.texts.filter((t) => !isIgnorable(t, labelH) && t.str.trim() !== "" && !runs.includes(t)),
-    ...read.marks.filter((m) => !isIgnorable(m, labelH)),
+    ...read.texts.filter((t) => !isIgnorable(t, labelH, page) && t.str.trim() !== "" && !runs.includes(t)),
+    ...read.marks.filter((m) => !isIgnorable(m, labelH, page)),
   ];
   // the right edge: the nearest thing to the right on these two lines (the barcode column's line)
   let right = page.x1 - 6;
   for (const o of obstacles) {
     if (o.y0 < band.y1 && o.y1 > band.y0 && o.x0 >= left - 0.01 && o.x0 < right) right = o.x0;
   }
-  const slot: Slot = { x0: left, y0: bottom, x1: right - Math.max(0.4 * labelH, 2), y1: top, labelH };
+  // keep well clear of the barcode column: on a real label its frame line is inside the background
+  // picture, a few points left of the bars, so it is not seen as an obstacle
+  const slot: Slot = { x0: left, y0: bottom, x1: right - Math.max(0.75 * labelH, RIGHT_GAP_MIN), y1: top, labelH };
   if (slot.x1 - slot.x0 <= 0) return { ok: false, reason: "no_space" };
   // nothing may cross the space (a box line going through it, a piece starting left of it …)
   if (obstacles.some((o) => overlaps(o, slot))) return { ok: false, reason: "no_space" };

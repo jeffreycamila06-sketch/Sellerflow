@@ -153,6 +153,9 @@ export default function WaybillUsername({ onBack, userId, cur, loadCandidates = 
     if (!downloadPdf(out, name)) say(t.rd_wb_build_failed);
   };
   const printBusy = useRef(false);
+  // Print asks first, inside the page: on a laptop set to print stickers by itself (auto-print) the browser
+  // shows no print window, so one tap would send every waybill straight to the sticker printer.
+  const [confirmPrint, setConfirmPrint] = useState(false);
   const print = () => {
     if (!out || printBusy.current) return; // one print window per tap (a double tap opens nothing more)
     printBusy.current = true;
@@ -253,8 +256,15 @@ export default function WaybillUsername({ onBack, userId, cur, loadCandidates = 
                   <span style={{ flex: 1 }} />
                   <button type="button" style={{ ...btnGhost, opacity: out ? 1 : 0.5 }} disabled={!out} onClick={download} data-testid="wb-download">{t.rd_wb_download}</button>
                   {/* Print = the browser's print window: a real browser only (in the phone / tablet app it does nothing) */}
-                  {!phoneApp && <button type="button" style={{ ...btnPrimary, width: "auto", minHeight: 44, fontSize: 14, opacity: out ? 1 : 0.5 }} disabled={!out} onClick={print} data-testid="wb-print">{preparing ? t.rd_wb_preparing : tpl(t.rd_wb_print_n, { n: n.all })}</button>}
+                  {!phoneApp && <button type="button" style={{ ...btnPrimary, width: "auto", minHeight: 44, fontSize: 14, opacity: out ? 1 : 0.5 }} disabled={!out} onClick={() => setConfirmPrint(true)} data-testid="wb-print">{preparing ? t.rd_wb_preparing : tpl(t.rd_wb_print_n, { n: n.all })}</button>}
                 </div>
+                {!phoneApp && confirmPrint && out && (
+                  <div role="alertdialog" aria-label={tpl(t.rd_wb_print_n, { n: n.all })} className="sfl-wb-warn" style={{ borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }} data-testid="wb-print-confirm">
+                    <span style={{ flex: "1 1 240px", fontSize: 13, lineHeight: 1.45 }}>{tpl(t.rd_wb_print_confirm, { n: n.all })}</span>
+                    <button type="button" style={{ ...btnGhost, minHeight: 44 }} onClick={() => setConfirmPrint(false)} data-testid="wb-print-cancel">{t.rd_shp_cancel}</button>
+                    <button type="button" style={{ ...btnPrimary, width: "auto", minHeight: 44, fontSize: 14 }} onClick={() => { setConfirmPrint(false); print(); }} data-testid="wb-print-go">{t.rd_wb_print_go}</button>
+                  </div>
+                )}
                 {!phoneApp && <div className="sfl-wb-note" style={{ borderRadius: 12, padding: "10px 12px", fontSize: 12.5, lineHeight: 1.45 }} data-testid="wb-print-note">{t.rd_wb_print_note}</div>}
                 {chips}
                 {failedLine}
