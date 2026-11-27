@@ -90,7 +90,6 @@ describe("feature OFF (no switch, no preview key, not an admin) → Settings exa
       const branch = await settingsHtml();
       expect(branch).toBe(main);
       expect(branch).not.toContain("tile-shiphub");
-      expect(branch).not.toContain(t.rd_shub_group);
     });
   }
   it("a Taiwan seller still has today's 'Shipping · Coming soon' tile (unchanged)", async () => {
@@ -109,10 +108,12 @@ describe("feature OFF (no switch, no preview key, not an admin) → Settings exa
 
 describe("Philippines", () => {
   for (const [name, set] of [["switch ON", () => { H.switchOn = true; }], ["preview key", () => { H.key = true; }]] as const) {
-    it(`${name}: SHIPPING group → Shipping (NEW) → Waybill username (NEW) → the upload screen; the NEW badges go after the first open`, async () => {
+    it(`${name}: the Shipping tile (NEW, same place as before) → Shipping → Waybill username (NEW) → the upload screen; the NEW badges go after the first open`, async () => {
       set();
       render(<RedesignApp />); await flush(); await toSettings();
-      expect(screen.getByTestId("settings-group-shipping").textContent).toBe("SHIPPING");
+      // Jeff 2026-11-27: the Shipping tile stays a normal tile, in its old place — no group heading, no full-width row
+      expect(screen.queryByTestId("settings-group-shipping")).toBeNull();
+      expect((screen.getByTestId("tile-shiphub") as HTMLElement).style.gridColumn).toBe("");
       expect(screen.getByTestId("tile-shiphub-new")).toBeTruthy();
       fireEvent.click(screen.getByTestId("tile-shiphub")); await flush();
       expect(now()).toBe("shiphub");
@@ -153,17 +154,18 @@ describe("Taiwan with the switch ON → 'Soon'", () => {
 });
 
 describe("admins", () => {
-  it("all markets: the full screen, the switch off; the old admin-only 7-11 Shipping tile is inside the Shipping screen (not twice in Settings)", async () => {
+  it("all markets: the full screen, the switch off; the Shipping screen has Waybill username only (Jeff 2026-11-27: the old 7-11 交貨便 export row is gone)", async () => {
     H.role = "admin"; H.country = "TW";
     render(<RedesignApp />); await flush(); await toSettings();
     expect(screen.queryByTestId("tile-shipping")).toBeNull();
+    // the Shipping tile is where the old admin "Shipping" tile was: right after Admin
+    const tiles = [...screen.getByTestId("tile-shiphub").parentElement!.children];
+    const adminAt = tiles.findIndex((el) => el.textContent === t.rd_sh_admin);
+    expect(adminAt).toBeGreaterThanOrEqual(0);
+    expect(tiles[adminAt + 1]).toBe(screen.getByTestId("tile-shiphub"));
     fireEvent.click(screen.getByTestId("tile-shiphub")); await flush();
     expect(screen.getByTestId("shub-country").textContent).toBe("Philippines");
-    expect(screen.getByTestId("shub-711")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("shub-711")); await flush();
-    expect(now()).toBe("shipping");
-    fireEvent.click(screen.getByTestId("back-btn")); await flush();
-    expect(now()).toBe("shiphub");
+    expect(screen.queryByTestId("shub-711")).toBeNull();
     fireEvent.click(screen.getByTestId("shub-waybill")); await flush();
     expect(now()).toBe("waybill");
   });

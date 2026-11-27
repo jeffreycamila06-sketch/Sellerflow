@@ -11,7 +11,6 @@ import type { WaybillAccess } from "../adapters/waybillGate";
 const rowStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 12, minHeight: 64, padding: "10px 14px", background: "var(--surface)", border: "none", width: "100%", textAlign: "left", fontFamily: "var(--font-ui)", color: "var(--text)", cursor: "pointer", boxSizing: "border-box" };
 const icon = (bg: string, fg: string): CSSProperties => ({ width: 38, height: 38, borderRadius: 12, background: bg, color: fg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 });
 const tagIcon = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12.6V5a2 2 0 0 1 2-2h7.6a2 2 0 0 1 1.4.6l7 7a2 2 0 0 1 0 2.8l-7.6 7.6a2 2 0 0 1-2.8 0l-7-7A2 2 0 0 1 3 12.6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><circle cx="8" cy="8" r="1.6" fill="currentColor" /></svg>;
-const boxIcon = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M3 7.5 12 12l9-4.5M12 12v9" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>;
 
 export function NewBadge({ testid }: { testid?: string }) {
   const t = useT();
@@ -33,13 +32,11 @@ function Row({ icon: ic, title, sub, right, onClick, soon = false, testid }: { i
   );
 }
 
-export default function ShippingHub({ onBack, access, onWaybill, waybillNew = false, on711, sub711 }: {
+export default function ShippingHub({ onBack, access, onWaybill, waybillNew = false }: {
   onBack: () => void;
   access: Exclude<WaybillAccess, "hidden">;
   onWaybill?: () => void;   // Philippines (full) only
   waybillNew?: boolean;     // "NEW" until the seller opens Waybill username once on this phone
-  on711?: () => void;       // admins: the 7-11 交貨便 export (the old Settings "Shipping" tile)
-  sub711?: string;
 }) {
   const t = useT();
   const full = access === "full";
@@ -56,11 +53,6 @@ export default function ShippingHub({ onBack, access, onWaybill, waybillNew = fa
           {full
             ? <Row icon={tagIcon} title={t.rd_wb_title} sub={t.rd_wb_row_sub_ph} onClick={onWaybill} right={waybillNew ? <NewBadge testid="shub-waybill-new" /> : undefined} testid="shub-waybill" />
             : <Row icon={tagIcon} title={t.rd_wb_title} sub={t.rd_wb_row_sub_tw} soon right={<SoonBadge plain testid="shub-waybill-soon" style={{ flexShrink: 0 }} />} testid="shub-waybill" />}
-          {on711 && (
-            <div style={{ borderTop: "1px solid var(--border)" }}>
-              <Row icon={boxIcon} title={t.rd_shub_711} sub={sub711 ?? ""} onClick={on711} testid="shub-711" />
-            </div>
-          )}
         </div>
         <div style={{ background: "var(--accent-soft)", color: "var(--accent-fg)", borderRadius: 12, padding: "10px 12px", fontSize: 12.5, lineHeight: 1.45 }} data-testid="shub-note">
           {full ? t.rd_shub_more : t.rd_wb_tw_note}

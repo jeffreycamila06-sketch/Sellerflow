@@ -147,9 +147,7 @@ describe("the real app (Taiwan seller)", () => {
     expect(shippingScreenOpen()).toBe(false);
   });
 
-  it("admin: Settings → SHIPPING → Shipping → the 7-11 row opens Shipping, and so does the Orders button", async () => {
-    // Since Waybill username (sql/231) admins always see the SHIPPING group; the old "Shipping" tile is inside it
-    // (Settings never shows two "Shipping" entries). Same gate (shippingGate "open") for that row.
+  it("admin: the 7-11 Shipping screen opens from the Orders button; Settings has no 7-11 Shipping entry any more (Jeff 2026-11-27)", async () => {
     H.role = "admin";
     render(<RedesignApp />);
     await flush();
@@ -158,9 +156,7 @@ describe("the real app (Taiwan seller)", () => {
     expect(screen.queryByTestId("tile-shipping")).toBeNull();
     fireEvent.click(screen.getByTestId("tile-shiphub"));
     await flush();
-    fireEvent.click(screen.getByTestId("shub-711"));
-    await flush();
-    expect(shippingScreenOpen()).toBe(true);
+    expect(screen.queryByTestId("shub-711")).toBeNull();
     nav(t.rd_nav_orders);
     await flush();
     fireEvent.click(screen.getByTestId("ord-shipping"));
@@ -174,7 +170,7 @@ describe("the real app (Taiwan seller)", () => {
     expect(src).toContain('{screen === "shipping" && shippingGate === "open" && <Shipping ');
     expect(src).toContain('onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}');
     expect(src).toContain('onShipping={!shipHubOn && shippingGate === "open" ? () => setScreen("shipping") : undefined}');
-    expect(src).toContain('on711={shippingGate === "open" ? () => setScreen("shipping") : undefined}'); // the row inside the SHIPPING group's screen
-    expect(src.match(/setScreen\("shipping"\)/g)).toHaveLength(3);       // no other way in
+    expect(src).not.toContain("on711=");
+    expect(src.match(/setScreen\("shipping"\)/g)).toHaveLength(2);       // no other way in
   });
 });

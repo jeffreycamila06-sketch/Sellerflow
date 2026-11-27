@@ -3552,12 +3552,9 @@ const RAW: Record<string, Row> = {
   // ════ Shipping (Settings group) + Waybill username (TikTok Shop, Philippines — sql/231) ════
   // Settings / Shipping texts: all 8 languages. Waybill username screen: en / fil / zh / zh-TW;
   // vi / th / id / bg = English for now (the screen opens for the Philippines only).
-  rd_shub_group: { en: "SHIPPING", fil: "PAGPAPADALA", zh: "发货", "zh-TW": "出貨", vi: "GIAO HÀNG", th: "การจัดส่ง", id: "PENGIRIMAN", bg: "ДОСТАВКА" },
-  rd_shub_row_sub: { en: "Waybills and parcels", fil: "Waybills at mga parcel", zh: "运单和包裹", "zh-TW": "託運單與包裹", vi: "Vận đơn và bưu kiện", th: "ใบส่งของและพัสดุ", id: "Resi dan paket", bg: "Товарителници и пратки" },
   rd_shub_ph: { en: "Philippines", fil: "Pilipinas", zh: "菲律宾", "zh-TW": "菲律賓", vi: "Philippines", th: "ฟิลิปปินส์", id: "Filipina", bg: "Филипини" },
   rd_shub_tw: { en: "Taiwan", fil: "Taiwan", zh: "台湾", "zh-TW": "台灣", vi: "Đài Loan", th: "ไต้หวัน", id: "Taiwan", bg: "Тайван" },
   rd_shub_more: { en: "More shipping tools will be added here.", fil: "Dadagdagan pa ng ibang shipping tools dito.", zh: "更多发货工具会陆续加入这里。", "zh-TW": "更多出貨工具會陸續加入這裡。", vi: "Sẽ có thêm công cụ giao hàng tại đây.", th: "จะมีเครื่องมือการจัดส่งเพิ่มเติมที่นี่", id: "Alat pengiriman lain akan ditambahkan di sini.", bg: "Тук ще добавим още инструменти за доставка." },
-  rd_shub_711: { en: "7-11 交貨便 export", fil: "7-11 交貨便 export", zh: "7-11 交貨便汇出", "zh-TW": "7-11 交貨便匯出", vi: "Xuất 7-11 交貨便", th: "ส่งออก 7-11 交貨便", id: "Ekspor 7-11 交貨便", bg: "7-11 交貨便 експорт" },
   rd_wb_title: { en: "Waybill username", fil: "Username sa waybill", zh: "运单用户名", "zh-TW": "託運單帳號", vi: "Tên người dùng trên vận đơn", th: "ชื่อผู้ใช้บนใบส่งของ", id: "Username di resi", bg: "Потребителско име на товарителницата" },
   rd_wb_row_sub_ph: { en: "TikTok Shop · put @username on waybills", fil: "TikTok Shop · ilagay ang @username sa waybills", zh: "TikTok Shop · 在运单上加 @用户名", "zh-TW": "TikTok Shop · 在託運單加上 @帳號", vi: "TikTok Shop · thêm @username vào vận đơn", th: "TikTok Shop · ใส่ @username บนใบส่งของ", id: "TikTok Shop · tambahkan @username di resi", bg: "TikTok Shop · добави @username към товарителниците" },
   rd_wb_row_sub_tw: { en: "7-11 / FamilyMart waybills", fil: "7-11 / FamilyMart waybills", zh: "7-11 / 全家运单", "zh-TW": "7-11 / 全家託運單", vi: "Vận đơn 7-11 / FamilyMart", th: "ใบส่งของ 7-11 / FamilyMart", id: "Resi 7-11 / FamilyMart", bg: "Товарителници 7-11 / FamilyMart" },

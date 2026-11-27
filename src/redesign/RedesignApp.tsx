@@ -3307,8 +3307,7 @@ export default function RedesignApp() {
               downloadable as a real-looking CSV. */}
           {screen === "shiphub" && waybillAcc !== "hidden" && (
             <ShippingHub onBack={() => goBack()} access={waybillAcc} waybillNew={!waybillSeen}
-              onWaybill={waybillAcc === "full" ? () => { markSeen(WAYBILL_SEEN_KEY); setWaybillSeen(true); setScreen("waybill"); } : undefined}
-              on711={shippingGate === "open" ? () => setScreen("shipping") : undefined} sub711={tApp.rd_shp_sub} />
+              onWaybill={waybillAcc === "full" ? () => { markSeen(WAYBILL_SEEN_KEY); setWaybillSeen(true); setScreen("waybill"); } : undefined} />
           )}
           {screen === "waybill" && waybillAcc === "full" && <WaybillUsername onBack={() => goBack()} userId={authUserId || ""} cur={cur} />}
           {screen === "blacklist" && blacklistOn && (
