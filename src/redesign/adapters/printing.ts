@@ -20,6 +20,7 @@ import { cpclRasterBytes } from "./cpclRaster";
 import { savedBtPrinter, savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
 import { knownTsplJob, knownGapAfterMs, approvedLayoutFor, type TsplJobSettings } from "./printerModels";
 import { applyApprovedLayout, layoutChanges, NO_LAYOUT, type ApprovedLayout } from "./rasterShift";
+import { tuningFor, tunedTsplJob, tunedLayout } from "./printerTuning";
 import type { NiimbotImage } from "./printerBridge";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
@@ -625,8 +626,19 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
   if (typeof raw !== "function") return { ok: false, code: "", message: "" };
   const reason: StickerFallbackReason = lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos";
   const t0 = nowMs();
-  const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, knownTsplJob(savedBtPrinter()?.name), approvedLayoutFor(savedBtPrinter()?.name));
-  noteBadJob(checkStickerJob(lang as JobKind, bytes, payload.labelWidthMm, payload.labelHeightMm), lang);
+  const name = savedBtPrinter()?.name;
+  const baseJob = knownTsplJob(name), baseLayout = approvedLayoutFor(name);
+  // a seller's own printer tuning (sql/230); none = the SAME job / layout objects = today's bytes
+  const tune = tuningFor(name);
+  const job = tunedTsplJob(baseJob, tune), layout = tunedLayout(baseLayout, tune);
+  let bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, job, layout);
+  let bad = checkStickerJob(lang as JobKind, bytes, payload.labelWidthMm, payload.labelHeightMm);
+  // a tuned job that fails the final safety is never sent: today's job instead (checked the same way)
+  if (bad.length && (job !== baseJob || layout !== baseLayout)) {
+    bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, baseJob, baseLayout);
+    bad = checkStickerJob(lang as JobKind, bytes, payload.labelWidthMm, payload.labelHeightMm);
+  }
+  noteBadJob(bad, lang);
   const t1 = nowMs();
   log.log(`[GENERIC-STICKER] lang=${lang} bytes=${bytes.length} (~${(bytes.length / 10000).toFixed(1)}s over BLE at ~10 KB/s)`);
   holdLaneAfterGenericSend();
@@ -791,9 +803,16 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
   if (lang) {
     const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
     if (typeof raw !== "function") return { ok: false, code: "", message: "" };
-    const job = knownTsplJob(savedBtPrinter()?.name);
-    const layout = approvedLayoutFor(savedBtPrinter()?.name); // an approved printer's flip / shift (sql/161); none = as before
-    const bytes = await picture(async () => { const r = await renderOneStickerFor(lang, os, inp, job); return genericBytes(lang, layoutChanges(layout) ? applyApprovedLayout(r, layout) : r, os, job); });
+    const name = savedBtPrinter()?.name;
+    const baseJob = knownTsplJob(name);
+    const baseLayout = approvedLayoutFor(name); // an approved printer's flip / shift (sql/161); none = as before
+    // a seller's own printer tuning (sql/230); none = the SAME job / layout objects = today's bytes
+    const tune = tuningFor(name);
+    const job = tunedTsplJob(baseJob, tune), layout = tunedLayout(baseLayout, tune);
+    const make = (j: TsplJobSettings, l: ApprovedLayout) => picture(async () => { const r = await renderOneStickerFor(lang, os, inp, j); return genericBytes(lang, layoutChanges(l) ? applyApprovedLayout(r, l) : r, os, j); });
+    let bytes = await make(job, layout);
+    // a tuned job that fails the final safety is never sent: the untuned job instead (checked below as always)
+    if (bytes && (job !== baseJob || layout !== baseLayout) && checkStickerJob(lang as JobKind, bytes, os.size.w, os.size.h).length) bytes = await make(baseJob, baseLayout);
     if (!bytes) return "today";
     if (refuseBadJob(checkStickerJob(lang as JobKind, bytes, os.size.w, os.size.h), lang)) return "today";
     holdLaneAfterGenericSend();

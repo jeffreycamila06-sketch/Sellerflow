@@ -43,7 +43,8 @@ export const isNiimbotName = (name: string | undefined | null): boolean => start
 // `density` / `speed` = the TSPL job header for THIS model only (DENSITY n / SPEED n); `bold` =
 // 1-dot heavier ink in the generic BITMAP job (stickerRaster BandOptions.bold). Absent = the
 // generic job's defaults (DENSITY 8, no SPEED line, no bold) — every other printer's bytes unchanged.
-export interface TsplJobSettings { density?: number; speed?: number; bold?: boolean }
+// `media` = a seller's own printer tuning (sql/230, printerTuning.ts) — the TSPL media line; absent = "GAP 2 mm, 0".
+export interface TsplJobSettings { density?: number; speed?: number; bold?: boolean; media?: { sensor: "gap" | "bline" | "continuous"; mm: number } }
 // `gapAfterMs` = how long the phone's printer lane waits after a sticker on THIS model before the next one
 // starts (printing.ts onPrinterLane). Only the XP-420B (Jeff 2026-11-09: blank labels between stickers on a fast
 // series; Flash / AIMO / Niimbot on the same roll had none). Absent = no wait, timing exactly as before.
@@ -141,6 +142,8 @@ function builtInKnowsName(name: string | undefined | null): boolean {
   for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return true;
   return isNiimbotName(name);
 }
+// A name any built-in rule knows (the D520BT, a WHITELIST / BUILT_IN prefix, a Niimbot name) — never tuned (sql/230).
+export const isBuiltInPrinterName = (name: string | undefined | null): boolean => builtInKnowsName(name);
 export function approvedPrinterFor(name: string | undefined | null): ApprovedPrinter | null {
   if (!approvedList.length) return null;
   const n = String(name || "").trim().toUpperCase();
