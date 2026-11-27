@@ -1,0 +1,246 @@
+// FROZEN COPY of main's src/redesign/screens/SettingsHub.tsx at f8b90114 (the branch cut), imports re-pointed
+// from src/redesign/__tests__/fixtures/. Used by waybillUsername.app.test.tsx: with Waybill username OFF the
+// real app must draw Settings exactly like this copy. Do not edit; refresh only from a newer main on purpose.
+// Screen 6 — Settings hub (menu). dc.html v2 L204–254.
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { headerBar, headerTitle } from "../../ui";
+import { useT } from "../../i18n";
+import InviteFriendsCard from "../../components/InviteFriendsCard";
+import SupportContactModal from "../../components/SupportContactModal";
+import SoonBadge from "../../components/SoonBadge";
+import { telegramDraftUrl } from "../../../lib/telegram";
+import ParcelStoreIcon from "../../components/ParcelStoreIcon";
+import HelpBot from "../../components/HelpBot";
+import { BlacklistIcon } from "../../components/BlacklistSheet";
+
+const tile: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "15px 13px", border: "1px solid var(--border)", borderRadius: 15, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
+const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
+  width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+  ...(variant === "danger"
+    ? { background: "rgba(225,29,72,.13)", color: "var(--danger)" }
+    : variant === "neutral"
+      ? { background: "var(--chip-bg)", color: "var(--text-dim)" }
+      : { background: "var(--accent-soft)", color: "var(--accent-fg)" }),
+});
+const tileLabel: CSSProperties = { fontSize: 13.5, fontWeight: 600, color: "var(--text)", lineHeight: 1.15 };
+
+function Tile({ icon, label, onClick, variant = "accent", locked = false, testid }: { icon: ReactNode; label: ReactNode; onClick: () => void; variant?: "accent" | "danger" | "neutral"; locked?: boolean; testid?: string }) {
+  return (
+    <button onClick={onClick} style={locked ? { ...tile, opacity: 0.72 } : tile} data-testid={testid} data-locked={locked ? "1" : undefined}>
+      <span style={locked ? chip("neutral") : chip(variant)}>{icon}</span>
+      <span style={{ ...tileLabel, ...(locked ? { color: "var(--text-dim)" } : {}) }}>{label}</span>
+      {locked && <span aria-hidden style={{ marginLeft: "auto", fontSize: 14, color: "var(--text-dim)", flexShrink: 0 }}>🔒</span>}
+    </button>
+  );
+}
+
+// Build 16 — a feature that isn't offered yet: the Live picker's "Coming soon" look (dimmed, the
+// words under the label) and NOT tappable (disabled, no handler). With onTap (Parcel Scan tiles)
+// it still looks the same, but a tap shows a short note — never a screen.
+function SoonTile({ icon, label, soon, testid, onTap }: { icon: ReactNode; label: ReactNode; soon: ReactNode; testid?: string; onTap?: () => void }) {
+  return (
+    <button type="button" disabled={!onTap} onClick={onTap} aria-disabled="true" style={{ ...tile, opacity: 0.5, cursor: "default" }} data-testid={testid} data-soon="1">
+      <span style={chip("neutral")}>{icon}</span>
+      <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+        <span style={tileLabel}>{label}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.15 }}>{soon}</span>
+      </span>
+    </button>
+  );
+}
+
+// Parcel Scan tiles: "Parcel Scan" with the store on a second, smaller line ("7-11" /
+// "FamilyMart") and our own shop-front icon (components/ParcelStoreIcon — no store logo).
+// The title is its own span so it reads the same; whole words only, fits a 320 px half-tile.
+const PARCEL_BADGE: CSSProperties = { whiteSpace: "normal", alignSelf: "flex-start", maxWidth: "100%", boxSizing: "border-box" };
+function ParcelLabel({ title, store }: { title: string; store: string }) {
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      <span>{title}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)" }}>{store}</span>
+    </span>
+  );
+}
+
+const ic = {
+  globe: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
+  gear: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
+  people: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.7" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17 14.3a5.5 5.5 0 0 1 3.5 4.7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>,
+  shield: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3 5 6v5c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6l-7-3Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  chart: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>,
+  truck: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 6h10v9H3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 9h4l3 3v3h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17.5" r="1.6" stroke="currentColor" strokeWidth="1.5" /><circle cx="17" cy="17.5" r="1.6" stroke="currentColor" strokeWidth="1.5" /></svg>,
+  database: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" strokeWidth="1.6" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" stroke="currentColor" strokeWidth="1.6" /><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" stroke="currentColor" strokeWidth="1.6" /></svg>,
+  camera: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.8a1 1 0 0 1 .83-.45h4.94a1 1 0 0 1 .83.45L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="12.5" r="3.4" stroke="currentColor" strokeWidth="1.6" /></svg>,
+  contact: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.6" /><circle cx="9" cy="11" r="2.3" stroke="currentColor" strokeWidth="1.5" /><path d="M5.6 16.2a3.6 3.6 0 0 1 6.8 0M14.5 9.5h3.5M14.5 12.5h3.5M14.5 15h2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
+  doclock: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><rect x="9" y="12.5" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.4" /><path d="M10.3 12.5v-1a1.7 1.7 0 0 1 3.4 0v1" stroke="currentColor" strokeWidth="1.4" /></svg>,
+  help: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /><path d="M9.4 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.4 2-2.4 3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="17" r="1.1" fill="currentColor" /></svg>,
+  receipt: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21V3Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 8h6M9 11.5h6M9 15h3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
+  pin: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><circle cx="12" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.7" /></svg>,
+  trash: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M10 7V5h4v2M6 7l1 13h10l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  exit: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M9 8 5 12l4 4M5 12h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+};
+
+export default function SettingsHub({
+  onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
+  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onInvoicing, invoicingOpen = false, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false, onBlacklist, blacklistNew = false,
+}: {
+  onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
+  onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
+  // Seller Website teaser (sql/169): the same card with "Soon" for a seller WITHOUT the website; a tap opens
+  // the support Telegram chat (a real link) with a ready message in the app language. Ignored when onWebsite is given.
+  websiteTeaser?: boolean;
+  helpBot?: boolean; // help bot preview (switch on + preview list / admin): bubble instead of the "Need help?" tile
+  onGeneral: () => void; onCustomers: () => void;
+  onAdmin: () => void;
+  onShipping?: () => void; // TW 7-11 module — passed ONLY when the market has shippingModule "tw-711" (marketHidesShipping) AND the user is an admin (Build 16)
+  shippingSoon?: boolean; // Build 16: non-admin seller in a shipping market → a "Coming soon" tile that never opens the screen
+  onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
+  isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
+  onParcelScan?: () => void; // Parcel Scan A1 — passed ONLY when canUseParcelScan allows (admin/test acct)
+  onCustomerDetails?: () => void; // Customer Details phonebook — SAME gate as Parcel Scan (parcelScanVisible)
+  onParcelTracking?: () => void; // Pickup Status (Part 5) — passed ONLY when parcelTrackingVisible (admin/googletest)
+  parcelLocked?: boolean; // basic/free: show Parcel Scan + Customer Details as LOCKED upsell tiles
+  pickupLocked?: boolean; // basic/free, TW, no access: show Pickup Status as a LOCKED upsell tile (parcelTrackingLocked)
+  onParcelUpsell?: () => void; // locked-tile click → neutral contact-support popup (never opens the screen)
+  // INVOICING (2026-11-26) — the card is shown to EVERYONE (every plan, iPhone, Android, web), right after the
+  // Website card, with "Soon". The tap is decided by the app: a seller who has the Receipt format screen opens
+  // it (as the old "Receipt format" tile did); everyone else gets a short "coming soon" note. No tile is hidden.
+  onInvoicing?: () => void;
+  /** Invoicing is open for this seller (sql/220): the card shows "›" instead of "Soon". Absent = today's card. */
+  invoicingOpen?: boolean;
+  // Taiwan market only (same market rule that lets Parcel Scan appear at all; admin sees it).
+  // Shows the FamilyMart "Coming soon" tile, and a "Coming soon" 7-11 tile for a seller who has
+  // neither the working nor the locked 7-11 tile. A tap only shows a short note.
+  onParcelSoon?: (store: "711" | "fm") => void;
+  // Parcel Scan FamilyMart — passed ONLY when fm_scan_enabled (or the fm_pickup preview) AND the
+  // 7-11 manual Parcel Scan rule allow it. Absent → the FamilyMart tile stays "Soon".
+  onFmScan?: () => void;
+  // BLACKLIST (sql/190) — passed ONLY outside Taiwan when the switch is on, for an admin or a tester.
+  // blacklistNew = the "NEW" badge until the seller opens it once on this phone. Absent → no tile.
+  onBlacklist?: () => void;
+  blacklistNew?: boolean;
+}) {
+  const t = useT();
+  // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
+  // anchor). Owned here so it never touches RedesignApp's top-level socket/live hooks.
+  const [helpOpen, setHelpOpen] = useState(false);
+  return (
+    <div>
+      <div style={headerBar} data-hb-top>
+        <div className="sfl-anim-beat" style={headerTitle}>{t.rd_set_title}</div>
+        <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_sh_sub}</div>
+      </div>
+      <div style={{ padding: "16px 14px 22px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {/* Share-the-app card — first thing seen; full-width, lightly tinted */}
+          <InviteFriendsCard onOpen={onInvite} />
+          {/* Seller Website — one full-width row, so the tile pairs below stay as they are. */}
+          {onWebsite && (
+            <button onClick={onWebsite} style={{ ...tile, gridColumn: "1 / -1" }} data-testid="tile-website">
+              <span style={chip("accent")}>{ic.globe}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span style={tileLabel}>{t.rd_wed_title}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_wed_sub}</span>
+              </span>
+              <span aria-hidden style={{ marginLeft: "auto", color: "var(--text-dim)" }}>›</span>
+            </button>
+          )}
+          {!onWebsite && websiteTeaser && (
+            <a href={telegramDraftUrl(t.rd_web_teaser_msg)} target="_blank" rel="noreferrer" style={{ ...tile, gridColumn: "1 / -1", textDecoration: "none", color: "inherit" }} data-testid="tile-website-soon">
+              <span style={chip("accent")}>{ic.globe}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span style={tileLabel}>{t.rd_wed_title}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_wed_sub}</span>
+              </span>
+              <SoonBadge plain style={{ marginLeft: "auto", flexShrink: 0 }} />
+            </a>
+          )}
+          {/* Invoicing — one full-width card right after the Website card, for everyone. Accent border + a filled
+              accent chip so it stands out; "Soon" on the right. The sub-line wraps (fits a 320 px phone).
+              maxWidth = the screen minus this tab's 14 px sides: on a 320 px phone the tile pairs below can be
+              wider than the screen in some languages (long labels), and this card must never follow them. */}
+          <button type="button" onClick={onInvoicing} style={{ ...tile, gridColumn: "1 / -1", border: "1.5px solid var(--accent)", maxWidth: "calc(100vw - 28px)" }} data-testid="tile-invoicing">
+            <span data-testid="invoicing-chip" style={{ ...chip("accent"), background: "var(--accent)", color: "var(--accent-text)" }}>{ic.receipt}</span>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span style={tileLabel}>{t.rd_invoice_title}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.25 }}>{t.rd_invoice_sub}</span>
+            </span>
+            {invoicingOpen
+              ? <span data-testid="invoicing-open" aria-hidden="true" style={{ marginLeft: "auto", flexShrink: 0, fontSize: 18, fontWeight: 700, color: "var(--accent-fg)" }}>›</span>
+              : <SoonBadge plain testid="invoicing-soon" style={{ marginLeft: "auto", flexShrink: 0 }} />}
+          </button>
+          <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
+          <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
+          {onBlacklist && (
+            <button onClick={onBlacklist} style={{ ...tile, position: "relative" }} data-testid="tile-blacklist">
+              <span style={chip("danger")}><BlacklistIcon /></span>
+              <span style={{ ...tileLabel, minWidth: 0 }}>{t.rd_bl_title}</span>
+              {/* On the tile's top-right corner, so it never pushes the name out on a 360 px phone. */}
+              {blacklistNew && <span data-testid="tile-blacklist-new" style={{ position: "absolute", top: -7, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: "var(--danger)", padding: "3px 7px", borderRadius: 6, lineHeight: 1.2, boxShadow: "0 2px 6px rgba(225,29,72,.35)" }}>{t.rd_bl_new}</span>}
+            </button>
+          )}
+          {/* Parcel tiles right after General / Customers: when the 7-11 + FamilyMart pair takes a
+              full row, every single tile after it still pairs up (no empty half-row). */}
+          {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED
+              upsell tile (🔒) that opens the neutral contact-support popup, never the
+              screen. The onParcelScan prop is the ALLOW gate; parcelLocked is tile-only. */}
+          {(() => {
+            const seven = <ParcelLabel title={t.rd_ps2_title} store="7-11" />;
+            const sevenIcon = <ParcelStoreIcon store="711" />;
+            const sevenTile = onParcelScan
+              ? <Tile icon={sevenIcon} label={seven} onClick={onParcelScan} testid="tile-parcelscan" />
+              : parcelLocked && onParcelUpsell
+                ? <Tile icon={sevenIcon} label={seven} onClick={onParcelUpsell} locked testid="tile-parcelscan-locked" />
+                : onParcelSoon
+                  ? <SoonTile icon={sevenIcon} label={seven} soon={<SoonBadge style={PARCEL_BADGE} />} testid="tile-parcelscan-soon" onTap={() => onParcelSoon("711")} />
+                  : null;
+            const fmLabel = <ParcelLabel title={t.rd_ps2_title} store={t.rd_sh_fm_name} />;
+            const fmTile = onFmScan
+              ? <Tile icon={<ParcelStoreIcon store="fm" />} label={fmLabel} onClick={onFmScan} testid="tile-parcelscan-fm-open" />
+              : onParcelSoon
+              ? <SoonTile icon={<ParcelStoreIcon store="fm" />} label={<ParcelLabel title={t.rd_ps2_title} store={t.rd_sh_fm_name} />} soon={<SoonBadge style={PARCEL_BADGE} />} testid="tile-parcelscan-fm" onTap={() => onParcelSoon("fm")} />
+              : null;
+            // Both shown → one full-width row so they always sit side by side.
+            return sevenTile && fmTile
+              ? <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, minWidth: 0 }} data-testid="parcel-pair">{sevenTile}{fmTile}</div>
+              : sevenTile || fmTile;
+          })()}
+          {/* Owner-only (production: isAdminUser) */}
+          {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
+          {onShipping
+            ? <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} testid="tile-shipping" />
+            : shippingSoon && <SoonTile icon={ic.truck} label={t.rd_sh_shipping} soon={t.rd_ls_soon} testid="tile-shipping-soon" />}
+          {/* Customer Details phonebook — same allow gate + same locked upsell. */}
+          {onCustomerDetails
+            ? <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onCustomerDetails} testid="tile-customerdetails" />
+            : parcelLocked && onParcelUpsell && <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onParcelUpsell} locked testid="tile-customerdetails-locked" />}
+          {/* Pickup Status (Part 5) — the prop IS the gate (parcelTrackingVisible: admin/googletest). No locked variant. */}
+          {onParcelTracking
+            ? <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelTracking} testid="tile-parceltracking" />
+            : pickupLocked && onParcelUpsell && <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelUpsell} locked testid="tile-parceltracking-locked" />}
+          {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
+          <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
+          {/* Need help? — support entry point, directly ABOVE Delete Account.
+              HIGHLIGHTED (option B): WHITE card like the others, but an accent-FILLED
+              badge (var(--accent) bg + light glyph) that beats CONTINUOUSLY while on
+              Settings (sfl-anim-beat3), and the LABEL reuses the EXACT sfl-anim-beat
+              class the "Settings" screen title uses (opacity-breathing fade, identical
+              look — both gated by reduced-motion + [data-motion=off]). Rendered inline
+              (not <Tile>) so the shared Tile/chip — and every other card — stay
+              byte-unchanged. */}
+          {/* Help bot preview (helpBot): the bubble replaces this tile; everyone else keeps it. */}
+          {!helpBot && (
+            <button onClick={() => setHelpOpen(true)} style={tile} data-testid="help-card">
+              <span className="sfl-anim-beat3" data-testid="help-badge" style={{ ...chip("accent"), background: "var(--accent)", color: "var(--accent-text)" }}>{ic.help}</span>
+              <span className="sfl-anim-beat" data-testid="help-label" style={tileLabel}>{t.rd_sh_help}</span>
+            </button>
+          )}
+          <Tile icon={ic.trash} label={t.rd_sh_delete} onClick={onDelete} variant="danger" />
+          <Tile icon={ic.exit} label={t.rd_sh_logout} onClick={onLogout} variant="neutral" />
+        </div>
+      </div>
+      {helpOpen && <SupportContactModal onClose={() => setHelpOpen(false)} />}
+      {helpBot && <HelpBot />}
+    </div>
+  );
+}

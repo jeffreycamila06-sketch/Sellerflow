@@ -28,6 +28,7 @@ export const FEATURE_KEYS = [
   "account_limits_v2", // Plan full popup, Channels 2×2, Shopee shop = one account, for this account before shopee_account_enforce (sql/199)
   "shopee_public", // Shopee Live without a beta row, for this account before shopee_public_enabled (sql/206)
   "invoicing", // Settings → Invoicing for this account before invoicing_enabled (sql/220)
+  "waybill_username", // Settings → Shipping → Waybill username for this account before waybill_username_enabled (sql/231)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

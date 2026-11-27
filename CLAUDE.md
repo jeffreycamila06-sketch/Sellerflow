@@ -7104,3 +7104,58 @@ Proof folder: `docs/design/printer-tuning/` (PGlite output + md5s, header diffs,
 - Not done / unsure: tuned header lines never printed on a real printer from here; `send_speed` needs an app build; the speed default
   the chips step from (4) is a guess for printers that get no SPEED line; Tuning.dc.html (the preview to match) is not in the repo —
   the sheet follows the written spec.
+
+## 2026-11-27 — WAYBILL USERNAME (TikTok Shop, Philippines) + Settings SHIPPING group (branch `claude/waybill-username`, NOT merged; sql/231 + sql/232 NOT applied; web only, no Render)
+Design approved by Jeff (claude.ai/artifact/JFCUgRNggFrpmVUa1rQeuz). The seller uploads the TikTok Shop **Order list CSV**
+(Seller Center → Orders → Export → CSV) and the **waybill PDF** (Shipping labels → Print / download); the app adds the buyer's
+`@username` to each waybill and gives back ONE new PDF. Both files stay in the browser (never uploaded, saved or logged).
+- **Gate (`adapters/waybillGate.ts`, one rule):** switch `app_settings.waybill_username_enabled` (sql/231 creates it 'false') OR
+  feature key `waybill_username` OR admin. Philippines → "full"; Taiwan (and no country = TW) → "soon" (Settings → SHIPPING →
+  Shipping → "Waybill username · Soon", dimmed, not tappable, note "coming soon to Taiwan"); other markets → nothing; admin "all
+  markets" → full; "View as" previews each market. Off → Settings byte-identical to main (whole-app test vs a frozen copy of
+  main's SettingsHub: `__tests__/fixtures/SettingsHub.main.tsx`; refresh it only from a newer main on purpose).
+- **Settings:** `SettingsHub` prop `onShippingHub` (+ `shippingHubNew`) draws the "SHIPPING" label + a full-width "Shipping ·
+  Waybills and parcels" row (NEW until opened once, `sfl_rd_shiphub_seen`) right after the Invoicing card. While it shows, the OLD
+  "Shipping" tile (TW 7-11 交貨便 export: admins open / sellers "Coming soon") is NOT drawn in Settings — admins find the 7-11
+  export inside the new Shipping screen (`shub-711`); a seller's old "Coming soon" tile simply goes (it opened nothing). The Orders
+  🚚 button is unchanged. Parcel Scan / Pickup Status NOT moved (later task).
+- **Screens:** `screens/ShippingHub.tsx` ("shiphub"), `screens/WaybillUsername.tsx` ("waybill"): upload (2 cards) → results (tiles,
+  All / Needs you chips, rows: green @username chip — tap to change — or amber Pick buyer) → "Pick the buyer" sheet (fitting buyers
+  first, then a search over all of today's + yesterday's buyers, "No match — leave blank"). Phone: Download PDF = `deliverXlsmMobile`
+  (share starts INSIDE the tap; bytes pre-built 250 ms after every change). Laptop (≥ 900 px): upload left / table right, "Print N
+  waybills" (`adapters/waybillOut.printPdf`: hidden iframe → print window, fallback new tab) + "Download PDF". Back on phone results
+  → upload step.
+- **Matching (`adapters/waybillMatch.ts`):** TikTok's mask keeps first char + last char + length; every non-`*` position must match,
+  case-insensitive, same length; only `*` = never. Candidates = OWN `live_session_orders` rows, platform TikTok, `session_date` in
+  [yesterday, today] (Taipei day), ONE paged read (`fetchAllPages`, never partial) when the screen opens + "Try again". Exactly one
+  fit → filled; 0 or 2+ → pick. CSV (`adapters/waybillCsv.ts`): own RFC-4180 parser, columns by HEADER NAME (Order ID / Tracking ID /
+  Buyer Username, any case / order, extra columns ignored), BOM, `,` `;` tab, one order per Order ID; errors `no_username_col`,
+  `no_order_col`, `empty`, `no_rows`. Page ↔ order: "TT Order ID" digits, else any word on the page = a CSV Tracking ID.
+- **PDF (`adapters/waybillPdf.ts` + pure `waybillPdfRead.ts`; pdf-lib 1.17.1 pinned — the ONLY importer, loaded only by a dynamic
+  import on the waybill screen):** an own content-stream reader (cm/q/Q, BT/Tf/Tm/Td/TD/T*/TJ/Tj/'/", colours, paths, Do, inline
+  images; ToUnicode CMaps, Identity-H, simple fonts via WinAnsi/Differences, standard-14 widths from pdf-lib). Free space =
+  right of the Weight + Payment values (label + value run), on those two lines (Weight baseline + 0.8 h down to Payment baseline −
+  0.25 h), left of the nearest thing on those lines (the barcode column's line); nothing may cross it; light paint + big light/"COD"
+  text (the watermark) may sit under it. Outlined boxes count per EDGE (an outline never blocks its own inside). Stamp: Helvetica-Bold,
+  black, right side of the space, size = min(14, 2 × label size, fits the height, fits the width), < 6 pt → not stamped ("Couldn't
+  place the username on this waybill"); width measured WITHOUT kerning (`stampWidthAt1` — pdf-lib's widthOfTextAtSize subtracts
+  kerning that a PDF never applies). Only TikTok-style names `[A-Za-z0-9._-]` are stamped. Rotated pages / no labels → not stamped.
+  Output: same page count / size / order; stamped page Contents = [q][original, byte-identical][Q][stamp]; other pages untouched.
+- **SQL:** `sql/231_waybill_username.sql` (+ rollback): the switch row + `my_feature_access` = sql/220's live text + 'waybill_username'
+  (md5 guard: live 6d7264ef… → new 86de09c5…). ⚠️ The NEXT file that adds a feature key must start from sql/231's text.
+  `sql/232_guide_waybill_username.sql` (+ rollback): the new guide row `waybill-username` + one sentence of the `shipping` row
+  (live row md5 3719f5a1… checked). Proof: `scripts/sql231-behaviour.mjs` (23), `scripts/sql232-behaviour.mjs` (8) (PGlite).
+- **Fence:** `scripts/waybill-fence.mjs` + `__tests__/waybillUsername.fence.test.ts` (runs on this branch or WAYBILL_GATE=1): every
+  printing / sticker / receipt / Bluetooth file, mobile/, server/, server.js, chrome-extension/ byte-identical to f8b90114 (575 files).
+  PRINTING_MAP P15 has one line for this path.
+- **Tests:** waybillCsv / waybillMatch / waybillRows / waybillPdf / waybillGate (adapters), WaybillUsername (screen, real files, the
+  phone share inside the tap, the shared PDF read back), waybillUsername.app (real app: off = main for PH/TW/none/VN, PH, TW soon,
+  admin + the 7-11 row). Fixtures: `adapters/__tests__/fixtures/waybillFixture.ts` (A6 J&T-shaped PDF, Type0 Identity-H + ToUnicode
+  with Noto Sans glyph ids, or Helvetica; fake CSV), `waybillDemo.ts` (the preview pair). Preview: `src/dev/fakeSupabase.ts ?wb=ph|tw|off`.
+- **Order:** apply sql/231 (switch 'false') → merge (Vercel) → add a PH test login to `feature_access_emails` ('waybill_username')
+  → Jeff tests with REAL TikTok files → switch 'true' → sql/232 (guide). Do NOT apply sql/116b for this.
+- ⚠️ `package.json` / lock changed (pdf-lib) → the nightly Render deploy restarts the server once in the next night window after the
+  merge (the server does not use pdf-lib).
+- **Not proven:** no real TikTok Shop CSV or waybill PDF was available — real header names, real masks, the real label's fonts,
+  line spacing and where the barcode column starts are all assumptions from the spec + the approved picture; the laptop print
+  window and the phone share were not run on a real browser / phone.

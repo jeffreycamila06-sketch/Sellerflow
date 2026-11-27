@@ -1,6 +1,6 @@
 // Screen 6 — Settings hub (menu). dc.html v2 L204–254.
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { headerBar, headerTitle } from "../ui";
+import { headerBar, headerTitle, sectionLabel } from "../ui";
 import { useT } from "../i18n";
 import InviteFriendsCard from "../components/InviteFriendsCard";
 import SupportContactModal from "../components/SupportContactModal";
@@ -80,6 +80,7 @@ const ic = {
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
   isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onInvoicing, invoicingOpen = false, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false, onBlacklist, blacklistNew = false,
+  onShippingHub, shippingHubNew = false,
 }: {
   onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
   onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
@@ -116,6 +117,10 @@ export default function SettingsHub({
   // blacklistNew = the "NEW" badge until the seller opens it once on this phone. Absent → no tile.
   onBlacklist?: () => void;
   blacklistNew?: boolean;
+  // SHIPPING group (sql/231) — passed ONLY when Waybill username is visible for this seller
+  // (adapters/waybillGate: Philippines = the screen, Taiwan = "Soon"). Absent → Settings exactly as before.
+  onShippingHub?: () => void;
+  shippingHubNew?: boolean; // "NEW" until the seller opens Shipping once on this phone
 }) {
   const t = useT();
   // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
@@ -166,6 +171,22 @@ export default function SettingsHub({
               ? <span data-testid="invoicing-open" aria-hidden="true" style={{ marginLeft: "auto", flexShrink: 0, fontSize: 18, fontWeight: 700, color: "var(--accent-fg)" }}>›</span>
               : <SoonBadge plain testid="invoicing-soon" style={{ marginLeft: "auto", flexShrink: 0 }} />}
           </button>
+          {/* SHIPPING group — a label + one full-width row, right after the full-width cards above, so the
+              tile pairs below stay as they are. */}
+          {onShippingHub && (
+            <>
+              <div style={{ ...sectionLabel, gridColumn: "1 / -1", margin: "6px 4px 0" }} data-testid="settings-group-shipping">{t.rd_shub_group}</div>
+              <button type="button" onClick={onShippingHub} style={{ ...tile, gridColumn: "1 / -1" }} data-testid="tile-shiphub">
+                <span style={{ ...chip("accent"), background: "var(--warn-soft)", color: "var(--warn)" }}>{ic.truck}</span>
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span style={tileLabel}>{t.rd_sh_shipping}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.25 }}>{t.rd_shub_row_sub}</span>
+                </span>
+                {shippingHubNew && <span data-testid="tile-shiphub-new" style={{ marginLeft: "auto", fontSize: 10, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: "var(--danger)", padding: "3px 8px", borderRadius: 999, lineHeight: 1.2, flexShrink: 0 }}>{t.rd_bl_new}</span>}
+                <span aria-hidden style={{ marginLeft: shippingHubNew ? 6 : "auto", color: "var(--text-dim)", flexShrink: 0 }}>›</span>
+              </button>
+            </>
+          )}
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
           {onBlacklist && (
