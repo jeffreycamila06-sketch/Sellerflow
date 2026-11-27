@@ -52,8 +52,8 @@ export async function handed(f: Fam, send: () => unknown): Promise<{ fn: string;
   delete (window as W).SellerFlowPrinter;
   return { fn, arg: JSON.stringify(call.mock.calls[0][0]) };
 }
-export const todayPrint = (f: Fam, w: number, h: number, b: Buyer) => () => printSlip(b, "NT$", "My Shop", cfgFor(w, h), { noOneSticker: true });
-export const newPrint = (f: Fam, w: number, h: number, b: Buyer) => () => printOneStickerTest({ ...recommendedSettings({ w, h }), qr: false }, b, "NT$", "My Shop", cfgFor(w, h));
+export const todayPrint = (_f: Fam, w: number, h: number, b: Buyer) => () => printSlip(b, "NT$", "My Shop", cfgFor(w, h), { noOneSticker: true });
+export const newPrint = (_f: Fam, w: number, h: number, b: Buyer) => () => printOneStickerTest({ ...recommendedSettings({ w, h }), qr: false }, b, "NT$", "My Shop", cfgFor(w, h));
 
 export function beforeGolden(): void {
   installSans(); installNodeFallbackDrawer();

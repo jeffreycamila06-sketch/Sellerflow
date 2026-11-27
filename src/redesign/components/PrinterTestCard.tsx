@@ -48,7 +48,7 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
     if (!lang || !settings || sending) return;
     setSending(true); setAnswer(null); setPhoto(null); setResult(null);
     const tr = tuning ? (tuningPrint ? await tuningPrint().catch(() => ({ ok: false, code: "BT_PRINT_FAILED" })) : { ok: false, code: "BT_PRINT_FAILED" }) : null;
-    if (tr) setPrintedVersion("version" in tr && tr.version !== undefined ? tr.version : tuningVersion);
+    if (tr) { const v = (tr as { version?: number | null }).version; setPrintedVersion(v !== undefined ? v : tuningVersion); }
     const r = tr ? { ok: tr.ok, code: tr.code } : await deps.testPrint(printer, lang, settings, cur, storeName);
     setSending(false); setSent({ lang, r });
   }

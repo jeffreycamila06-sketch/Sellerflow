@@ -17,7 +17,7 @@ export const tuningCode = (message: unknown): TuningCode | undefined => {
   const m = typeof message === "string" ? message : "";
   return CODES.find((c) => m.includes(c));
 };
-export type TuningResult<T> = { ok: true; data: T } | { ok: false; code?: TuningCode };
+export type TuningResult<T> = { ok: true; data: T; code?: undefined } | { ok: false; code?: TuningCode };
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const int = (v: unknown): number | null => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN; return Number.isFinite(n) ? Math.trunc(n) : null; };
