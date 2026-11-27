@@ -7065,3 +7065,42 @@ Admin only, ZERO change to printing (printerModels.ts / stickerRaster / stickerJ
 - Matched settings unchanged for the 11 prefixes + the 5 built-in: `approvedPrinterLock.match.test.ts`; the seller
   read still selects `prefix,brand,model,lang,active,shift_mm,flip`. Pictures + measurements: `docs/design/printer-list-lock/`.
 - **Order:** apply sql/229 → merge (Vercel). Web before SQL = rows have no `locked` key → all show under Testing (today's panel).
+
+## 2026-11-27 — PRINTER TUNING PART 2: PER-SELLER PRINTER SETTINGS + "PRINTER SETUP" TEST CARD (branch `claude/printer-tuning`, NOT merged; sql/230 NOT applied; web only — no Render, no app build)
+Admin-only: an Admin sets ONE seller's own printer settings; the seller only sees a "Printer setup" Test Print card.
+Proof folder: `docs/design/printer-tuning/` (PGlite output + md5s, header diffs, breaks, measured, pictures, send-speed note).
+- **sql/230 (+ rollback):** `printer_seller_tuning` (user_id pk, settings jsonb CHECK `printer_tuning_valid`, version, updated_at/by;
+  RLS: a seller SELECTs own row only, no writes) + `printer_seller_tuning_history` (no browser access) +
+  `printer_test_reports.tuning_version` + `admin_printer_test_reports` (= sql/160 + `tuning_version`, md5 guard 3484fbe3… live).
+  Keys: gap_mm 0–6 step .5 · sensor gap|bline|continuous · shift_mm −5..5 step .5 (+ left) · flip · density 0–15 · speed 1–6 ·
+  send_speed normal|slow. Admin RPCs (is_admin() inside): `admin_printer_tuning_get / _set(email, settings, expected_version) /
+  _undo / _reset` — clamped + rounded (never refused for range), `stale_version`, `built_in_printer` (latest tested printer name is
+  built-in), `not_tester`, `bad_settings`; versions never repeat. Seller: `my_printer_tuning()` → {enabled, tester, settings, version}.
+- **⚠ The switch `app_settings.printer_tuning_enabled` (created 'false'):** a saved row prints WHATEVER the switch says (so tuning keeps
+  printing after the seller leaves Testers); while not exactly 'true' Admin may save a NEW setting only for a printer tester
+  (`not_tester`); value **'off'** = nothing applied for anyone (instant stop). Rows only ever come from an Admin.
+- **ONE printer (guardian fix):** `_set` stores the seller's latest tested printer name (`printer_seller_tuning.printer_name`) and refuses
+  `no_printer` when there is no test report; the app applies the tuning ONLY to a saved printer with exactly that name — another printer
+  saved later prints as today. The tuning REPLACES the approved row's flip / shift for that seller.
+- **Print path (`adapters/printerTuning.ts`):** read once per signed-in session (`usePrinterTuning` in RedesignApp; re-read before each
+  "Printer setup" test print = `reloadMyPrinterTuning`, the report carries the version that really printed; dropped at once when another
+  user signs in); a failed read / no row /
+  a built-in name (`isBuiltInPrinterName` = WHITELIST + BUILT_IN + Niimbot — D520BT, Y41BT, XP-420B, B1, B1 Pro…) = no tuning.
+  Applied ONLY in the generic Bluetooth picture path (`printStickerViaGenericImage` + the one-sticker generic branch): TSPL media line
+  (`tsplMediaLine`: GAP n / BLINE n / continuous GAP 0), DENSITY, SPEED; TSPL + ESC/POS + CPCL flip + shift (new `shiftRasterRight`).
+  No tuning = the SAME job / layout objects. A tuned job failing the guard → rebuilt untuned. Guard now also wants exactly ONE GAP/BLINE line.
+  Goldens `printerTuning.golden.test.ts` (68 prints × 9 families = main 5e5689b0, also run on main itself). `send_speed` = research only.
+- **Seller card:** PrinterTestCard `mode="tuning"` on Printer settings, only when `my_printer_tuning().tester` (prop `tuningHelp`), for a
+  saved printer that is not D520 / Niimbot / built-in. No language picker; "Admin is helping you set up this printer."; Test print = the
+  same routed test as Test Print (tuning applies); Yes (photo) / No → report with `tuning_version` + `ble_facts.app_build`. 4 texts ×8.
+- **Admin:** "Printer tuning" button on every Manage-sellers card → `components/AdminPrinterTuning.tsx` (portal sheet): printer / size /
+  app build / last test / In Testers / "Model locked" / "Built-in — can't tune" (controls off), "Changes here are for this seller only.",
+  6 quick-fix chips (`adapters/printerTuningChips.ts`, one comment per chip), change list before Save, Advanced (clamped), History + Undo,
+  Reset to model, Save (version-checked; stale → reload + say so). Every question inside the page. Admin texts `rd_ptu_*` English ×8.
+- **Part-1 fixes:** approve / Add back refusal — a name that STARTS WITH a locked / built-in name → "This printer is already covered by
+  the locked printer “<name>”. No need to approve it." (`coveringPrinter`); the Printer testers red error line stays until the next action.
+- **Order:** apply sql/230 → merge (Vercel) → add a tester's tuning in Admin. Before sql/230: the seller read fails = no tuning (today's
+  bytes), the Admin sheet says "Couldn't load".
+- Not done / unsure: tuned header lines never printed on a real printer from here; `send_speed` needs an app build; the speed default
+  the chips step from (4) is a guess for printers that get no SPEED line; Tuning.dc.html (the preview to match) is not in the repo —
+  the sheet follows the written spec.

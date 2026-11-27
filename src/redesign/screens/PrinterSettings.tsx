@@ -23,7 +23,8 @@ import {
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
-import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
+import { isBuiltInPrinterName, knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
+import { reloadMyPrinterTuning, tuningFor as tuningForName } from "../adapters/printerTuning";
 import PrinterTestCard from "../components/PrinterTestCard";
 import { testPrintFor, printerLabelFor } from "../adapters/oneStickerPrint";
 import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor, qrSizeOk } from "../adapters/oneSticker";
@@ -102,8 +103,9 @@ export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
   stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false, customSize, onPrinterSaved,
-  oneSize, sizeOnWifiTab = false, scanWebFilter = false, tester = false,
+  oneSize, sizeOnWifiTab = false, scanWebFilter = false, tester = false, tuningHelp,
 }: {
+  tuningHelp?: { version: number | null }; // Printer setup help (sql/230): this seller is on the printer testers list (my_printer_tuning().tester). Absent = today's screen.
   scanWebFilter?: boolean; // app_settings printer_scan_web_filter (sql/160): the normal Scan asks the phone for every device, the WEB keeps the listed printers. false = today's call.
   tester?: boolean; // feature key printer_tester (sql/160): "Show all", "Not a printer" rows, the Printer test card for an unlisted printer. false = today's screen.
   oneSize?: PsOneSize; // the new sticker's one size list (accounts with the new Live print pattern, new-sticker devices)
@@ -222,17 +224,30 @@ export default function PrinterSettings({
   );
   const listBox: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, marginTop: 12, overflow: "hidden" };
   async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); setStage("idle"); setPick(null); }
+  // Routed like a real order: bitmap SDK stream by default, TEXT only when
+  // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
+  function routedTestPrint(cfg: Settings) {
+    const tp = testPrintFor(testBuyer(), storeName); // a device on the new sticker: the preview's sample
+    return printStickerBtRouted(tp.buyer, cur, tp.storeName, cfg);
+  }
   async function testBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }
     if (!settings) return;
     setBtMsg(t.rd_ps_sending_test);
-    // Routed like a real order: bitmap SDK stream by default, TEXT only when
-    // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
-    const tp = testPrintFor(testBuyer(), storeName); // a device on the new sticker: the preview's sample
-    const r = await printStickerBtRouted(tp.buyer, cur, tp.storeName, settings);
+    const r = await routedTestPrint(settings);
     if (r.ok) { setBtMsg(t.rd_ps_test_sent); setTestPrinted(true); return; } // an amber "didn't print" card turns green
     if (v2 && bt.report(r.code, r.message)) { setBtMsg(""); return; } // Bluetooth off / not allowed → the card says what to do
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
+  }
+
+  // Printer setup help (sql/230): the SAME routed test sticker as Test print — the seller's own tuning applies there.
+  // The tuning is read again first, so Admin's latest change is what prints (and what the report says).
+  async function tuningTestPrint(): Promise<{ ok: boolean; code: string; version: number | null }> {
+    if (!btReady || !settings) return { ok: false, code: "BT_NOT_SET", version: null };
+    const now = await reloadMyPrinterTuning();
+    const version = btSaved && tuningForName(btSaved.name) ? now.version : null; // null = it printed without a tuning
+    const r = await routedTestPrint(settings);
+    return { ok: r.ok, code: r.ok ? "" : (r.code || "BT_PRINT_FAILED"), version };
   }
 
   // ── Printer setup v2: tap a printer → saved at once → one test sticker → green card ────────
@@ -478,6 +493,10 @@ export default function PrinterSettings({
               <button data-testid="ps-scan" onClick={() => void scanBt()} disabled={!scanEnabled} aria-disabled={!scanEnabled} style={{ ...gridBtn, minHeight: 46, border: "none", background: scanEnabled ? "var(--accent)" : "var(--surface-2)", color: scanEnabled ? "var(--accent-text)" : "var(--text-muted)", boxShadow: scanEnabled ? "0 4px 14px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", cursor: scanEnabled ? "pointer" : "not-allowed", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
               {btSaved && stage !== "saved" && <button data-testid="ps-test-print" onClick={() => void testBt()} style={{ ...gridBtn, minHeight: 46 }}>{t.rd_ps_test_print}</button>}
             </div>
+            {tuningHelp && settings && btSaved && btSaved.model !== "D520BT" && btSaved.transport !== "niimbot" && !isBuiltInPrinterName(btSaved.name) && (
+              <PrinterTestCard mode="tuning" printer={btSaved} settings={settings} cur={cur} storeName={storeName} stickerSize={psSize.replace(/\s*\(.*\)$/, "")}
+                tuningVersion={tuningHelp.version} tuningLang={btSaved.lang ?? "tspl"} tuningPrint={tuningTestPrint} />
+            )}
             {v2 && bt.state === "checking" && <div data-testid="ps-bt-checking" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{t.rd_bts_checking}</div>}
             {!v2 && btPrinters.length > 0 && (
               <div style={listBox}>

@@ -1,0 +1,125 @@
+admin_printer_test_reports before sql/230 = 3484fbe3e4e1b451fbebc1d9f043edf4 (production 2026-11-27: 3484fbe3e4e1b451fbebc1d9f043edf4)
+ok   a changed admin_printer_test_reports → sql/230 refuses, nothing changed
+ok   an existing printer_tuning_enabled row is not overwritten (do nothing)
+ok   missing row → inserted as 'false'; running the file twice is fine
+ok   no other app_settings key touched
+md5s after sql/230:
+  admin_printer_test_reports = 6993f8e8054b203045cfa45c3e537f6b
+  admin_printer_tuning_get = 9ba51fd023781b8b41656edd946c336e
+  admin_printer_tuning_reset = 8c1b89fc5eb65ad8f2e0f5d8bd619b19
+  admin_printer_tuning_set = 96bbb30585f3b708809432d76080f39f
+  admin_printer_tuning_undo = 892af692f08b5b549845af3cde08ab69
+  my_printer_tuning = 6d41668b1031a396bb16085b5ac44569
+  printer_name_is_built_in = 5c1241f1cb3036923a4cd91e8a3d608c
+  printer_tuning_clean = 44d60cb099aa17d4e807524f1f83a72e
+  printer_tuning_is_tester = be1e0cdc8eb9537183f195d1cb393bff
+  printer_tuning_latest_name = c03dedd14c0b76b8765f3386b3097574
+  printer_tuning_top_version = 5343733e3dd2a40a3baefcea6410a3c4
+  printer_tuning_user = ba733c001053f3eaa58c8403867c742e
+  printer_tuning_valid = 119123ed7c42eb19337b56432235b02f
+ok   seller → admin_printer_tuning_get → forbidden
+ok   anon → admin_printer_tuning_get → no execute
+ok   seller → admin_printer_tuning_set → forbidden
+ok   anon → admin_printer_tuning_set → no execute
+ok   seller → admin_printer_tuning_undo → forbidden
+ok   anon → admin_printer_tuning_undo → no execute
+ok   seller → admin_printer_tuning_reset → forbidden
+ok   anon → admin_printer_tuning_reset → no execute
+ok   anon → my_printer_tuning → no execute
+ok   seller → printer_tuning_clean → no execute
+ok   seller → printer_tuning_is_tester → no execute
+ok   seller → printer_name_is_built_in → no execute
+ok   seller → printer_tuning_user → no execute
+ok   seller → printer_tuning_valid → no execute
+ok   unknown email → no_user
+ok   switch 'false' + seller not a tester → not_tester (nothing saved)
+ok   the refused save left no row
+ok   first set (expected 0) → version 1
+ok   get: settings, version, tester ✗, not built-in, the locked model named
+ok   history row: before none → after {gap 3}
+ok   get: the seller's reports (no photo path)
+ok   clamped: gap 9.3→6, shift -7→-5, density 22→15, speed 0→1 ({"flip":true,"speed":1,"gap_mm":6,"sensor":"bline","density":15,"shift_mm":-5,"send_speed":"slow"})
+ok   rounded to the steps: gap 2.74→2.5, shift 1.26→1.5, density 7.6→8; keys left out = removed
+ok   unknown key → bad_settings
+ok   gap as text → bad_settings
+ok   flip as text → bad_settings
+ok   unknown sensor → bad_settings
+ok   unknown send speed → bad_settings
+ok   density as boolean → bad_settings
+ok   not an object → bad_settings
+ok   refused calls changed nothing (still version 3)
+ok   a JSON null value is dropped (not a refusal)
+ok   the table CHECK refuses an out-of-range value even for the owner role
+ok   expected version 2 while it is 4 → stale_version
+ok   no expected version → stale_version
+ok   the stale save changed nothing
+ok   latest tested printer Y41BT… (built-in) → built_in_printer
+ok   get says built_in; nothing saved
+ok   built-in name "D520BT-Z" → true
+ok   built-in name "b1-I603042141" → true
+ok   built-in name "B1 Pro-I616" → true
+ok   built-in name "XP-420B" → true
+ok   built-in name "b21-x" → true
+ok   built-in name "B203-1" → true
+ok   built-in name "B3S-9" → true
+ok   built-in name " y41bt-0FC4 " → true
+ok   "AE241-BT_C11D-LE" → not built-in
+ok   "D520" → not built-in
+ok   "XP-470B" → not built-in
+ok   "B2-" → not built-in
+ok   "" → not built-in
+ok   "Printer_5E93" → not built-in
+ok   a seller whose LATEST test is not built-in (an older Y41BT test) → allowed
+ok   a seller with no test report yet → no_printer (a tuning belongs to one printer)
+ok   set stores the printer it was made for (the latest tested name)
+ok   seller A reads only A's row (B's row exists)
+ok   seller B reads only B's row
+ok   seller: update → permission denied
+ok   seller: insert → permission denied
+ok   seller: delete → permission denied
+ok   seller: history → permission denied
+ok   even an admin reads history only through the RPC
+ok   switch 'false' + a tester → saved
+ok   switch 'false': a row saved earlier still prints (seller not a tester)
+ok   switch 'false' + tester → own settings + version
+ok   my_printer_tuning says which printer the tuning is for
+ok   switch on + not tester → own settings + version
+ok   switch on + tester → own settings
+ok   no row → settings null
+ok   only the exact value 'true' says enabled (the row still prints)
+ok   switch 'off' → settings null for everyone (instant stop)
+ok   switch 'off' → also null for a tester
+ok   switch 'off' → no printer name either
+ok   tester removed (switch 'false') → the saved tuning KEEPS printing
+ok   …but Admin can't save a new setting for them until the switch is on
+ok   the removed tester's row is kept
+ok   undo with a stale version → stale_version
+ok   undo → version 5
+ok   undo put back the settings of v3
+ok   undo again → the settings of v2
+ok   undo again → v1's settings
+ok   undo the first set → 0 (row removed)
+ok   no row → today's printing
+ok   nothing left to undo → null
+ok   a new set after undoing to nothing → version 8 (never repeats 1…7)
+ok   every undo is in the history; the undone sets are marked
+ok   reset with a stale version → stale_version
+ok   reset → row removed
+ok   reset with no row → false
+ok   reset is in the history; history kept
+ok   undo a reset → the settings come back (version 9)
+ok   undo that would bring settings back while the latest test is a built-in printer → built_in_printer
+ok   a tester inserts a report with tuning_version 1
+ok   tuning_version 0 → refused
+ok   admin_printer_test_reports returns tuning_version
+ok   get: the report's tuning version + app build, tester ✓
+ok   a seller who is not a tester cannot insert a report
+ok   rollback applies
+ok   rollback drops every tuning function
+ok   rollback drops both tables
+ok   rollback drops the report column
+ok   admin_printer_test_reports = the live text again (md5)
+ok   rollback removes the switch row only
+ok   reports kept
+
+108 passed, 0 failed

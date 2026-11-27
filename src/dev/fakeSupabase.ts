@@ -283,6 +283,25 @@ if (/[?&]ptl=1\b/.test(Q)) {
   RPC.admin_lock_approved_printer = true;
 }
 
+// Printer tuning previews (sql/230, docs/design/printer-tuning): ?ptu=1 — the seller is a printer tester with a
+// saved tuning (version 3: gap 3 mm, darkness 12); ?ptu=1&admin=1 also gives Admin → a seller → Printer tuning
+// made-up data (an AE241 under the locked "AE241-BT_B57A-LE" model, two history rows, one report).
+if (/[?&]ptu=1\b/.test(Q)) {
+  RPC.my_printer_tuning = { enabled: false, tester: true, settings: { gap_mm: 3, density: 12 }, version: 3, printer_name: "AE241-BT_C11D-LE" };
+  RPC.admin_printer_tuning_get = {
+    settings: { gap_mm: 3, density: 12 }, tuned_for: "AE241-BT_C11D-LE", version: 3, updated_at: iso(0), switch_on: false, tester: true,
+    printer_name: "AE241-BT_C11D-LE", built_in: false, locked_name: "AE241-BT_B57A-LE",
+    history: [
+      { id: 2, action: "set", before: { gap_mm: 3 }, after: { gap_mm: 3, density: 12 }, version: 3, undone: false, at: iso(0) },
+      { id: 1, action: "set", before: null, after: { gap_mm: 3 }, version: 2, undone: false, at: iso(1) },
+    ],
+    reports: [{ id: "pv-r1", printer_name: "AE241-BT_C11D-LE", sticker_size: "60x40", lang: "tspl", created_at: iso(0), clean: false, send_ok: true, tuning_version: 3, app_build: 14 }],
+  };
+  RPC.admin_printer_tuning_set = 4;
+  RPC.admin_printer_tuning_undo = 2;
+  RPC.admin_printer_tuning_reset = true;
+}
+
 // Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
 //   = the switch invoicing_enabled on, a running 2-day session with that many TikTok buyers (+ 2 Facebook
 //   buyers, who are not in the TikTok list), the first <sent> saved as Sent, then one Next, one Not sent,
