@@ -203,3 +203,17 @@ export async function adminPhotoUrl(path: string): Promise<string | null> {
   if (!path || !isSupabaseConfigured || !supabase) return null;
   try { const { data, error } = await supabase.storage.from(PRINTER_TEST_BUCKET).createSignedUrl(path, 600); return error ? null : data?.signedUrl ?? null; } catch { return null; }
 }
+
+// The approve / Add back refusal (sql/229 prefix_overlaps_locked): when the new name STARTS WITH a locked
+// approved printer's name or a built-in printer's name, that printer already covers it (its settings print
+// this one) → that printer's name, longest match first. null = the names only overlap the other way round.
+export function coveringPrinter(prefix: string, approved: readonly ApprovedRow[] | null, exceptId?: string): string | null {
+  const p = String(prefix || "").trim().toUpperCase();
+  if (!p) return null;
+  const taken: { k: string; name: string }[] = [
+    ...(approved || []).filter((a) => a.active && a.locked === true && a.id !== exceptId).map((a) => ({ k: String(a.prefix).trim().toUpperCase(), name: [a.brand, a.model].filter(Boolean).join(" ") || a.prefix })),
+    ...WHITELIST.map((w) => ({ k: w.prefix.toUpperCase(), name: `${w.brand} ${w.model}` })),
+  ].filter((x) => x.k);
+  const hit = taken.filter((x) => p.startsWith(x.k)).sort((a, b) => b.k.length - a.k.length)[0];
+  return hit ? hit.name : null;
+}
