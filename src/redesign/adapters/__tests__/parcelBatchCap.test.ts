@@ -69,7 +69,7 @@ describe("sql/117 my_feature_access", () => {
     const body = readFileSync(file, "utf8");
     return [...body.slice(body.indexOf("keys(k) as (")).split("\n  )")[0].matchAll(/\('([a-z0-9_]+)'\)/g)].map((m) => m[1]);
   };
-  it("keys = the sql/116 list plus parcel_cap_70 / fm_pickup / test_printers / tiktok_send / fb_post_sales; the latest (sql/220 invoicing) matches the app's FEATURE_KEYS", () => {
+  it("keys = the sql/116 list plus parcel_cap_70 / fm_pickup / test_printers / tiktok_send / fb_post_sales; the latest (sql/231 waybill username) matches the app's FEATURE_KEYS", () => {
     const k116 = keysOf("sql/116_help_bot.sql");
     const k117 = keysOf("sql/117_parcel_cap_70.sql");
     expect(k116[k116.length - 1]).toBe("support_ai_preview");
@@ -100,9 +100,12 @@ describe("sql/117 my_feature_access", () => {
     expect(k199).toEqual([...k190, "account_limits_v2"]);
     const k206 = keysOf("sql/206_shopee_public.sql"); // Shopee for every seller, preview
     expect(k206).toEqual([...k199, "shopee_public"]);
-    const k220 = keysOf("sql/220_invoicing.sql"); // the LATEST my_feature_access list (Invoicing, preview)
+    const k220 = keysOf("sql/220_invoicing.sql"); // Invoicing, preview
     expect(k220).toEqual([...k206, "invoicing"]);
-    expect([...k220].sort()).toEqual([...FEATURE_KEYS].sort());
+    const k231 = keysOf("sql/231_waybill_username.sql"); // the LATEST my_feature_access list (Waybill username, preview)
+    expect(k231).toEqual([...k220, "waybill_username"]);
+    expect([...k231].sort()).toEqual([...FEATURE_KEYS].sort());
+    expect(keysOf("sql/231_waybill_username_rollback.sql")).toEqual(k220);
     expect(keysOf("sql/220_invoicing_rollback.sql")).toEqual(k206);
     expect(keysOf("sql/206_shopee_public_rollback.sql")).toEqual(k199);
     expect(keysOf("sql/199_account_limits_v2_rollback.sql")).toEqual(k190);

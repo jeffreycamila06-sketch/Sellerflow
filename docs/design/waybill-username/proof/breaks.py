@@ -20,8 +20,9 @@ BREAKS = [
     # (name, file, old, new, tests)
     ("CSV: columns read by position, not by header name", A + "waybillCsv.ts",
      "  const cOrder = findCol(headers, ORDER_HEADERS);", "  const cOrder = 0;", CSV_T),
-    ("CSV: the byte-order mark is not removed from the first header", A + "waybillCsv.ts",
-     'const norm = (s: string): string => s.replace(/^\\uFEFF/, "")', "const norm = (s: string): string => s", CSV_T),
+    ("CSV: the byte-order mark is not removed (neither from the file text nor from the first header)", A + "waybillCsv.ts",
+     [('const norm = (s: string): string => s.replace(/^\\uFEFF/, "")', "const norm = (s: string): string => s"),
+      ('  const body = String(text ?? "").replace(/^\\uFEFF/, "");', '  const body = String(text ?? "");')], None, CSV_T),
     ("CSV: a comma inside quotes splits the field", A + "waybillCsv.ts",
      '    if (ch === delim) { row.push(field); field = ""; i++; continue; }\n  }',
      '    if (ch === delim) { row.push(field); field = ""; i++; continue; }\n  }', CSV_T),  # placeholder replaced below
@@ -51,7 +52,7 @@ BREAKS = [
     ("rows: the tracking number fallback is gone", A + "waybillRows.ts",
      " ?? p.words.map((w) => byTracking.get(w)).find(Boolean);", ";", ROWS_T),
     ("PDF: something crossing the free space is not checked", A + "waybillPdfRead.ts",
-     '  if (obstacles.some((o) => overlap(o, slot))) return { ok: false, reason: "no_space" };', "", PDF_T),
+     '  if (obstacles.some((o) => overlaps(o, slot))) return { ok: false, reason: "no_space" };', "", PDF_T),
     ("PDF: the grey COD watermark counts as something to avoid", A + "waybillPdfRead.ts",
      "    return big && (o.light || /^\\s*cod\\s*$/i.test(o.str));", "    return false;", PDF_T),
     ("PDF: the right edge ignores the barcode column", A + "waybillPdfRead.ts",
@@ -104,13 +105,19 @@ def run(tests):
 
 def main():
     caught = 0
-    for name, f, old, new, tests in BREAKS:
+    only = sys.argv[1:]  # optional: run only the breaks whose name contains one of these words
+    todo = [b for b in BREAKS if not only or any(w in b[0] for w in only)]
+    for name, f, old, new, tests in todo:
         p = ROOT / f
         src = p.read_text(encoding="utf-8")
-        if src.count(old) != 1:
+        edits = old if isinstance(old, list) else [(old, new)]
+        broken = src
+        if any(src.count(o) != 1 for o, _ in edits):
             print(f"SETUP  {name}: the line to break is not found exactly once in {f}")
             continue
-        p.write_text(src.replace(old, new), encoding="utf-8")
+        for o, n in edits:
+            broken = broken.replace(o, n)
+        p.write_text(broken, encoding="utf-8")
         try:
             code, out = run(tests)
         finally:
@@ -121,10 +128,10 @@ def main():
             print(f"CAUGHT {name}\n       red: {' | '.join(failed) or '(the test file failed)'}")
         else:
             print(f"MISSED {name}")
-    print(f"\n{caught} of {len(BREAKS)} breaks caught")
+    print(f"\n{caught} of {len(todo)} breaks caught")
     code, _ = run(CSV_T + MATCH_T + ROWS_T + PDF_T + GATE_T + APP_T + SCREEN_T)
     print("after putting everything back: " + ("all green" if code == 0 else "RED — something was not restored"))
-    sys.exit(0 if caught == len(BREAKS) and code == 0 else 1)
+    sys.exit(0 if caught == len(todo) and code == 0 else 1)
 
 
 if __name__ == "__main__":

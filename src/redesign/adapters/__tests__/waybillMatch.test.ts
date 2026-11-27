@@ -30,6 +30,8 @@ describe("the TikTok mask: first character, last character, length", () => {
     expect(maskFits("a****8", "ana_ko8")).toBe(false);   // 7 characters
     expect(maskFits("a****8", "bna_k8")).toBe(false);    // starts with b
     expect(maskFits("a****8", "ana_k9")).toBe(false);    // ends with 9
+    expect(maskFits("a****8", "ana_k8z")).toBe(false);   // longer: the first 6 fit, but not the length / last letter
+    expect(maskFits("a****8", "ana_k")).toBe(false);     // shorter
   });
   it("case does not matter (both sides), an @ in front does not count", () => {
     expect(maskFits("A****8", "ana_k8")).toBe(true);

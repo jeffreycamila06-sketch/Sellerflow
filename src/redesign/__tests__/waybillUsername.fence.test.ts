@@ -22,6 +22,7 @@ const gateOn = process.env.WAYBILL_GATE === "1" || branchNow() === BRANCH;
 const FEATURE = [
   "src/redesign/adapters/waybillCsv.ts", "src/redesign/adapters/waybillMatch.ts", "src/redesign/adapters/waybillRows.ts",
   "src/redesign/adapters/waybillGate.ts", "src/redesign/adapters/waybillPdf.ts", "src/redesign/adapters/waybillPdfRead.ts",
+  "src/redesign/adapters/waybillOut.ts", "src/redesign/components/BoldMarks.tsx",
   "src/redesign/screens/WaybillUsername.tsx", "src/redesign/screens/ShippingHub.tsx",
 ];
 

@@ -152,7 +152,13 @@ export default function WaybillUsername({ onBack, userId, cur, loadCandidates = 
     }
     if (!downloadPdf(out, name)) say(t.rd_wb_build_failed);
   };
-  const print = () => { if (out && !printPdf(out)) say(t.rd_wb_print_failed); };
+  const printBusy = useRef(false);
+  const print = () => {
+    if (!out || printBusy.current) return; // one print window per tap (a double tap opens nothing more)
+    printBusy.current = true;
+    later(() => { printBusy.current = false; }, 3000);
+    if (!printPdf(out)) say(t.rd_wb_print_failed);
+  };
 
   const choose = (index: number, handle: string | null) => {
     setChoices((m) => { const next = new Map(m); next.set(index, { handle }); return next; });
@@ -246,8 +252,10 @@ export default function WaybillUsername({ onBack, userId, cur, loadCandidates = 
                   <span className="sfl-wb-warn" style={{ borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 14, border: "none" }} data-testid="wb-tile-needs">{n.needs} {t.rd_wb_pick_tile}</span>
                   <span style={{ flex: 1 }} />
                   <button type="button" style={{ ...btnGhost, opacity: out ? 1 : 0.5 }} disabled={!out} onClick={download} data-testid="wb-download">{t.rd_wb_download}</button>
-                  <button type="button" style={{ ...btnPrimary, width: "auto", minHeight: 44, fontSize: 14, opacity: out ? 1 : 0.5 }} disabled={!out} onClick={print} data-testid="wb-print">{preparing ? t.rd_wb_preparing : tpl(t.rd_wb_print_n, { n: n.all })}</button>
+                  {/* Print = the browser's print window: a real browser only (in the phone / tablet app it does nothing) */}
+                  {!phoneApp && <button type="button" style={{ ...btnPrimary, width: "auto", minHeight: 44, fontSize: 14, opacity: out ? 1 : 0.5 }} disabled={!out} onClick={print} data-testid="wb-print">{preparing ? t.rd_wb_preparing : tpl(t.rd_wb_print_n, { n: n.all })}</button>}
                 </div>
+                {!phoneApp && <div className="sfl-wb-note" style={{ borderRadius: 12, padding: "10px 12px", fontSize: 12.5, lineHeight: 1.45 }} data-testid="wb-print-note">{t.rd_wb_print_note}</div>}
                 {chips}
                 {failedLine}
                 <div style={{ ...card, padding: 0, gap: 0, overflow: "hidden" }}>

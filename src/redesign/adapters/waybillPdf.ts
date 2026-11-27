@@ -245,7 +245,8 @@ export async function scanWaybills(bytes: Uint8Array): Promise<ScanResult> {
   if (!pages.length) return { ok: false, error: "no_pages" };
   const ctx = doc.context;
   const fonts = new Map<PDFObject, FontInfo>();
-  const out: PageInfo[] = pages.map((page, index) => {
+  const out: PageInfo[] = [];
+  const readOne = (page: PDFPage, index: number): PageInfo => {
     const box = boxOfPage(page);
     try {
       const content = pageContent(ctx, page);
@@ -260,7 +261,13 @@ export async function scanWaybills(bytes: Uint8Array): Promise<ScanResult> {
     } catch {
       return { index, box, orderId: null, words: [], slot: { ok: false, reason: "unreadable" } };
     }
-  });
+  };
+  // One page at a time, with a short pause every 4 pages: a big PDF never blocks the phone for long (a live
+  // running on the same phone keeps receiving comments and printing).
+  for (let i = 0; i < pages.length; i++) {
+    out.push(readOne(pages[i], i));
+    if (i % 4 === 3) await new Promise((r) => setTimeout(r, 0));
+  }
   return { ok: true, pages: out };
 }
 

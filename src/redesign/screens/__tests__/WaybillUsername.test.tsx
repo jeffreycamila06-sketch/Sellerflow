@@ -165,6 +165,33 @@ describe("laptop", () => {
     await until(() => !(screen.getByTestId("wb-print") as HTMLButtonElement).disabled);
     expect(screen.getByTestId("wb-print").textContent).toBe("Print 9 waybills");
     expect(screen.getByTestId("wb-download").textContent).toBe("Download PDF");
+    expect(screen.getByTestId("wb-print-note").textContent).toContain("If this laptop prints stickers by itself (auto-print), use Download PDF");
+  });
+  it("a double tap on Print opens ONE print window", async () => {
+    Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
+    const made: string[] = [];
+    const urlApi = URL as unknown as { createObjectURL?: (b: Blob) => string; revokeObjectURL?: (u: string) => void };
+    const keep = { c: urlApi.createObjectURL, r: urlApi.revokeObjectURL };
+    urlApi.createObjectURL = () => { made.push("u"); return `blob:test-${made.length}`; };
+    urlApi.revokeObjectURL = () => {};
+    try {
+      await upload();
+      fireEvent.click(screen.getByTestId("wb-go")); await flush();
+      await until(() => !(screen.getByTestId("wb-print") as HTMLButtonElement).disabled);
+      fireEvent.click(screen.getByTestId("wb-print"));
+      fireEvent.click(screen.getByTestId("wb-print"));
+      expect(made).toHaveLength(1);
+      expect(document.querySelectorAll("iframe[title=waybills]")).toHaveLength(1);
+    } finally { urlApi.createObjectURL = keep.c; urlApi.revokeObjectURL = keep.r; }
+  });
+  it("inside the phone / tablet app at laptop width: no Print button (it would do nothing there) — Download only", async () => {
+    Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {};
+    await upload();
+    fireEvent.click(screen.getByTestId("wb-go")); await flush();
+    expect(screen.queryByTestId("wb-print")).toBeNull();
+    expect(screen.queryByTestId("wb-print-note")).toBeNull();
+    expect(screen.getByTestId("wb-download")).toBeTruthy();
   });
 });
 

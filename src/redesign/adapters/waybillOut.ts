@@ -24,9 +24,11 @@ export function downloadPdf(bytes: Uint8Array, filename: string): boolean {
 
 // The PDF in a hidden frame, then the browser's print window; if the frame can't print, the PDF opens in
 // a new tab (it has its own Print button). false = nothing could be opened.
+let lastFrame: { f: HTMLIFrameElement; url: string } | null = null;
 export function printPdf(bytes: Uint8Array): boolean {
   let url = "";
   try {
+    if (lastFrame) { lastFrame.f.remove(); URL.revokeObjectURL(lastFrame.url); lastFrame = null; } // one frame at a time
     url = URL.createObjectURL(pdfBlob(bytes));
     const f = document.createElement("iframe");
     f.setAttribute("aria-hidden", "true");
@@ -39,7 +41,7 @@ export function printPdf(bytes: Uint8Array): boolean {
     };
     f.src = url;
     document.body.appendChild(f);
-    setTimeout(() => { f.remove(); URL.revokeObjectURL(url); }, 5 * 60_000);
+    lastFrame = { f, url }; // kept until the next Print (the print window may stay open a long time)
     return true;
   } catch {
     if (url) URL.revokeObjectURL(url);
