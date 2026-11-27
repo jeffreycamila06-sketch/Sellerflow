@@ -144,6 +144,12 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
   only the fonts differ (phone system fonts vs the server's Noto), as for every phone/server pair here. The phone
   editor also takes emoji out of the picture (as the server does). Automatic receipt (`fbAutoReceipt.js`),
   `receiptLayout.js`, `receiptImage.ts`, every sticker / slip / laptop path: 0 lines. Render deploy needed.
+  Known (guardian 2026-11-27, non-blocking): (1) the View is no longer the server's drawing — Korean / Arabic look
+  fine in the phone's editor but still arrive as boxes from the server fonts (the open font item above; before, the
+  View showed the boxes); (2) a saved edit freezes the lines — an order added or a line cancelled after the edit is
+  NOT in the sent picture until "Reset to original" (the row says "Edited · new order"); (3) the editor uses the app
+  language, the job the language sent at Start — they differ only if the seller switches language in between. A QR
+  saved through the app is ≤ 600 px / ≤ 300 000 characters, so the server's 2 MB / 1000 px refusal cannot be hit.
 - **Facebook error 10 / 2018300 (2026-11-24, branch `claude/fb-receipt-thread-owner`) — NO drawing change, NO change to the request sent:**
   `server/fbReceipt.js` and `src/redesign/adapters/fbReceipt.ts` are edited for the case "Facebook refused the
   receipt with `10/2018300`" only:
