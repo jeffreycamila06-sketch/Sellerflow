@@ -23,7 +23,7 @@ import {
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
-import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
+import { knownPrinterInfo, knownPrinterLang, type PrinterLang } from "../adapters/printerModels";
 import PrinterTestCard from "../components/PrinterTestCard";
 import { testPrintFor, printerLabelFor } from "../adapters/oneStickerPrint";
 import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor, qrSizeOk } from "../adapters/oneSticker";
@@ -244,7 +244,9 @@ export default function PrinterSettings({
   async function pickPrinter(p: BluetoothPrinterDevice) {
     if (stage === "printing" || !settings) return;
     const info = knownPrinterInfo(p);
-    if (testerMode && !info) { setTestPick(p); setPick(null); setBtMsg(""); return; } // a tester never saves an unlisted printer — the Printer test card instead (any named device: unknown printers advertise nothing)
+    // A tester gets the Printer test card for every printer that is not built-in (listed / Admin-approved or not);
+    // the built-in ones (AIMO D520BT, Flash Y41BT, Xprinter XP-420B, Niimbot) keep the path below.
+    if (testerMode && !(info && info.approved !== true)) { setTestPick(p); setPick(null); setBtMsg(""); return; }
     setTestPick(null);
     setPick(p); setBtMsg("");
     if (info?.brand === "Niimbot") {
@@ -265,6 +267,16 @@ export default function PrinterSettings({
     const printed = await printStickerBtRouted(tp.buyer, cur, tp.storeName, settings);
     if (!printed.ok) bt.report(printed.code, printed.message); // Bluetooth off / not allowed → that card; anything else → the amber saved card
     setTestPrinted(printed.ok);
+    setBtSaved(r?.savedPrinter || p);
+    setBtPrinters([]); setBtScanned(false);
+    setStage("saved");
+  }
+  // After a CLEAN test report the tester may use the printer: saved on this device in the language that printed
+  // clean (a listed printer keeps its locked shift / flip — printing reads those by name).
+  async function adoptTestedPrinter(p: BluetoothPrinterDevice, lang: PrinterLang) {
+    const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang });
+    onPrinterSaved?.();
+    setTestPick(null); setPick(p); setTestPrinted(true);
     setBtSaved(r?.savedPrinter || p);
     setBtPrinters([]); setBtScanned(false);
     setStage("saved");
@@ -499,7 +511,7 @@ export default function PrinterSettings({
               </div>
             )}
             {v2 && testerMode && testPick && (
-              <PrinterTestCard printer={testPick} settings={settings} cur={cur} storeName={storeName} stickerSize={psSize.replace(/\s*\(.*\)$/, "")} onClose={() => setTestPick(null)} />
+              <PrinterTestCard printer={testPick} settings={settings} cur={cur} storeName={storeName} stickerSize={psSize.replace(/\s*\(.*\)$/, "")} onClose={() => setTestPick(null)} onUse={(lang) => adoptTestedPrinter(testPick, lang)} />
             )}
             {v2 && pick && stage === "printing" && (
               <div data-testid="ps-printing" role="status" style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>

@@ -1,7 +1,7 @@
-// "Printer test" card — printer testers only (feature key printer_tester), for a printer that is NOT
-// on the list. Pick a language → Test print (the existing generic path, nothing saved) → "Did it print
-// clean?" → Yes (needs a photo of the sticker) / No → one report to Admin. No Save: the printer can be
-// used for live only after Admin adds it.
+// "Printer test" card — printer testers only (feature key printer_tester), for any printer that is not
+// built-in. Pick a language → Test print (the existing generic path, nothing saved) → "Did it print
+// clean?" → Yes (needs a photo of the sticker) / No → one report to Admin. With onUse: after a CLEAN
+// report, "Use this printer" saves it with the language that printed clean. Without onUse: no Save.
 import { useState, type CSSProperties } from "react";
 import type { BluetoothPrinterDevice } from "../adapters/printerBridge";
 import type { Settings } from "../adapters/printing";
@@ -10,7 +10,7 @@ import {
   LANG_LABEL, TESTER_LANGS, resizeTestPhoto, submitPrinterTestReport, testPrintInLang,
   type SubmitResult, type TesterSendResult,
 } from "../adapters/printerTesters";
-import { useT } from "../i18n";
+import { tpl, useT } from "../i18n";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12 };
 const btn: CSSProperties = { minHeight: 44, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
@@ -23,9 +23,9 @@ export interface PrinterTestDeps {
 }
 const DEFAULT_DEPS: PrinterTestDeps = { testPrint: testPrintInLang, resize: resizeTestPhoto, submit: submitPrinterTestReport };
 
-export default function PrinterTestCard({ printer, settings, cur, storeName, stickerSize, onClose, deps = DEFAULT_DEPS }: {
+export default function PrinterTestCard({ printer, settings, cur, storeName, stickerSize, onClose, onUse, deps = DEFAULT_DEPS }: {
   printer: BluetoothPrinterDevice; settings?: Settings; cur: string; storeName: string; stickerSize: string;
-  onClose: () => void; deps?: PrinterTestDeps;
+  onClose: () => void; onUse?: (lang: PrinterLang) => Promise<void> | void; deps?: PrinterTestDeps;
 }) {
   const t = useT();
   const [lang, setLang] = useState<PrinterLang | null>(null);
@@ -36,6 +36,8 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
   const [photoErr, setPhotoErr] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
+  const [cleanLang, setCleanLang] = useState<PrinterLang | null>(null); // the language of the clean report just sent
+  const [using, setUsing] = useState(false);
 
   async function doTest() {
     if (!lang || !settings || sending) return;
@@ -49,6 +51,12 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
     setSubmitting(true);
     const r = await deps.submit({ printer, lang: sent.lang, stickerSize, send: sent.r, clean, photo: clean ? photo : null });
     setSubmitting(false); setResult(r);
+    setCleanLang(r.ok && clean ? sent.lang : null);
+  }
+  async function use() {
+    if (!onUse || !cleanLang || using) return;
+    setUsing(true);
+    try { await onUse(cleanLang); } finally { setUsing(false); }
   }
   async function onPhoto(f: File | undefined) {
     setPhotoErr(false); setPhoto(null);
@@ -62,10 +70,13 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
     <div data-testid="ps-tester-card" style={card}>
       <div style={{ fontSize: 14.5, fontWeight: 800, color: "var(--text)" }}>{t.rd_prt_title}</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{printer.name || t.rd_ps_bt_device}</div>
-      <div data-testid="ps-tester-no-save" style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.45, marginTop: 6 }}>{t.rd_prt_no_save}</div>
-      {done ? (
-        <div role="status" data-testid="ps-tester-sent" style={{ marginTop: 12, padding: "11px 13px", borderRadius: 12, background: "var(--ok-soft, rgba(5,150,105,.1))", border: "1px solid var(--ok)", fontSize: 13, fontWeight: 600, color: "var(--text)", lineHeight: 1.45 }}>{t.rd_prt_sent}</div>
-      ) : (<>
+      <div data-testid="ps-tester-no-save" style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.45, marginTop: 6 }}>{onUse ? t.rd_prt_try_note : t.rd_prt_no_save}</div>
+      {done ? (<>
+        <div role="status" data-testid="ps-tester-sent" style={{ marginTop: 12, padding: "11px 13px", borderRadius: 12, background: "var(--ok-soft, rgba(5,150,105,.1))", border: "1px solid var(--ok)", fontSize: 13, fontWeight: 600, color: "var(--text)", lineHeight: 1.45 }}>{onUse ? (cleanLang ? tpl(t.rd_prt_sent_use, { lang: LANG_LABEL[cleanLang] }) : t.rd_prt_sent_try) : t.rd_prt_sent}</div>
+        {onUse && cleanLang && (
+          <button data-testid="ps-tester-use" disabled={using} onClick={() => void use()} style={{ ...primary(!using), marginTop: 10 }}>{t.rd_prt_use}</button>
+        )}
+      </>) : (<>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)", margin: "12px 0 6px" }}>{t.rd_prt_lang}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
           {TESTER_LANGS.map((l) => (
