@@ -25,7 +25,8 @@ const DEFAULT_DEPS: PrinterTestDeps = { testPrint: testPrintInLang, resize: resi
 
 export default function PrinterTestCard({ printer, settings, cur, storeName, stickerSize, onClose, onUse, deps = DEFAULT_DEPS }: {
   printer: BluetoothPrinterDevice; settings?: Settings; cur: string; storeName: string; stickerSize: string;
-  onClose: () => void; onUse?: (lang: PrinterLang) => Promise<boolean> | boolean; // false = not saved deps?: PrinterTestDeps;
+  onClose: () => void; onUse?: (lang: PrinterLang) => Promise<boolean> | boolean; // false = not saved
+  deps?: PrinterTestDeps;
 }) {
   const t = useT();
   const [lang, setLang] = useState<PrinterLang | null>(null);

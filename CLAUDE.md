@@ -7083,8 +7083,12 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   Card: TSPL / ESC/POS / CPCL → Test print → "Did it print clean?" → Yes + photo → Send report (Admin Test reports, with
   the language) → after a CLEAN report **"Use this printer"** (`PrinterTestCard` prop `onUse` → `adoptTestedPrinter`):
   `setBluetoothLabelPrinter {address, name, transport, model:"generic", lang:<clean language>}` → the saved green card;
-  printing reads that language (`savedGenericLang`); an approved row's locked shift / flip still apply by name.
-  "No" / failed report = no Use button. Texts `rd_prt_try_note`, `rd_prt_sent_use`, `rd_prt_sent_try`, `rd_prt_use` (8 langs).
+  printing reads that language (`savedGenericLang`); any active approved row's shift / flip still apply by name. The test print already uses that flip / shift; a failed save keeps the card with a red line ("Couldn't save the printer"), `rd_prt_use_failed`.
+  "No" / failed report = no Use button. Unlisted printers get "Use this printer" too (Jeff: any model). Texts `rd_prt_try_note`,
+  `rd_prt_sent_use`, `rd_prt_sent_try`, `rd_prt_use`, `rd_prt_use_failed` (8 langs). `rd_prt_no_save` / `rd_prt_sent` stay for a card without `onUse` only.
+- Guardian (run 2026-11-27): no blocking finding; 8 on-purpose breaks all caught (rule, built-in, non-tester, Use language,
+  Use after No, Use before a report, test print layout, save answer). Jeff to test on paper: a tester on an approved printer
+  with flip / shift (Clabel CT221B) → test print → Use → a real 1-Click, same sticker; the same on Android classic Bluetooth.
 - **Not a tester = same screen + same bridge calls as 5e5689b0** (`screens/__tests__/printerTesterAllModels.test.tsx`,
   fixture `fixtures/printerSettings.nonTester.main.json` taken on a 5e5689b0 worktree, clock pinned).
 - Preview `?prt=1` (fakeSupabase: tester + test_printers keys, 2 approved rows, photo upload ok). Pictures + measured
