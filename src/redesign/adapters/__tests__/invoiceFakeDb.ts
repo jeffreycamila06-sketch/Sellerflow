@@ -27,7 +27,7 @@ export function makeInvoiceDb() {
     noCancelStatus: false,
     /** a session's platform read (live_session_orders …limit(1)) fails */
     failPlatformReads: false,
-    /** sql/231 fb_receipt_edits: one row per seller + session + buyer number */
+    /** sql/233 fb_receipt_edits: one row per seller + session + buyer number */
     edits: [] as Record<string, unknown>[],
     failEditReads: false, failEditWrites: false, noEditsTable: false,
   };

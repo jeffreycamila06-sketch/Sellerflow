@@ -1,4 +1,4 @@
-// INVOICING → FACEBOOK: the seller's edit of ONE buyer's Messenger receipt (sql/231 fb_receipt_edits) →
+// INVOICING → FACEBOOK: the seller's edit of ONE buyer's Messenger receipt (sql/233 fb_receipt_edits) →
 // the picture's input. PURE and SHARED: the phone's editor (src/redesign/components/FbSendAllTab.tsx) and
 // the server's Send all (server/fbSendAll.js) build the picture's input with these SAME functions, then
 // lay it out with the shared layoutReceipt — so what the seller sees in the editor is what the buyer gets
@@ -29,7 +29,7 @@ const money = (v) => {
   return Number.isFinite(n) && n >= 0 ? Math.min(n, EDIT_PRICE_MAX) : null;
 };
 
-// Anything (the editor's state, a database row) → a clean edit that fits sql/231's checks:
+// Anything (the editor's state, a database row) → a clean edit that fits sql/233's checks:
 // { opening, note, lines: [{ item, price: number | null }], shippingFee: number | null }. PURE.
 export function cleanReceiptEdit(raw) {
   const r = raw && typeof raw === "object" ? raw : {};

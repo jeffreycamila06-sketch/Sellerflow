@@ -1,4 +1,4 @@
-// The REAL app (preview mode, made-up seller and buyers) for the Invoicing → Facebook receipt EDITOR (sql/231):
+// The REAL app (preview mode, made-up seller and buyers) for the Invoicing → Facebook receipt EDITOR (sql/233):
 //   1) the Facebook list with a saved edit (#3 "✎ Edited");
 //   2) ✎ View on an unedited buyer = the same editor as Orders (fields + the live picture drawn on the phone);
 //   3) a change typed → "✓ Saved" + Edited + Reset to original; the Reset question;

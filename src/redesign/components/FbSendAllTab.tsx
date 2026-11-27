@@ -2,7 +2,7 @@
 // "Send all in Messenger": the server sends every Facebook buyer of the session their receipt picture
 // in Messenger, one by one (server/fbSendAll.js) — the app can be closed. The list = the session's
 // Facebook buyers (the same rows the TikTok tab builds, adapters/invoicing.ts invoiceRows), each with
-// its tag; ✎ View opens the same receipt editor as Orders (the edit is saved for that receipt only — sql/231 —
+// its tag; ✎ View opens the same receipt editor as Orders (the edit is saved for that receipt only — sql/233 —
 // and Send all / Send draw it; an edited row is tagged "Edited"), with "Send to #N in Messenger",
 // "I sent it by hand" and "Buyer cancelled" (the SAME invoice_sends / invoice_line_cancels as TikTok,
 // platform "facebook"). The phone never sees a PSID, a comment id, a page token or Facebook's text —
@@ -66,7 +66,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   const status = useInvoiceStatus(sessionKey, "facebook", true);
   const cancels = useInvoiceLineCancels(sessionKey, "facebook", true);
   const orderIds = useInvoiceOrderIds(buyers, "facebook", sessionId, true);
-  const edits = useReceiptEdits(okSession ? sessionId : null);   // the saved receipt edits (sql/231)
+  const edits = useReceiptEdits(okSession ? sessionId : null);   // the saved receipt edits (sql/233)
   const rows = useMemo(() => invoiceRows(buyers, "facebook", fee, { ids: orderIds.ids, cancelled: cancels.cancelled }), [buyers, fee, orderIds.ids, cancels.cancelled]);
   const [filter, setFilter] = useState<FbFilter>("all");
   const [sheetId, setSheetId] = useState<string | null>(null);
@@ -257,7 +257,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
 // ✎ View: the SAME receipt editor as Orders (components/ReceiptEditorFields.tsx) — opening, items, shipping fee,
 // note, the payment QR and the live picture. The picture's input is built with the same shared functions the
 // server's Send all draws with (adapters/fbReceiptEditState.ts → src/lib/receiptEdit.js), so this is the picture
-// the buyer gets. A change is saved for THIS receipt only (sql/231 fb_receipt_edits, a moment after the last
+// the buyer gets. A change is saved for THIS receipt only (sql/233 fb_receipt_edits, a moment after the last
 // change; at once before Send and on close); back exactly to the orders = the saved edit goes. "Reset to
 // original" removes it. Orders, Sales, stickers and the saved receipt format are never touched.
 type SaveState = "idle" | "saving" | "saved" | "failed";

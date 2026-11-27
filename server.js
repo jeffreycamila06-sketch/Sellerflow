@@ -2613,8 +2613,8 @@ try {
         if (error) throw new Error("send_all_cancels");
         return (data || []).map((r) => Number(r.order_id));
       },
-      // That session's saved receipt edits (sql/231, the Invoicing → Facebook editor). The table not there
-      // yet (sql/231 not applied) = no edits; any other read error throws (the job then stops instead of
+      // That session's saved receipt edits (sql/233, the Invoicing → Facebook editor). The table not there
+      // yet (sql/233 not applied) = no edits; any other read error throws (the job then stops instead of
       // sending the orders' receipt over a saved edit).
       async listReceiptEdits(userId, sessionId) {
         const { data, error } = await serviceSb.from("fb_receipt_edits").select("buyer_number, opening, lines, shipping_fee, note")

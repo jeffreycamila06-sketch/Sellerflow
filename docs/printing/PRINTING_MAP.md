@@ -130,7 +130,7 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
     automatic receipt for those inputs → its own branch).
   - **Thai "How to pay" label** is letter-spaced (the `label` op's `letterSpacing`, same on the phone sheet) — cosmetic,
     open item for `receiptLayout.js` (own branch).
-- **Invoicing → Facebook receipt EDITOR + saved edits (2026-11-27, branch `claude/fb-invoice-edit`, sql/231):**
+- **Invoicing → Facebook receipt EDITOR + saved edits (2026-11-27, branch `claude/fb-invoice-edit`, sql/233):**
   the Facebook tab's ✎ View is now the SAME editor as Orders (`components/ReceiptEditorFields.tsx`, moved out of
   `ReceiptSheet.tsx` — Orders' sheet DOM / picture inputs / Send calls = main, `ReceiptSheet.sameAsMain.test.tsx`).
   Its live picture is the PHONE drawing (`renderReceiptPng`) of `fbPictureInput` (adapters/fbReceiptEditState.ts). An

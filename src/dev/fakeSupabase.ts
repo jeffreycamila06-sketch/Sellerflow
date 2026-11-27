@@ -369,7 +369,7 @@ if (IVC.length === 2) {
   tables.app_settings.push({ key: "invoicing_enabled", value: "true" });
   tables.seller_session_config = [{ user_id: UID, current_session_id: IVC_SESSION, session_started_at: new Date(now - 26 * 3_600_000).toISOString(), session_window_days: 2, session_ended_at: null, window_days: 1, window_start: null }];
   tables.seller_receipt_settings = [{ user_id: UID, opening: "", note: "Pay by bank transfer within 24 hours.\nBank 012 · 0000-1234-5678", qr_image: null, invoice_shipping_fee: 38, updated_at: iso(3) }];
-  // &fbedit=1 (docs/design/fb-invoice-edit): Lea Santos (2 lines) has a saved receipt edit (sql/231) → "✎ Edited"
+  // &fbedit=1 (docs/design/fb-invoice-edit): Lea Santos (2 lines) has a saved receipt edit (sql/233) → "✎ Edited"
   // on her row. With ?ivc=0,0&fbsa=1 the running session has Facebook buyers only (#1–#6; Lea = #3).
   if (FBSA && /[?&]fbedit=1/.test(Q)) {
     tables.fb_receipt_edits = [{ user_id: UID, session_id: IVC_SESSION, buyer_number: count + 3, opening: "Thank you for buying!", note: "Pay by GCash 0917 000 1234 within 24 hours.",

@@ -1,11 +1,11 @@
-// Runs sql/231 (+ its rollback) on a real Postgres (PGlite, WASM) with a stub auth schema.
+// Runs sql/233 (+ its rollback) on a real Postgres (PGlite, WASM) with a stub auth schema.
 // Proves: a signed-in seller reads / adds / changes / deletes ONLY own rows (a row of another seller is
 // invisible, cannot be written, changed or deleted, and cannot be added in another seller's name); a visitor
 // (anon) has no access at all; one row per seller + session + buyer number; the time is the database's; the
 // size / shape checks refuse too-long texts, too many lines, wrong line shapes, bad prices and bad codes;
 // applying twice is fine; the rollback removes everything and the file can be applied again.
 // Not part of CI (PGlite is not a dependency). Run:
-//   PGLITE_DIR=<folder with @electric-sql/pglite@0.2.17 installed> node scripts/sql231-behaviour.mjs
+//   PGLITE_DIR=<folder with @electric-sql/pglite@0.2.17 installed> node scripts/sql233-behaviour.mjs
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, dirname } from "node:path";
@@ -18,10 +18,10 @@ const dir = process.env.PGLITE_DIR;
 if (!dir) { console.error("set PGLITE_DIR to a folder where `npm i @electric-sql/pglite@0.2.17` was run"); process.exit(2); }
 const { PGlite } = createRequire(join(dir, "package.json"))("@electric-sql/pglite");
 const read = (f) => readFileSync(join(repo, f), "utf8");
-const UP = read("sql/231_fb_receipt_edits.sql");
-const DOWN = read("sql/231_fb_receipt_edits_rollback.sql");
-console.log(`md5 sql/231_fb_receipt_edits.sql          ${createHash("md5").update(UP).digest("hex")}`);
-console.log(`md5 sql/231_fb_receipt_edits_rollback.sql ${createHash("md5").update(DOWN).digest("hex")}`);
+const UP = read("sql/233_fb_receipt_edits.sql");
+const DOWN = read("sql/233_fb_receipt_edits_rollback.sql");
+console.log(`md5 sql/233_fb_receipt_edits.sql          ${createHash("md5").update(UP).digest("hex")}`);
+console.log(`md5 sql/233_fb_receipt_edits_rollback.sql ${createHash("md5").update(DOWN).digest("hex")}`);
 
 const db = new PGlite();
 let pass = 0, fail = 0;
@@ -55,9 +55,9 @@ insert into auth.users values ('${A}', 'a@example.com'), ('${B}', 'b@example.com
 `);
 
 await db.exec(UP);
-ok(true, "sql/231 applies");
+ok(true, "sql/233 applies");
 await db.exec(UP);
-ok(true, "sql/231 applies a second time (nothing breaks)");
+ok(true, "sql/233 applies a second time (nothing breaks)");
 
 // ── own rows ──
 ok(await tryAs("authenticated", A, ins(A, 1, "k3x9a")) === "ok", "seller A adds an edit for buyer #1");
@@ -112,7 +112,7 @@ ok(!(await q1("select count(*)::int n from pg_proc where proname in ('fb_receipt
 await db.exec(DOWN);
 ok(true, "rollback runs a second time");
 await db.exec(UP);
-ok(!!(await q1("select to_regclass('public.fb_receipt_edits') r")).r, "sql/231 applies again after the rollback");
+ok(!!(await q1("select to_regclass('public.fb_receipt_edits') r")).r, "sql/233 applies again after the rollback");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

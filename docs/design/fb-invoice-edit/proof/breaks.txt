@@ -23,7 +23,7 @@ RED   | ended session stays on This session |⎯⎯⎯⎯⎯⎯⎯ Failed Tests 
       Tests  1 failed | 4 passed (5)
 RED   | Orders sheet field changed |⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
       Tests  4 failed | 1 passed (5)
-RED   | sql/231 anon keeps access |⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+RED   | sql/233 anon keeps access |⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
       Tests  1 failed | 2 passed (3)
 --- after adding the cancelled-line parity test:
 RED   | editor starts with cancelled lines |      Tests  1 failed | 23 passed (24)

@@ -1,5 +1,5 @@
-// sql/231 fb_receipt_edits — the safety lines, pinned in CI (the full behaviour on a real Postgres is
-// scripts/sql231-behaviour.mjs, PGlite, not in CI). A seller reads / writes ONLY own rows (four policies, each
+// sql/233 fb_receipt_edits — the safety lines, pinned in CI (the full behaviour on a real Postgres is
+// scripts/sql233-behaviour.mjs, PGlite, not in CI). A seller reads / writes ONLY own rows (four policies, each
 // user_id = auth.uid()), a visitor (anon) has nothing, no admin rule, no SECURITY DEFINER function, every field has
 // a size check, and the shared code's limits are the database's limits.
 import { describe, it, expect } from "vitest";
@@ -8,11 +8,11 @@ import { resolve } from "node:path";
 import { EDIT_MAX_LINES, EDIT_ITEM_MAX, EDIT_OPENING_MAX, EDIT_NOTE_MAX, EDIT_PRICE_MAX, cleanReceiptEdit } from "../../../lib/receiptEdit.js";
 
 const root = resolve(__dirname, "../../../..");
-const UP = readFileSync(resolve(root, "sql/231_fb_receipt_edits.sql"), "utf8");
-const DOWN = readFileSync(resolve(root, "sql/231_fb_receipt_edits_rollback.sql"), "utf8");
+const UP = readFileSync(resolve(root, "sql/233_fb_receipt_edits.sql"), "utf8");
+const DOWN = readFileSync(resolve(root, "sql/233_fb_receipt_edits_rollback.sql"), "utf8");
 const code = UP.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
 
-describe("sql/231", () => {
+describe("sql/233", () => {
   it("RLS on; select / insert / update / delete for authenticated, each own rows only; nothing for anon; no admin rule", () => {
     expect(code).toContain("alter table public.fb_receipt_edits enable row level security;");
     for (const op of ["select", "insert", "update", "delete"]) {

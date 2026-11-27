@@ -1,4 +1,4 @@
--- sql/231 — Invoicing → Facebook: the seller's own edits of ONE buyer's Messenger receipt (2026-11-27).
+-- sql/233 — Invoicing → Facebook: the seller's own edits of ONE buyer's Messenger receipt (2026-11-27).
 --
 -- The Facebook tab of Settings → Invoicing opens the same receipt editor as Orders (opening, item lines,
 -- shipping fee, note — the payment QR stays the saved one). An edit is saved here (one row per seller +
@@ -17,7 +17,7 @@
 --                             or null } objects, nothing else).
 --   cron purge-old-fb-receipt-edits  rows go 3 months after their last change (as invoice_sends).
 --
--- No other table, function or setting is changed. Rollback: sql/231_fb_receipt_edits_rollback.sql.
+-- No other table, function or setting is changed. Rollback: sql/233_fb_receipt_edits_rollback.sql.
 begin;
 set local lock_timeout = '3s';
 

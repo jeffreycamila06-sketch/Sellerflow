@@ -1,4 +1,4 @@
-// INVOICING → FACEBOOK: the seller's saved edit of one buyer's Messenger receipt (sql/231 fb_receipt_edits).
+// INVOICING → FACEBOOK: the seller's saved edit of one buyer's Messenger receipt (sql/233 fb_receipt_edits).
 // One read when a session's Facebook list opens (no timer, no poll), one upsert per save (the editor waits a
 // moment after the last change), one delete for "Reset to original". RLS: own rows only. The server's Send all
 // reads the same rows (service role) and draws them (server/fbSendAll.js). Nothing here touches an order,
@@ -16,7 +16,7 @@ async function ownUserId(): Promise<string | null> {
   if (!supabase) return null;
   try { return (await supabase.auth.getSession()).data.session?.user?.id ?? null; } catch { return null; }
 }
-/** A session's saved edits → buyer number → edit. null = the read failed. The table not there yet (sql/231 not
+/** A session's saved edits → buyer number → edit. null = the read failed. The table not there yet (sql/233 not
  *  applied) = no edits. */
 export async function loadReceiptEdits(sessionId: string): Promise<Map<number, SavedReceiptEdit> | null> {
   if (!isSupabaseConfigured || !supabase) return null;

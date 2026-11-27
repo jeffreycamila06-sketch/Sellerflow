@@ -1,5 +1,5 @@
 // @vitest-environment node
-// Invoicing → Facebook: the seller's saved receipt edit (sql/231 fb_receipt_edits) in Send all, the single
+// Invoicing → Facebook: the seller's saved receipt edit (sql/233 fb_receipt_edits) in Send all, the single
 // Send and the preview (server/fbSendAll.js), with the REAL fbReceipt send path and the REAL server drawing
 // (server/receiptDraw.js, @napi-rs/canvas).
 //  • NO edit → the picture the server sends / previews is byte-identical to main before this branch
@@ -9,7 +9,7 @@
 //  • the phone editor and the server build the SAME picture input (and so the same layout) from the same edit
 //    (src/lib/receiptEdit.js) — the "the server picture = the sheet's picture" proof;
 //  • the edits read fails → the job stops (never sends the orders' receipt over a saved edit); the table not
-//    there yet (sql/231 not applied) → today's pictures.
+//    there yet (sql/233 not applied) → today's pictures.
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";

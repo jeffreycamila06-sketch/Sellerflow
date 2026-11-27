@@ -7,7 +7,7 @@
 // The SAME machinery as the after-live automatic receipt (server/fbAutoReceipt.js), NOT its switch:
 //   • the picture = server/receiptDraw.js drawReceiptPng (the seller's saved receipt format + the
 //     Invoicing shipping fee, the order lines minus the lines cancelled for the invoice); when the seller
-//     saved an edit of that buyer's receipt (sql/231 fb_receipt_edits, the Invoicing editor) the picture is
+//     saved an edit of that buyer's receipt (sql/233 fb_receipt_edits, the Invoicing editor) the picture is
 //     that edit instead — opening, lines, shipping fee, note — on the orders' buyer number / name / QR / words
 //     (src/lib/receiptEdit.js applyReceiptEdit, the SAME function the phone's editor draws with);
 //   • the send = fbReceipt.sendOne: the same per-buyer lock, claim, upload and ONE Graph call as the
@@ -156,7 +156,7 @@ export function sendOutcome(out) {
  *   listInvoiceSkips(uid, sessionId) → buyer numbers saved Sent by hand / Can't message / Cancelled
  *   listLineCancels(uid, sessionId) → order ids cancelled for the Facebook invoice
  *   getSendAllSettings(uid) → { opening, note, qrImage, shippingFee }
- *   listReceiptEdits(uid, sessionId) → that session's saved edits (sql/231): [{ buyer_number, opening, lines,
+ *   listReceiptEdits(uid, sessionId) → that session's saved edits (sql/233): [{ buyer_number, opening, lines,
  *     shipping_fee, note }]; [] when there is none OR the table is not there yet; throws on a read error
  *   getPage(uid, pageId) (for the "can this Page message" check, as in fbReceipt)
  * deps.enabled() → fb_send_all_enabled is exactly 'true' (cached reader); deps.receipt = createFbReceipt(...).
@@ -200,7 +200,7 @@ export function createSendAllRunner(deps) {
     if (!edit) return draw(rows.map(noEmojiRow), s);
     return drawInput(applyReceiptEdit(receiptInputFromRows(rows.map(noEmojiRow), s), edit));
   }
-  // buyer number → the saved edit (cleaned to sql/231's shape)
+  // buyer number → the saved edit (cleaned to sql/233's shape)
   const editsByBuyer = (list) => new Map((list || []).map((e) => [Number(e.buyer_number), cleanReceiptEdit(e)]));
   const editEmpty = (edit) => !!edit && editPictureLines(edit.lines).length === 0;
   // a store without the reader (older wiring, tests) = no edits

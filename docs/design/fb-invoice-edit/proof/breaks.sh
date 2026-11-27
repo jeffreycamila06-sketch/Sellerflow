@@ -19,5 +19,5 @@ run "editor starts with cancelled lines" src/redesign/adapters/fbReceiptEditStat
 run "no Edited tag on the row" src/redesign/components/FbSendAllTab.tsx 'if (!e) return null;' 'return null;' $V/Invoicing.fbEdit.test.tsx
 run "ended session stays on This session" src/redesign/screens/Invoicing.tsx 'const fbNoId = !!fbSendAll' 'const fbNoId = false && !!fbSendAll' $V/Invoicing.endedSession.test.tsx
 run "Orders sheet field changed" src/redesign/components/ReceiptEditorFields.tsx '<textarea data-testid="rs-note" value={note} maxLength={1000}' '<textarea data-testid="rs-note" value={note} maxLength={999}' $V/ReceiptSheet.sameAsMain.test.tsx
-run "sql/231 anon keeps access" sql/231_fb_receipt_edits.sql 'revoke all on public.fb_receipt_edits from public, anon;' 'revoke all on public.fb_receipt_edits from public;' $T/fbReceiptEditsSql.test.ts
+run "sql/233 anon keeps access" sql/233_fb_receipt_edits.sql 'revoke all on public.fb_receipt_edits from public, anon;' 'revoke all on public.fb_receipt_edits from public;' $T/fbReceiptEditsSql.test.ts
 git status --short

@@ -1,5 +1,5 @@
 // Invoicing → Facebook ✎ View = the SAME receipt editor as Orders (components/ReceiptEditorFields.tsx), saved per
-// receipt in sql/231 fb_receipt_edits (the in-memory fake: adapters/__tests__/invoiceFakeDb.ts — own rows only).
+// receipt in sql/233 fb_receipt_edits (the in-memory fake: adapters/__tests__/invoiceFakeDb.ts — own rows only).
 // Pins: the editor's fields and starting values (saved format + the buyer's order lines + the Invoicing shipping
 // fee); a change is saved a moment later (once) and the row says "Edited"; read back after the screen is opened
 // again; back exactly to the orders = the saved edit goes; Reset to original (asks first); Send saves first, then

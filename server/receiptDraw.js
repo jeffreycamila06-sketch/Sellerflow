@@ -7,7 +7,7 @@
 // in the server is affected.
 //
 // Input = the buyer's RAW order rows (live_session_orders) — edits made in the Orders receipt sheet are
-// not used (Send all draws a seller's saved Invoicing edit, sql/231, with drawReceiptInputPng). Name +
+// not used (Send all draws a seller's saved Invoicing edit, sql/233, with drawReceiptInputPng). Name +
 // lines mirror rebuildSessionFromRows / buyerReceipt exactly.
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

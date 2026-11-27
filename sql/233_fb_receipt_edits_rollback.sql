@@ -1,4 +1,4 @@
--- Rollback of sql/231: removes the saved Facebook receipt edits (the table, its check function, its trigger
+-- Rollback of sql/233: removes the saved Facebook receipt edits (the table, its check function, its trigger
 -- function and its clean-up job). Send all then draws every receipt from the orders again (the server reads
 -- the table only when it is there). Nothing else is touched.
 begin;

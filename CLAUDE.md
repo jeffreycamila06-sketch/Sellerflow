@@ -7095,16 +7095,16 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
 - Preview `?prt=1` (fakeSupabase: tester + test_printers keys, 2 approved rows, photo upload ok). Pictures + measured
   widths: `docs/design/tester-all-models/` (`shoot.cjs`). No help-guide change (testers only).
 
-## 2026-11-27 — INVOICING → FACEBOOK: THE SAME RECEIPT EDITOR AS ORDERS + SEND ALL SENDS THE EDIT (branch `claude/fb-invoice-edit`, NOT merged; sql/231 NOT applied; needs Vercel + a Render deploy)
+## 2026-11-27 — INVOICING → FACEBOOK: THE SAME RECEIPT EDITOR AS ORDERS + SEND ALL SENDS THE EDIT (branch `claude/fb-invoice-edit`, NOT merged; sql/233 NOT applied; needs Vercel + a Render deploy)
 - **Editor:** the Facebook tab's ✎ View is the Orders receipt editor — `components/ReceiptEditorFields.tsx` (moved out of
   `ReceiptSheet.tsx`, same JSX; Orders' sheet DOM / picture inputs / Send calls = main, `ReceiptSheet.sameAsMain.test.tsx`,
   fixture taken on e9a64019). It starts from the saved format (opening / note / QR) + the buyer's order lines minus the
   invoice-cancelled ones + the Invoicing shipping fee (= what Send all sent before). Live picture = the phone drawing of
   `fbPictureInput` (`adapters/fbReceiptEditState.ts`). Buttons unchanged (Send to #N only where today's rules allow).
-- **Saved per receipt — sql/231 `fb_receipt_edits`** (+ rollback; NOT applied): PK user_id + session_id + buyer_number;
+- **Saved per receipt — sql/233 `fb_receipt_edits`** (+ rollback; NOT applied): PK user_id + session_id + buyer_number;
   opening ≤ 300, note ≤ 1000, lines jsonb ≤ 100 × {item ≤ 200, price 0..1e8 | null}, shipping_fee, based_on (the order
   lines' hash at edit time); RLS own rows ×4, nothing for anon; updated_at = the database's; pg_cron
-  `purge-old-fb-receipt-edits` (3 months, skipped where pg_cron is missing). Proof `scripts/sql231-behaviour.mjs` (39) +
+  `purge-old-fb-receipt-edits` (3 months, skipped where pg_cron is missing). Proof `scripts/sql233-behaviour.mjs` (39) +
   `fbReceiptEditsSql.test.ts` (CI). App: `adapters/fbReceiptEdit.ts` — one read per session (table missing = no edits),
   save 0.8 s after the last change (`FB_EDIT_SAVE_MS`) and at once before Send / on close / by hand / cancelled; back
   exactly to the orders = the row is deleted; failed save = red line, Send does not start. "Reset to original" asks
@@ -7123,5 +7123,5 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
 - Guide: invoicing (View line + step 1); sql/226 (NOT applied — checked live 2026-11-27) + rollback carry the same words.
   PRINTING_MAP P10 + guardian caveats. Pictures `docs/design/fb-invoice-edit/` (`shoot.cjs`, preview
   `?ivc=0,0&fbsa=1&fbedit=1&admin=1`).
-- **Order:** sql/231 → merge (Vercel) → Render deploy (quiet time). Before sql/231 the editor works but saves fail
+- **Order:** sql/233 → merge (Vercel) → Render deploy (quiet time). Before sql/233 the editor works but saves fail
   ("Couldn't save"); before the Render deploy Send all ignores saved edits (sends the orders' receipt).

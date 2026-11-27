@@ -1,5 +1,5 @@
 // INVOICING → FACEBOOK receipt editor — PURE helpers (no database, no React): the editor's fields ↔ the saved
-// edit (sql/231 fb_receipt_edits) ↔ the picture's input. The picture input goes through the SAME shared
+// edit (sql/233 fb_receipt_edits) ↔ the picture's input. The picture input goes through the SAME shared
 // functions the server's Send all uses (src/lib/receiptEdit.js), so the editor's live picture and the picture
 // the buyer gets are drawn from the same input (only the fonts differ: the phone's own, the server's Noto).
 // Tested against the server in fbSendAllEdit.server.test.ts.
