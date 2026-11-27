@@ -50,6 +50,7 @@ export const SERVER_FILES = [
   "src/lib/errCodes.js",
   "src/lib/helpBotGuard.js",
   "src/lib/receiptLayout.js",
+  "src/lib/receiptEdit.js",
   "render.yaml",
   ".node-version",
   ".nvmrc",
