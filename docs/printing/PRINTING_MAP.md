@@ -130,6 +130,26 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
     automatic receipt for those inputs → its own branch).
   - **Thai "How to pay" label** is letter-spaced (the `label` op's `letterSpacing`, same on the phone sheet) — cosmetic,
     open item for `receiptLayout.js` (own branch).
+- **Invoicing → Facebook receipt EDITOR + saved edits (2026-11-27, branch `claude/fb-invoice-edit`, sql/233):**
+  the Facebook tab's ✎ View is now the SAME editor as Orders (`components/ReceiptEditorFields.tsx`, moved out of
+  `ReceiptSheet.tsx` — Orders' sheet DOM / picture inputs / Send calls = main, `ReceiptSheet.sameAsMain.test.tsx`).
+  Its live picture is the PHONE drawing (`renderReceiptPng`) of `fbPictureInput` (adapters/fbReceiptEditState.ts). An
+  edit is saved per receipt (`fb_receipt_edits`); Send all, the single Send and `/fb/sendall/preview` then draw
+  `drawReceiptInputPng(applyReceiptEdit(receiptInputFromRows(rows minus cancelled, no emoji), edit))` — the shared
+  `src/lib/receiptEdit.js` (opening / lines / shipping fee / note from the edit; buyer number + name, QR, words,
+  currency from the orders). `server/receiptDraw.js`: `drawReceiptPng` = `drawReceiptInputPng(receiptInputFromRows())`
+  (same drawing). **No edit → byte-identical to main** (36 PNG hashes, preview + the job's sent pictures, 3 inputs ×
+  en / zh-TW, `fbSendAllEdit.server.test.ts`, fixture taken on e9a64019). **The editor's picture = the server's**: the
+  same ReceiptInput and the same `layoutReceipt` ops (4 languages, with / without QR + shipping, unedited and edited) —
+  only the fonts differ (phone system fonts vs the server's Noto), as for every phone/server pair here. The phone
+  editor also takes emoji out of the picture (as the server does). Automatic receipt (`fbAutoReceipt.js`),
+  `receiptLayout.js`, `receiptImage.ts`, every sticker / slip / laptop path: 0 lines. Render deploy needed.
+  Known (guardian 2026-11-27, non-blocking): (1) the View is no longer the server's drawing — Korean / Arabic look
+  fine in the phone's editor but still arrive as boxes from the server fonts (the open font item above; before, the
+  View showed the boxes); (2) a saved edit freezes the lines — an order added or a line cancelled after the edit is
+  NOT in the sent picture until "Reset to original" (the row says "Edited · new order"); (3) the editor uses the app
+  language, the job the language sent at Start — they differ only if the seller switches language in between. A QR
+  saved through the app is ≤ 600 px / ≤ 300 000 characters, so the server's 2 MB / 1000 px refusal cannot be hit.
 - **Facebook error 10 / 2018300 (2026-11-24, branch `claude/fb-receipt-thread-owner`) — NO drawing change, NO change to the request sent:**
   `server/fbReceipt.js` and `src/redesign/adapters/fbReceipt.ts` are edited for the case "Facebook refused the
   receipt with `10/2018300`" only:

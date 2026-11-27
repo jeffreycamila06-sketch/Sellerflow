@@ -162,7 +162,7 @@ describe("D4 what counts as server code", () => {
   });
   it("the lists themselves (a change here is a change of what deploys)", () => {
     expect(SERVER_DIRS).toEqual(["server/"]);
-    expect(SERVER_FILES).toEqual(["server.js", "package.json", "package-lock.json", "src/lib/errCodes.js", "src/lib/helpBotGuard.js", "src/lib/receiptLayout.js",
+    expect(SERVER_FILES).toEqual(["server.js", "package.json", "package-lock.json", "src/lib/errCodes.js", "src/lib/helpBotGuard.js", "src/lib/receiptLayout.js", "src/lib/receiptEdit.js",
       "render.yaml", ".node-version", ".nvmrc", ".npmrc"]);
   });
   it("serverFilesIn keeps the order, drops doubles and everything that is not a list", () => {

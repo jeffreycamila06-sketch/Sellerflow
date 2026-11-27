@@ -6,8 +6,9 @@
 // first draw: if it cannot load, drawReceiptPng throws "canvas_unavailable" and nothing else
 // in the server is affected.
 //
-// Input = the buyer's RAW order rows (live_session_orders) — edits made in the manual receipt
-// sheet are not used. Name + lines mirror rebuildSessionFromRows / buyerReceipt exactly.
+// Input = the buyer's RAW order rows (live_session_orders) — edits made in the Orders receipt sheet are
+// not used (Send all draws a seller's saved Invoicing edit, sql/233, with drawReceiptInputPng). Name +
+// lines mirror rebuildSessionFromRows / buyerReceipt exactly.
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { layoutReceipt, RECEIPT_PAD, RECEIPT_RULE_COLOR } from "../src/lib/receiptLayout.js";
@@ -109,8 +110,13 @@ function roundRectPath(ctx, x, y, w, h, r) {
 // rows + settings → PNG Buffer. Throws canvas_unavailable / png_too_big (over the same 4 MB the
 // manual send accepts; a 20-line receipt with a QR is about 200 KB).
 export async function drawReceiptPng(rows, settings = {}) {
+  return drawReceiptInputPng(receiptInputFromRows(rows, settings));
+}
+
+// A ready ReceiptInput → PNG Buffer (Send all with the seller's saved edit, src/lib/receiptEdit.js — the
+// input is built from the orders' input with the edit on top). Same drawing, same limits as drawReceiptPng.
+export async function drawReceiptInputPng(input) {
   const { createCanvas, loadImage } = await loadCanvas();
-  const input = receiptInputFromRows(rows, settings);
   let qr = null;
   if (input.qrImage) {
     // Build 8: the seller's QR is refused (the receipt is not drawn) above 2 MB or 1,000 px a side.

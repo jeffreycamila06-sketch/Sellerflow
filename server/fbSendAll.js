@@ -6,7 +6,10 @@
 //
 // The SAME machinery as the after-live automatic receipt (server/fbAutoReceipt.js), NOT its switch:
 //   • the picture = server/receiptDraw.js drawReceiptPng (the seller's saved receipt format + the
-//     Invoicing shipping fee, the order lines minus the lines cancelled for the invoice);
+//     Invoicing shipping fee, the order lines minus the lines cancelled for the invoice); when the seller
+//     saved an edit of that buyer's receipt (sql/233 fb_receipt_edits, the Invoicing editor) the picture is
+//     that edit instead — opening, lines, shipping fee, note — on the orders' buyer number / name / QR / words
+//     (src/lib/receiptEdit.js applyReceiptEdit, the SAME function the phone's editor draws with);
 //   • the send = fbReceipt.sendOne: the same per-buyer lock, claim, upload and ONE Graph call as the
 //     automatic receipt (one private reply per comment, the fb_receipts unique index), with the
 //     can_reply_privately preflight (false → the buyer is skipped);
@@ -24,7 +27,8 @@
 // Never a PSID, a comment id, a page token or Facebook's error text.
 import { checkReceiptRate, pickReceiptCandidates, isMixedBuyer, makeSendablePage, RECEIPT_WINDOW_MS, RECEIPT_THREAD_OWNED, AUTO_NO_PRIVATE_REPLY } from "./fbReceipt.js";
 import { groupBuyers, makePreflight } from "./fbAutoReceipt.js";
-import { drawReceiptPng } from "./receiptDraw.js";
+import { drawReceiptPng, drawReceiptInputPng, receiptInputFromRows } from "./receiptDraw.js";
+import { noEmoji as sharedNoEmoji, applyReceiptEdit, editPictureLines, cleanReceiptEdit } from "../src/lib/receiptEdit.js";
 import { makeRateGate } from "./fbHardening.js";
 
 export const SEND_ALL_RATE_MAX = 10;
@@ -53,16 +57,9 @@ export const SEND_ALL_LABELS = {
   bg: { shipping: "Доставка", howToPay: "Как да платите", scanToPay: "Сканирайте, за да платите" },
 };
 
-// Emoji (and their joiners / skin tones / flags / keycaps) out of a text for the Send all picture: the server's
-// bundled Noto fonts have no emoji, so they would show as boxes. Letters of every script are kept. Spaces left
-// doubled by a removed emoji are made single, and the ends trimmed. PURE.
-const EMOJI_RE = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\u20E3]/gu;
-export function noEmoji(s) {
-  if (typeof s !== "string" || !s) return s ?? "";
-  if (!EMOJI_RE.test(s)) { EMOJI_RE.lastIndex = 0; return s; }
-  EMOJI_RE.lastIndex = 0;
-  return s.replace(EMOJI_RE, "").replace(/[ \t]{2,}/g, " ").split("\n").map((l) => l.trim()).join("\n").trim();
-}
+// Emoji out of a text for the Send all picture (the server's Noto fonts have none). Moved to the shared
+// src/lib/receiptEdit.js (the phone's Invoicing editor takes them out the same way); the same function.
+export const noEmoji = sharedNoEmoji;
 export const noEmojiRow = (r) => ({ ...r, customer_name: noEmoji(r.customer_name), handle: noEmoji(r.handle), product: noEmoji(r.product) });
 
 // The tags the phone can get. sendable = the phone may offer "Send" / count it in "K left".
@@ -159,6 +156,8 @@ export function sendOutcome(out) {
  *   listInvoiceSkips(uid, sessionId) → buyer numbers saved Sent by hand / Can't message / Cancelled
  *   listLineCancels(uid, sessionId) → order ids cancelled for the Facebook invoice
  *   getSendAllSettings(uid) → { opening, note, qrImage, shippingFee }
+ *   listReceiptEdits(uid, sessionId) → that session's saved edits (sql/233): [{ buyer_number, opening, lines,
+ *     shipping_fee, note }]; [] when there is none OR the table is not there yet; throws on a read error
  *   getPage(uid, pageId) (for the "can this Page message" check, as in fbReceipt)
  * deps.enabled() → fb_send_all_enabled is exactly 'true' (cached reader); deps.receipt = createFbReceipt(...).
  */
@@ -167,6 +166,7 @@ export function createSendAllRunner(deps) {
     store, receipt, enabled, config = {},
     preflight = makePreflight({ fetchImpl: deps.fetchImpl }),
     draw = drawReceiptPng,
+    drawInput = drawReceiptInputPng,
     now = () => Date.now(), log = () => {},
     sleep = (ms) => new Promise((r) => { const h = setTimeout(r, ms); if (h && typeof h.unref === "function") h.unref(); }),
   } = deps;
@@ -190,12 +190,21 @@ export function createSendAllRunner(deps) {
 
   // ONE buyer's picture, from that buyer's rows (lines cancelled for the invoice left out). Emoji are taken out
   // first (the server's fonts have none — they would be boxes in the buyer's Messenger).
-  async function picture(rows, settings, lang, currency) {
-    return draw(rows.map(noEmojiRow), {
+  // With a saved edit: the orders' input (buyer number / name / QR / words / currency) with the edit on top.
+  // No edit: exactly the call of before (byte-identical picture).
+  async function picture(rows, settings, lang, currency, edit = null) {
+    const s = {
       opening: noEmoji(settings.opening), note: noEmoji(settings.note), qrImage: settings.qrImage, shippingFee: settings.shippingFee,
       lang, currency, labels: SEND_ALL_LABELS[lang] || SEND_ALL_LABELS.en,
-    });
+    };
+    if (!edit) return draw(rows.map(noEmojiRow), s);
+    return drawInput(applyReceiptEdit(receiptInputFromRows(rows.map(noEmojiRow), s), edit));
   }
+  // buyer number → the saved edit (cleaned to sql/233's shape)
+  const editsByBuyer = (list) => new Map((list || []).map((e) => [Number(e.buyer_number), cleanReceiptEdit(e)]));
+  const editEmpty = (edit) => !!edit && editPictureLines(edit.lines).length === 0;
+  // a store without the reader (older wiring, tests) = no edits
+  const readEdits = async (uid, sid) => (typeof store.listReceiptEdits === "function" ? store.listReceiptEdits(uid, sid) : []);
   const keptRows = (rows, cancels) => (rows || []).filter((r) => !cancels.has(Number(r.id)));
 
   async function finish(job, status, note, c) {
@@ -225,13 +234,14 @@ export function createSendAllRunner(deps) {
     const uid = job.user_id;
     if (!(await allowed(uid))) return finish(job, "stopped", "not_allowed");
     if (!(await hasAccess(uid))) return finish(job, "stopped", "no_access");
-    let rows, skips, cancels, settings;
+    let rows, skips, cancels, settings, edits;
     try {
-      [rows, skips, cancels, settings] = await Promise.all([
+      [rows, skips, cancels, settings, edits] = await Promise.all([
         store.listSessionFbRows(uid, job.session_id), store.listInvoiceSkips(uid, job.session_id),
-        store.listLineCancels(uid, job.session_id), store.getSendAllSettings(uid),
+        store.listLineCancels(uid, job.session_id), store.getSendAllSettings(uid), readEdits(uid, job.session_id),
       ]);
-    } catch { return finish(job, "failed", "read_failed"); }
+    } catch { return finish(job, "failed", "read_failed"); }   // never the orders' receipt over a saved edit
+    const editOf = editsByBuyer(edits);
     const skip = new Set((skips || []).map(Number));
     const cut = new Set((cancels || []).map(Number));
     const buyers = groupBuyers(rows).filter((b) => b.sessionId === job.session_id && (job.buyer_number == null || b.buyerNumber === Number(job.buyer_number)));
@@ -239,7 +249,8 @@ export function createSendAllRunner(deps) {
     await touch(job, { total: buyers.length, sent: 0, skipped: 0, failed: 0 });
     for (const b of buyers) {
       const kept = keptRows(b.rows, cut);
-      if (skip.has(b.buyerNumber) || kept.length === 0) { c.skipped++; await touch(job, { ...c }); continue; }
+      const edit = editOf.get(b.buyerNumber) || null;
+      if (skip.has(b.buyerNumber) || kept.length === 0 || editEmpty(edit)) { c.skipped++; await touch(job, { ...c }); continue; }
       // 10 a minute: wait for a free place (heartbeat while waiting)
       for (;;) {
         const t = now();
@@ -254,7 +265,7 @@ export function createSendAllRunner(deps) {
       if (!(await allowed(uid))) return finish(job, "stopped", "not_allowed", c);
       let out;
       try {
-        out = await receipt.sendOne(uid, { sessionId: b.sessionId, buyerNumber: b.buyerNumber }, () => picture(kept, settings, job.lang, job.currency), preflight);
+        out = await receipt.sendOne(uid, { sessionId: b.sessionId, buyerNumber: b.buyerNumber }, () => picture(kept, settings, job.lang, job.currency, edit), preflight);
       } catch { out = { status: 500, json: { ok: false, error: "draw_or_send_failed" } }; }
       const kind = sendOutcome(out);
       if (kind === "skipped" || kind === "none") {
@@ -374,15 +385,17 @@ export function createSendAllRunner(deps) {
     if (!(await allowed(uid))) return { status: 403, json: { ok: false, error: "not_allowed" } };
     const b = parseSendAllBody(body, { needBuyer: true });
     if (!b) return { status: 400, json: { ok: false, error: "bad_request" } };
-    let rows, cancels, settings;
+    let rows, cancels, settings, edits;
     try {
-      [rows, cancels, settings] = await Promise.all([store.listSessionFbRows(uid, b.sessionId), store.listLineCancels(uid, b.sessionId), store.getSendAllSettings(uid)]);
+      [rows, cancels, settings, edits] = await Promise.all([store.listSessionFbRows(uid, b.sessionId), store.listLineCancels(uid, b.sessionId), store.getSendAllSettings(uid), readEdits(uid, b.sessionId)]);
     } catch { return { status: 502, json: { ok: false, error: "read_failed" } }; }
     const g = groupBuyers(rows).find((x) => x.sessionId === b.sessionId && x.buyerNumber === b.buyerNumber);
     const kept = g ? keptRows(g.rows, new Set((cancels || []).map(Number))) : [];
     if (!kept.length) return { status: 404, json: { ok: false, error: "no_orders" } };
+    const edit = editsByBuyer(edits).get(b.buyerNumber) || null;
+    if (editEmpty(edit)) return { status: 404, json: { ok: false, error: "no_lines" } };
     try {
-      const png = await picture(kept, settings, b.lang, b.currency);
+      const png = await picture(kept, settings, b.lang, b.currency, edit);
       return { status: 200, json: { ok: true, png: Buffer.from(png).toString("base64") } };
     } catch (e) {
       const why = String((e && e.message) || "").replace(/[^a-z_]/gi, "").slice(0, 40);

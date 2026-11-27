@@ -49,9 +49,9 @@ describe("P the server-code list covers what the Render server really loads", ()
     const notCovered = server.files.filter((f) => !isServerPath(f));
     expect(notCovered, `the server loads these, but a change in them would not be deployed: ${notCovered.join(", ")}`).toEqual([]);
   });
-  it("the files outside server/ are exactly the three on the list (no stale name, none missing)", () => {
+  it("the files outside server/ are exactly the four on the list (no stale name, none missing)", () => {
     const outside = server.files.filter((f) => f !== "server.js" && !f.startsWith("server/"));
-    expect(outside).toEqual(["src/lib/errCodes.js", "src/lib/helpBotGuard.js", "src/lib/receiptLayout.js"]);
+    expect(outside).toEqual(["src/lib/errCodes.js", "src/lib/helpBotGuard.js", "src/lib/receiptEdit.js", "src/lib/receiptLayout.js"]);
     for (const f of outside) expect(SERVER_FILES).toContain(f);
     const listedShared = SERVER_FILES.filter((f) => f.startsWith("src/"));
     expect(listedShared.sort()).toEqual(outside);

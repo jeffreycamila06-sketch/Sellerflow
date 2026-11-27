@@ -7193,3 +7193,34 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   the D520 test sticker prints local time, so an unpinned TZ failed on a Taipei / Manila machine: 3700 vs 3728 bytes).
 - Preview `?prt=1` (fakeSupabase: tester + test_printers keys, 2 approved rows, photo upload ok). Pictures + measured
   widths: `docs/design/tester-all-models/` (`shoot.cjs`). No help-guide change (testers only).
+
+## 2026-11-27 — INVOICING → FACEBOOK: THE SAME RECEIPT EDITOR AS ORDERS + SEND ALL SENDS THE EDIT (branch `claude/fb-invoice-edit`, NOT merged; sql/233 NOT applied; needs Vercel + a Render deploy)
+- **Editor:** the Facebook tab's ✎ View is the Orders receipt editor — `components/ReceiptEditorFields.tsx` (moved out of
+  `ReceiptSheet.tsx`, same JSX; Orders' sheet DOM / picture inputs / Send calls = main, `ReceiptSheet.sameAsMain.test.tsx`,
+  fixture taken on e9a64019). It starts from the saved format (opening / note / QR) + the buyer's order lines minus the
+  invoice-cancelled ones + the Invoicing shipping fee (= what Send all sent before). Live picture = the phone drawing of
+  `fbPictureInput` (`adapters/fbReceiptEditState.ts`). Buttons unchanged (Send to #N only where today's rules allow).
+- **Saved per receipt — sql/233 `fb_receipt_edits`** (+ rollback; NOT applied): PK user_id + session_id + buyer_number;
+  opening ≤ 300, note ≤ 1000, lines jsonb ≤ 100 × {item ≤ 200, price 0..1e8 | null}, shipping_fee, based_on (the order
+  lines' hash at edit time); RLS own rows ×4, nothing for anon; updated_at = the database's; pg_cron
+  `purge-old-fb-receipt-edits` (3 months, skipped where pg_cron is missing). Proof `scripts/sql233-behaviour.mjs` (39) +
+  `fbReceiptEditsSql.test.ts` (CI). App: `adapters/fbReceiptEdit.ts` — one read per session (table missing = no edits),
+  save 0.8 s after the last change (`FB_EDIT_SAVE_MS`) and at once before Send / on close / by hand / cancelled; back
+  exactly to the orders = the row is deleted; failed save = red line, Send does not start. "Reset to original" asks
+  first. Row tag "✎ Edited" / "Edited · new order" (based_on ≠ the row's hash). The row TOTAL in the list stays the
+  orders' total (not the edited one).
+- **Server (Render):** `src/lib/receiptEdit.js` (shared, pure; now on the nightly-deploy SERVER_FILES list) —
+  `noEmoji` (moved from fbSendAll.js), `cleanReceiptEdit`, `editPictureLines`, `applyReceiptEdit(base, edit)`;
+  `server/receiptDraw.js` `drawReceiptInputPng` (drawReceiptPng = it on receiptInputFromRows — same bytes);
+  `server/fbSendAll.js` reads the session's edits with its other reads (`store.listReceiptEdits`, server.js, service
+  role; table missing = []; any other read error = the job stops) and draws the edit for Send all, the single Send and
+  the preview; an edit with no line = that buyer skipped. **No edit = main's bytes** (36 PNG hashes,
+  `fbSendAllEdit.server.test.ts`); phone input = server input + same layout (4 languages). ⚠️ When the Send all
+  picture changes on purpose, retake `fixtures/fbSendAllNoEdit.main.json` (`SFL_FB_EDIT_GOLDEN=<file>`).
+- **Ended session:** no session id + Facebook buyers on screen → the Facebook tab opens on the newest Facebook session
+  from the list instead of "can't be sent from here" (`Invoicing.tsx` fbNoId; none in the list / no picker = as before).
+- Guide: invoicing (View line + step 1); sql/226 (NOT applied — checked live 2026-11-27) + rollback carry the same words.
+  PRINTING_MAP P10 + guardian caveats. Pictures `docs/design/fb-invoice-edit/` (`shoot.cjs`, preview
+  `?ivc=0,0&fbsa=1&fbedit=1&admin=1`).
+- **Order:** sql/233 → merge (Vercel) → Render deploy (quiet time). Before sql/233 the editor works but saves fail
+  ("Couldn't save"); before the Render deploy Send all ignores saved edits (sends the orders' receipt).

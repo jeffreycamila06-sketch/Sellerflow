@@ -331,10 +331,10 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 **Facebook tab** — sending invoices to Facebook buyers in Messenger is turned on by Admin. If it isn''t on for you, tap **Ask Admin to turn it on**: Telegram opens with a ready message.
 
 When it is on:
-1. Pick the session at the top (only your Facebook sessions are listed).
+1. Pick the session at the top (only your Facebook sessions are listed). After a session ends, the tab opens on it.
 2. Tap **Send all in Messenger**. Each buyer gets their receipt picture in Messenger, one by one. You can close the app — sending continues.
 
-- Tap **✎ View** to see the exact picture the buyer gets, then **Send to #N in Messenger**, **I sent it by hand** or **Buyer cancelled**.
+- Tap **✎ View** to change that buyer''s receipt: the opening, items, prices, shipping fee and payment note, with the picture the buyer gets. Your changes are saved for that receipt only, and **Send all** sends them. The row shows **Edited**; **Reset to original** puts the receipt back. Then tap **Send to #N in Messenger**, **I sent it by hand** or **Buyer cancelled**.
 - **Send** on a row sends to that buyer only.
 - Buyers already sent, sent by hand or cancelled are skipped.
 - **Can''t message** — Facebook does not allow a message to that buyer (for example, the comment is older than 7 days). Message them yourself, then tap **✎ View → I sent it by hand**.

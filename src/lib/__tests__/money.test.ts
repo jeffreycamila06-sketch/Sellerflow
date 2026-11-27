@@ -145,9 +145,9 @@ describe("every money input accepts decimals (source pins)", () => {
     expect(gs).toContain("setSpDraft(priceInput(e.target.value, cur))");
     expect(src("src/redesign/screens/FmCustomerDetails.tsx")).toMatch(/setPrice\(priceInput\(e\.target\.value, cur\)\); setImportErr\(""\); \}\} inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\}/);
     expect(src("src/redesign/screens/CustomerDetails.tsx")).toMatch(/setPrice\(priceInput\(e\.target\.value, cur\)\); setImportErr\(""\); \}\}\s+inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\}/);
-    expect(src("src/redesign/components/ReceiptSheet.tsx")).toContain("setLine(l.id, { price: priceInput(e.target.value, cur) })");
+    expect(src("src/redesign/components/ReceiptEditorFields.tsx")).toContain("onLine(l.id, { price: priceInput(e.target.value, cur) })"); // the Orders sheet's fields (shared with Invoicing → Facebook)
     expect(src("src/redesign/components/TikTokSendSheet.tsx")).toMatch(/inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{l\.price\} onChange=\{\(e\) => setPrice\(l\.key, priceInput\(e\.target\.value, cur\)\)\}/);
-    expect(src("src/redesign/components/ReceiptSheet.tsx")).toMatch(/inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{l\.price\}/);
+    expect(src("src/redesign/components/ReceiptEditorFields.tsx")).toMatch(/inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{l\.price\}/);
     const legacy = src("src/App.tsx");
     expect(legacy).toContain('<input type="text" value={form.price} onChange={e=>setForm(f=>({...f,price:priceInput(e.target.value,cur)}))} inputMode={hasCents(cur)?"decimal":"numeric"} required/>');
     expect(legacy.match(/\$\{cur\}\$\{moneyText\((o\.total|b\.totalSpent)\)\}/g)?.length).toBe(3); // the 3 CSV exports

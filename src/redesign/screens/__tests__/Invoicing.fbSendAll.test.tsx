@@ -3,7 +3,8 @@
 // platform "facebook"). Pins: the list (name, pieces, total, tag per buyer), the tags and their words in 8
 // languages, "Send all · K left" (a double tap = one start), the button while a job runs and the status read
 // again until it ends (then no more reads), a row's Send, the "Other chat app" note + How steps, ✎ View =
-// the server's picture with Send to #N / I sent it by hand / Buyer cancelled, a server that says "not open
+// the receipt editor (Invoicing.fbEdit.test.tsx has the editor itself) with Send to #N / I sent it by hand /
+// Buyer cancelled, a server that says "not open
 // for you" → the Facebook tab as before, and nothing of TikTok's saved status touched.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
@@ -197,11 +198,13 @@ describe("Other chat app", () => {
 });
 
 describe("✎ View", () => {
-  it("the server's picture of that buyer, Send to #N in Messenger, I sent it by hand, Buyer cancelled", async () => {
+  it("✎ View = the receipt editor of that buyer (no server picture any more), Send to #N in Messenger", async () => {
     await open();
     fireEvent.click(rowOf(2).querySelector("[data-testid='ivc-fb-row-view']")!); await flush();
-    expect(callsTo("preview")).toEqual([{ path: "/fb/sendall/preview", body: { sessionId: SID, buyerNumber: 2, lang: "en", currency: "₱" } }]);
-    expect((q("ivc-fb-pic") as HTMLImageElement).src).toBe("data:image/png;base64,iVBORw0KGgo=");
+    expect(callsTo("preview")).toEqual([]);   // the picture is drawn on the phone from the same input as the server
+    const sheet = q("ivc-fb-sheet")!;
+    expect([...sheet.querySelectorAll<HTMLInputElement>("[data-testid='rs-item']")].map((i) => i.value)).toEqual(["Dress", "Belt"]);
+    expect(sheet.querySelector("[data-testid='rs-opening']")).not.toBeNull();
     expect(q("ivc-fb-sheet-send")!.textContent).toBe("Send to #2 in Messenger");
     fireEvent.click(q("ivc-fb-sheet-send")!); await flush();
     expect(callsTo("start").at(-1)!.body).toEqual({ sessionId: SID, buyerNumber: 2, lang: "en", currency: "₱" });
@@ -227,14 +230,16 @@ describe("✎ View", () => {
     fireEvent.click(q("ivc-fb-undo-cancel")!); await flush();
     expect(tagOfRow(4)).toBe("other_app");
   });
-  it("a picture that could not be drawn → a line + Try again", async () => {
-    S.previewOk = false;
+  it("the receipt format could not be read → a line + Try again (no editor, nothing saved)", async () => {
+    DB.s.failFormatRead = true;
     await open();
     fireEvent.click(rowOf(2)); await flush();
-    expect(q("ivc-fb-pic-error")!.textContent).toBe("Couldn't load the picture.");
-    S.previewOk = true;
-    fireEvent.click(q("ivc-fb-pic-retry")!); await flush();
-    expect(q("ivc-fb-pic")).not.toBeNull();
+    expect(q("ivc-fb-edit-error")).not.toBeNull();
+    expect(q("ivc-fb-editor")).toBeNull();
+    DB.s.failFormatRead = false;
+    fireEvent.click(q("ivc-fb-edit-retry")!); await flush();
+    expect(q("ivc-fb-editor")).not.toBeNull();
+    expect(DB.s.edits).toEqual([]);
   });
   it("a sent buyer: no Send, no 'by hand'; Buyer cancelled stays", async () => {
     await open();
@@ -275,7 +280,8 @@ describe("8 languages", () => {
   it("every new text is filled, the picture language = the app's, no price / plan words", async () => {
     for (const lang of LANGS) {
       const t = buildT(lang);
-      for (const k of ["rd_ivc_fb_summary", "rd_ivc_fb_send_all", "rd_ivc_fb_sending_all", "rd_ivc_fb_all_hint", "rd_ivc_fb_t_other", "rd_ivc_fb_t_hand", "rd_ivc_fb_send", "rd_ivc_fb_other_note", "rd_ivc_fb_how", "rd_ivc_fb_how_title", "rd_ivc_fb_how_steps", "rd_ivc_fb_view_send", "rd_ivc_fb_view_note", "rd_ivc_fb_pic_failed", "rd_ivc_fb_start_failed", "rd_ivc_fb_old", "rd_ivc_fb_empty", "rd_ivc_fb_empty_past", "rd_ivc_fb_stopped"] as const) {
+      for (const k of ["rd_ivc_fb_summary", "rd_ivc_fb_send_all", "rd_ivc_fb_sending_all", "rd_ivc_fb_all_hint", "rd_ivc_fb_t_other", "rd_ivc_fb_t_hand", "rd_ivc_fb_send", "rd_ivc_fb_other_note", "rd_ivc_fb_how", "rd_ivc_fb_how_title", "rd_ivc_fb_how_steps", "rd_ivc_fb_view_send", "rd_ivc_fb_view_note", "rd_ivc_fb_pic_failed", "rd_ivc_fb_start_failed",
+        "rd_ivc_fb_edit_hint", "rd_ivc_fb_edited", "rd_ivc_fb_edited_new", "rd_ivc_fb_edit_new_note", "rd_ivc_fb_reset", "rd_ivc_fb_reset_q", "rd_ivc_fb_reset_yes", "rd_ivc_fb_reset_no", "rd_ivc_fb_old", "rd_ivc_fb_empty", "rd_ivc_fb_empty_past", "rd_ivc_fb_stopped"] as const) {
         expect(String(t[k]).trim(), `${lang} ${k}`).not.toBe("");
       }
       expect(t.rd_ivc_fb_send_all).toContain("{k}");
@@ -283,7 +289,7 @@ describe("8 languages", () => {
       await open(lang);
       expect(q("ivc-fb-send-all")!.textContent).toBe(tpl(t.rd_ivc_fb_send_all, { k: 2 }));
       fireEvent.click(rowOf(2).querySelector("[data-testid='ivc-fb-row-view']")!); await flush();
-      expect(callsTo("preview").at(-1)!.body.lang).toBe(lang);
+      expect(q("ivc-fb-edit-hint")!.textContent).toBe(t.rd_ivc_fb_edit_hint);
       const text = document.querySelector("[data-testid='ivc-fb']")!.textContent + q("ivc-fb-sheet")!.textContent!;
       expect(text, lang).not.toMatch(/upgrade|subscri|NT\$\d|price/i);
       cleanup(); S.calls = [];

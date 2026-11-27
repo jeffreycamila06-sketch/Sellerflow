@@ -2613,6 +2613,18 @@ try {
         if (error) throw new Error("send_all_cancels");
         return (data || []).map((r) => Number(r.order_id));
       },
+      // That session's saved receipt edits (sql/233, the Invoicing → Facebook editor). The table not there
+      // yet (sql/233 not applied) = no edits; any other read error throws (the job then stops instead of
+      // sending the orders' receipt over a saved edit).
+      async listReceiptEdits(userId, sessionId) {
+        const { data, error } = await serviceSb.from("fb_receipt_edits").select("buyer_number, opening, lines, shipping_fee, note")
+          .eq("user_id", String(userId)).eq("session_id", String(sessionId));
+        if (error) {
+          if (error.code === "42P01" || error.code === "PGRST205") return [];
+          throw new Error("receipt_edits_read");
+        }
+        return data || [];
+      },
       async getSendAllSettings(userId) {
         const { data, error } = await serviceSb.from("seller_receipt_settings").select("opening, note, qr_image, invoice_shipping_fee").eq("user_id", String(userId || "")).maybeSingle();
         if (error) throw new Error("send_all_settings");

@@ -1,0 +1,4 @@
+iphone390   row #3 tag="✎ Edited" · #2 after the change="✎ Edited" · sheet: page wider=false items past the edge=false buttons under 40px=none · errors=0
+phone360    row #3 tag="✎ Edited" · #2 after the change="✎ Edited" · sheet: page wider=false items past the edge=false buttons under 40px=none · errors=0
+phone430    row #3 tag="✎ Edited" · #2 after the change="✎ Edited" · sheet: page wider=false items past the edge=false buttons under 40px=none · errors=0
+laptop1280  row #3 tag="✎ Edited" · #2 after the change="✎ Edited" · sheet: page wider=false items past the edge=false buttons under 40px=none · errors=0
