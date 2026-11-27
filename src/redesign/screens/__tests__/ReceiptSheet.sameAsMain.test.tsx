@@ -2,7 +2,7 @@
 // moved into components/ReceiptEditorFields.tsx (shared with Invoicing → Facebook). For a set of real taps the
 // sheet's whole DOM, every picture input and every Send call must equal what main produced
 // (fixtures/receiptSheet.main.json, taken on e9a64019 with SFL_RS_DUMP=<file>).
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -33,6 +33,11 @@ const DUMP = process.env.SFL_RS_DUMP || "";
 const want: Record<string, unknown> = !DUMP && existsSync(FIX) ? JSON.parse(readFileSync(FIX, "utf8")).cases : {};
 const got: Record<string, unknown> = {};
 afterAll(() => { if (DUMP) writeFileSync(DUMP, JSON.stringify({ _note: "ReceiptSheet DOM + picture inputs + Send calls, taken on main e9a64019. ReceiptSheet.sameAsMain.test.tsx", cases: got }, null, 1) + "\n"); });
+// The sheet prints the send time ("Sent ✓ 12:00 PM") in the phone's own time zone: the fixture was taken in UTC,
+// so the zone is pinned here (same as printerTesterAllModels) — else it fails on a Taipei / Manila machine.
+let tz: string | undefined;
+beforeAll(() => { tz = process.env.TZ; process.env.TZ = "UTC"; }); // Node re-reads TZ when it changes
+afterAll(() => { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; });
 const check = (name: string, v: unknown) => { got[name] = v; if (!DUMP) expect(v).toEqual(want[name]); };
 
 beforeEach(() => {
