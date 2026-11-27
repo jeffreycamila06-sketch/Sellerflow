@@ -1,0 +1,12 @@
+iphone390 light: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
+  built-in chips: AIMO D520BT | Flash Y41BT | Xprinter XP-420B | Niimbot B1 | Niimbot B1 Pro
+iphone390 dark: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
+android360 light: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
+  built-in chips: AIMO D520BT | Flash Y41BT | Xprinter XP-420B | Niimbot B1 | Niimbot B1 Pro
+android360 dark: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
+phone430 light: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
+  built-in chips: AIMO D520BT | Flash Y41BT | Xprinter XP-420B | Niimbot B1 | Niimbot B1 Pro
+phone430 dark: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
+laptop1280 light: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
+  built-in chips: AIMO D520BT | Flash Y41BT | Xprinter XP-420B | Niimbot B1 | Niimbot B1 Pro
+laptop1280 dark: pageWide=false overflowing=0 smallButtons=[] lockBtnH=null lockedRows=11 controlsInLockedRows=0 errors=0
