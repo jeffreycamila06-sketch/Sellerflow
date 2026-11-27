@@ -7065,3 +7065,27 @@ Admin only, ZERO change to printing (printerModels.ts / stickerRaster / stickerJ
 - Matched settings unchanged for the 11 prefixes + the 5 built-in: `approvedPrinterLock.match.test.ts`; the seller
   read still selects `prefix,brand,model,lang,active,shift_mm,flip`. Pictures + measurements: `docs/design/printer-list-lock/`.
 - **Order:** apply sql/229 → merge (Vercel). Web before SQL = rows have no `locked` key → all show under Testing (today's panel).
+
+## 2026-11-27 — PRINTER TUNING REMOVED + TESTER CARD FOR EVERY MODEL (branch `claude/remove-tuning-tester-all`, NOT merged; no SQL to apply here; web only — no Render, no app build)
+Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_enabled` was already 'off' in production.
+- **Removed:** `git revert -m 1 f8b90114` — printing (stickerRaster / stickerJobGuard / printing / oneStickerPrint /
+  printerModels) = 5e5689b0 byte for byte (`git diff 5e5689b0 -- <those 5>` empty). Gone: the Admin tuning sheet, the seller
+  "Printer setup" card, `printerTuning*.ts`, their tests, the `?ptu=1` preview. **Kept as files, unchanged:**
+  `sql/230_printer_tuning.sql` (applied in prod) + `sql/230_printer_tuning_rollback.sql` — Jeff applies the rollback AFTER this is live.
+- **Kept from the tuning branch:** the Printer list panel's "already covered by the locked printer “<name>”" message +
+  the red error line that stays until the next action (commit 1a7ed8a4, re-applied).
+- **Print goldens (proof):** `adapters/__tests__/printGolden.test.ts` + harness + `fixtures/printGoldens.main.json` —
+  68 prints, every printer family, what the printer receives = main 5e5689b0 (69/69 on the branch and on 5e5689b0).
+  Re-take only when the sticker changes on purpose (`SFL_PRINT_GOLDENS=<file>`).
+- **Tester flow (PrinterSettings `pickPrinter`):** a printer tester (feature `printer_tester`, not admin) gets the Printer
+  test card for ANY printer that is not built-in — listed (Admin-approved) or not. Built-in = `knownPrinterInfo` non-null
+  without `approved` (AIMO D520BT, Flash Y41BT, Xprinter XP-420B, Niimbot) → today's save + test print.
+  Card: TSPL / ESC/POS / CPCL → Test print → "Did it print clean?" → Yes + photo → Send report (Admin Test reports, with
+  the language) → after a CLEAN report **"Use this printer"** (`PrinterTestCard` prop `onUse` → `adoptTestedPrinter`):
+  `setBluetoothLabelPrinter {address, name, transport, model:"generic", lang:<clean language>}` → the saved green card;
+  printing reads that language (`savedGenericLang`); an approved row's locked shift / flip still apply by name.
+  "No" / failed report = no Use button. Texts `rd_prt_try_note`, `rd_prt_sent_use`, `rd_prt_sent_try`, `rd_prt_use` (8 langs).
+- **Not a tester = same screen + same bridge calls as 5e5689b0** (`screens/__tests__/printerTesterAllModels.test.tsx`,
+  fixture `fixtures/printerSettings.nonTester.main.json` taken on a 5e5689b0 worktree, clock pinned).
+- Preview `?prt=1` (fakeSupabase: tester + test_printers keys, 2 approved rows, photo upload ok). Pictures + measured
+  widths: `docs/design/tester-all-models/` (`shoot.cjs`). No help-guide change (testers only).

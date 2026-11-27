@@ -283,6 +283,18 @@ if (/[?&]ptl=1\b/.test(Q)) {
   RPC.admin_lock_approved_printer = true;
 }
 
+// Printer testers, every model (docs/design/tester-all-models): ?prt=1 — this login is a printer tester on the
+// Printer setup v2 screen, with two Admin-approved (locked) printers and a test-report insert / photo upload that
+// answer ok. Absent = nothing below is touched.
+const PRT = /[?&]prt=1\b/.test(Q);
+if (PRT) {
+  Object.assign(RPC.my_feature_access as Record<string, boolean>, { printer_tester: true, test_printers: true });
+  tables.approved_printers = [
+    { prefix: "AE241-BT", brand: "Aiyin", model: "AE241-BT_B57A-LE", lang: "tspl", active: true, shift_mm: 0, flip: false },
+    { prefix: "PT210L", brand: "Other", model: "PT210L_30EF", lang: "escpos", active: true, shift_mm: 0, flip: false },
+  ];
+}
+
 // Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
 //   = the switch invoicing_enabled on, a running 2-day session with that many TikTok buyers (+ 2 Facebook
 //   buyers, who are not in the TikTok list), the first <sent> saved as Sent, then one Next, one Not sent,
@@ -462,6 +474,7 @@ const fakeClient = {
     const e = v && typeof v === "object" && typeof v.__error === "string" ? { message: v.__error } : null;
     return Promise.resolve({ data: e ? null : v ?? null, error: e, count: null } as Res).then(res);
   } }),
+  ...(PRT ? { storage: { from: () => ({ upload: async (path: string) => ({ data: { path }, error: null }) }) } } : {}),
   auth: {
     getSession: async () => ({ data: { session: ANON ? null : session }, error: null }),
     getUser: async () => ({ data: { user: session.user }, error: null }),
