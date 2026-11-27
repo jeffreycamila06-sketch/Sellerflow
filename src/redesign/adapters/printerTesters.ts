@@ -136,6 +136,7 @@ export async function resizeTestPhoto(file: Blob): Promise<Blob | null> {
 export interface PrinterTestReportInput {
   printer: BluetoothPrinterDevice; lang: PrinterLang; stickerSize: string;
   send: TesterSendResult; clean: boolean; photo: Blob | null;
+  tuningVersion?: number | null; // Printer setup help (sql/230): the seller's tuning version the test sticker printed with
 }
 export type SubmitResult = { ok: true } | { ok: false; reason: "photo_required" | "no_session" | "upload_failed" | "save_failed" };
 // Photo first (own folder in the private bucket), then the row. A clean report without a photo is refused here AND by the table.
@@ -159,6 +160,7 @@ export async function submitPrinterTestReport(r: PrinterTestReportInput): Promis
       user_id: uid, email, printer_name: String(r.printer.name || "").slice(0, 120), ble_facts: bleFactsOf(r.printer),
       lang: r.lang, sticker_size: String(r.stickerSize || "").slice(0, 40), send_ok: r.send.ok, send_code: r.send.code.slice(0, 60) || null,
       clean: r.clean, photo_path: photoPath,
+      ...(typeof r.tuningVersion === "number" && Number.isInteger(r.tuningVersion) && r.tuningVersion >= 1 ? { tuning_version: r.tuningVersion } : {}),
     });
     return error ? { ok: false, reason: "save_failed" } : { ok: true };
   } catch { return { ok: false, reason: "save_failed" }; }
