@@ -27,6 +27,9 @@ export function makeInvoiceDb() {
     noCancelStatus: false,
     /** a session's platform read (live_session_orders …limit(1)) fails */
     failPlatformReads: false,
+    /** sql/231 fb_receipt_edits: one row per seller + session + buyer number */
+    edits: [] as Record<string, unknown>[],
+    failEditReads: false, failEditWrites: false, noEditsTable: false,
   };
   const reset = () => {
     s.uid = "u1"; s.sends = []; s.settings = new Map(); s.failReads = false; s.failWrites = false; s.failFormatRead = false; s.failFormatWrite = false;
@@ -34,6 +37,7 @@ export function makeInvoiceDb() {
     s.orders = []; s.failSummaries = false; s.failPast = false;
     s.lineCancels = []; s.failCancelReads = false; s.failCancelWrites = false; s.failIdReads = false; s.noCancelStatus = false;
     s.failPlatformReads = false;
+    s.edits = []; s.failEditReads = false; s.failEditWrites = false; s.noEditsTable = false;
   };
   const err = { message: "boom" };
   const from = (table: string) => {
@@ -54,6 +58,11 @@ export function makeInvoiceDb() {
           .filter((r) => r.user_id === s.uid)
           .filter((r) => Object.entries(filters).every(([k, v]) => (r as unknown as Record<string, unknown>)[k] === v))
           .sort((a, b) => a.order_id - b.order_id);
+      }
+      if (table === "fb_receipt_edits") {
+        return s.edits
+          .filter((r) => r.user_id === s.uid)
+          .filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v));
       }
       if (table === "live_session_orders") {
         return s.orders
@@ -81,8 +90,9 @@ export function makeInvoiceDb() {
       },
       then: (ok: (v: { data: unknown[] | null; error: unknown }) => unknown) => {
         s.calls.push({ table, op: "select", filters: { ...filters } });
+        if (table === "fb_receipt_edits" && s.noEditsTable) return Promise.resolve({ data: null, error: { message: "missing", code: "PGRST205" } }).then(ok);
         const failNow = table === "live_session_orders" ? (lim !== null ? s.failPlatformReads : filters.platform !== undefined ? s.failIdReads : s.failPast)
-          : table === "invoice_line_cancels" ? s.failCancelReads : s.failReads;
+          : table === "invoice_line_cancels" ? s.failCancelReads : table === "fb_receipt_edits" ? s.failEditReads : s.failReads;
         if (failNow) return Promise.resolve({ data: null, error: err }).then(ok);
         const all = rows();
         const cut = range ? all.slice(range[0], range[1] + 1) : all;
@@ -98,11 +108,12 @@ export function makeInvoiceDb() {
           eq: (k: string, v: unknown) => { del[k] = v; return chain; },
           then: (ok: (v: { error: unknown }) => unknown) => {
             s.calls.push({ table, op: "delete", filters: { ...del } });
-            const fail = table === "invoice_line_cancels" ? s.failCancelWrites : s.failWrites;
+            const fail = table === "invoice_line_cancels" ? s.failCancelWrites : table === "fb_receipt_edits" ? s.failEditWrites : s.failWrites;
             if (fail || del.user_id !== s.uid) return Promise.resolve({ error: err }).then(ok);
             const hit = (r: Record<string, unknown>) => Object.entries(del).every(([k, v]) => r[k] === v);
             if (table === "invoice_line_cancels") s.lineCancels = s.lineCancels.filter((r) => !hit(r as unknown as Record<string, unknown>));
             if (table === "invoice_sends") s.sends = s.sends.filter((r) => !hit(r as unknown as Record<string, unknown>));
+            if (table === "fb_receipt_edits") s.edits = s.edits.filter((r) => !hit(r));
             return Promise.resolve({ error: null }).then(ok);
           },
         };
@@ -114,6 +125,15 @@ export function makeInvoiceDb() {
           const ok = !s.failCancelWrites && payload.user_id === s.uid;
           if (ok && !s.lineCancels.some((r) => r.user_id === payload.user_id && r.session_key === payload.session_key && r.platform === payload.platform && r.order_id === payload.order_id)) {
             s.lineCancels.push(payload as unknown as FakeLineCancel);
+          }
+          return Promise.resolve({ error: ok ? null : err });
+        }
+        if (table === "fb_receipt_edits") {
+          const ok = !s.failEditWrites && !s.noEditsTable && payload.user_id === s.uid;
+          if (ok) {
+            const i = s.edits.findIndex((r) => r.user_id === payload.user_id && r.session_id === payload.session_id && r.buyer_number === payload.buyer_number);
+            const row = { ...payload, updated_at: s.now };
+            if (i >= 0) s.edits[i] = row; else s.edits.push(row);
           }
           return Promise.resolve({ error: ok ? null : err });
         }

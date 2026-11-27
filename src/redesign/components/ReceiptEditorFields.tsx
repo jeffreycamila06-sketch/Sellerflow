@@ -6,8 +6,8 @@ import type { CSSProperties } from "react";
 import { useT } from "../i18n";
 import { priceInput, hasCents } from "../../lib/money";
 
-export const rsInput: CSSProperties = { boxSizing: "border-box", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", padding: "7px 9px", fontSize: 14, fontFamily: "var(--font-ui)" };
-export const rsLabel: CSSProperties = { display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", margin: "10px 2px 5px" };
+const rsInput: CSSProperties = { boxSizing: "border-box", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", padding: "7px 9px", fontSize: 14, fontFamily: "var(--font-ui)" };
+const rsLabel: CSSProperties = { display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", margin: "10px 2px 5px" };
 
 export interface EditorFieldsLine { id: number; item: string; price: string }
 export default function ReceiptEditorFields({

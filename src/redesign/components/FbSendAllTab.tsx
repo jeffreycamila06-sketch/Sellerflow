@@ -2,14 +2,15 @@
 // "Send all in Messenger": the server sends every Facebook buyer of the session their receipt picture
 // in Messenger, one by one (server/fbSendAll.js) — the app can be closed. The list = the session's
 // Facebook buyers (the same rows the TikTok tab builds, adapters/invoicing.ts invoiceRows), each with
-// its tag; ✎ View shows the exact picture the server will send, with "Send to #N in Messenger",
+// its tag; ✎ View opens the same receipt editor as Orders (the edit is saved for that receipt only — sql/231 —
+// and Send all / Send draw it; an edited row is tagged "Edited"), with "Send to #N in Messenger",
 // "I sent it by hand" and "Buyer cancelled" (the SAME invoice_sends / invoice_line_cancels as TikTok,
 // platform "facebook"). The phone never sees a PSID, a comment id, a page token or Facebook's text —
 // only a tag per buyer number.
 // Shown by Invoicing only when fb_send_all_enabled is on or the seller is an admin; the server checks
 // the same rule (+ the add-on with the plan not ended) and says "not allowed" otherwise → `fallback`
 // (the Facebook tab as before).
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { mono } from "../ui";
 import { tpl, useT } from "../i18n";
@@ -19,9 +20,14 @@ import {
   invoiceRows, pieceCount, sentTime, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus, type InvoiceRow,
 } from "../adapters/invoicing";
 import {
-  fbCounts, fbInFilter, fbJobActive, fbSendAllPreview, fbSendAllStart, fbSendable, fbSessionOk, fbTagOf, useFbSendAll,
+  fbCounts, fbInFilter, fbJobActive, fbSendAllStart, fbSendable, fbSessionOk, fbTagOf, useFbSendAll,
   type FbFilter, type FbTag,
 } from "../adapters/fbSendAll";
+import { FB_EDIT_SAVE_MS, deleteReceiptEdit, saveReceiptEdit, useReceiptEdits, type SavedReceiptEdit } from "../adapters/fbReceiptEdit";
+import { editToState, fbPictureInput, originalState, sameEdit, shownLineIds, stateToEdit, type EditorState, type PictureLabels } from "../adapters/fbReceiptEditState";
+import { loadReceiptSettings } from "../adapters/receiptSettings";
+import { useReceiptPicture } from "../adapters/useReceiptPicture";
+import ReceiptEditorFields from "./ReceiptEditorFields";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "13px 14px", boxShadow: "var(--shadow)" };
 const bigBtn: CSSProperties = { display: "block", boxSizing: "border-box", width: "100%", minHeight: 52, padding: "14px 12px", borderRadius: 14, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 15, fontWeight: 800, textAlign: "center", lineHeight: 1.3, cursor: "pointer", fontFamily: "var(--font-ui)", overflowWrap: "anywhere" };
@@ -60,6 +66,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   const status = useInvoiceStatus(sessionKey, "facebook", true);
   const cancels = useInvoiceLineCancels(sessionKey, "facebook", true);
   const orderIds = useInvoiceOrderIds(buyers, "facebook", sessionId, true);
+  const edits = useReceiptEdits(okSession ? sessionId : null);   // the saved receipt edits (sql/231)
   const rows = useMemo(() => invoiceRows(buyers, "facebook", fee, { ids: orderIds.ids, cancelled: cancels.cancelled }), [buyers, fee, orderIds.ids, cancels.cancelled]);
   const [filter, setFilter] = useState<FbFilter>("all");
   const [sheetId, setSheetId] = useState<string | null>(null);
@@ -99,9 +106,9 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
 
   if (okSession && st.state === "ready" && data && (!data.access || !data.allowed)) return <>{fallback}</>;
 
-  const loading = buyersState === "loading" || buyersState === "idle" || (okSession && st.state === "loading") || status.state === "loading" || cancels.state === "loading";
-  const loadErr = buyersState === "error" || (okSession && st.state === "error") || status.state === "error" || cancels.state === "error";
-  const retry = () => { st.reload(); status.reload(); cancels.reload(); };
+  const loading = buyersState === "loading" || buyersState === "idle" || (okSession && st.state === "loading") || status.state === "loading" || cancels.state === "loading" || (okSession && edits.state === "loading");
+  const loadErr = buyersState === "error" || (okSession && st.state === "error") || status.state === "error" || cancels.state === "error" || (okSession && edits.state === "error");
+  const retry = () => { st.reload(); status.reload(); cancels.reload(); edits.reload(); };
   const sheetRow = sheetId ? rows.find((r) => r.id === sheetId) ?? null : null;
   const shown = rows.filter((_r, i) => fbInFilter(tags[i], filter));
   const stopText = job && !active && (job.stop === "needs_messaging" || data?.needsMessaging) ? t.rd_rs_needs_messaging
@@ -202,6 +209,12 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
                   <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 6, rowGap: 2, minWidth: 0 }}>
                     <span data-testid="ivc-fb-row-tag" style={{ maxWidth: "100%", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, lineHeight: 1.35, ...TAG_LOOK[tag] }}>{tagText(tag, r)}</span>
                     {!off && <span data-testid="ivc-fb-row-pcs" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap", lineHeight: 1.35 }}>· {piecesText(pieceCount(r))}</span>}
+                    {(() => {
+                      const e = edits.edits.get(r.num);
+                      if (!e) return null;
+                      const stale = !!e.basedOn && e.basedOn !== r.hash;
+                      return <span data-testid="ivc-fb-row-edited" data-stale={stale ? "1" : "0"} style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, lineHeight: 1.35, whiteSpace: "nowrap", ...(stale ? { background: WARN_BG, color: "var(--warn)" } : { background: "var(--accent-soft)", color: "var(--accent-fg)" }) }}>✎ {stale ? t.rd_ivc_fb_edited_new : t.rd_ivc_fb_edited}</span>;
+                    })()}
                   </span>
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
@@ -227,7 +240,8 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
       </>)}
 
       {sheetRow && okSession && (
-        <FbViewSheet key={sheetRow.id} row={sheetRow} tag={tagOf(sheetRow)} sessionId={sessionId!} lang={lang} cur={cur}
+        <FbViewSheet key={sheetRow.id} row={sheetRow} tag={tagOf(sheetRow)} sessionId={sessionId!} cur={cur} fee={fee}
+          saved={edits.edits.get(sheetRow.num) ?? null} onSaved={(v) => edits.put(sheetRow.num, v)}
           canSend={fbSendable(tagOf(sheetRow)) && !active && !data?.needsMessaging} sending={starting === sheetRow.num || tagOf(sheetRow) === "sending"}
           onClose={() => setSheetId(null)}
           onSend={() => start(sheetRow.num)}
@@ -240,45 +254,159 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   );
 }
 
-// ✎ View: the exact picture the server will send this buyer (the server draws it — the same function
-// the job uses), and the three actions.
-function FbViewSheet({ row, tag, sessionId, lang, cur, canSend, sending, onClose, onSend, onByHand, onCancelBuyer, onUndoCancel }: {
-  row: InvoiceRow; tag: FbTag; sessionId: string; lang: string; cur: string; canSend: boolean; sending: boolean;
+// ✎ View: the SAME receipt editor as Orders (components/ReceiptEditorFields.tsx) — opening, items, shipping fee,
+// note, the payment QR and the live picture. The picture's input is built with the same shared functions the
+// server's Send all draws with (adapters/fbReceiptEditState.ts → src/lib/receiptEdit.js), so this is the picture
+// the buyer gets. A change is saved for THIS receipt only (sql/231 fb_receipt_edits, a moment after the last
+// change; at once before Send and on close); back exactly to the orders = the saved edit goes. "Reset to
+// original" removes it. Orders, Sales, stickers and the saved receipt format are never touched.
+type SaveState = "idle" | "saving" | "saved" | "failed";
+function FbViewSheet({ row, tag, sessionId, cur, fee, saved, onSaved, canSend, sending, onClose, onSend, onByHand, onCancelBuyer, onUndoCancel }: {
+  row: InvoiceRow; tag: FbTag; sessionId: string; cur: string; fee: string;
+  /** this buyer's saved edit (null = none) and the callback after a save / reset (null = the edit is gone) */
+  saved: SavedReceiptEdit | null; onSaved: (v: SavedReceiptEdit | null) => void;
+  canSend: boolean; sending: boolean;
   onClose: () => void; onSend: () => void; onByHand: () => void; onCancelBuyer: () => void; onUndoCancel: () => void;
 }) {
   const t = useT();
-  const [pic, setPic] = useState<{ state: "loading" | "ready" | "error"; url: string | null }>({ state: "loading", url: null });
-  const [turn, setTurn] = useState(0);
-  // the cancelled lines are part of the picture → read again when they change
-  const linesKey = row.cancelled.map((c) => (c ? 1 : 0)).join("");
+  // the saved receipt format (opening / note / QR) — the editor starts from it when there is no saved edit
+  const [fmt, setFmt] = useState<{ state: "loading" | "ready" | "error"; opening: string; note: string; qrImage: string | null }>({ state: "loading", opening: "", note: "", qrImage: null });
+  const [fmtTurn, setFmtTurn] = useState(0);
   useEffect(() => {
     let alive = true;
-    void fbSendAllPreview(sessionId, row.num, lang, cur).then((url) => { if (alive) setPic(url ? { state: "ready", url } : { state: "error", url: null }); });
+    void loadReceiptSettings().then((r) => {
+      if (!alive) return;
+      setFmt(r.ok ? { state: "ready", opening: r.settings.opening, note: r.settings.note, qrImage: r.settings.qrImage } : { state: "error", opening: "", note: "", qrImage: null });
+    }).catch(() => { if (alive) setFmt({ state: "error", opening: "", note: "", qrImage: null }); });
     return () => { alive = false; };
-  }, [sessionId, row.num, lang, cur, turn, linesKey]);
+  }, [fmtTurn]);
+  const original = useMemo(() => (fmt.state === "ready" ? originalState(row.receipt, row.cancelled, fmt, fee) : null), [fmt, row.receipt, row.cancelled, fee]);
+  const [es, setEs] = useState<EditorState | null>(null);
+  if (!es && original) setEs(saved ? editToState(saved.edit) : original);
+  const nextLineId = useRef(1000);
+  const focusLineId = useRef<number | null>(null);
+
+  // ── saving ──
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const latest = useRef<EditorState | null>(null);
+  const dirty = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flight = useRef<Promise<boolean> | null>(null);
+  const saveNow = useCallback(async (): Promise<boolean> => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (flight.current) await flight.current;
+    if (!dirty.current || !latest.current || !original) return true;
+    const state = latest.current;
+    dirty.current = false;
+    setSaveState("saving");
+    const same = sameEdit(state, original);
+    const p = (same ? deleteReceiptEdit(sessionId, row.num) : saveReceiptEdit(sessionId, row.num, stateToEdit(state), row.hash)).then((ok) => {
+      if (ok) onSaved(same ? null : { edit: stateToEdit(state), basedOn: row.hash });
+      else dirty.current = true;
+      setSaveState(ok ? (same ? "idle" : "saved") : "failed");
+      return ok;
+    });
+    flight.current = p;
+    try { return await p; } finally { flight.current = null; }
+  }, [original, sessionId, row.num, row.hash, onSaved]);
+  const change = (next: EditorState) => {
+    setEs(next);
+    latest.current = next;
+    dirty.current = true;
+    setSaveState("idle");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { void saveNow(); }, FB_EDIT_SAVE_MS);
+  };
+  // the sheet closing (or the page going away) saves what is left
+  const saveRef = useRef(saveNow);
+  useEffect(() => { saveRef.current = saveNow; }, [saveNow]);
+  useEffect(() => () => { if (dirty.current) void saveRef.current(); }, []);
+  const close = () => { void saveNow(); onClose(); };
+
+  // ── reset ──
+  const [askReset, setAskReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const doReset = async () => {
+    if (!original || resetting) return;
+    setResetting(true);
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (flight.current) await flight.current;
+    const ok = await deleteReceiptEdit(sessionId, row.num);
+    setResetting(false);
+    if (!ok) { setSaveState("failed"); return; }
+    dirty.current = false; latest.current = null;
+    onSaved(null); setEs(original); setAskReset(false); setSaveState("idle");
+  };
+
+  const send = async () => { if (await saveNow()) onSend(); };
+
+  const labels: PictureLabels = { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more, shipping: t.rd_rc_pic_shipping, howToPay: t.rd_rc_pic_howto, scanToPay: t.rd_rc_pic_scan };
+  const input = es ? fbPictureInput(es, { receipt: row.receipt, qrImage: fmt.qrImage, cur, labels }) : null;
+  const picture = useReceiptPicture(input);
+  const shown = es ? shownLineIds(es) : new Set<number>();
+  const shownIndex = new Map(es ? es.lines.filter((l) => shown.has(l.id)).map((l, i) => [l.id, i + 1] as [number, number]) : []);
+  const noLines = !!es && shown.size === 0;
+  const edited = !!saved;
+  const stale = !!saved && !!saved.basedOn && saved.basedOn !== row.hash;
+
   const cancelled = tag === "cancelled";
   const done = tag === "sent" || tag === "by_hand";
   return createPortal(
-    <div onClick={onClose} data-testid="ivc-fb-sheet-overlay" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+    <div onClick={close} data-testid="ivc-fb-sheet-overlay" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`#${row.num}`} data-testid="ivc-fb-sheet"
         style={{ background: "var(--surface-2)", borderTopLeftRadius: 20, borderTopRightRadius: 20, width: "100%", maxWidth: 560, margin: "0 auto", boxSizing: "border-box", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 -14px 40px rgba(0,0,0,.35)" }}>
-        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "10px 14px 6px" }}>
+        <div data-testid="ivc-fb-sheet-scroll" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "10px 14px 6px" }}>
           <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border-strong)", margin: "0 auto 12px" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span data-testid="ivc-fb-sheet-title" style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere" }}><b style={{ fontFamily: "var(--font-mono)" }}>#{row.num}</b> {row.receipt.name || row.receipt.handle}</span>
-            <button type="button" data-testid="ivc-fb-sheet-close" onClick={onClose} style={{ flexShrink: 0, minHeight: 44, padding: "0 8px", border: "none", background: "transparent", color: "var(--accent-fg)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
+            <button type="button" data-testid="ivc-fb-sheet-close" onClick={close} style={{ flexShrink: 0, minHeight: 44, padding: "0 8px", border: "none", background: "transparent", color: "var(--accent-fg)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 10px", lineHeight: 1.4 }}>{t.rd_ivc_fb_view_note}</div>
-          <div data-testid="ivc-fb-pic-box" style={{ borderRadius: 12, border: "1px solid var(--border)", background: "#fff", minHeight: 140, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", opacity: cancelled ? 0.5 : 1 }}>
-            {pic.state === "ready" && pic.url && <img data-testid="ivc-fb-pic" src={pic.url} alt={`#${row.num}`} style={{ display: "block", width: "100%", maxWidth: 420, height: "auto" }} />}
-            {pic.state === "loading" && <span data-testid="ivc-fb-pic-loading" style={{ fontSize: 13, color: "#6b6a7a" }}>{t.rd_loading}</span>}
-            {pic.state === "error" && (
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 14 }}>
-                <span data-testid="ivc-fb-pic-error" style={{ fontSize: 13, fontWeight: 700, color: "#be123c" }}>{t.rd_ivc_fb_pic_failed}</span>
-                <button type="button" data-testid="ivc-fb-pic-retry" onClick={() => { setPic({ state: "loading", url: null }); setTurn((n) => n + 1); }} style={chipBtn(true)}>{t.rd_fb_try_again}</button>
-              </span>
-            )}
-          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 4px", lineHeight: 1.4 }}>{t.rd_ivc_fb_view_note}</div>
+          <div data-testid="ivc-fb-edit-hint" style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>{t.rd_ivc_fb_edit_hint}</div>
+          {(edited || saveState !== "idle") && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 8 }}>
+              {edited && <span data-testid="ivc-fb-sheet-edited" style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)" }}>{t.rd_ivc_fb_edited}</span>}
+              {saveState === "saving" && <span data-testid="ivc-fb-save-state" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{t.rd_fb_saving}</span>}
+              {saveState === "saved" && <span data-testid="ivc-fb-save-state" style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)" }}>✓ {t.rd_fb_saved}</span>}
+              {saveState === "failed" && (
+                <button type="button" data-testid="ivc-fb-save-failed" role="alert" onClick={() => { dirty.current = true; if (!latest.current && es) latest.current = es; void saveNow(); }}
+                  style={{ minHeight: 32, padding: "0 10px", border: "1px solid var(--danger)", borderRadius: 999, background: "transparent", color: "var(--danger)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_fb_save_failed}</button>
+              )}
+            </div>
+          )}
+          {stale && <div data-testid="ivc-fb-edit-stale" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_edit_new_note}</div>}
+
+          {fmt.state === "loading" && !es && <div data-testid="ivc-fb-edit-loading" style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_loading}</div>}
+          {fmt.state === "error" && !es && (
+            <div role="alert" data-testid="ivc-fb-edit-error" style={{ marginTop: 12, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>{t.rd_ivc_load_failed}</span>
+              <button type="button" data-testid="ivc-fb-edit-retry" onClick={() => { setFmt({ state: "loading", opening: "", note: "", qrImage: null }); setFmtTurn((n) => n + 1); }} style={chipBtn(true)}>{t.rd_fb_try_again}</button>
+            </div>
+          )}
+          {es && (
+            <div data-testid="ivc-fb-editor" style={{ opacity: cancelled ? 0.6 : 1 }}>
+              <ReceiptEditorFields cur={cur} opening={es.opening} onOpening={(v) => change({ ...es, opening: v })}
+                lines={es.lines} shownIndex={shownIndex} focusLineId={focusLineId}
+                onLine={(id, patch) => change({ ...es, lines: es.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) })}
+                onRemoveLine={(id) => change({ ...es, lines: es.lines.filter((l) => l.id !== id) })}
+                onAddLine={() => { const id = nextLineId.current++; focusLineId.current = id; change({ ...es, lines: [...es.lines, { id, item: "", price: "" }] }); }}
+                shipping={es.shipping} onShipping={(v) => change({ ...es, shipping: v })}
+                note={es.note} onNote={(v) => change({ ...es, note: v })}
+                qrImage={fmt.qrImage} formatLoaded={fmt.state !== "loading"} picture={picture} />
+              {(edited || !!(original && !sameEdit(es, original))) && (askReset ? (
+                <div data-testid="ivc-fb-reset-ask" style={{ marginTop: 12, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", lineHeight: 1.45, marginBottom: 8 }}>{t.rd_ivc_fb_reset_q}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" data-testid="ivc-fb-reset-no" onClick={() => setAskReset(false)} style={{ flex: 1, minHeight: 44, borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ivc_fb_reset_no}</button>
+                    <button type="button" data-testid="ivc-fb-reset-yes" disabled={resetting} onClick={() => void doReset()} style={{ flex: 1, minHeight: 44, borderRadius: 10, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", opacity: resetting ? 0.6 : 1 }}>{t.rd_ivc_fb_reset_yes}</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" data-testid="ivc-fb-reset" onClick={() => setAskReset(true)}
+                  style={{ display: "block", marginTop: 12, minHeight: 44, padding: "0 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text-dim)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>↺ {t.rd_ivc_fb_reset}</button>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ flex: "0 0 auto", padding: "0 14px calc(18px + env(safe-area-inset-bottom))" }}>
           {cancelled ? (<>
@@ -286,13 +414,14 @@ function FbViewSheet({ row, tag, sessionId, lang, cur, canSend, sending, onClose
             <button type="button" data-testid="ivc-fb-undo-cancel" onClick={onUndoCancel} style={{ ...sheetBtn, border: "1.5px solid var(--accent)", background: "var(--surface)", color: "var(--accent-fg)" }}>{t.rd_ivc_undo_cancel}</button>
           </>) : (<>
             {sending && !done && <div role="status" data-testid="ivc-fb-sheet-sending" style={{ ...sheetBtn, background: "var(--accent-soft)", color: "var(--accent-fg)", cursor: "default" }}>{t.rd_ivc_t_sending}</div>}
-            {!sending && canSend && (
-              <button type="button" data-testid="ivc-fb-sheet-send" onClick={onSend} style={{ ...sheetBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{tpl(t.rd_ivc_fb_view_send, { n: row.num })}</button>
+            {!sending && canSend && noLines && <div data-testid="ivc-fb-no-lines" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_no_lines}</div>}
+            {!sending && canSend && !noLines && (
+              <button type="button" data-testid="ivc-fb-sheet-send" disabled={!es || saveState === "saving"} onClick={() => void send()} style={{ ...sheetBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", opacity: !es || saveState === "saving" ? 0.6 : 1 }}>{tpl(t.rd_ivc_fb_view_send, { n: row.num })}</button>
             )}
             {!done && (
-              <button type="button" data-testid="ivc-fb-sheet-hand" onClick={onByHand} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)" }}>{t.rd_ivc_by_hand}</button>
+              <button type="button" data-testid="ivc-fb-sheet-hand" onClick={() => { void saveNow(); onByHand(); }} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)" }}>{t.rd_ivc_by_hand}</button>
             )}
-            <button type="button" data-testid="ivc-fb-sheet-cancel" onClick={onCancelBuyer} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text-dim)" }}>{t.rd_ivc_cancel_buyer}</button>
+            <button type="button" data-testid="ivc-fb-sheet-cancel" onClick={() => { void saveNow(); onCancelBuyer(); }} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text-dim)" }}>{t.rd_ivc_cancel_buyer}</button>
           </>)}
         </div>
       </div>
