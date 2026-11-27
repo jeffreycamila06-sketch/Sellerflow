@@ -39,6 +39,7 @@ import { LIVE_PICKER_MOTION, emblemMotionVars, emblemOutline, EMBLEM_SLUG, type 
 import TikTokSendSheet from "../components/TikTokSendSheet";
 import InvoiceFormatSheet from "../components/InvoiceFormatSheet";
 import FbSendAllTab from "../components/FbSendAllTab";
+import { fbSessionOk } from "../adapters/fbSendAll";
 import type { BlAddResult } from "../adapters/blacklist";
 import {
   EMPTY_INVOICE_FORMAT, INVOICE_PLATFORMS, PLATFORM_NAME, inFilter, invoiceCounts, invoiceMessage, invoiceRows, loadInvoiceFormat, loadPending,
@@ -113,7 +114,13 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
   const past = usePastSessions(pastSessions, sessionId, PLATFORM_NAME.tiktok);
   const fbPast = usePastSessions(pastSessions, sessionId, PLATFORM_NAME.facebook);
   const ttHere = sessionOnTab(sessionPlatform, "tiktok");
-  const fbHere = sessionOnTab(sessionPlatform, "facebook");
+  // The session has ended (no session id) but its Facebook buyers are still on screen: Send all can't send
+  // without an id, so the Facebook tab opens on that ended session from the list instead (the newest Facebook
+  // session). Only when there is none in the list does "This session" stay (with its "can't be sent" note).
+  const fbHasBuyers = useMemo(() => buyers.some((b) => String(b.platform || "").toLowerCase() === "facebook"), [buyers]);
+  const fbNoId = !!fbSendAll && !!onReceiptFormat && sessionOnTab(sessionPlatform, "facebook") && !fbSessionOk(sessionId) && fbHasBuyers;
+  const fbNoneEnded = fbNoId && fbPast.listState === "ready" && !fbPast.list.some((x) => !x.current);
+  const fbHere = sessionOnTab(sessionPlatform, "facebook") && (!fbNoId || fbNoneEnded || !pastSessions);
   const fbTabLive = !!fbSendAll && !!onReceiptFormat;   // the Facebook tab with its own session list
   const pastSel = past.selected;
   const activeKey = pastSel ? pastSel.id : sessionKey;
