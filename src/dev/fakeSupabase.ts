@@ -287,9 +287,9 @@ if (/[?&]ptl=1\b/.test(Q)) {
 // saved tuning (version 3: gap 3 mm, darkness 12); ?ptu=1&admin=1 also gives Admin → a seller → Printer tuning
 // made-up data (an AE241 under the locked "AE241-BT_B57A-LE" model, two history rows, one report).
 if (/[?&]ptu=1\b/.test(Q)) {
-  RPC.my_printer_tuning = { enabled: false, tester: true, settings: { gap_mm: 3, density: 12 }, version: 3 };
+  RPC.my_printer_tuning = { enabled: false, tester: true, settings: { gap_mm: 3, density: 12 }, version: 3, printer_name: "AE241-BT_C11D-LE" };
   RPC.admin_printer_tuning_get = {
-    settings: { gap_mm: 3, density: 12 }, version: 3, updated_at: iso(0), switch_on: false, tester: true,
+    settings: { gap_mm: 3, density: 12 }, tuned_for: "AE241-BT_C11D-LE", version: 3, updated_at: iso(0), switch_on: false, tester: true,
     printer_name: "AE241-BT_C11D-LE", built_in: false, locked_name: "AE241-BT_B57A-LE",
     history: [
       { id: 2, action: "set", before: { gap_mm: 3 }, after: { gap_mm: 3, density: 12 }, version: 3, undone: false, at: iso(0) },

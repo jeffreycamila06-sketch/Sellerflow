@@ -5,11 +5,11 @@ ok   missing row → inserted as 'false'; running the file twice is fine
 ok   no other app_settings key touched
 md5s after sql/230:
   admin_printer_test_reports = 6993f8e8054b203045cfa45c3e537f6b
-  admin_printer_tuning_get = 85bfae914f518678725c4da9dc4b2ff7
+  admin_printer_tuning_get = 9ba51fd023781b8b41656edd946c336e
   admin_printer_tuning_reset = 8c1b89fc5eb65ad8f2e0f5d8bd619b19
-  admin_printer_tuning_set = 87f009f7af54e0952bc981d882572356
-  admin_printer_tuning_undo = 10df672c727001992924bd77007cde68
-  my_printer_tuning = 4122b4113c79f31a2e1fe6e7be4048f8
+  admin_printer_tuning_set = 96bbb30585f3b708809432d76080f39f
+  admin_printer_tuning_undo = 892af692f08b5b549845af3cde08ab69
+  my_printer_tuning = 6d41668b1031a396bb16085b5ac44569
   printer_name_is_built_in = 5c1241f1cb3036923a4cd91e8a3d608c
   printer_tuning_clean = 44d60cb099aa17d4e807524f1f83a72e
   printer_tuning_is_tester = be1e0cdc8eb9537183f195d1cb393bff
@@ -70,6 +70,8 @@ ok   "B2-" → not built-in
 ok   "" → not built-in
 ok   "Printer_5E93" → not built-in
 ok   a seller whose LATEST test is not built-in (an older Y41BT test) → allowed
+ok   a seller with no test report yet → no_printer (a tuning belongs to one printer)
+ok   set stores the printer it was made for (the latest tested name)
 ok   seller A reads only A's row (B's row exists)
 ok   seller B reads only B's row
 ok   seller: update → permission denied
@@ -80,12 +82,14 @@ ok   even an admin reads history only through the RPC
 ok   switch 'false' + a tester → saved
 ok   switch 'false': a row saved earlier still prints (seller not a tester)
 ok   switch 'false' + tester → own settings + version
+ok   my_printer_tuning says which printer the tuning is for
 ok   switch on + not tester → own settings + version
 ok   switch on + tester → own settings
 ok   no row → settings null
 ok   only the exact value 'true' says enabled (the row still prints)
 ok   switch 'off' → settings null for everyone (instant stop)
 ok   switch 'off' → also null for a tester
+ok   switch 'off' → no printer name either
 ok   tester removed (switch 'false') → the saved tuning KEEPS printing
 ok   …but Admin can't save a new setting for them until the switch is on
 ok   the removed tester's row is kept
@@ -118,4 +122,4 @@ ok   admin_printer_test_reports = the live text again (md5)
 ok   rollback removes the switch row only
 ok   reports kept
 
-104 passed, 0 failed
+108 passed, 0 failed

@@ -140,7 +140,10 @@ for (const n of ["AE241-BT_C11D-LE", "D520", "XP-470B", "B2-", "", "Printer_5E93
 ok((await set("locked@x.com", { flip: true }, 0)).rows[0].v === 1, "a seller whose LATEST test is not built-in (an older Y41BT test) → allowed");
 
 // ── RLS: own row only, no writes, history unreadable ───────────────────────────────────────
+ok(/no_printer/.test((await err(() => set("other@x.com", { density: 12 }, 0))) || ""), "a seller with no test report yet → no_printer (a tuning belongs to one printer)");
+await rep(B, "GP-1324D_77", "2026-11-27T01:00:00Z");
 await set("other@x.com", { density: 12 }, 0);
+ok((await get("other@x.com")).tuned_for === "GP-1324D_77", "set stores the printer it was made for (the latest tested name)");
 const aSees = (await as(A, "select user_id, settings from public.printer_seller_tuning")).rows;
 ok(aSees.length === 1 && aSees[0].user_id === A, "seller A reads only A's row (B's row exists)");
 ok((await as(B, "select user_id from public.printer_seller_tuning")).rows.every((r) => r.user_id === B), "seller B reads only B's row");
@@ -156,6 +159,7 @@ await sw("false");
 ok((await set("tester@x.com", { gap_mm: 4 }, 0)).rows[0].v === 1, "switch 'false' + a tester → saved");
 let m = await mine(A); ok(m.enabled === false && m.tester === false && m.settings.gap_mm === 3 && m.version === 4, "switch 'false': a row saved earlier still prints (seller not a tester)");
 m = await mine(T); ok(m.enabled === false && m.tester === true && m.settings.gap_mm === 4 && m.version === 1, "switch 'false' + tester → own settings + version");
+ok(m.printer_name === "PRT-9001", "my_printer_tuning says which printer the tuning is for");
 await sw("true");
 m = await mine(A); ok(m.enabled === true && m.tester === false && m.settings.gap_mm === 3 && m.version === 4, "switch on + not tester → own settings + version");
 m = await mine(T); ok(m.enabled === true && m.tester === true && m.settings.gap_mm === 4, "switch on + tester → own settings");
@@ -163,6 +167,7 @@ m = await mine(BI); ok(m.settings === null && m.version === null, "no row → se
 await sw("TRUE"); m = await mine(A); ok(m.enabled === false && m.settings.gap_mm === 3, "only the exact value 'true' says enabled (the row still prints)");
 await sw("off"); m = await mine(A); ok(m.enabled === false && m.settings === null && m.version === null, "switch 'off' → settings null for everyone (instant stop)");
 m = await mine(T); ok(m.settings === null && m.tester === true, "switch 'off' → also null for a tester");
+ok(m.printer_name === null, "switch 'off' → no printer name either");
 await sw("false");
 await db.exec("delete from feature_access_emails where email='tester@x.com'");
 m = await mine(T); ok(m.tester === false && m.settings.gap_mm === 4 && m.version === 1, "tester removed (switch 'false') → the saved tuning KEEPS printing");
@@ -212,7 +217,7 @@ ok((await db.query("select to_regclass('public.printer_seller_tuning') a, to_reg
 ok((await db.query("select count(*)::int n from information_schema.columns where table_name='printer_test_reports' and column_name='tuning_version'")).rows[0].n === 0, "rollback drops the report column");
 ok((await db.query("select md5(pg_get_functiondef(oid)) m from pg_proc where proname='admin_printer_test_reports'")).rows[0].m === "3484fbe3e4e1b451fbebc1d9f043edf4", "admin_printer_test_reports = the live text again (md5)");
 ok((await db.query("select count(*)::int n from app_settings where key='printer_tuning_enabled'")).rows[0].n === 0 && (await db.query("select count(*)::int n from app_settings")).rows[0].n === 2, "rollback removes the switch row only");
-ok((await db.query("select count(*)::int n from printer_test_reports")).rows[0].n === 7, "reports kept");
+ok((await db.query("select count(*)::int n from printer_test_reports")).rows[0].n === 8, "reports kept");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

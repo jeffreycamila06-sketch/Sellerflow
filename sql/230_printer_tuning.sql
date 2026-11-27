@@ -9,11 +9,13 @@
 --   3. printer_seller_tuning_history — every set / undo / reset (settings before + after). No seller access.
 --   4. printer_test_reports.tuning_version (nullable) — the tuning version a Test Print report was made with;
 --      admin_printer_test_reports() returns it (= sql/160's text + that one key, md5 guard).
---   5. Admin RPCs (is_admin() inside): admin_printer_tuning_get / _set / _undo / _reset. _set refuses
+--   5. Admin RPCs (is_admin() inside): admin_printer_tuning_get / _set / _undo / _reset. A tuning belongs to ONE
+--      printer: _set stores the seller's latest tested printer name (printer_name) and refuses 'no_printer' when
+--      the seller has no test report yet; the app applies it only to a saved printer with exactly that name. _set refuses
 --      'built_in_printer' when the seller's latest tested printer is a built-in name, 'stale_version' when
 --      someone else saved first, 'bad_settings' for an unknown key / a wrong type. Numbers are CLAMPED to
 --      the ranges and rounded to the steps (never refused for being out of range).
---   6. my_printer_tuning() → {enabled, tester, settings, version}: the caller's OWN row (rows are only ever
+--   6. my_printer_tuning() → {enabled, tester, settings, version, printer_name}: the caller's OWN row (rows are only ever
 --      made by an Admin) — it keeps printing after the seller leaves the testers list. Switch value 'off' =
 --      settings null for everyone (instant stop = today's bytes).
 --   7. The switch app_settings.printer_tuning_enabled (created 'false'): 'true' = Admin may tune any seller;
@@ -121,6 +123,7 @@ $$;
 create table if not exists public.printer_seller_tuning (
   user_id    uuid primary key references auth.users(id) on delete cascade,
   settings   jsonb not null check (public.printer_tuning_valid(settings)),
+  printer_name text null check (printer_name is null or length(printer_name) <= 120), -- the printer this was made for (its test name)
   version    int not null default 1 check (version >= 1),
   updated_at timestamptz not null default now(),
   updated_by uuid null references auth.users(id) on delete set null
@@ -213,6 +216,7 @@ begin
   latest := public.printer_tuning_latest_name(uid);
   return jsonb_build_object(
     'settings', t.settings,
+    'tuned_for', t.printer_name,
     'version', coalesce(t.version, 0),
     'updated_at', t.updated_at,
     'switch_on', coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '') = 'true',
@@ -235,12 +239,14 @@ $$;
 
 create or replace function public.admin_printer_tuning_set(p_email text, p_settings jsonb, p_expected_version int)
 returns int language plpgsql security definer set search_path = public, pg_temp as $$
-declare uid uuid; cur public.printer_seller_tuning%rowtype; clean jsonb; nv int;
+declare uid uuid; cur public.printer_seller_tuning%rowtype; clean jsonb; nv int; v_name text;
 begin
   if not public.is_admin() then raise exception 'forbidden' using errcode = '42501'; end if;
   uid := public.printer_tuning_user(p_email);
   perform pg_advisory_xact_lock(hashtext('printer_tuning_' || uid::text));
-  if public.printer_name_is_built_in(public.printer_tuning_latest_name(uid)) then
+  v_name := nullif(btrim(coalesce(public.printer_tuning_latest_name(uid), '')), '');
+  if v_name is null then raise exception 'no_printer' using errcode = '22023'; end if;
+  if public.printer_name_is_built_in(v_name) then
     raise exception 'built_in_printer' using errcode = '22023';
   end if;
   if coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '') <> 'true'
@@ -253,9 +259,9 @@ begin
     raise exception 'stale_version' using errcode = '40001';
   end if;
   nv := public.printer_tuning_top_version(uid) + 1;
-  insert into public.printer_seller_tuning (user_id, settings, version, updated_at, updated_by)
-  values (uid, clean, nv, now(), auth.uid())
-  on conflict (user_id) do update set settings = excluded.settings, version = excluded.version,
+  insert into public.printer_seller_tuning (user_id, settings, printer_name, version, updated_at, updated_by)
+  values (uid, clean, left(v_name, 120), nv, now(), auth.uid())
+  on conflict (user_id) do update set settings = excluded.settings, printer_name = excluded.printer_name, version = excluded.version,
     updated_at = excluded.updated_at, updated_by = excluded.updated_by;
   insert into public.printer_seller_tuning_history (user_id, action, settings_before, settings_after, version_after, changed_by)
   values (uid, 'set', cur.settings, clean, nv, auth.uid());
@@ -288,9 +294,9 @@ begin
   if h.settings_before is null then
     delete from public.printer_seller_tuning where user_id = uid;
   else
-    insert into public.printer_seller_tuning (user_id, settings, version, updated_at, updated_by)
-    values (uid, h.settings_before, nv, now(), auth.uid())
-    on conflict (user_id) do update set settings = excluded.settings, version = excluded.version,
+    insert into public.printer_seller_tuning (user_id, settings, printer_name, version, updated_at, updated_by)
+    values (uid, h.settings_before, left(coalesce(nullif(btrim(coalesce(public.printer_tuning_latest_name(uid), '')), ''), cur.printer_name), 120), nv, now(), auth.uid())
+    on conflict (user_id) do update set settings = excluded.settings, printer_name = excluded.printer_name, version = excluded.version,
       updated_at = excluded.updated_at, updated_by = excluded.updated_by;
   end if;
   insert into public.printer_seller_tuning_history (user_id, action, settings_before, settings_after, version_after, changed_by)
@@ -324,7 +330,7 @@ create or replace function public.my_printer_tuning()
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare uid uuid := auth.uid(); v_sw text; v_tester boolean; t public.printer_seller_tuning%rowtype;
 begin
-  if uid is null then return jsonb_build_object('enabled', false, 'tester', false, 'settings', null, 'version', null); end if;
+  if uid is null then return jsonb_build_object('enabled', false, 'tester', false, 'settings', null, 'version', null, 'printer_name', null); end if;
   v_sw := coalesce((select a.value from public.app_settings a where a.key = 'printer_tuning_enabled'), '');
   v_tester := public.is_printer_tester();
   select * into t from public.printer_seller_tuning where user_id = uid;
@@ -332,7 +338,8 @@ begin
     'enabled', v_sw = 'true',
     'tester', v_tester,
     'settings', case when v_sw <> 'off' then t.settings else null end,
-    'version', case when v_sw <> 'off' and t.user_id is not null then t.version else null end);
+    'version', case when v_sw <> 'off' and t.user_id is not null then t.version else null end,
+    'printer_name', case when v_sw <> 'off' then t.printer_name else null end);
 end;
 $$;
 

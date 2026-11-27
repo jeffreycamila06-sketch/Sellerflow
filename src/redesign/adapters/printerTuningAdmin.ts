@@ -7,12 +7,12 @@ import { parseTuning, tuningToDb, type PrinterTuning } from "./printerTuning";
 export interface TuningHistoryRow { id: number; action: "set" | "undo" | "reset"; before: PrinterTuning | null; after: PrinterTuning | null; version: number | null; undone: boolean; at: string }
 export interface TuningReportRow { id: string; printerName: string; stickerSize: string; lang: string; createdAt: string; clean: boolean; sendOk: boolean; tuningVersion: number | null; appBuild: number | null }
 export interface AdminTuning {
-  tuning: PrinterTuning | null; version: number; updatedAt: string | null; switchOn: boolean; tester: boolean;
+  tuning: PrinterTuning | null; tunedFor: string | null; version: number; updatedAt: string | null; switchOn: boolean; tester: boolean;
   printerName: string | null; builtIn: boolean; lockedName: string | null;
   history: TuningHistoryRow[]; reports: TuningReportRow[];
 }
-export type TuningCode = "stale_version" | "built_in_printer" | "not_tester" | "bad_settings" | "no_user";
-const CODES: readonly TuningCode[] = ["stale_version", "built_in_printer", "not_tester", "bad_settings", "no_user"];
+export type TuningCode = "stale_version" | "built_in_printer" | "not_tester" | "bad_settings" | "no_user" | "no_printer";
+const CODES: readonly TuningCode[] = ["stale_version", "built_in_printer", "not_tester", "bad_settings", "no_user", "no_printer"];
 export const tuningCode = (message: unknown): TuningCode | undefined => {
   const m = typeof message === "string" ? message : "";
   return CODES.find((c) => m.includes(c));
@@ -27,7 +27,7 @@ export function parseAdminTuning(d: unknown): AdminTuning | null {
   const hist = Array.isArray(r.history) ? r.history : [];
   const reps = Array.isArray(r.reports) ? r.reports : [];
   return {
-    tuning: parseTuning(r.settings), version: int(r.version) ?? 0, updatedAt: str(r.updated_at) || null,
+    tuning: parseTuning(r.settings), tunedFor: str(r.tuned_for) || null, version: int(r.version) ?? 0, updatedAt: str(r.updated_at) || null,
     switchOn: r.switch_on === true, tester: r.tester === true,
     printerName: str(r.printer_name) || null, builtIn: r.built_in === true, lockedName: str(r.locked_name) || null,
     history: hist.flatMap((h) => {

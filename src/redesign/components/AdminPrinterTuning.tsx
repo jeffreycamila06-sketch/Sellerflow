@@ -80,7 +80,8 @@ export default function AdminPrinterTuning({ email, onClose, onToast }: { email:
 
   const saved = data?.tuning ?? null;
   const builtIn = data?.builtIn === true;
-  const canEdit = !!data && !builtIn && !busy;
+  const noPrinter = !!data && !data.printerName; // a tuning is for ONE printer — the seller must print a test first
+  const canEdit = !!data && !builtIn && !noPrinter && !busy;
   const layout = approvedLayoutFor(data?.printerName);
   const model: ModelDefaults = { ...GENERIC_DEFAULTS, shiftMm: layout.shiftDots / 8, flip: layout.flip };
   const cleanDraft: PrinterTuning | null = Object.keys(draft).length ? draft : null;
@@ -93,7 +94,7 @@ export default function AdminPrinterTuning({ email, onClose, onToast }: { email:
   const applyChip = (id: ChipId, darker = true) => { if (canEdit) setDraft((d) => chipProposal(id, Object.keys(d).length ? d : null, model, darker)); };
   const fail = async (code: string | undefined) => {
     if (code === "stale_version") { await load(true); setNote({ text: t.rd_ptu_stale, kind: "err" }); return; }
-    setNote({ text: code === "built_in_printer" ? t.rd_ptu_builtin_err : code === "not_tester" ? t.rd_ptu_not_tester : t.rd_ptu_err, kind: "err" });
+    setNote({ text: code === "built_in_printer" ? t.rd_ptu_builtin_err : code === "not_tester" ? t.rd_ptu_not_tester : code === "no_printer" ? t.rd_ptu_no_printer_note : t.rd_ptu_err, kind: "err" });
   };
   const doSave = async () => {
     if (!data) return;
@@ -161,9 +162,12 @@ export default function AdminPrinterTuning({ email, onClose, onToast }: { email:
                 <span style={{ color: "var(--text-muted)" }}>{t.rd_ptu_app}</span><span data-testid="ptu-app" style={{ color: "var(--text)", fontWeight: 600 }}>{lastReport?.appBuild != null ? tpl(t.rd_ptu_build, { n: String(lastReport.appBuild) }) : "—"}</span>
                 <span style={{ color: "var(--text-muted)" }}>{t.rd_ptu_last_test}</span><span data-testid="ptu-last-test" style={{ color: "var(--text)", fontWeight: 600 }}>{lastReport ? `${when(lastReport.createdAt)} · ${lastReport.clean ? t.rd_ptu_clean : t.rd_ptu_not_clean}${lastReport.tuningVersion != null ? ` · v${lastReport.tuningVersion}` : ""}` : "—"}</span>
                 <span style={{ color: "var(--text-muted)" }}>{t.rd_ptu_in_testers}</span><span data-testid="ptu-tester" style={{ color: data.tester ? "var(--ok)" : "var(--text-dim)", fontWeight: 800 }}>{data.tester ? "✓" : "✗"}</span>
+                {data.tunedFor && <><span style={{ color: "var(--text-muted)" }}>{t.rd_ptu_for}</span><span data-testid="ptu-for" style={{ color: "var(--text)", fontWeight: 600, overflowWrap: "anywhere" }}>{data.tunedFor}</span></>}
                 <span style={{ color: "var(--text-muted)" }}>{t.rd_ptu_version}</span><span data-testid="ptu-version" style={{ color: "var(--text)", fontWeight: 600 }}>{data.version ? `v${data.version} · ${when(data.updatedAt)}` : t.rd_ptu_none}</span>
               </div>
               {builtIn && <div data-testid="ptu-builtin-note" style={{ ...small, marginTop: 8 }}>{t.rd_ptu_builtin_note}</div>}
+              {noPrinter && <div data-testid="ptu-no-printer" style={{ ...small, marginTop: 8, color: "var(--warn)", fontWeight: 700 }}>{t.rd_ptu_no_printer_note}</div>}
+              {data.tunedFor && data.printerName && data.tunedFor.trim().toUpperCase() !== data.printerName.trim().toUpperCase() && <div data-testid="ptu-other-printer" style={{ ...small, marginTop: 8, color: "var(--warn)", fontWeight: 700 }}>{tpl(t.rd_ptu_other_printer, { old: data.tunedFor, now: data.printerName })}</div>}
               {needsTester && !builtIn && <div data-testid="ptu-needs-tester" style={{ ...small, marginTop: 8, color: "var(--warn)", fontWeight: 700 }}>{t.rd_ptu_needs_tester}</div>}
             </div>
 

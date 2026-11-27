@@ -13,17 +13,18 @@ const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rpc } }));
 const t = buildT("en") as unknown as Record<string, string>;
 
-interface Db { settings: Record<string, unknown> | null; version: number; top: number; builtIn: boolean; tester: boolean; switchOn: boolean; history: Record<string, unknown>[]; staleNext?: boolean }
+interface Db { settings: Record<string, unknown> | null; version: number; top: number; builtIn: boolean; tester: boolean; switchOn: boolean; history: Record<string, unknown>[]; staleNext?: boolean; printer?: string | null; tunedFor?: string | null }
 function fakeDb(over: Partial<Db> = {}) {
   const db: Db = { settings: null, version: 0, top: 0, builtIn: false, tester: true, switchOn: false, history: [], ...over };
   const err = (m: string) => ({ data: null, error: { message: m } });
   rpc.mockImplementation(async (fn: string, a: Record<string, unknown>) => {
     if (fn === "admin_printer_tuning_get") return { data: {
-      settings: db.settings, version: db.version, updated_at: db.version ? "2026-11-27T06:00:00Z" : null, switch_on: db.switchOn, tester: db.tester,
-      printer_name: db.builtIn ? "XP-420B" : "AE241-BT_C11D-LE", built_in: db.builtIn, locked_name: db.builtIn ? null : "AE241-BT_B57A-LE",
+      settings: db.settings, tuned_for: db.settings ? (db.tunedFor ?? "AE241-BT_C11D-LE") : null, version: db.version, updated_at: db.version ? "2026-11-27T06:00:00Z" : null, switch_on: db.switchOn, tester: db.tester,
+      printer_name: db.printer === null ? null : db.builtIn ? "XP-420B" : (db.printer ?? "AE241-BT_C11D-LE"), built_in: db.builtIn, locked_name: db.builtIn ? null : "AE241-BT_B57A-LE",
       history: db.history, reports: [{ id: "r1", printer_name: "AE241-BT_C11D-LE", sticker_size: "60x40", lang: "tspl", created_at: "2026-11-27T05:00:00Z", clean: false, send_ok: true, tuning_version: 2, app_build: 14 }],
     }, error: null };
     if (fn === "admin_printer_tuning_set") {
+      if (db.printer === null) return err("no_printer");
       if (db.builtIn) return err("built_in_printer");
       if (!db.switchOn && !db.tester) return err("not_tester");
       if (db.staleNext) { db.staleNext = false; db.version = 9; db.top = 9; db.settings = { density: 2 }; return err("stale_version"); }
@@ -85,6 +86,19 @@ describe("the panel", () => {
     expect(screen.getByTestId("ptu-last-test").textContent).toContain("v2");
     expect(screen.getByTestId("ptu-only-this").textContent).toBe(t.rd_ptu_only_this);
     expect(screen.queryByTestId("ptu-builtin")).toBeNull();
+  });
+  it("no test print yet → the note, nothing can be saved (a tuning is for one printer)", async () => {
+    fakeDb({ printer: null });
+    open();
+    await screen.findByTestId("ptu-no-printer");
+    expect(screen.getByTestId("ptu-no-printer").textContent).toBe(t.rd_ptu_no_printer_note);
+    for (const id of ["ptu-chip-cut_edge", "ptu-save"]) expect((screen.getByTestId(id) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("shows which printer the saved settings are for; a newer test on another printer says so", async () => {
+    fakeDb({ settings: { density: 10 }, version: 2, top: 2, tunedFor: "CT221B-D4F8" });
+    open();
+    expect((await screen.findByTestId("ptu-for")).textContent).toBe("CT221B-D4F8");
+    expect(screen.getByTestId("ptu-other-printer").textContent).toContain("only on CT221B-D4F8");
   });
   it("built-in printer: the badge, every control off, nothing can be saved", async () => {
     fakeDb({ builtIn: true });

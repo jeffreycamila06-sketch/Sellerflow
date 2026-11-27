@@ -29,7 +29,7 @@ const DEFAULT_DEPS: PrinterTestDeps = { testPrint: testPrintInLang, resize: resi
 export default function PrinterTestCard({ printer, settings, cur, storeName, stickerSize, onClose, deps = DEFAULT_DEPS, mode = "test", tuningPrint, tuningVersion = null, tuningLang = "tspl" }: {
   printer: BluetoothPrinterDevice; settings?: Settings; cur: string; storeName: string; stickerSize: string;
   onClose?: () => void; deps?: PrinterTestDeps;
-  mode?: "test" | "tuning"; tuningPrint?: () => Promise<TesterSendResult>; tuningVersion?: number | null; tuningLang?: PrinterLang;
+  mode?: "test" | "tuning"; tuningPrint?: () => Promise<TesterSendResult & { version?: number | null }>; tuningVersion?: number | null; tuningLang?: PrinterLang;
 }) {
   const tuning = mode === "tuning";
   const t = useT();
@@ -42,20 +42,21 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
   const [photoErr, setPhotoErr] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
+  const [printedVersion, setPrintedVersion] = useState<number | null>(null); // the tuning version the test sticker really printed with
 
   async function doTest() {
     if (!lang || !settings || sending) return;
     setSending(true); setAnswer(null); setPhoto(null); setResult(null);
-    const r = tuning
-      ? (tuningPrint ? await tuningPrint().catch(() => ({ ok: false, code: "BT_PRINT_FAILED" })) : { ok: false, code: "BT_PRINT_FAILED" })
-      : await deps.testPrint(printer, lang, settings, cur, storeName);
+    const tr = tuning ? (tuningPrint ? await tuningPrint().catch(() => ({ ok: false, code: "BT_PRINT_FAILED" })) : { ok: false, code: "BT_PRINT_FAILED" }) : null;
+    if (tr) setPrintedVersion("version" in tr && tr.version !== undefined ? tr.version : tuningVersion);
+    const r = tr ? { ok: tr.ok, code: tr.code } : await deps.testPrint(printer, lang, settings, cur, storeName);
     setSending(false); setSent({ lang, r });
   }
   async function send(clean: boolean) {
     if (!sent || submitting) return;
     if (clean && !photo) return;
     setSubmitting(true);
-    const r = await deps.submit({ printer, lang: sent.lang, stickerSize, send: sent.r, clean, photo: clean ? photo : null, ...(tuning ? { tuningVersion } : {}) });
+    const r = await deps.submit({ printer, lang: sent.lang, stickerSize, send: sent.r, clean, photo: clean ? photo : null, ...(tuning ? { tuningVersion: printedVersion } : {}) });
     setSubmitting(false); setResult(r);
   }
   async function onPhoto(f: File | undefined) {

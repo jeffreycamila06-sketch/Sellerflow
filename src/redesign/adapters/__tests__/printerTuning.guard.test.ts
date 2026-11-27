@@ -18,7 +18,7 @@ afterAll(afterGolden);
 
 describe("a tuned job the guard refuses → today's job is sent", () => {
   for (const kind of ["today", "new"] as const) it(kind, async () => {
-    setMyPrinterTuning({ enabled: true, tester: true, tuning: { sensor: "bline", gapMm: 3 }, version: 2 });
+    setMyPrinterTuning({ enabled: true, tester: true, tuning: { sensor: "bline", gapMm: 3 }, version: 2, printerName: "AE241-BT_C11D-LE" });
     const r = await handed("ae241", (kind === "today" ? todayPrint : newPrint)("ae241", 60, 40, BUYERS.latin()));
     expect(`${r.fn}:${sha(r.arg)}`).toBe(MAIN[`${kind}|ae241|60x40|latin`]);
   }, 60000);

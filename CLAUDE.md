@@ -7079,7 +7079,12 @@ Proof folder: `docs/design/printer-tuning/` (PGlite output + md5s, header diffs,
 - **⚠ The switch `app_settings.printer_tuning_enabled` (created 'false'):** a saved row prints WHATEVER the switch says (so tuning keeps
   printing after the seller leaves Testers); while not exactly 'true' Admin may save a NEW setting only for a printer tester
   (`not_tester`); value **'off'** = nothing applied for anyone (instant stop). Rows only ever come from an Admin.
-- **Print path (`adapters/printerTuning.ts`):** read once per signed-in session (`usePrinterTuning` in RedesignApp); a failed read / no row /
+- **ONE printer (guardian fix):** `_set` stores the seller's latest tested printer name (`printer_seller_tuning.printer_name`) and refuses
+  `no_printer` when there is no test report; the app applies the tuning ONLY to a saved printer with exactly that name — another printer
+  saved later prints as today. The tuning REPLACES the approved row's flip / shift for that seller.
+- **Print path (`adapters/printerTuning.ts`):** read once per signed-in session (`usePrinterTuning` in RedesignApp; re-read before each
+  "Printer setup" test print = `reloadMyPrinterTuning`, the report carries the version that really printed; dropped at once when another
+  user signs in); a failed read / no row /
   a built-in name (`isBuiltInPrinterName` = WHITELIST + BUILT_IN + Niimbot — D520BT, Y41BT, XP-420B, B1, B1 Pro…) = no tuning.
   Applied ONLY in the generic Bluetooth picture path (`printStickerViaGenericImage` + the one-sticker generic branch): TSPL media line
   (`tsplMediaLine`: GAP n / BLINE n / continuous GAP 0), DENSITY, SPEED; TSPL + ESC/POS + CPCL flip + shift (new `shiftRasterRight`).

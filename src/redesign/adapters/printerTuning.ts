@@ -14,8 +14,10 @@ import type { ApprovedLayout } from "./rasterShift";
 
 export type Sensor = "gap" | "bline" | "continuous";
 export interface PrinterTuning { gapMm?: number; sensor?: Sensor; shiftMm?: number; flip?: boolean; density?: number; speed?: number; sendSpeed?: "normal" | "slow" }
-export interface MyTuning { enabled: boolean; tester: boolean; tuning: PrinterTuning | null; version: number | null }
-export const NO_TUNING: MyTuning = { enabled: false, tester: false, tuning: null, version: null };
+// printerName = the printer this tuning was made for (sql/230 stores the seller's tested printer name); the tuning
+// applies ONLY to a saved printer with exactly that name — never to another printer the seller saves later.
+export interface MyTuning { enabled: boolean; tester: boolean; tuning: PrinterTuning | null; version: number | null; printerName?: string | null }
+export const NO_TUNING: MyTuning = { enabled: false, tester: false, tuning: null, version: null, printerName: null };
 
 // The ranges = sql/230 printer_tuning_clean (both sides clamp; the database is the last word).
 export const TUNING_RANGE = {
@@ -72,7 +74,8 @@ export function parseMyTuning(data: unknown): MyTuning {
   const d = data as Record<string, unknown>;
   const tuning = parseTuning(d.settings);
   const v = num(d.version);
-  return { enabled: d.enabled === true, tester: d.tester === true, tuning, version: tuning && v != null && v >= 1 ? Math.trunc(v) : null };
+  const printerName = tuning && typeof d.printer_name === "string" && d.printer_name.trim() ? d.printer_name.trim() : null;
+  return { enabled: d.enabled === true, tester: d.tester === true, tuning, version: tuning && v != null && v >= 1 ? Math.trunc(v) : null, printerName };
 }
 /** One read per signed-in user; any failure = no tuning (today's printing). */
 export function loadMyPrinterTuning(userId: string): Promise<MyTuning> {
@@ -87,12 +90,23 @@ export function loadMyPrinterTuning(userId: string): Promise<MyTuning> {
   })();
   return read;
 }
+/** Read again now (Printer setup: before each test print, so Admin's latest change is what prints). Answers the
+ *  fresh value; signed out / a failed read = no tuning. */
+export async function reloadMyPrinterTuning(): Promise<MyTuning> {
+  const uid = readFor;
+  if (!uid) return mine;
+  read = null;
+  const v = await loadMyPrinterTuning(uid);
+  if (readFor === uid) setMyPrinterTuning(v);
+  return v;
+}
 /** Signed in → read once; signed out / another user → forget. Answers the value for the screens
  *  (`tester` = show the Printer setup test card); the print code reads the module copy. */
 export function usePrinterTuning(userId: string | null | undefined): MyTuning {
   const [v, setV] = useState<{ for: string; value: MyTuning } | null>(null);
   useEffect(() => {
     if (!userId) { __resetPrinterTuning(); return; }
+    if (readFor !== userId) setMyPrinterTuning(null); // another user: never print with the previous user's tuning while this one loads
     let live = true;
     void loadMyPrinterTuning(userId).then((r) => { if (live && readFor === userId) { setMyPrinterTuning(r); setV({ for: userId, value: r }); } });
     return () => { live = false; };
@@ -104,7 +118,9 @@ export function usePrinterTuning(userId: string | null | undefined): MyTuning {
 /** The tuning for the saved printer of this name; null = none (no row, failed read, built-in printer). */
 export function tuningFor(name: string | undefined | null): PrinterTuning | null {
   const t = mine.tuning;
-  if (!t || !String(name || "").trim() || isBuiltInPrinterName(name)) return null;
+  const n = String(name || "").trim().toUpperCase();
+  if (!t || !n || isBuiltInPrinterName(name)) return null;
+  if (n !== String(mine.printerName || "").trim().toUpperCase()) return null; // made for another printer (or for none)
   return t;
 }
 /** The TSPL job with the tuning on top; no tuning (or nothing for TSPL in it) = the SAME object back. */

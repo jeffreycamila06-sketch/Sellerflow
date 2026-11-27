@@ -7,7 +7,7 @@
 // TUNING_DIFF=<file> writes the header diffs (for the report).
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync, writeFileSync } from "node:fs";
-import { FAMS, BUYERS, GOLDEN_FILE, sizesFor, handed, todayPrint, newPrint, sha, beforeGolden, afterGolden, type Fam } from "./printerTuning.harness";
+import { FAMS, BUYERS, GOLDEN_FILE, SAVED, sizesFor, handed, todayPrint, newPrint, sha, beforeGolden, afterGolden, type Fam } from "./printerTuning.harness";
 import { setMyPrinterTuning, parseTuning, parseMyTuning, tunedTsplJob, tunedLayout, tuningFor, loadMyPrinterTuning, __resetPrinterTuning, NO_TUNING, type PrinterTuning } from "../printerTuning";
 import { tsplMediaLine } from "../stickerRaster";
 import { shiftRasterLeft, shiftRasterRight, applyApprovedLayout, NO_LAYOUT } from "../rasterShift";
@@ -20,7 +20,8 @@ vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rp
 const MAIN: Record<string, string> = JSON.parse(readFileSync(GOLDEN_FILE, "utf8")).hashes;
 const OUT = process.env.TUNING_DIFF || "";
 const diffs: string[] = [];
-const tune = (t: PrinterTuning | null) => setMyPrinterTuning(t ? { enabled: true, tester: true, tuning: t, version: 3 } : null);
+// a tuning is made for ONE printer (sql/230 printer_name): `forName` = the saved printer it was made for
+const tune = (t: PrinterTuning | null, forName = "") => setMyPrinterTuning(t ? { enabled: true, tester: true, tuning: t, version: 3, printerName: forName } : null);
 const bytesOf = (arg: string) => Uint8Array.from(Buffer.from((JSON.parse(arg) as { data: string }).data, "base64"));
 const head = (b: Uint8Array) => tsplCommands(b).cmds.filter((c) => !c.startsWith("BITMAP") && c !== "PRINT 1");
 const bandsOf = (b: Uint8Array) => { const s = Buffer.from(b).toString("latin1"); return s.slice(s.indexOf("BITMAP")); };
@@ -37,8 +38,9 @@ describe("pure parts", () => {
     for (const bad of [null, [], "x", {}, { color: "red" }, { gap_mm: "3" }, { flip: "yes" }, { sensor: "laser" }]) expect(parseTuning(bad)).toBeNull();
   });
   it("parseMyTuning: the version only with settings; anything odd = no tuning", () => {
-    expect(parseMyTuning({ enabled: false, tester: true, settings: { density: 12 }, version: 4 })).toEqual({ enabled: false, tester: true, tuning: { density: 12 }, version: 4 });
-    expect(parseMyTuning({ enabled: true, tester: false, settings: null, version: null })).toEqual({ enabled: true, tester: false, tuning: null, version: null });
+    expect(parseMyTuning({ enabled: false, tester: true, settings: { density: 12 }, version: 4, printer_name: " AE241-BT_C11D-LE " })).toEqual({ enabled: false, tester: true, tuning: { density: 12 }, version: 4, printerName: "AE241-BT_C11D-LE" });
+    expect(parseMyTuning({ enabled: false, tester: true, settings: { density: 12 }, version: 4 })).toEqual({ enabled: false, tester: true, tuning: { density: 12 }, version: 4, printerName: null });
+    expect(parseMyTuning({ enabled: true, tester: false, settings: null, version: null, printer_name: "X" })).toEqual({ enabled: true, tester: false, tuning: null, version: null, printerName: null });
     expect(parseMyTuning(null)).toEqual(NO_TUNING);
   });
   it("no tuning → the SAME job / layout objects (that is what keeps today's bytes)", () => {
@@ -67,9 +69,16 @@ describe("pure parts", () => {
     expect(applyApprovedLayout(r, NO_LAYOUT)).toBe(r);
   });
   it("built-in names are never tuned (D520BT, Y41BT, XP-420B, Niimbot B1 / B1 Pro…)", () => {
-    tune({ density: 3 });
-    for (const n of ["D520BT-Z", "Y41BT-0FC4_LE", "XP-420B", "B1-I603042141", "B1 Pro-I616030055", "B21-C123", ""]) expect(tuningFor(n)).toBeNull();
+    for (const n of ["D520BT-Z", "Y41BT-0FC4_LE", "XP-420B", "B1-I603042141", "B1 Pro-I616030055", "B21-C123", ""]) { tune({ density: 3 }, n); expect(tuningFor(n)).toBeNull(); }
+    tune({ density: 3 }, "AE241-BT_C11D-LE");
     expect(tuningFor("AE241-BT_C11D-LE")).toEqual({ density: 3 });
+    expect(tuningFor(" ae241-bt_c11d-le ")).toEqual({ density: 3 });       // the same printer name, any case
+  });
+  it("a tuning applies ONLY to the printer it was made for", () => {
+    tune({ density: 3 }, "AE241-BT_C11D-LE");
+    for (const n of ["AE241-BT_B57A-LE", "CT221B-D4F8", "AE241-BT", "GEN-1"]) expect(tuningFor(n)).toBeNull();
+    tune({ density: 3 }, "");                                                 // made for no printer → nowhere
+    expect(tuningFor("AE241-BT_C11D-LE")).toBeNull();
   });
 });
 
@@ -103,7 +112,7 @@ const UNTOUCHED: Fam[] = ["d520", "d520text", "xp420b", "niimbot"];
 describe("printers the tuning never touches: main's bytes even with a tuning loaded", () => {
   for (const f of UNTOUCHED) for (const [w, h] of sizesFor(f)) for (const kind of ["today", "new"] as const) {
     it(`${kind} · ${f} · ${w}×${h}`, async () => {
-      tune(EVERYTHING);
+      tune(EVERYTHING, SAVED[f].name);                                       // even made for this very name
       const r = await handed(f, (kind === "today" ? todayPrint : newPrint)(f, w, h, BUYERS.latin()));
       expect(`${r.fn}:${sha(r.arg)}`).toBe(MAIN[`${kind}|${f}|${w}x${h}|latin`]);
     }, 60000);
@@ -122,7 +131,7 @@ describe("a tuned approved TSPL printer: only the header lines change", () => {
       const go = (kind === "today" ? todayPrint : newPrint)(f, w, h, BUYERS.latin());
       tune(null);
       const before = bytesOf((await handed(f, go)).arg);
-      tune(t);
+      tune(t, SAVED[f].name);
       const after = bytesOf((await handed(f, go)).arg);
       expect(bandsOf(after)).toBe(bandsOf(before));                              // the picture: byte for byte
       const a = head(before), b = head(after);
@@ -140,7 +149,7 @@ describe("shift / flip on TSPL and ESC/POS: the picture moves, the job stays val
     it(`${f} · 60×40 · shift right 2 mm + flip`, async () => {
       const go = todayPrint(f, 60, 40, BUYERS.latin());
       tune(null); const before = bytesOf((await handed(f, go)).arg);
-      tune({ shiftMm: -2, flip: true }); const after = bytesOf((await handed(f, go)).arg);
+      tune({ shiftMm: -2, flip: true }, SAVED[f].name); const after = bytesOf((await handed(f, go)).arg);
       expect(Buffer.from(after).equals(Buffer.from(before))).toBe(false);
       if (f === "ae241") {
         expect(checkTsplJob(after, 60, 40)).toEqual([]);
@@ -155,11 +164,19 @@ describe("shift / flip on TSPL and ESC/POS: the picture moves, the job stays val
   }
   for (const f of ["pt210l", "escpos", "cpcl"] as Fam[]) {
     it(`${f}: density / speed / media mean nothing there → main's bytes`, async () => {
-      tune({ density: 3, speed: 1, sensor: "bline", gapMm: 5 });
+      tune({ density: 3, speed: 1, sensor: "bline", gapMm: 5 }, SAVED[f].name);
       const r = await handed(f, todayPrint(f, 60, 40, BUYERS.latin()));
       expect(`${r.fn}:${sha(r.arg)}`).toBe(MAIN[`today|${f}|60x40|latin`]);
     }, 60000);
   }
+});
+
+describe("the seller saves ANOTHER printer later → it prints as today (the tuning stays with its printer)", () => {
+  for (const f of ["ae241", "ct221b", "pt210l", "escpos", "cpcl"] as Fam[]) it(f, async () => {
+    tune(EVERYTHING, "SOME-OTHER-PRINTER_01");
+    const r = await handed(f, todayPrint(f, 60, 40, BUYERS.latin()));
+    expect(`${r.fn}:${sha(r.arg)}`).toBe(MAIN[`today|${f}|60x40|latin`]);
+  }, 60000);
 });
 
 it("every family still has a golden (the list did not shrink)", () => { expect(FAMS).toHaveLength(9); });

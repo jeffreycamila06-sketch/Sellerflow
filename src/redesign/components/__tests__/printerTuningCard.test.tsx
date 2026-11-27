@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DEF_SETTINGS } from "../../adapters/printing";
 import { __resetSavedPrinter } from "../../adapters/savedPrinter";
-import { setMyPrinterTuning, __resetPrinterTuning, usePrinterTuning, parseMyTuning } from "../../adapters/printerTuning";
+import { setMyPrinterTuning, __resetPrinterTuning, usePrinterTuning, parseMyTuning, loadMyPrinterTuning } from "../../adapters/printerTuning";
 import { setApprovedPrinters } from "../../adapters/printerModels";
 import type { BluetoothPrinterDevice } from "../../adapters/printerBridge";
 import PrinterSettings from "../../screens/PrinterSettings";
@@ -98,7 +98,7 @@ describe("the card is shown only to testers, for a printer that can be tuned", (
 
 describe("Test print → clean? → report with the tuning version", () => {
   it("the test sticker goes the real route and carries the seller's tuning; No sends the report", async () => {
-    setMyPrinterTuning({ enabled: false, tester: true, tuning: { sensor: "bline", gapMm: 3, density: 12 }, version: 3 });
+    setMyPrinterTuning({ enabled: false, tester: true, tuning: { sensor: "bline", gapMm: 3, density: 12 }, version: 3, printerName: "AE241-BT_C11D-LE" });
     const b = bridge(AE241);
     renderPS({ tuningHelp: { version: 3 } });
     fireEvent.click(await screen.findByTestId("ps-tester-print"));
@@ -114,8 +114,39 @@ describe("Test print → clean? → report with the tuning version", () => {
     fireEvent.click(screen.getByTestId("ps-tuning-again"));
     expect(screen.getByTestId("ps-tester-print")).toBeTruthy();
   });
+  it("Admin changes a setting between two taps → the next test prints the NEW setting and reports its version", async () => {
+    rpc.mockResolvedValueOnce({ data: { enabled: false, tester: true, settings: { density: 9 }, version: 4, printer_name: "AE241-BT_C11D-LE" }, error: null });
+    setMyPrinterTuning(await loadMyPrinterTuning("u-seller"));
+    const b = bridge(AE241);
+    renderPS({ tuningHelp: { version: 4 } });
+    rpc.mockResolvedValueOnce({ data: { enabled: false, tester: true, settings: { density: 9 }, version: 4, printer_name: "AE241-BT_C11D-LE" }, error: null });
+    fireEvent.click(await screen.findByTestId("ps-tester-print"));
+    await screen.findByTestId("ps-tester-question");
+    expect(tsplOf(b)).toContain("DENSITY 9");
+    // Admin saves version 5 (darkness 13) while the card is open
+    rpc.mockResolvedValueOnce({ data: { enabled: false, tester: true, settings: { density: 13 }, version: 5, printer_name: "AE241-BT_C11D-LE" }, error: null });
+    b.printRawTspl.mockClear();
+    fireEvent.click(screen.getByTestId("ps-tester-print"));
+    await waitFor(() => expect(b.printRawTspl).toHaveBeenCalledTimes(1));
+    expect(tsplOf(b)).toContain("DENSITY 13");
+    fireEvent.click(await screen.findByTestId("ps-tester-no"));
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+    expect(submitSpy.mock.calls[0][0]).toMatchObject({ tuningVersion: 5 });
+    expect(rpc).toHaveBeenCalledTimes(3);                                      // one read per tap, no timer
+  });
+  it("the tuning was made for ANOTHER printer → the test prints as today and reports no tuning version", async () => {
+    setMyPrinterTuning({ enabled: false, tester: true, tuning: { density: 12 }, version: 6, printerName: "CT221B-D4F8" });
+    const b = bridge(AE241);
+    renderPS({ tuningHelp: { version: 6 } });
+    fireEvent.click(await screen.findByTestId("ps-tester-print"));
+    await screen.findByTestId("ps-tester-question");
+    expect(tsplOf(b)).toContain("DENSITY 8");
+    fireEvent.click(screen.getByTestId("ps-tester-no"));
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+    expect((submitSpy.mock.calls[0][0] as { tuningVersion?: unknown }).tuningVersion).toBeNull();
+  });
   it("Yes needs a photo before Send; the report carries the tuning version", async () => {
-    setMyPrinterTuning({ enabled: false, tester: true, tuning: { density: 10 }, version: 7 });
+    setMyPrinterTuning({ enabled: false, tester: true, tuning: { density: 10 }, version: 7, printerName: "AE241-BT_C11D-LE" });
     bridge(AE241);
     renderPS({ tuningHelp: { version: 7 } });
     fireEvent.click(await screen.findByTestId("ps-tester-print"));
@@ -136,11 +167,18 @@ describe("Test print → clean? → report with the tuning version", () => {
 
 describe("the database decides tester; the app only passes it on", () => {
   it("usePrinterTuning: tester false → the card's prop is never passed; the saved tuning still prints", async () => {
-    rpc.mockResolvedValue({ data: { enabled: false, tester: false, settings: { density: 11 }, version: 5 }, error: null });
+    rpc.mockResolvedValue({ data: { enabled: false, tester: false, settings: { density: 11 }, version: 5, printer_name: "AE241-BT_C11D-LE" }, error: null });
     const { result } = renderHook(() => usePrinterTuning("u1"));
     await waitFor(() => expect(result.current.version).toBe(5));
     expect(result.current.tester).toBe(false);
     expect(result.current.tuning).toEqual({ density: 11 });          // removed from Testers: tuning keeps printing
+  });
+  it("another user signs in → the previous user's tuning is dropped at once (before the new read answers)", async () => {
+    setMyPrinterTuning({ enabled: false, tester: true, tuning: { density: 3 }, version: 2, printerName: "AE241-BT_C11D-LE" });
+    rpc.mockReturnValue(new Promise(() => {}));                               // the new user's read never answers
+    renderHook(() => usePrinterTuning("u-other"));
+    const { tuningFor } = await import("../../adapters/printerTuning");
+    expect(tuningFor("AE241-BT_C11D-LE")).toBeNull();
   });
   it("signed out → nothing; a failed read → nothing", async () => {
     rpc.mockResolvedValue({ data: null, error: { message: "x" } });

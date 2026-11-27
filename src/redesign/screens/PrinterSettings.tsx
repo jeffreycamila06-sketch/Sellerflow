@@ -24,6 +24,7 @@ import {
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
 import { isBuiltInPrinterName, knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
+import { reloadMyPrinterTuning, tuningFor as tuningForName } from "../adapters/printerTuning";
 import PrinterTestCard from "../components/PrinterTestCard";
 import { testPrintFor, printerLabelFor } from "../adapters/oneStickerPrint";
 import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor, qrSizeOk } from "../adapters/oneSticker";
@@ -240,10 +241,13 @@ export default function PrinterSettings({
   }
 
   // Printer setup help (sql/230): the SAME routed test sticker as Test print — the seller's own tuning applies there.
-  async function tuningTestPrint(): Promise<{ ok: boolean; code: string }> {
-    if (!btReady || !settings) return { ok: false, code: "BT_NOT_SET" };
+  // The tuning is read again first, so Admin's latest change is what prints (and what the report says).
+  async function tuningTestPrint(): Promise<{ ok: boolean; code: string; version: number | null }> {
+    if (!btReady || !settings) return { ok: false, code: "BT_NOT_SET", version: null };
+    const now = await reloadMyPrinterTuning();
+    const version = btSaved && tuningForName(btSaved.name) ? now.version : null; // null = it printed without a tuning
     const r = await routedTestPrint(settings);
-    return { ok: r.ok, code: r.ok ? "" : (r.code || "BT_PRINT_FAILED") };
+    return { ok: r.ok, code: r.ok ? "" : (r.code || "BT_PRINT_FAILED"), version };
   }
 
   // ── Printer setup v2: tap a printer → saved at once → one test sticker → green card ────────
