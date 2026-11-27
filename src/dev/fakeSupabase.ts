@@ -172,6 +172,29 @@ if (SHP) {
   RPC.account_quota = { used: accounts.length, limit, unlimited: false, locked: 0, next_free_at: null };
 }
 
+// Waybill username previews (sql/231, docs/design/waybill-username):
+//   ?wb=ph   a Philippines seller with the switch on + fictional TikTok buyers of today and yesterday
+//   ?wb=tw   a Taiwan seller with the switch on ("Soon")
+//   ?wb=off  a Philippines seller with the switch off (Settings as before)
+const WB = (/[?&]wb=(\w+)/.exec(Q) || [])[1] || "";
+if (WB) {
+  tables.app_settings.push({ key: "waybill_username_enabled", value: WB === "off" ? "false" : "true" });
+  Object.assign(tables.seller_profiles[0], { country: WB === "tw" ? "TW" : "PH" });
+  const tpe = (daysAgo: number): string => new Date(now + 8 * 3_600_000 - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  const buyers: [string, string, number, number, number][] = [ // handle, name, days ago, orders, price
+    ["ana_ukay8", "Ana", 0, 3, 150], ["abby.08", "Abby", 1, 1, 150], ["angel_m8", "Angel", 0, 2, 150],
+    ["mariel_3", "Mariel", 0, 2, 180], ["jessa.ukays", "Jessa", 0, 1, 250], ["rhea_pinta", "Rhea", 1, 2, 120],
+    ["kaycee.bay", "Kaycee", 0, 1, 300], ["bennyshop01", "Benny", 1, 4, 99], ["cheska.uz", "Cheska", 0, 1, 210],
+    ["lorenz_dizon", "Lorenz", 0, 1, 160], ["leeann.cu", "Lee Ann", 1, 2, 140], ["amy_bae8", "Amy", 1, 1, 150],
+  ];
+  let id = 9500;
+  for (const [handle, name, d, n, price] of buyers) {
+    for (let k = 0; k < n; k++) {
+      tables.live_session_orders.push({ id: id++, user_id: UID, session_id: "wb", session_date: tpe(d), created_at: new Date(now - d * 86_400_000 - k * 60_000).toISOString(), buyer_number: id - 9500, handle, customer_name: name, platform: "TikTok", product: `A${k + 1}`, price, qty: 1, comment_msg_id: null, auto_code: null });
+    }
+  }
+}
+
 // Free plan: no 4-hour account lock previews (sql/216, docs/design/free-no-account-lock):
 //   ?fnl=free   what the database answers for a free seller: no wait on the TikTok username
 //   ?fnl=paid   a paid seller who changed the username 30 minutes ago: "Unlock in 3h 30m"

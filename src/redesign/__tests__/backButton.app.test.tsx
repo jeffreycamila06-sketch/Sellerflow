@@ -85,7 +85,7 @@ describe("the 12 new Backs — each returns to where it was opened from", () => 
     [t.rd_sh_general, "settings", false],
     [t.rd_cus_title, "customers", false],
     [t.rd_sh_admin, "admin", false],
-    ["tile-shipping", "shipping", true],
+    ["tile-shiphub", "shiphub", true], // admins: the 7-11 "Shipping" tile is inside this Shipping screen since Waybill username (sql/231)
     [t.rd_sh_customer_data, "customerdata", false],
     [t.lg_pt_title, "legal", false],
     ["tile-parcelscan", "parcelscan", true],

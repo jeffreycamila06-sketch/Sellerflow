@@ -1,0 +1,67 @@
+CAUGHT CSV: columns read by position, not by header name
+       red: × the columns in another order (reversed) + extra columns: found by their header names 9ms | × no Order ID column → no_order_col 1ms
+MISSED CSV: the byte-order mark is not removed from the first header
+CAUGHT CSV: a comma inside quotes splits the field
+       red: × plain TikTok-shaped CSV: one order per Order ID (an order with 2 items is 2 rows → kept once) 12ms | × quotes, commas and line breaks INSIDE a field (the buyer message) do not shift the columns 1ms
+CAUGHT CSV: no Buyer Username column is not reported
+       red: × no Buyer Username column → no_username_col 8ms
+CAUGHT CSV: an order with 2 items is kept twice
+       red: × plain TikTok-shaped CSV: one order per Order ID (an order with 2 items is 2 rows → kept once) 16ms | × quotes, commas and line breaks INSIDE a field (the buyer message) do not shift the columns 2ms
+MISSED match: the length is not compared
+CAUGHT match: capital letters count
+       red: × case does not matter (both sides), an @ in front does not count 7ms
+CAUGHT candidates: Facebook / Shopee buyers count too
+       red: × only TikTok rows, only today + yesterday, only MY rows (another seller's row never counts) 10ms
+CAUGHT candidates: older days count too
+       red: × only TikTok rows, only today + yesterday, only MY rows (another seller's row never counts) 13ms
+CAUGHT candidates: another seller's rows count
+       red: × only TikTok rows, only today + yesterday, only MY rows (another seller's row never counts) 8ms | × a row of another seller that slips through is still dropped 1ms
+CAUGHT read: not limited to my rows
+       red: × asks for MY TikTok rows of yesterday + today, ordered, page by page 11ms
+CAUGHT read: a failed page gives a part of the list
+       red: × any page fails → not ok (never a part of the list) 12ms
+CAUGHT rows: 2 fitting buyers → the first one is used
+       red: × each page gets its status 11ms | × shown: auto = stamp, pick = pick, the three messages 2ms
+CAUGHT rows: a choice to leave blank is ignored
+       red: × a pick → stamp; leave blank → printed without; changing an auto match works 11ms | × Pick the buyer: the fitting buyers first (Today/Yesterday · orders · total), search over all, Use / leave blank 249ms
+CAUGHT rows: the tracking number fallback is gone
+       red: × each page gets its status 10ms | × the order id wins over the tracking number; the tracking number is the fallback 1ms
+SETUP  PDF: something crossing the free space is not checked: the line to break is not found exactly once in src/redesign/adapters/waybillPdfRead.ts
+CAUGHT PDF: the grey COD watermark counts as something to avoid
+       red: × N pages in = N pages out, same size, same order; every original drawing command byte for byte 42ms | × the stamp lands in the free space and touches NO existing text, line, barcode, QR or box (the grey COD may be under it) 12ms
+CAUGHT PDF: the right edge ignores the barcode column
+       red: × each page: the 18-digit order id after 'TT Order ID', the tracking number, and the free space next to Weight / Payment 108ms | × the text is read through ToUnicode (composite font, codes ≠ letters) and through a plain font 17ms
+CAUGHT PDF: a long username is not made smaller
+       red: × a long username gets a smaller font so it stays on ONE line; a username too long for the smallest readable size is not stamped 15ms
+CAUGHT PDF: no smallest readable size
+       red: × a long username gets a smaller font so it stays on ONE line; a username too long for the smallest readable size is not stamped 17ms
+CAUGHT PDF: the width is measured with kerning (shorter than it prints)
+       red: × the stamp lands in the free space and touches NO existing text, line, barcode, QR or box (the grey COD may be under it) 21ms
+CAUGHT PDF: the page size is changed
+       red: × N pages in = N pages out, same size, same order; every original drawing command byte for byte 47ms
+CAUGHT PDF: the stamp is placed at the left of the space (over the values)
+       red: × the stamp lands in the free space and touches NO existing text, line, barcode, QR or box (the grey COD may be under it) 21ms
+CAUGHT PDF: the order id is not read
+       red: × each page: the 18-digit order id after 'TT Order ID', the tracking number, and the free space next to Weight / Payment 100ms | × the text is read through ToUnicode (composite font, codes ≠ letters) and through a plain font 11ms
+CAUGHT PDF: text codes read as letters (no ToUnicode)
+       red: × each page: the 18-digit order id after 'TT Order ID', the tracking number, and the free space next to Weight / Payment 91ms | × the text is read through ToUnicode (composite font, codes ≠ letters) and through a plain font 18ms
+CAUGHT gate: Taiwan gets the full screen
+       red: × country TW · switch false · key true → soon 5ms | × country TW · switch true · key false → soon 1ms
+CAUGHT gate: the switch is ignored (always open)
+       red: × country PH · switch false · key false → hidden 12ms | × country TW · switch false · key false → hidden 2ms
+CAUGHT gate: other markets see it
+       red: × country VN · switch false · key true → hidden 6ms | × country VN · switch true · key false → hidden 1ms
+CAUGHT Settings: the SHIPPING group shows even when the feature is off
+       red: × a PH seller: the Settings HTML is the same as main's Settings screen 892ms | × a TW seller: the Settings HTML is the same as main's Settings screen 633ms
+CAUGHT Settings: the old 'Shipping · Coming soon' tile stays next to the new row
+       red: × the Shipping row, inside it Waybill username dimmed with Soon and not tappable; the old 'Shipping · Coming soon' tile is not shown twice 251ms
+CAUGHT Settings: the NEW badge never goes away
+       red: × switch ON: SHIPPING group → Shipping (NEW) → Waybill username (NEW) → the upload screen; the NEW badges go after the first open 318ms | × preview key: SHIPPING group → Shipping (NEW) → Waybill username (NEW) → the upload screen; the NEW badges go after the first open 376ms
+CAUGHT phone: something is awaited before the share (iPhone loses the tap)
+       red: × PHONE APP: Download PDF shares a ready PDF INSIDE the tap; the PDF has the usernames and the blank / skipped pages untouched 419ms
+CAUGHT screen: Add usernames is on before both files are in
+       red: × Add usernames is off until both files are in; the cards say what was found 138ms | × a CSV without the Buyer Username column → a clear message, Add usernames stays off 53ms
+
+30 of 33 breaks caught
+after putting everything back: all green
+EXIT 1

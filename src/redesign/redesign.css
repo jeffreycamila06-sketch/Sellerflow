@@ -893,3 +893,14 @@ html.pt-dragbar::-webkit-scrollbar, html.pt-dragbar body::-webkit-scrollbar { di
 .sfl-lpt-dot { animation: sflLptDot 1.6s ease-in-out infinite; }
 [data-redesign][data-motion="off"] .sfl-lpt-dot { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { .sfl-lpt-dot { animation: none !important; } }
+
+/* Waybill username (Settings → Shipping, sql/231): green "added", amber "pick the buyer", the two
+   notes. Fixed colours with enough contrast in both themes (the --ok / --warn tokens alone are too
+   light for small text on a light tint). */
+[data-redesign] .sfl-wb-ok { background: #ecfdf5; color: #065f46; }
+[data-redesign] .sfl-wb-warn { background: #fffbeb; color: #92400e; border-color: #f59e0b; }
+[data-redesign] .sfl-wb-note { background: #fff7ed; color: #7c2d12; }
+[data-redesign] .sfl-wb-info { background: var(--accent-soft); color: var(--accent-fg); }
+[data-redesign][data-theme="dark"] .sfl-wb-ok { background: rgba(52,211,153,.14); color: #6ee7b7; }
+[data-redesign][data-theme="dark"] .sfl-wb-warn { background: rgba(251,191,36,.14); color: #fcd34d; border-color: #fbbf24; }
+[data-redesign][data-theme="dark"] .sfl-wb-note { background: rgba(251,146,60,.14); color: #fdba74; }

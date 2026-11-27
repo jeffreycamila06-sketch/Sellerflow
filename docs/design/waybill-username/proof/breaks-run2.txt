@@ -1,0 +1,16 @@
+MISSED CSV: the byte-order mark is not removed (neither from the file text nor from the first header)
+CAUGHT match: the length is not compared
+       red: × a****8 fits a 6-character username that starts with a and ends with 8 9ms
+CAUGHT PDF: something crossing the free space is not checked
+       red: × a box line through the free space → no place (no_space) 16ms
+
+2 of 3 breaks caught
+after putting everything back: all green
+EXIT 1
+
+NOTE on the one MISSED above: the byte-order mark is removed three ways — the file text, the first header, and
+JavaScript's trim() (which also removes U+FEFF). With the first two broken, trim() still removes it, so the
+behaviour test ("a byte-order mark and Windows line ends change nothing", "header names: … a byte-order mark on the
+first one") stays green. That is the rule holding, not a gap; breaking trim() as well would change other behaviour.
+Run 1 (breaks-run1.txt): 30 of 33 caught; the 3 not caught were fixed in the script / tests and re-run here.
+Total: 32 of 33 caught; the 33rd cannot fail (see above).

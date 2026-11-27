@@ -121,7 +121,8 @@ describe("marketHidesShipping — the Shipping screen is the TW 7-11 module", ()
     // admins; "Coming soon" for other sellers) and every entry point reads that one answer.
     expect(app).toContain("const shippingGate = shippingAccess(isAdmin, hideShipping);");
     expect(app).toContain('onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}');
-    expect(app).toContain('onShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined}');
+    expect(app).toContain('onShipping={!shipHubOn && shippingGate === "open" ? () => setScreen("shipping") : undefined}');
+    expect(app).toContain('on711={shippingGate === "open" ? () => setScreen("shipping") : undefined}'); // inside the SHIPPING group's screen (sql/231)
     expect(app).toContain('screen === "shipping" && shippingGate === "open" && <Shipping');
     const hub = readFileSync("src/redesign/screens/SettingsHub.tsx", "utf8");
     expect(hub).toContain("? <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping}");
