@@ -1,0 +1,12 @@
+phone390    card   page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+phone390    use    page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+phone390    saved  page wider than screen: false · items past the edge: 0 · buttons under 44 px: Clear · errors: 0
+phone360    card   page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+phone360    use    page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+phone360    saved  page wider than screen: false · items past the edge: 0 · buttons under 44 px: Clear · errors: 0
+phone430    card   page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+phone430    use    page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+phone430    saved  page wider than screen: false · items past the edge: 0 · buttons under 44 px: Clear · errors: 0
+laptop1280  card   page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+laptop1280  use    page wider than screen: false · items past the edge: 0 · buttons under 44 px: none · errors: 0
+laptop1280  saved  page wider than screen: false · items past the edge: 0 · buttons under 44 px: Clear · errors: 0

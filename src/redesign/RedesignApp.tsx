@@ -144,7 +144,6 @@ import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer, btCall } from "./adapters/printerBridge";
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { useApprovedPrinters } from "./adapters/printerTesters";
-import { usePrinterTuning } from "./adapters/printerTuning";
 import { sellerWebsiteVisible, websiteTeaserVisible } from "./adapters/sellerWebsiteGate";
 import OrdersMinersTabs, { type OrdersTab } from "./components/OrdersMinersTabs";
 import { websiteNewOrdersCount, loadWebsiteSales } from "./adapters/websiteSeller";
@@ -972,7 +971,6 @@ export default function RedesignApp() {
   const webQrOn = webQrScannerOnFor(featureSw.webQrScanner, isAdmin);
   useEffect(() => { setWebQrScannerOn(webQrOn); }, [webQrOn]);
   useApprovedPrinters(authed); // Admin-approved printers join the scan whitelist (sql/160) — one read per session
-  const printerTuning = usePrinterTuning(authed ? auth.profile?.authUserId : null); // this seller's own printer tuning (sql/230) — one read per session; none = today's printing
   // Printer setup v2 (admin / test_printers / the printer_flow_v2 switch) — also decides whether the Classic text
   // card is on screen; the router honors the stored Classic flag only while that card is shown (printing.ts
   // classicTextCardShown). Set in THIS render (not an effect) so oneStickerDevicePath below — the Live print
@@ -3357,7 +3355,6 @@ export default function RedesignApp() {
               isAdmin={isAdmin}
               scanWebFilter={featureSw.printerScanWebFilter}
               tester={hasFeature("printer_tester")}
-              {...(printerTuning.tester ? { tuningHelp: { version: printerTuning.version } } : {})}
               onPrinterSaved={autoSaveNow}
               oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName, osDevicePath === "niimbot"), printerName: osPrinterName, limit: oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot"), onPick: onPickOneSize } : undefined}
               sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && navOrigins.printersettings === "printpattern"))}

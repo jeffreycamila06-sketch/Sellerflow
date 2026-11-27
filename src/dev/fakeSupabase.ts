@@ -283,23 +283,16 @@ if (/[?&]ptl=1\b/.test(Q)) {
   RPC.admin_lock_approved_printer = true;
 }
 
-// Printer tuning previews (sql/230, docs/design/printer-tuning): ?ptu=1 — the seller is a printer tester with a
-// saved tuning (version 3: gap 3 mm, darkness 12); ?ptu=1&admin=1 also gives Admin → a seller → Printer tuning
-// made-up data (an AE241 under the locked "AE241-BT_B57A-LE" model, two history rows, one report).
-if (/[?&]ptu=1\b/.test(Q)) {
-  RPC.my_printer_tuning = { enabled: false, tester: true, settings: { gap_mm: 3, density: 12 }, version: 3, printer_name: "AE241-BT_C11D-LE" };
-  RPC.admin_printer_tuning_get = {
-    settings: { gap_mm: 3, density: 12 }, tuned_for: "AE241-BT_C11D-LE", version: 3, updated_at: iso(0), switch_on: false, tester: true,
-    printer_name: "AE241-BT_C11D-LE", built_in: false, locked_name: "AE241-BT_B57A-LE",
-    history: [
-      { id: 2, action: "set", before: { gap_mm: 3 }, after: { gap_mm: 3, density: 12 }, version: 3, undone: false, at: iso(0) },
-      { id: 1, action: "set", before: null, after: { gap_mm: 3 }, version: 2, undone: false, at: iso(1) },
-    ],
-    reports: [{ id: "pv-r1", printer_name: "AE241-BT_C11D-LE", sticker_size: "60x40", lang: "tspl", created_at: iso(0), clean: false, send_ok: true, tuning_version: 3, app_build: 14 }],
-  };
-  RPC.admin_printer_tuning_set = 4;
-  RPC.admin_printer_tuning_undo = 2;
-  RPC.admin_printer_tuning_reset = true;
+// Printer testers, every model (docs/design/tester-all-models): ?prt=1 — this login is a printer tester on the
+// Printer setup v2 screen, with two Admin-approved (locked) printers and a test-report insert / photo upload that
+// answer ok. Absent = nothing below is touched.
+const PRT = /[?&]prt=1\b/.test(Q);
+if (PRT) {
+  Object.assign(RPC.my_feature_access as Record<string, boolean>, { printer_tester: true, test_printers: true });
+  tables.approved_printers = [
+    { prefix: "AE241-BT", brand: "Aiyin", model: "AE241-BT_B57A-LE", lang: "tspl", active: true, shift_mm: 0, flip: false },
+    { prefix: "PT210L", brand: "Other", model: "PT210L_30EF", lang: "escpos", active: true, shift_mm: 0, flip: false },
+  ];
 }
 
 // Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
@@ -481,6 +474,7 @@ const fakeClient = {
     const e = v && typeof v === "object" && typeof v.__error === "string" ? { message: v.__error } : null;
     return Promise.resolve({ data: e ? null : v ?? null, error: e, count: null } as Res).then(res);
   } }),
+  ...(PRT ? { storage: { from: () => ({ upload: async (path: string) => ({ data: { path }, error: null }) }) } } : {}),
   auth: {
     getSession: async () => ({ data: { session: ANON ? null : session }, error: null }),
     getUser: async () => ({ data: { user: session.user }, error: null }),

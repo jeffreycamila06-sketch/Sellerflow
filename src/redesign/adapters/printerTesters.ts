@@ -11,9 +11,8 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { btCallOutcome, buildTestBuyerV2, type BluetoothPrinterDevice } from "./printerBridge";
 import { buildGenericStickerBytes, buildNativeStickerPayload, onPrinterLane, type Settings } from "./printing";
 import { bytesToBase64 } from "./stickerRaster";
-import { setApprovedPrinters, WHITELIST, type ApprovedPrinter, type PrinterLang } from "./printerModels";
+import { approvedLayoutFor, knownTsplJob, setApprovedPrinters, WHITELIST, type ApprovedPrinter, type PrinterLang } from "./printerModels";
 import { chooseEncoding, decodeUpright } from "./productImages";
-import { bridgeBuildNumber } from "./nativeVersion";
 
 export const PRINTER_TEST_BUCKET = "printer-test-photos";
 export const PRINTER_TEST_PHOTO_MAX_BYTES = 2 * 1024 * 1024; // = the bucket's file_size_limit (sql/160)
@@ -102,7 +101,9 @@ export async function testPrintInLang(p: BluetoothPrinterDevice, lang: PrinterLa
   return onPrinterLane(async () => {
     try {
       const payload = buildNativeStickerPayload(buildTestBuyerV2(), cur || "NT$", storeName || "SellerFlowLive", settings);
-      const bytes = await buildGenericStickerBytes(lang, payload);
+      // the same density / flip / shift the printer will get once saved (an approved row's, by name) — so the tester
+      // judges what will really print; an unlisted printer has none = the plain sticker as before
+      const bytes = await buildGenericStickerBytes(lang, payload, undefined, false, knownTsplJob(p.name), approvedLayoutFor(p.name));
       const r = await btCallOutcome("testGenericPrinter", { address: p.address, name: p.name, transport: p.transport === "spp" ? "spp" : "ble", data: bytesToBase64(bytes) });
       return { ok: r.ok, code: r.ok ? "" : (r.code || "BT_PRINT_FAILED") };
     } catch { return { ok: false, code: "BUILD_FAILED" }; }
@@ -137,7 +138,6 @@ export async function resizeTestPhoto(file: Blob): Promise<Blob | null> {
 export interface PrinterTestReportInput {
   printer: BluetoothPrinterDevice; lang: PrinterLang; stickerSize: string;
   send: TesterSendResult; clean: boolean; photo: Blob | null;
-  tuningVersion?: number | null; // Printer setup help (sql/230): the seller's tuning version the test sticker printed with
 }
 export type SubmitResult = { ok: true } | { ok: false; reason: "photo_required" | "no_session" | "upload_failed" | "save_failed" };
 // Photo first (own folder in the private bucket), then the row. A clean report without a photo is refused here AND by the table.
@@ -158,12 +158,9 @@ export async function submitPrinterTestReport(r: PrinterTestReportInput): Promis
   }
   try {
     const { error } = await supabase.from("printer_test_reports").insert({
-      user_id: uid, email, printer_name: String(r.printer.name || "").slice(0, 120),
-      // a Printer setup help report (tuningVersion present) also says the app build, when the app tells it
-      ble_facts: "tuningVersion" in r ? { ...bleFactsOf(r.printer), app_build: bridgeBuildNumber() } : bleFactsOf(r.printer),
+      user_id: uid, email, printer_name: String(r.printer.name || "").slice(0, 120), ble_facts: bleFactsOf(r.printer),
       lang: r.lang, sticker_size: String(r.stickerSize || "").slice(0, 40), send_ok: r.send.ok, send_code: r.send.code.slice(0, 60) || null,
       clean: r.clean, photo_path: photoPath,
-      ...(typeof r.tuningVersion === "number" && Number.isInteger(r.tuningVersion) && r.tuningVersion >= 1 ? { tuning_version: r.tuningVersion } : {}),
     });
     return error ? { ok: false, reason: "save_failed" } : { ok: true };
   } catch { return { ok: false, reason: "save_failed" }; }

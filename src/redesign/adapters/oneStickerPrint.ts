@@ -351,7 +351,7 @@ export function d520Stream(r: FullRaster, s: OneStickerSettings): Uint8Array {
 }
 /** Generic printers: TSPL (density/speed of the saved model) / ESC/POS / CPCL. */
 export function genericBytes(lang: PrinterLang, r: FullRaster, s: OneStickerSettings, job: TsplJobSettings = {}): Uint8Array {
-  if (lang === "tspl") return bitmapTsplFromRaster(r, s.size.w, s.size.h, { ...(job.density != null ? { density: job.density } : {}), ...(job.speed != null ? { speed: job.speed } : {}), ...(job.media ? { media: job.media } : {}) }).bytes;
+  if (lang === "tspl") return bitmapTsplFromRaster(r, s.size.w, s.size.h, { ...(job.density != null ? { density: job.density } : {}), ...(job.speed != null ? { speed: job.speed } : {}) }).bytes;
   return lang === "cpcl" ? cpclRasterBytes(r) : escposRasterBytes(r);
 }
 export interface NiimbotImageOut { w: number; h: number; rowBytes: number; data: string; labelWidthMm: number; labelHeightMm: number }

@@ -2,7 +2,8 @@
 //  A. printer_scan_web_filter OFF = origin/main's scan call + list; ON = the phone lists every device,
 //     the web keeps only the whitelist (B1 Pro found by the normal Scan).
 //  B. testers: "Show all", ANY named device opens the Printer test card (language →
-//     the existing generic path, nothing saved), Yes needs a photo, no Save; a non-tester sees none of it.
+//     the existing generic path, nothing saved), Yes needs a photo; a non-tester sees none of it.
+//     Listed (approved) printers + "Use this printer": screens/__tests__/printerTesterAllModels.test.tsx.
 //  C. approved printers: listed, saved + printed with their language; built-in prefix wins; inactive /
 //     failed read = built-in only. Every built-in printer gives origin/main's answers (frozen copy).
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
@@ -246,10 +247,10 @@ describe("B. printer testers", () => {
     await screen.findByTestId("ps-tester-card");
     return b;
   }
-  it("an unlisted printer opens the Printer test card — never saved, no Save, the 'after Admin adds it' line", async () => {
+  it("an unlisted printer opens the Printer test card — never saved until a clean report, no Save", async () => {
     const b = await openCard();
     expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-    expect(screen.getByTestId("ps-tester-no-save").textContent).toBe(t.rd_prt_no_save);
+    expect(screen.getByTestId("ps-tester-no-save").textContent).toBe(t.rd_prt_try_note);
     expect(screen.queryByText(/^Save$/)).toBeNull();
     expect(screen.queryByTestId("ps-saved")).toBeNull();
   });
@@ -302,7 +303,7 @@ describe("B. printer testers", () => {
     const r = (submitSpy.mock.calls[0] as unknown[])[0] as { clean: boolean; photo: Blob | null };
     expect(r.clean).toBe(false); expect(r.photo).toBeNull();
   });
-  it("a tester picking a LISTED printer gets today's save flow", async () => {
+  it("a tester picking a BUILT-IN printer gets today's save flow (a listed approved one gets the card: printerTesterAllModels.test.tsx)", async () => {
     const b = bridge();
     renderPS({ tester: true });
     await scan();

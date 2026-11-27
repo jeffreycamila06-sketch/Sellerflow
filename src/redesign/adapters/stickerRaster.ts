@@ -922,14 +922,7 @@ export interface BitmapTsplResult { bytes: Uint8Array; bands: number; inkBytes: 
 // density / speed / bold = a per-model TSPL job (printerModels.knownTsplJob). Unset = DENSITY 8,
 // no SPEED line, no bold — the bytes every golden-pinned printer (D520BT text path, Niimbot,
 // any printer without a setting) gets today. bold = boldenRaster before banding (QR untouched).
-export interface BandOptions { horizontalCrop?: boolean; density?: number; speed?: number; bold?: boolean; media?: { sensor: "gap" | "bline" | "continuous"; mm: number } }
-// The TSPL media line. No `media` (every printer without a seller's tuning, sql/230) = "GAP 2 mm, 0" exactly as before.
-export function tsplMediaLine(media: BandOptions["media"]): string {
-  if (!media) return "GAP 2 mm, 0";
-  const mm = Number.isFinite(media.mm) ? Math.min(6, Math.max(0, Math.round(media.mm * 2) / 2)) : 2;
-  if (media.sensor === "continuous") return "GAP 0 mm, 0";
-  return `${media.sensor === "bline" ? "BLINE" : "GAP"} ${mm} mm, 0`;
-}
+export interface BandOptions { horizontalCrop?: boolean; density?: number; speed?: number; bold?: boolean }
 
 // BOLD (lighter-printing heads: Y41BT, XP-420B): every inked dot also inks the dot to its RIGHT —
 // a 1-dot stroke becomes 2 dots, text and lines print heavier (closer to the AIMO D520BT), the
@@ -1166,7 +1159,7 @@ export function bitmapTsplFromRaster(full: FullRaster, wMm: number, hMm: number,
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };
   line(`SIZE ${wMm} mm, ${hMm} mm`);
-  line(tsplMediaLine(opts.media));
+  line("GAP 2 mm, 0");
   line("DIRECTION 1");
   line("REFERENCE 0,0");
   if (opts.speed != null) line(`SPEED ${opts.speed}`);

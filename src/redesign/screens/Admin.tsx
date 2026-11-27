@@ -44,7 +44,6 @@ import DowngradeDialog from "../components/DowngradeDialog";
 import { SellerInviteRow, InviteRewardsPanel, InviteHistoryPanel } from "../components/AdminInvite";
 import { FreeSharingPanel } from "../components/AdminFreeSharing";
 import { ReceiptAddonPanel, ReceiptBadge } from "../components/AdminReceiptAddon";
-import AdminPrinterTuning from "../components/AdminPrinterTuning";
 import { ReceiptAddonCtx, addonEmailSet, useReceiptAddons } from "../adapters/receiptAddon";
 import { loadReferralOverview, type ReferralPreview } from "../adapters/invite";
 import Pc711Panel from "../components/Pc711Panel";
@@ -1027,7 +1026,6 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
   // seller's balance fetched on-open (admin-scoped read) so the owner sees it
   // before granting; refreshed from the grant's returned balance.
   const [credIdx, setCredIdx] = useState<number | null>(null);
-  const [tuningEmail, setTuningEmail] = useState<string | null>(null); // Printer tuning sheet (sql/230) for one seller
   const [credVal, setCredVal] = useState("");
   const [credBal, setCredBal] = useState<Record<string, number | null>>({});
   // Connected Facebook Pages / Instagram accounts / Shopee shops of every seller (sql/154):
@@ -1411,7 +1409,6 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                         <button onClick={() => void run(isAdmin ? t.rd_adm_act_remove_admin : t.rd_adm_act_make_admin, u.email, () => actions!.setRole(u.email, isAdmin ? "seller" : "admin"))} style={actBtn} disabled={!actions}>{isAdmin ? t.rd_adm_remove_admin : t.rd_adm_make_admin}</button>
                         <button onClick={() => void run(t.rd_adm_act_expire, u.email, () => actions!.expire(u.email))} style={{ ...actBtn, color: "var(--warn)" }} disabled={!actions}>{t.rd_adm_expire}</button>
                         <button onClick={() => doDelete(u)} style={{ ...actBtn, color: "var(--danger)" }} disabled={!actions}>{t.rd_prd_delete_btn}</button>
-                        <button data-testid="adm-tuning-open" onClick={() => setTuningEmail(u.email)} style={actBtn} disabled={!actions}>{t.rd_ptu_open}</button>
                       </div>
                     </div>
                   );
@@ -1442,7 +1439,6 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
             </div>
           )}
 
-          {tuningEmail && <AdminPrinterTuning email={tuningEmail} onClose={() => setTuningEmail(null)} onToast={notify} />}
           {panel === "parcelmon" && <ParcelMonPanel />}
           {panel === "shipfee" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
