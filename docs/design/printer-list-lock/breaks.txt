@@ -1,0 +1,6 @@
+On-purpose breaks (each put back after the run) — every one is caught:
+1. SQL built-in list loses 'B3S-'                    → approvedPrinterLock.test.ts: 1 failed ("same set")
+2. Panel shows locked rows as Testing (controls)     → PrinterTestersPanel.lock.test.tsx: 7 failed
+3. Guard stops checking `active`                     → sql229-behaviour.mjs: 6 failed (direct + RPC deactivate)
+4. Unlock no longer needs sfl.printer_unlock = 'on'  → sql229-behaviour.mjs: 11 failed
+5. Overlap checked in one direction only             → sql229-behaviour.mjs: 12 failed (shorter names slip through)

@@ -1,16 +1,18 @@
 // Admin → Printer testers (sql/160). Three tabs:
 //  • Testers — add / remove an email (feature key printer_tester in feature_access_emails);
 //  • Test reports — newest first; a Clean report offers "Add to printer list";
-//  • Approved — the approved_printers rows; Remove = active false (Add back = active true).
+//  • Printer list — Built-in (read only) · Locked — working (sql/229: read only, the database refuses any
+//    change) · Testing (today's Shift / Flip / Save / Remove + "Lock — working na").
 // Every tab tap re-reads the lists (a report sent while the panel is open shows without closing it).
 // Every call is an admin-only RPC (is_admin() inside). The approved list reaches sellers' scan on
 // their next app open (one read per session).
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   adminAddTester, adminApprovePrinter, adminListApproved, adminListReports, adminListTesters, adminPhotoUrl,
-  adminRemoveTester, adminSetApprovedActive, adminSetApprovedLayout, defaultPrefix, parseShiftMm, LANG_LABEL,
+  BUILT_IN_SHOWN, adminLockApproved, adminRemoveTester, adminSetApprovedActive, adminSetApprovedLayout, defaultPrefix, parseShiftMm, LANG_LABEL,
   type ApprovedRow, type ReportRow, type TesterRow,
 } from "../adapters/printerTesters";
+import { FB_GREEN } from "../adapters/buttonFeedback";
 import { useT, tpl } from "../i18n";
 
 type Tab = "testers" | "reports" | "approved";
@@ -21,6 +23,15 @@ const btn: CSSProperties = { minHeight: 36, fontSize: 12, fontWeight: 700, color
 const primary: CSSProperties = { ...btn, border: "none", background: "var(--accent)", color: "var(--accent-text)" };
 const input: CSSProperties = { width: "100%", boxSizing: "border-box", minHeight: 44, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 16, outline: "none" };
 const day = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); };
+
+const LockIcon = () => (
+  <svg aria-hidden width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+);
+const groupHead: CSSProperties = { fontSize: 11.5, fontWeight: 800, letterSpacing: 0.3, color: "var(--text-dim)", textTransform: "uppercase", marginTop: 6 };
+const okGreen = "var(--ok)";   // badge text / borders (reads on the surface in both themes)
+const lockFill = FB_GREEN;      // filled Lock buttons: white text ≥ 4.5 : 1 in both themes
 
 function Photo({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -71,6 +82,9 @@ export default function PrinterTestersPanel() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState<{ report: ReportRow; prefix: string; brand: string; model: string } | null>(null);
+  const [approveOverlap, setApproveOverlap] = useState(false);     // the database said: too close to a locked / built-in printer
+  const [rowOverlap, setRowOverlap] = useState<string | null>(null); // Add back refused for this row (same reason)
+  const [confirmLock, setConfirmLock] = useState<string | null>(null);
 
   const apply = useCallback((r: Loaded) => {
     setErr(!r.ok); setTesters(r.testers); setReports(r.reports); setApproved(r.approved);
@@ -120,17 +134,24 @@ export default function PrinterTestersPanel() {
                 </div>
               </div>
               {r.clean && approving?.report.id !== r.id && (
-                <button data-testid="pt-approve" onClick={() => setApproving({ report: r, prefix: defaultPrefix(r.printer_name), brand: "Other", model: r.printer_name })} style={{ ...primary, width: "100%" }}>{t.rd_prt_add_list}</button>
+                <button data-testid="pt-approve" onClick={() => { setApproveOverlap(false); setApproving({ report: r, prefix: defaultPrefix(r.printer_name), brand: "Other", model: r.printer_name }); }} style={{ ...primary, width: "100%" }}>{t.rd_prt_add_list}</button>
               )}
               {approving?.report.id === r.id && (
                 <div data-testid="pt-approve-form" style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label style={small}>{t.rd_prt_prefix}<input data-testid="pt-prefix" value={approving.prefix} onChange={(e) => setApproving({ ...approving, prefix: e.target.value })} style={input} /></label>
+                  <label style={small}>{t.rd_prt_prefix}<input data-testid="pt-prefix" value={approving.prefix} onChange={(e) => { setApproving({ ...approving, prefix: e.target.value }); setApproveOverlap(false); }} style={input} /></label>
+                  {approveOverlap && <div data-testid="pt-approve-overlap" role="alert" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{t.rd_prt_overlap}</div>}
                   <label style={small}>{t.rd_prt_brand}<input data-testid="pt-brand" value={approving.brand} onChange={(e) => setApproving({ ...approving, brand: e.target.value })} style={input} /></label>
                   <label style={small}>{t.rd_prt_model}<input data-testid="pt-model" value={approving.model} onChange={(e) => setApproving({ ...approving, model: e.target.value })} style={input} /></label>
                   <div style={small}>{tpl(t.rd_prt_approve_lang, { lang: LANG_LABEL[r.lang] || r.lang })}</div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button data-testid="pt-approve-save" disabled={busy || approving.prefix.trim().length < 2} onClick={() => void run(() => adminApprovePrinter({ reportId: r.id, prefix: approving.prefix, brand: approving.brand, model: approving.model || approving.prefix, lang: r.lang })).then((ok) => { if (ok) setApproving(null); })} style={{ ...primary, flex: 1, minHeight: 44 }}>{t.rd_prt_save}</button>
-                    <button onClick={() => setApproving(null)} style={{ ...btn, flex: 1, minHeight: 44 }}>{t.rd_prt_cancel}</button>
+                    <button data-testid="pt-approve-save" disabled={busy || approving.prefix.trim().length < 2} onClick={() => void (async () => {
+                      setBusy(true);
+                      const res = await adminApprovePrinter({ reportId: r.id, prefix: approving.prefix, brand: approving.brand, model: approving.model || approving.prefix, lang: r.lang });
+                      setBusy(false);
+                      if (res.ok) { setApproving(null); setApproveOverlap(false); } else if (res.code === "prefix_overlaps_locked") setApproveOverlap(true); else setErr(true);
+                      await load();
+                    })()} style={{ ...primary, flex: 1, minHeight: 44 }}>{t.rd_prt_save}</button>
+                    <button onClick={() => { setApproving(null); setApproveOverlap(false); }} style={{ ...btn, flex: 1, minHeight: 44 }}>{t.rd_prt_cancel}</button>
                   </div>
                 </div>
               )}
@@ -139,23 +160,70 @@ export default function PrinterTestersPanel() {
         </div>
       )}
 
-      {tab === "approved" && (
+      {tab === "approved" && (() => {
+        const locked = (approved || []).filter((a) => a.locked === true);
+        const testing = (approved || []).filter((a) => a.locked !== true);
+        return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {approved && approved.length === 0 && <div style={small}>{t.rd_prt_none}</div>}
-          {(approved || []).map((a) => (
+          <div data-testid="pt-list-note" style={{ ...small, display: "flex", gap: 6, alignItems: "flex-start", padding: "9px 11px", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-dim)" }}><LockIcon />{tpl(t.rd_prt_list_note, { n: BUILT_IN_SHOWN.length })}</div>
+
+          <div data-testid="pt-grp-builtin" style={groupHead}>{tpl(t.rd_prt_grp_builtin, { n: BUILT_IN_SHOWN.length })}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {BUILT_IN_SHOWN.map((b) => (
+              <span key={b.model} data-testid="pt-builtin" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--surface-2)", fontSize: 12, fontWeight: 700, color: "var(--text)" }}>
+                <LockIcon />{b.brand} {b.model}
+              </span>
+            ))}
+          </div>
+
+          <div data-testid="pt-grp-locked" style={groupHead}>{tpl(t.rd_prt_grp_locked, { n: locked.length })}</div>
+          {approved && locked.length === 0 && <div style={small}>{t.rd_prt_none}</div>}
+          {locked.map((a) => (
+            <div key={a.id} data-testid="pt-locked" style={{ ...row, opacity: a.active ? 1 : 0.55 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{a.brand} {a.model} · {LANG_LABEL[a.lang] || a.lang}</div>
+                <div data-testid="pt-locked-line" style={small}>{tpl(t.rd_prt_locked_line, { mm: String(parseShiftMm(a.shift_mm)), flip: a.flip === true ? t.rd_prt_on : t.rd_prt_off, date: day(a.approved_at) })}{a.active ? "" : ` · ${t.rd_prt_removed}`}</div>
+              </div>
+              <span data-testid="pt-locked-badge" style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, padding: "4px 9px", borderRadius: 999, border: `1.5px solid ${okGreen}`, color: okGreen, fontSize: 11.5, fontWeight: 800 }}><LockIcon />{t.rd_prt_locked_badge}</span>
+            </div>
+          ))}
+
+          <div data-testid="pt-grp-testing" style={groupHead}>{tpl(t.rd_prt_grp_testing, { n: testing.length })}</div>
+          {approved && testing.length === 0 && <div style={small}>{t.rd_prt_none}</div>}
+          {testing.map((a) => (
             <div key={a.id} data-testid="pt-approved" style={{ ...row, opacity: a.active ? 1 : 0.55, flexDirection: "column", alignItems: "stretch" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{a.brand} {a.model} · {LANG_LABEL[a.lang] || a.lang}</div>
                   <div style={small}>{a.prefix}… · {day(a.approved_at)}{a.active ? "" : ` · ${t.rd_prt_removed}`}</div>
                 </div>
-                <button data-testid="pt-approved-toggle" disabled={busy} onClick={() => void run(() => adminSetApprovedActive(a.id, !a.active))} style={btn}>{a.active ? t.rd_prt_remove : t.rd_prt_add_back}</button>
+                <button data-testid="pt-approved-toggle" disabled={busy} onClick={() => void (async () => {
+                  setRowOverlap(null); setBusy(true);
+                  const res = await adminSetApprovedActive(a.id, !a.active);
+                  setBusy(false);
+                  if (!res.ok) { if (res.code === "prefix_overlaps_locked") setRowOverlap(a.id); else setErr(true); }
+                  await load();
+                })()} style={btn}>{a.active ? t.rd_prt_remove : t.rd_prt_add_back}</button>
               </div>
+              {rowOverlap === a.id && <div data-testid="pt-row-overlap" role="alert" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginTop: 6 }}>{t.rd_prt_overlap}</div>}
               <LayoutBox key={`${a.id}:${String(a.shift_mm ?? 0)}:${a.flip === true}`} saved={parseShiftMm(a.shift_mm)} savedFlip={a.flip === true} busy={busy} onSave={(mm, flip) => run(() => adminSetApprovedLayout(a.id, mm, flip))} />
+              {a.active && confirmLock !== a.id && (
+                <button data-testid="pt-lock" disabled={busy} onClick={() => setConfirmLock(a.id)} style={{ ...btn, marginTop: 8, minHeight: 44, border: "none", background: lockFill, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LockIcon />{t.rd_prt_lock_btn}</button>
+              )}
+              {a.active && confirmLock === a.id && (
+                <div data-testid="pt-lock-confirm" role="alertdialog" aria-label={t.rd_prt_lock_q} style={{ marginTop: 8, padding: "10px 11px", borderRadius: 10, border: `1.5px solid ${okGreen}`, background: "var(--surface)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_prt_lock_q}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button data-testid="pt-lock-yes" disabled={busy} onClick={() => void run(() => adminLockApproved(a.id)).then(() => setConfirmLock(null))} style={{ ...btn, flex: 1, minHeight: 44, border: "none", background: lockFill, color: "#fff" }}>{t.rd_prt_lock_yes}</button>
+                    <button data-testid="pt-lock-no" onClick={() => setConfirmLock(null)} style={{ ...btn, flex: 1, minHeight: 44 }}>{t.rd_prt_cancel}</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

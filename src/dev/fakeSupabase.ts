@@ -261,6 +261,28 @@ if (/[?&]pulse=1\b/.test(Q)) {
   };
 }
 
+// Admin → Printer testers → Printer list (sql/229, docs/design/printer-list-lock): ?ptl=1&admin=1 — today's
+// approved printer names (the 11 active ones Locked), one Testing printer and one removed duplicate, and a clean
+// test report whose Approve answers prefix_overlaps_locked (the message under the name).
+if (/[?&]ptl=1\b/.test(Q)) {
+  const rows: [string, string, string, string, string, boolean, boolean][] = [
+    ["Printer_", "Printer_5E93_BLE", "Printer_5E93_BLE", "tspl", "0.0", false, true], ["4B-2054N", "4B-2054N", "4B-2054N", "tspl", "0.0", false, true],
+    ["BlueTooth Printer", "BlueTooth Printer", "BlueTooth Printer", "tspl", "0.0", false, true], ["AE241-BT", "Aiyin", "AE241-BT_B57A-LE", "tspl", "0.0", false, true],
+    ["VOZY U9", "VOZY U9", "VOZY U9", "tspl", "0.0", false, true], ["XP-460B", "Xprinter", "XP-460B", "tspl", "0.0", false, true],
+    ["SK45_", "Kaysion", "SK45_5430L", "tspl", "0.0", false, true], ["XP-470B", "Other", "XP-470B", "tspl", "0.0", false, true],
+    ["XP-470B", "Xprinter", "XP-470B", "tspl", "0.0", false, false], ["PT210L", "Other", "PT210L_30EF", "escpos", "0.0", false, true],
+    ["D520", "Phomeno", "D520", "tspl", "0.0", false, true], ["CT221B", "Clabel", "CT221B", "tspl", "2.0", true, true],
+  ];
+  RPC.admin_approved_printers = [
+    { id: "pv-t1", prefix: "HM-A300", brand: "Other", model: "HM-A300-1F2C", lang: "tspl", shift_mm: 0, flip: false, active: true, locked: false, approved_at: iso(1), report_id: null },
+    ...rows.map(([prefix, brand, model, lang, shift, flip, active], i) => ({ id: `pv-a${i}`, prefix, brand, model, lang, shift_mm: shift, flip, active, locked: active, approved_at: iso(3 + i), report_id: null })),
+  ];
+  RPC.admin_printer_testers = [];
+  RPC.admin_printer_test_reports = [{ id: "pv-r1", email: "tester@example.com", printer_name: "AE241-BT_C11D-LE", lang: "tspl", sticker_size: "50x30mm", send_ok: true, send_code: null, clean: true, photo_path: null, created_at: iso(0), ble_facts: {} }];
+  RPC.admin_approve_printer = { __error: "prefix_overlaps_locked" };
+  RPC.admin_lock_approved_printer = true;
+}
+
 // Invoicing previews (sql/220, docs/design/invoicing-tiktok): ?ivc=<buyers>,<sent> e.g. ?ivc=40,12
 //   = the switch invoicing_enabled on, a running 2-day session with that many TikTok buyers (+ 2 Facebook
 //   buyers, who are not in the TikTok list), the first <sent> saved as Sent, then one Next, one Not sent,
@@ -434,7 +456,12 @@ const session = { user: { id: UID, email: EMAIL }, access_token: "preview", expi
 type AuthCb = (event: string, s: typeof session | null) => void;
 const fakeClient = {
   from: (table: string) => new Query(table),
-  rpc: (name: string) => ({ then: (res?: (v: Res) => unknown) => Promise.resolve({ data: RPC[name] ?? null, error: null, count: null } as Res).then(res) }),
+  // an RPC whose preview value is { __error: "word" } answers that database error (preview-only)
+  rpc: (name: string) => ({ then: (res?: (v: Res) => unknown) => {
+    const v = RPC[name] as { __error?: string } | undefined;
+    const e = v && typeof v === "object" && typeof v.__error === "string" ? { message: v.__error } : null;
+    return Promise.resolve({ data: e ? null : v ?? null, error: e, count: null } as Res).then(res);
+  } }),
   auth: {
     getSession: async () => ({ data: { session: ANON ? null : session }, error: null }),
     getUser: async () => ({ data: { user: session.user }, error: null }),

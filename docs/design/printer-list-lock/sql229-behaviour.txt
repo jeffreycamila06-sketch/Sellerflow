@@ -1,0 +1,96 @@
+live-text md5s before sql/229 (= production, 2026-11-27): admin_approve_printer=edaa5ed7f4f7d75efb9a0c98e047480c admin_approved_printers=d392113147245bbbc9294cf15058f18d admin_set_approved_printer_active=b07faad1bdfa85b22f856e452e4622d4
+ok   sql/229 applies on the live texts + today's 12 rows
+ok   exactly the 11 active rows are locked; the removed XP-470B is not
+md5s after sql/229: admin_approve_printer=207329bdf50bd6fde2646fc853f3ae09 admin_approved_printers=9ca652c9fcccd730adeaa4d84ef3df85 admin_lock_approved_printer=7d7b908c122ca701b18714740bd8c7ad admin_set_approved_printer_active=c3dd2884c468a9e54243696c5a6d80c8 approved_printer_prefix_clash=c7f88e9bd6ce30427b936942046a7b0f approved_printers_lock_guard=cc01dc30f239946643ede9b590b179a1
+ok   the seller read (the columns the app selects) is the same before and after
+ok   10 active rows → refused, nothing changed (sql/229: locked 10 rows, expected 11 — nothing changed)
+ok   12 active rows → refused, nothing changed (sql/229: locked 12 rows, expected 11 — nothing changed)
+ok   a function that is not the live text → refused
+ok   direct update of prefix on a locked row → printer_locked
+ok   direct update of brand on a locked row → printer_locked
+ok   direct update of model on a locked row → printer_locked
+ok   direct update of lang on a locked row → printer_locked
+ok   direct update of shift_mm on a locked row → printer_locked
+ok   direct update of flip on a locked row → printer_locked
+ok   direct update of active on a locked row → printer_locked
+ok   direct update of report_id on a locked row → printer_locked
+ok   direct update of approved_by on a locked row → printer_locked
+ok   direct update of approved_at on a locked row → printer_locked
+ok   direct delete of a locked row → printer_locked
+ok   a bulk delete touching locked rows → printer_locked
+ok   the locked row is unchanged after every refused write
+ok   an update that changes nothing on a locked row passes (nothing changes)
+ok   locked true → false without the flag → printer_locked
+ok   flag = 'off' → still refused
+ok   flag on + another column in the same update → refused
+ok   flag on → locked true → false allowed
+ok   rolled back → still locked
+ok   the flag was local to that transaction (refused again)
+ok   false → true together with another column → refused
+ok   admin_set_approved_printer_layout on a locked row → printer_locked
+ok   layout: flip only on a locked row → printer_locked
+ok   admin_set_approved_printer_active(false) on a locked row → printer_locked
+ok   CT221B unchanged after the refused RPCs
+ok   seller → admin_lock_approved_printer → forbidden
+ok   anon → no execute on admin_lock_approved_printer
+ok   the overlap rule is not callable by a signed-in seller
+ok   seller direct update → permission denied (no update grant)
+ok   admin lock on a REMOVED (inactive) row → false, not locked
+ok   the removed row stays unlocked
+ok   admin lock on an already locked row → false (no change)
+ok   a newly approved printer starts NOT locked (Testing)
+ok   a Testing row: layout still saves
+ok   admin_lock_approved_printer locks it
+ok   locking keeps its shift / flip
+ok   after the lock: layout refused
+ok   approve "AE241-BT_B57A-LE" → prefix_overlaps_locked
+ok   approve "AE241" → prefix_overlaps_locked
+ok   approve "ae241-bt" → prefix_overlaps_locked
+ok   approve "  ae241-BT  " → prefix_overlaps_locked
+ok   approve "AE2" → prefix_overlaps_locked
+ok   approve "CT221B-D4F8" → prefix_overlaps_locked
+ok   approve "ct22" → prefix_overlaps_locked
+ok   approve "XP-470" → prefix_overlaps_locked
+ok   approve "XP-470B-Z" → prefix_overlaps_locked
+ok   approve "Printer_9" → prefix_overlaps_locked
+ok   approve "printer" → prefix_overlaps_locked
+ok   approve "BlueTooth" → prefix_overlaps_locked
+ok   approve "bluetooth printer 2" → prefix_overlaps_locked
+ok   approve "VOZY" → prefix_overlaps_locked
+ok   approve "D520BT-Z" → prefix_overlaps_locked
+ok   approve "D52" → prefix_overlaps_locked
+ok   approve "Y41BT-0FC4_LE" → prefix_overlaps_locked
+ok   approve "y41" → prefix_overlaps_locked
+ok   approve "B1 Pro-I616" → prefix_overlaps_locked
+ok   approve "b1-I603" → prefix_overlaps_locked
+ok   approve "B1" → prefix_overlaps_locked
+ok   approve "XP-420B" → prefix_overlaps_locked
+ok   approve "xp-42" → prefix_overlaps_locked
+ok   approve "B21-" → prefix_overlaps_locked
+ok   approve "b203-x" → prefix_overlaps_locked
+ok   approve "B3S" → prefix_overlaps_locked
+ok   approve "NEW-UNIT_2" → prefix_overlaps_locked
+ok   approve "AE242" → allowed (no overlap)
+ok   approve "CT220" → allowed (no overlap)
+ok   approve "XP-480B" → allowed (no overlap)
+ok   approve "SK46" → allowed (no overlap)
+ok   approve "Q30-ABC" → allowed (no overlap)
+ok   approve "GP-1324D" → allowed (no overlap)
+ok   approve "B2-" → allowed (no overlap)
+ok   approve "Y42BT" → allowed (no overlap)
+ok   seller → approve forbidden
+ok   Add back the removed XP-470B duplicate → prefix_overlaps_locked
+ok   it stays removed
+ok   a Testing row with no overlap: Remove / Add back still work
+ok   admin_approved_printers returns locked (11 + the one locked here)
+ok   seller → admin list forbidden
+ok   deleting the test report of a locked row is refused (ON DELETE SET NULL = an update) — documented
+ok   rollback applies
+ok   rollback drops the column
+ok   rollback drops the lock RPC, the guard and the overlap rule
+ok   rollback drops the trigger
+ok   rollback = the live texts again (md5)
+ok   rollback keeps every row and value
+ok   after the rollback a row can be deleted again (as before)
+
+92 passed, 0 failed

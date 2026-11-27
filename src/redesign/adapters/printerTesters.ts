@@ -11,7 +11,7 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { btCallOutcome, buildTestBuyerV2, type BluetoothPrinterDevice } from "./printerBridge";
 import { buildGenericStickerBytes, buildNativeStickerPayload, onPrinterLane, type Settings } from "./printing";
 import { bytesToBase64 } from "./stickerRaster";
-import { setApprovedPrinters, type ApprovedPrinter, type PrinterLang } from "./printerModels";
+import { setApprovedPrinters, WHITELIST, type ApprovedPrinter, type PrinterLang } from "./printerModels";
 import { chooseEncoding, decodeUpright } from "./productImages";
 
 export const PRINTER_TEST_BUCKET = "printer-test-photos";
@@ -167,10 +167,23 @@ export async function submitPrinterTestReport(r: PrinterTestReportInput): Promis
 // ── Admin side (every RPC checks is_admin() inside — sql/160) ────────────────────────────────
 export interface TesterRow { email: string; created_at: string }
 export interface ReportRow { id: string; email: string; printer_name: string; lang: PrinterLang; sticker_size: string; send_ok: boolean; send_code: string | null; clean: boolean; photo_path: string | null; created_at: string; ble_facts: unknown }
-export interface ApprovedRow extends ApprovedPrinter { id: string; active: boolean; approved_at: string; shift_mm?: number | string | null; flip?: boolean | null }
-const rpc = async <T>(fn: string, args?: Record<string, unknown>): Promise<{ ok: boolean; data: T | null }> => {
+// locked (sql/229): "Locked — working" — the database refuses any change / removal of the row.
+export interface ApprovedRow extends ApprovedPrinter { id: string; active: boolean; approved_at: string; shift_mm?: number | string | null; flip?: boolean | null; locked?: boolean | null }
+// `code` = the database's refusal word when it is one we show ("prefix_overlaps_locked" / "printer_locked").
+export type AdminRpcCode = "prefix_overlaps_locked" | "printer_locked";
+const KNOWN_CODES: readonly AdminRpcCode[] = ["prefix_overlaps_locked", "printer_locked"];
+export function adminRpcCode(message: unknown): AdminRpcCode | undefined {
+  const m = typeof message === "string" ? message : "";
+  return KNOWN_CODES.find((c) => m.includes(c));
+}
+const rpc = async <T>(fn: string, args?: Record<string, unknown>): Promise<{ ok: boolean; data: T | null; code?: AdminRpcCode }> => {
   if (!isSupabaseConfigured || !supabase) return { ok: false, data: null };
-  try { const { data, error } = await supabase.rpc(fn, args); return error ? { ok: false, data: null } : { ok: true, data: data as T }; } catch { return { ok: false, data: null }; }
+  try {
+    const { data, error } = await supabase.rpc(fn, args);
+    if (!error) return { ok: true, data: data as T };
+    const code = adminRpcCode((error as { message?: unknown }).message);
+    return code ? { ok: false, data: null, code } : { ok: false, data: null };
+  } catch { return { ok: false, data: null }; }
 };
 export const adminListTesters = () => rpc<TesterRow[]>("admin_printer_testers");
 export const adminAddTester = (email: string) => rpc<boolean>("admin_printer_tester_add", { p_email: email.trim().toLowerCase() });
@@ -181,6 +194,11 @@ export const adminApprovePrinter = (a: { reportId: string; prefix: string; brand
   rpc<string>("admin_approve_printer", { p_report: a.reportId, p_prefix: a.prefix.trim(), p_brand: a.brand.trim() || "Other", p_model: a.model.trim(), p_lang: a.lang });
 export const adminSetApprovedActive = (id: string, active: boolean) => rpc<boolean>("admin_set_approved_printer_active", { p_id: id, p_active: active });
 export const adminSetApprovedLayout = (id: string, shiftMm: number, flip: boolean) => rpc<boolean>("admin_set_approved_printer_layout", { p_id: id, p_shift: shiftMm, p_flip: flip });
+// The 5 built-in printers shown read-only on Admin → Printer list (names from printerModels.ts WHITELIST).
+export const BUILT_IN_SHOWN: readonly { brand: string; model: string }[] = ["D520BT", "Y41BT", "XP-420B", "B1", "B1 Pro"]
+  .map((m) => WHITELIST.find((w) => w.model === m)!).map((w) => ({ brand: w.brand, model: w.model }));
+// "Lock — working na" (sql/229): admin only; there is no unlock from the app.
+export const adminLockApproved = (id: string) => rpc<boolean>("admin_lock_approved_printer", { p_id: id });
 export async function adminPhotoUrl(path: string): Promise<string | null> {
   if (!path || !isSupabaseConfigured || !supabase) return null;
   try { const { data, error } = await supabase.storage.from(PRINTER_TEST_BUCKET).createSignedUrl(path, 600); return error ? null : data?.signedUrl ?? null; } catch { return null; }

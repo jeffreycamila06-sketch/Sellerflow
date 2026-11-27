@@ -7040,3 +7040,28 @@ Admin → Free tier list (`components/AdminFreeTier.tsx`, logic `adapters/freeTi
 - Proof: `Admin.pulse.test.tsx`, `livePulseCount.test.tsx`, `pulseTile.app.test.tsx`; pictures
   `docs/design/pulse-tile/`. Not touched: server, the TikTok limit card, seller screens, printing,
   chrome-extension/, app_settings. No help-guide change (Admin only).
+
+## 2026-11-27 — LOCK THE SAVED PRINTER LIST (Printer Tuning part 1) (branch `claude/printer-list-lock`, NOT merged; sql/229 NOT applied; web only, no Render)
+Admin only, ZERO change to printing (printerModels.ts / stickerRaster / stickerJobGuard / mobile / server = 0 lines).
+- **sql/229 (+ rollback):** `approved_printers.locked` (default false); the migration locks every ACTIVE row and
+  REFUSES unless exactly 11 (production 2026-11-27: 12 rows, 11 active — the removed "XP-470B" duplicate stays
+  unlocked). md5 guard on the 3 replaced live functions. Trigger `trg_approved_printers_lock` (BEFORE UPDATE OR
+  DELETE): a locked row can't be deleted or change prefix / brand / model / lang / shift_mm / flip / active /
+  report_id / approved_by / approved_at; false → true allowed alone; true → false ONLY with
+  `begin; set local sfl.printer_unlock = 'on'; update … set locked = false where id = '<id>'; commit;` by hand
+  (no RPC sets it; never reads current_user — the admin RPCs run as postgres). An update that changes nothing passes.
+  `admin_lock_approved_printer(p_id)` (is_admin inside, ACTIVE rows only; no unlock RPC). `admin_approved_printers`
+  returns `locked`. `admin_approve_printer` + `admin_set_approved_printer_active(…, true)` refuse
+  `prefix_overlaps_locked` when the name overlaps an active locked row or a built-in name (one starts with the other,
+  upper + btrim) — helper `approved_printer_prefix_clash` (not callable from the app). Built-in names in the SQL =
+  printerModels.ts WHITELIST + NIIMBOT_NAME_PREFIXES + BUILT_IN (8 prefixes incl. B21-/B203-/B3S-), pinned by
+  `approvedPrinterLock.test.ts`. ⚠️ A locked row also blocks deleting its test report and its approving admin login
+  (both FKs ON DELETE SET NULL = an update). Proof `scripts/sql229-behaviour.mjs` (PGlite, 92).
+- **Admin → Printer testers → Printer list:** note · Built-in · 5 chips (`BUILT_IN_SHOWN` in printerTesters.ts, from
+  WHITELIST) · Locked — working (name · lang, "Shift X mm · Flip on/off · date", green Locked badge, no controls) ·
+  Testing (today's controls + "Lock — working na" with an in-panel question). Approve / Add back show
+  `rd_prt_overlap`. Admin texts English ×8. `rpc` in printerTesters.ts now also answers `code` for
+  prefix_overlaps_locked / printer_locked. Preview `?ptl=1&admin=1` (fakeSupabase: `{ __error }` RPC values).
+- Matched settings unchanged for the 11 prefixes + the 5 built-in: `approvedPrinterLock.match.test.ts`; the seller
+  read still selects `prefix,brand,model,lang,active,shift_mm,flip`. Pictures + measurements: `docs/design/printer-list-lock/`.
+- **Order:** apply sql/229 → merge (Vercel). Web before SQL = rows have no `locked` key → all show under Testing (today's panel).
