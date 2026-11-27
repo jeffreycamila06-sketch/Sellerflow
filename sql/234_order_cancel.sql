@@ -1,5 +1,6 @@
 -- 234 — CANCEL ORDER (Orders tab only) (Jeff, 2026-11-28).
--- NOT APPLIED by the repo — apply by hand (chat-Claude / Jeff). Rollback: sql/234_order_cancel_rollback.sql.
+-- APPLIED in production 2026-11-28 ~02:50 Taipei (both indexes built CONCURRENTLY right after, step 7).
+-- Rollback: sql/234_order_cancel_rollback.sql.
 -- Proof: scripts/sql234-behaviour.mjs (PGlite). Needs a Render deploy for the Messenger receipt half.
 -- APPLY THIS FILE BEFORE THE WEB MERGE (the app reads the new columns). The app also copes without it
 -- (a read / write that hits a missing column is repeated without it) — but the order is: SQL → Render → Vercel.
@@ -57,7 +58,7 @@ begin
   end loop;
 end $guard$;
 
--- ── 1) columns (nullable, no default → no rewrite of the tables) + two small indexes ─────────────────
+-- ── 1) columns (nullable, no default → no rewrite of the tables); the two indexes are made AFTER commit (step 7) ──
 alter table public.live_session_orders
   add column if not exists order_ref uuid,
   add column if not exists cancelled_at timestamptz,
@@ -66,8 +67,6 @@ alter table public.live_session_orders
 alter table public.orders
   add column if not exists order_ref uuid,
   add column if not exists cancelled_at timestamptz;
-create index if not exists idx_lso_user_order_ref on public.live_session_orders (user_id, order_ref) where order_ref is not null;
-create index if not exists idx_orders_user_order_ref on public.orders (user_id, order_ref) where order_ref is not null;
 
 -- ── 2) the two switches (never overwritten when they already exist) ──────────────────────────────────
 insert into public.app_settings (key, value) values ('order_ref_enabled', 'true')
@@ -328,3 +327,8 @@ begin
 end $after$;
 
 commit;
+
+-- ── 7) AFTER the commit: two small indexes, built without blocking new orders. Run each line ON ITS OWN
+-- (CONCURRENTLY cannot run inside a transaction; orders has ~630k rows). Safe to run again.
+-- create index concurrently if not exists idx_lso_user_order_ref on public.live_session_orders (user_id, order_ref) where order_ref is not null;
+-- create index concurrently if not exists idx_orders_user_order_ref on public.orders (user_id, order_ref) where order_ref is not null;

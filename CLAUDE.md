@@ -7225,7 +7225,7 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
 - **Order:** sql/233 → merge (Vercel) → Render deploy (quiet time). Before sql/233 the editor works but saves fail
   ("Couldn't save"); before the Render deploy Send all ignores saved edits (sends the orders' receipt).
 
-## 2026-11-28 — CANCEL ORDER (Orders tab only) (branch `claude/cancel-order`, NOT merged; sql/234 + sql/235 NOT applied; needs a Render deploy)
+## 2026-11-28 — CANCEL ORDER (Orders tab only) (merged to main; sql/234 APPLIED 2026-11-28 + both indexes; sql/235 NOT applied; server half needs a Render deploy)
 Jeff's decisions (2026-11-28): free order NOT given back · stock goes back (Auto mode orders) · allowed while the
 order is shown in the Orders tab · allowed after an invoice / receipt was sent (amber warning) · the same Live
 comment can be ordered again · a new column on the `orders` ledger is OK. Nothing in the Live tab.
@@ -7257,6 +7257,9 @@ comment can be ordered again · a new column on the `orders` ledger is OK. Nothi
   tag "New item · send again" can show after a line of an already-sent buyer is cancelled; another phone shows the
   order until it reloads. `approvedShift.bytes.test.ts` fails 5 tests on main too (clock/zone in the container).
 - **Guide:** orders-search section + 116b; **sql/235** = that one line (phrase swap; apply LAST, after the switch).
-- **Order:** sql/234 → Render deploy (quiet window, Business Pulse check) → merge (Vercel) → test login in
-  `feature_access_emails` ('order_cancel') → switch 'true' → sql/235.
+- **Order:** sql/234 (DONE) → merge (Vercel; Render deploys main) → Render deploy (quiet window, Business Pulse
+  check) → test (admins see ⋯ already) → switch 'true' → sql/235. Before the Render deploy, Send all / the
+  after-live receipt still include a cancelled Facebook order (only admins can cancel until the switch).
+  The two indexes are built CONCURRENTLY after the commit (sql/234 step 7) — never inside the transaction
+  (orders ≈ 630k rows).
 - Proof: `docs/design/cancel-order/` (pictures 360/390/412/1280 + dark, measured, 14/14 breaks, PGlite 67 + 6).
