@@ -28,7 +28,9 @@ added the usernames, drawn by pdf.js: `stamped/demo-*.png` (the demo file: 7 use
 order list) and `stamped/long-*.png` (a short and a 24-character username — the long one is made smaller to stay on one line).
 
 ## Proof
-- `proof/breaks.txt` — every rule broken on purpose once; the tests must go red (`proof/breaks.py`).
+- `proof/breaks-run1.txt` + `proof/breaks-run2.txt` — every rule broken on purpose once; the tests must go red
+  (`proof/breaks.py`, `python3 docs/design/waybill-username/proof/breaks.py [words]` runs only matching breaks).
+  32 of 33 caught; the 33rd cannot fail (JavaScript's trim() also removes the byte-order mark — see run 2).
 - Fence: `node scripts/waybill-fence.mjs --check` — every printing / sticker / receipt / Bluetooth file, mobile/, server/,
   server.js, chrome-extension/ are byte-identical to main (f8b90114).
 - SQL: `PGLITE_DIR=… node scripts/sql231-behaviour.mjs` (23 checks), `scripts/sql232-behaviour.mjs` (8 checks).
@@ -47,3 +49,7 @@ The stamped-waybill PNGs were drawn with pdf.js in a scratch folder (pdfjs-dist 
   barcode column starts are taken from the spec + the approved picture. If a real label differs, the app shows
   "Couldn't place the username on this waybill" for that page and prints it as it is (it never covers anything).
 - The laptop print window and the phone share sheet were not run on a real browser / phone.
+- Printer guardian (2026-11-27): no print path changed. Known on a laptop: with the auto-print (kiosk) Chrome,
+  Print goes silently to the default printer (usually the sticker printer) — the laptop screen says to use
+  Download PDF there and to print waybills after the live. Inside the phone / tablet app there is no Print
+  button (Download only).

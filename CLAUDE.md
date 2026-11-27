@@ -7123,8 +7123,10 @@ Design approved by Jeff (claude.ai/artifact/JFCUgRNggFrpmVUa1rQeuz). The seller 
   All / Needs you chips, rows: green @username chip — tap to change — or amber Pick buyer) → "Pick the buyer" sheet (fitting buyers
   first, then a search over all of today's + yesterday's buyers, "No match — leave blank"). Phone: Download PDF = `deliverXlsmMobile`
   (share starts INSIDE the tap; bytes pre-built 250 ms after every change). Laptop (≥ 900 px): upload left / table right, "Print N
-  waybills" (`adapters/waybillOut.printPdf`: hidden iframe → print window, fallback new tab) + "Download PDF". Back on phone results
-  → upload step.
+  waybills" (`adapters/waybillOut.printPdf`: hidden iframe → print window, fallback new tab; one frame at a time; a 3 s double-tap
+  guard) + "Download PDF" + a note (print after the live; on an auto-print / kiosk laptop Print goes SILENTLY to the default =
+  sticker printer → use Download PDF there). No Print button inside the phone / tablet app (Download only). Back on phone results
+  → upload step. Reading a big PDF pauses every 4 pages (a live on the same phone keeps flowing).
 - **Matching (`adapters/waybillMatch.ts`):** TikTok's mask keeps first char + last char + length; every non-`*` position must match,
   case-insensitive, same length; only `*` = never. Candidates = OWN `live_session_orders` rows, platform TikTok, `session_date` in
   [yesterday, today] (Taipei day), ONE paged read (`fetchAllPages`, never partial) when the screen opens + "Try again". Exactly one
@@ -7148,6 +7150,9 @@ Design approved by Jeff (claude.ai/artifact/JFCUgRNggFrpmVUa1rQeuz). The seller 
 - **Fence:** `scripts/waybill-fence.mjs` + `__tests__/waybillUsername.fence.test.ts` (runs on this branch or WAYBILL_GATE=1): every
   printing / sticker / receipt / Bluetooth file, mobile/, server/, server.js, chrome-extension/ byte-identical to f8b90114 (575 files).
   PRINTING_MAP P15 has one line for this path.
+- **Changed on purpose in older tests:** the feature-key list (latest file = sql/231), the switch list, and the admin's 7-11
+  "Shipping" tile (backButton.app, build16.shippingSoon, market.test) — it is inside the SHIPPING group's screen now.
+  Breaks: `docs/design/waybill-username/proof/` (32 of 33; the BOM one can't fail — trim() removes U+FEFF too).
 - **Tests:** waybillCsv / waybillMatch / waybillRows / waybillPdf / waybillGate (adapters), WaybillUsername (screen, real files, the
   phone share inside the tap, the shared PDF read back), waybillUsername.app (real app: off = main for PH/TW/none/VN, PH, TW soon,
   admin + the 7-11 row). Fixtures: `adapters/__tests__/fixtures/waybillFixture.ts` (A6 J&T-shaped PDF, Type0 Identity-H + ToUnicode
