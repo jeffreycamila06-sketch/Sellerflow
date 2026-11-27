@@ -294,9 +294,14 @@ const calls = (b: ReturnType<typeof bridge>) => Object.fromEntries(Object.entrie
   return a && typeof a.data === "string" ? { ...a, data: `len:${(a.data as string).length}` } : a ?? null;
 })]).filter(([, v]) => (v as unknown[]).length));
 describe("a non-tester: same screen + same bridge calls as main", () => {
-  // the test sticker prints the day and time → pin the clock (a fingerprint must never depend on the day)
-  beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(Date.UTC(2026, 10, 27, 6, 5))); });
-  afterAll(() => { vi.useRealTimers(); });
+  // the D520 test sticker prints the day and time in the machine's local time → pin the clock AND the time zone
+  // (a fingerprint must never depend on the day or on where the tests run: Taipei / Manila / UTC CI)
+  let tz: string | undefined;
+  beforeAll(() => {
+    tz = process.env.TZ; process.env.TZ = "UTC"; // Node re-reads TZ when it changes
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(Date.UTC(2026, 10, 27, 6, 5)));
+  });
+  afterAll(() => { vi.useRealTimers(); if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; });
   for (const name of [AE241.name, PT210.name, D520.name, Y41.name, XP420.name]) {
     it(`scan + tap ${name}`, async () => {
       models.setApprovedPrinters(APPROVED);

@@ -7090,6 +7090,7 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   Use after No, Use before a report, test print layout, save answer). Jeff to test on paper: a tester on an approved printer
   with flip / shift (Clabel CT221B) → test print → Use → a real 1-Click, same sticker; the same on Android classic Bluetooth.
 - **Not a tester = same screen + same bridge calls as 5e5689b0** (`screens/__tests__/printerTesterAllModels.test.tsx`,
-  fixture `fixtures/printerSettings.nonTester.main.json` taken on a 5e5689b0 worktree, clock pinned).
+  fixture `fixtures/printerSettings.nonTester.main.json` taken on a 5e5689b0 worktree; clock AND time zone pinned —
+  the D520 test sticker prints local time, so an unpinned TZ failed on a Taipei / Manila machine: 3700 vs 3728 bytes).
 - Preview `?prt=1` (fakeSupabase: tester + test_printers keys, 2 approved rows, photo upload ok). Pictures + measured
   widths: `docs/design/tester-all-models/` (`shoot.cjs`). No help-guide change (testers only).
