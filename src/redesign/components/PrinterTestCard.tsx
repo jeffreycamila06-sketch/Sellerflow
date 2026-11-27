@@ -58,8 +58,7 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
   async function use() {
     if (!onUse || !cleanLang || using) return;
     setUsing(true); setUseFailed(false);
-    let ok = false;
-    try { ok = await onUse(cleanLang); } catch { ok = false; }
+    const ok = await Promise.resolve(onUse(cleanLang)).catch(() => false);
     setUsing(false);
     if (!ok) setUseFailed(true);
   }
