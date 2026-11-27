@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   adminAddTester, adminApprovePrinter, adminListApproved, adminListReports, adminListTesters, adminPhotoUrl,
-  BUILT_IN_SHOWN, adminLockApproved, adminRemoveTester, adminSetApprovedActive, adminSetApprovedLayout, defaultPrefix, parseShiftMm, LANG_LABEL,
+  BUILT_IN_SHOWN, adminLockApproved, coveringPrinter, adminRemoveTester, adminSetApprovedActive, adminSetApprovedLayout, defaultPrefix, parseShiftMm, LANG_LABEL,
   type ApprovedRow, type ReportRow, type TesterRow,
 } from "../adapters/printerTesters";
 import { FB_GREEN } from "../adapters/buttonFeedback";
@@ -87,19 +87,22 @@ export default function PrinterTestersPanel() {
   const [confirmLock, setConfirmLock] = useState<string | null>(null);
 
   const apply = useCallback((r: Loaded) => {
-    setErr(!r.ok); setTesters(r.testers); setReports(r.reports); setApproved(r.approved);
+    if (!r.ok) setErr(true); // the red line stays until the next action (each action clears it first)
+    setTesters(r.testers); setReports(r.reports); setApproved(r.approved);
   }, []);
   const load = useCallback(async () => { apply(await fetchAll()); }, [apply]);
   useEffect(() => { let live = true; void fetchAll().then((r) => { if (live) apply(r); }); return () => { live = false; }; }, [apply]);
-  const run = async (fn: () => Promise<{ ok: boolean }>) => { setBusy(true); const r = await fn(); setBusy(false); if (!r.ok) setErr(true); await load(); return r.ok; };
+  const run = async (fn: () => Promise<{ ok: boolean }>) => { setErr(false); setBusy(true); const r = await fn(); setBusy(false); if (!r.ok) setErr(true); await load(); return r.ok; };
 
+  // starts with a locked / built-in name → "already covered by …"; else the general "too close" sentence
+  const overlapText = (prefix: string, exceptId?: string) => { const by = coveringPrinter(prefix, approved, exceptId); return by ? tpl(t.rd_prt_covered, { name: by }) : t.rd_prt_overlap; };
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   return (
     <div data-testid="pt-panel">
       <div style={{ display: "flex", gap: 6, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: 4, marginBottom: 12 }}>
-        <button data-testid="pt-tab-testers" style={tabBtn(tab === "testers")} onClick={() => { setTab("testers"); void load(); }}>{t.rd_prt_tab_testers}</button>
-        <button data-testid="pt-tab-reports" style={tabBtn(tab === "reports")} onClick={() => { setTab("reports"); void load(); }}>{t.rd_prt_tab_reports}</button>
-        <button data-testid="pt-tab-approved" style={tabBtn(tab === "approved")} onClick={() => { setTab("approved"); void load(); }}>{t.rd_prt_tab_approved}</button>
+        <button data-testid="pt-tab-testers" style={tabBtn(tab === "testers")} onClick={() => { setErr(false); setTab("testers"); void load(); }}>{t.rd_prt_tab_testers}</button>
+        <button data-testid="pt-tab-reports" style={tabBtn(tab === "reports")} onClick={() => { setErr(false); setTab("reports"); void load(); }}>{t.rd_prt_tab_reports}</button>
+        <button data-testid="pt-tab-approved" style={tabBtn(tab === "approved")} onClick={() => { setErr(false); setTab("approved"); void load(); }}>{t.rd_prt_tab_approved}</button>
       </div>
       {err && <div data-testid="pt-error" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginBottom: 10 }}>{t.rd_prt_load_failed}</div>}
 
@@ -139,13 +142,13 @@ export default function PrinterTestersPanel() {
               {approving?.report.id === r.id && (
                 <div data-testid="pt-approve-form" style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={small}>{t.rd_prt_prefix}<input data-testid="pt-prefix" value={approving.prefix} onChange={(e) => { setApproving({ ...approving, prefix: e.target.value }); setApproveOverlap(false); }} style={input} /></label>
-                  {approveOverlap && <div data-testid="pt-approve-overlap" role="alert" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{t.rd_prt_overlap}</div>}
+                  {approveOverlap && <div data-testid="pt-approve-overlap" role="alert" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{overlapText(approving.prefix)}</div>}
                   <label style={small}>{t.rd_prt_brand}<input data-testid="pt-brand" value={approving.brand} onChange={(e) => setApproving({ ...approving, brand: e.target.value })} style={input} /></label>
                   <label style={small}>{t.rd_prt_model}<input data-testid="pt-model" value={approving.model} onChange={(e) => setApproving({ ...approving, model: e.target.value })} style={input} /></label>
                   <div style={small}>{tpl(t.rd_prt_approve_lang, { lang: LANG_LABEL[r.lang] || r.lang })}</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button data-testid="pt-approve-save" disabled={busy || approving.prefix.trim().length < 2} onClick={() => void (async () => {
-                      setBusy(true);
+                      setErr(false); setBusy(true);
                       const res = await adminApprovePrinter({ reportId: r.id, prefix: approving.prefix, brand: approving.brand, model: approving.model || approving.prefix, lang: r.lang });
                       setBusy(false);
                       if (res.ok) { setApproving(null); setApproveOverlap(false); } else if (res.code === "prefix_overlaps_locked") setApproveOverlap(true); else setErr(true);
@@ -198,14 +201,14 @@ export default function PrinterTestersPanel() {
                   <div style={small}>{a.prefix}… · {day(a.approved_at)}{a.active ? "" : ` · ${t.rd_prt_removed}`}</div>
                 </div>
                 <button data-testid="pt-approved-toggle" disabled={busy} onClick={() => void (async () => {
-                  setRowOverlap(null); setBusy(true);
+                  setRowOverlap(null); setErr(false); setBusy(true);
                   const res = await adminSetApprovedActive(a.id, !a.active);
                   setBusy(false);
                   if (!res.ok) { if (res.code === "prefix_overlaps_locked") setRowOverlap(a.id); else setErr(true); }
                   await load();
                 })()} style={btn}>{a.active ? t.rd_prt_remove : t.rd_prt_add_back}</button>
               </div>
-              {rowOverlap === a.id && <div data-testid="pt-row-overlap" role="alert" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginTop: 6 }}>{t.rd_prt_overlap}</div>}
+              {rowOverlap === a.id && <div data-testid="pt-row-overlap" role="alert" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginTop: 6 }}>{overlapText(a.prefix, a.id)}</div>}
               <LayoutBox key={`${a.id}:${String(a.shift_mm ?? 0)}:${a.flip === true}`} saved={parseShiftMm(a.shift_mm)} savedFlip={a.flip === true} busy={busy} onSave={(mm, flip) => run(() => adminSetApprovedLayout(a.id, mm, flip))} />
               {a.active && confirmLock !== a.id && (
                 <button data-testid="pt-lock" disabled={busy} onClick={() => setConfirmLock(a.id)} style={{ ...btn, marginTop: 8, minHeight: 44, border: "none", background: lockFill, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LockIcon />{t.rd_prt_lock_btn}</button>
