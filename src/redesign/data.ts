@@ -56,6 +56,8 @@ export interface Order {
   // for Reprint resolution; date = Taipei session_date for the row date chip.
   orderNum?: number; date?: string;
   rowId?: number; // past-session view only: the live_session_orders row id (Reprint lookup)
+  ref?: string;        // Cancel order (sql/234): the order's tag — only tagged orders can be cancelled
+  cancelled?: boolean; // Cancel order: shown struck through, left out of every total
 }
 export interface Miner { name: string; handle: string; orders: number; spent: number; platform: string; }
 

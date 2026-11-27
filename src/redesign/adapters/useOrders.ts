@@ -21,6 +21,7 @@ import type { Comment as ProdComment, Buyer, LiveOrder } from "../../lib/orderTy
 import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase, type LiveSessionOrderInput } from "../../db";
 import { isCapError } from "./useFreeCap";
 import { decrementStockAndTouch } from "./productsDb";
+import { newOrderRef } from "./orderCancel";
 import { log } from "../../lib/log";
 
 const msgIdOf = (c: ProdComment): string => String((c as ProdComment & { msgId?: string }).msgId || "").trim();
@@ -62,6 +63,7 @@ export function orderDbPayload(c: ProdComment, order: LiveOrder) {
     total_amount: order.total,
     status: "Pending",
     platform: order.platform, // sql/96 (db.ts sends it only when it is a known platform)
+    ...(order.ref ? { order_ref: order.ref } : {}), // sql/234 Cancel order — absent = byte-identical
   };
 }
 
@@ -92,6 +94,7 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     // + the live video. Facebook only; omitted (→ NULL) for every other platform and
     // when the comment carries no page id (never a half-filled object).
     platform_meta: fbPlatformMeta(c) ?? shopeePlatformMeta(c),
+    ...(order.ref ? { order_ref: order.ref } : {}), // sql/234 Cancel order — absent = byte-identical
   } satisfies LiveSessionOrderInput;
 }
 
@@ -172,6 +175,8 @@ export interface UseOrdersDeps {
   // Absent (fix off) → no gate, today's behaviour.
   canOrder?: () => boolean;
   onOrderBlocked?: () => void;
+  // sql/234 Cancel order: true → every new order gets a tag (order_ref). Absent/false → no tag.
+  tagOrders?: () => boolean;
 }
 
 // Auto Mode (Step 4): an order created from a code carries its product's local_id so
@@ -190,9 +195,11 @@ export interface CreateOrderOpts { productLocalId?: number; autoCode?: string; i
 export interface UseOrders {
   // returns null when the free-tier soft block prevented creation.
   createOrder: (c: ProdComment, price: number, opts?: CreateOrderOpts) => LiveOrder | null;
+  releaseMsgId: (msgId?: string | null) => void; // Cancel order: the comment may be ordered again
+  holdMsgId: (msgId?: string | null) => void;    // Undo cancel: block it again
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered, canOrder, onOrderBlocked }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered, canOrder, onOrderBlocked, tagOrders }: UseOrdersDeps): UseOrders {
   // FAMILY A (#7): synchronous same-tick dedup by stable TikTok msgId. Two relays
   // of the SAME comment carry DIFFERENT commentKeys (server-stamped timestamp),
   // so the printed/autoProcessed guards (keyed on commentKey) can't stop the
@@ -227,6 +234,9 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     // price string. singleOrderBuyer projects the SAME order object → the printed
     // slip + the persisted row + reprint all carry it. Manual passes no override.
     if (opts?.itemOverride) order.item = opts.itemOverride;
+    // 1a) Cancel order (sql/234): one tag for this tap, written on BOTH rows (session + ledger) so the
+    //     Orders tab can cancel exactly this order later. Off → no tag (today's writes byte for byte).
+    if (tagOrders?.()) order.ref = newOrderRef();
     // 1b) mark this msgId processed SYNCHRONOUSLY, before any write, so a same-tick
     //     second relay is blocked at step 0 above.
     if (msgId) processedMsgIdsRef.current.add(msgId);
@@ -327,7 +337,12 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     //      write's .finally() above (NEAR-CAP TIMING FIX), not synchronously here, so
     //      the refetch reads the incremented count. Nothing to do on the sync path.
     return order;
-  }, [getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered, canOrder, onOrderBlocked]);
+  }, [getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered, canOrder, onOrderBlocked, tagOrders]);
 
-  return { createOrder };
+  // Cancel order (decision 5): after an order is cancelled its comment may be ordered again — forget
+  // its msgId here (the same-tick dedup set). Undo puts it back. Nothing else uses this set.
+  const releaseMsgId = useCallback((msgId?: string | null) => { const m = String(msgId || "").trim(); if (m) processedMsgIdsRef.current.delete(m); }, []);
+  const holdMsgId = useCallback((msgId?: string | null) => { const m = String(msgId || "").trim(); if (m) processedMsgIdsRef.current.add(m); }, []);
+
+  return { createOrder, releaseMsgId, holdMsgId };
 }

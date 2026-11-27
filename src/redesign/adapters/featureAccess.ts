@@ -29,6 +29,7 @@ export const FEATURE_KEYS = [
   "shopee_public", // Shopee Live without a beta row, for this account before shopee_public_enabled (sql/206)
   "invoicing", // Settings → Invoicing for this account before invoicing_enabled (sql/220)
   "waybill_username", // Settings → Shipping → Waybill username for this account before waybill_username_enabled (sql/231)
+  "order_cancel", // Orders tab → Cancel order for this account before order_cancel_enabled (sql/234)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

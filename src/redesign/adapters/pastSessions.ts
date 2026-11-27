@@ -17,6 +17,7 @@ import { liveOrdersToRedesign } from "./useReadData";
 import type { Order } from "../data";
 import type { Buyer } from "../../lib/orderTypes";
 import { loadLiveSessionBySessionId } from "./useSessionWindow";
+import { visibleSession } from "./orderCancel";
 import { log } from "../../lib/log";
 
 /** Who sees the past-session picker: admin, the "tiktok_send" preview list, or anyone while the
@@ -123,7 +124,9 @@ export function pastSessionFromRows(rows: PastRow[]): PastSessionData {
   const orders = listed.length === n
     ? listed.map((o, k) => { const id = rows[n - 1 - k].id; return typeof id === "number" ? { ...o, rowId: id } : o; })
     : listed; // never expected; without rowId the row simply has no Reprint
-  return { buyers: rebuilt.buyers, orders, rows: byId };
+  // Cancel order (sql/234): the buyers (receipts, Invoicing, Send to TikTok) leave cancelled orders
+  // out; the order list keeps them (struck through in the Orders tab). Same object when none.
+  return { buyers: visibleSession(rebuilt).buyers, orders, rows: byId };
 }
 export async function loadPastSession(sessionId: string): Promise<PastSessionData | null> {
   const rows = await loadLiveSessionBySessionId(sessionId, true, true);
@@ -205,9 +208,19 @@ export function usePastSessions(enabled: boolean, currentId: string | null, plat
     if (d === null) setBuyersState("error"); else { setData(d); setBuyersState("ready"); }
   }, []);
 
+  // Cancel order: read the picked session again WITHOUT clearing the screen (buyers / receipts then
+  // leave the cancelled order out). A failed read keeps what is shown.
+  const reload = useCallback(async () => {
+    const id = pickedRef.current;
+    if (!id) return;
+    const d = await loadPastSession(id);
+    if (pickedRef.current !== id || d === null) return;
+    setData(d);
+  }, []);
+
   // Reprint source in a past session: ONLY the stored row with that id (its own buyer # and
   // item) — never anything looked up from the live session or by time.
   const rowFor = useCallback((rowId: number | undefined): PastRow | null => (rowId == null ? null : data.rows.get(rowId) ?? null), [data]);
 
-  return { list, listState, ensureList, selected: enabled ? selected : null, buyers: data.buyers, orders: data.orders, rowFor, buyersState, pick };
+  return { list, listState, ensureList, selected: enabled ? selected : null, buyers: data.buyers, orders: data.orders, rowFor, buyersState, pick, reload };
 }

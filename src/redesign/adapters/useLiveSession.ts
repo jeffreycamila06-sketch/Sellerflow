@@ -12,13 +12,14 @@
 // only hydrates when the redesign's own session state is EMPTY, so it can never
 // clobber or duplicate anything already present (matters once 5e adds writes).
 // NO writes here — load only.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured } from "../../supabase";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
 import { chooseSessionLoad, loadLiveSessionWindow, loadLiveSessionDay, loadLiveSessionBySessionId, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
 import type { ReprintRow } from "./reprint";
 import type { QueuedRow } from "./outbox";
+import { markCancelled, visibleSession } from "./orderCancel";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
 // "live" = today's session hydrated · "empty" = no session rows today.
@@ -38,7 +39,14 @@ export function sessionSummary(s: RebuiltSession): SessionSummary {
 }
 
 export interface UseLiveSession {
+  // Cancel order (sql/234): `session` is what EVERY reader sees — cancelled orders left out (identical
+  // object to before when nothing is cancelled). `fullSession` keeps them (the Orders tab shows them
+  // struck through; getBuyers() numbers from it so a cancelled buyer's number is never re-used).
   session: RebuiltSession;
+  fullSession: RebuiltSession;
+  // Mark one order (by its tag) cancelled / not cancelled on this device after the database said so.
+  // Returns the comment ids that were taken off / put back on the "already ordered" check.
+  setOrderCancelled: (ref: string, cancelled: boolean) => string[];
   state: SessionState;
   // Batch D (#8): true when the last load FAILED (network/db error) — previously a
   // failed load was silently indistinguishable from "not wired" (state "idle"),
@@ -393,6 +401,38 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     if (shouldResetOnDayChange(prev, dayId, winStart, winDays)) reset();
   }, [dayId, winStart, winDays, winSessionId, reset, unknown]);
 
+  // Cancel order: the session every reader sees (same object when nothing is cancelled).
+  const visible = useMemo(() => visibleSession(session), [session]);
+  // The "already ordered" entries a cancel took off, per tag, so Undo can put them back.
+  const parkedRef = useRef<Map<string, [string, ReprintRow | null][]>>(new Map());
+  const orderedNowRef = useRef(orderedMsgIds);
+  useEffect(() => { orderedNowRef.current = orderedMsgIds; }, [orderedMsgIds]);
+  const setOrderCancelled = useCallback((ref: string, cancelled: boolean): string[] => {
+    if (!ref) return [];
+    const order = sessionRef.current.orders.find((o) => o.ref === ref);
+    const next = markCancelled(sessionRef.current, ref, cancelled);
+    if (next !== sessionRef.current) { sessionRef.current = next; setSession(() => next); }
+    if (cancelled) {
+      // the order's comment(s): rows carry the tag; this device's own new orders are matched by
+      // buyer # + time + item (their snapshot has no tag).
+      const taken: [string, ReprintRow | null][] = [];
+      for (const [m, row] of orderedNowRef.current) {
+        const r = row as (ReprintRow & { order_ref?: string | null }) | null;
+        const sameTag = !!r?.order_ref && r.order_ref === ref;
+        const sameOrder = !!order && !!r && !r.order_ref && Number(r.buyer_number) === order.bNum && String(r.product) === order.item
+          && !!r.created_at && new Date(r.created_at).getTime() === order.orderNum;
+        if (sameTag || sameOrder) taken.push([m, row]);
+      }
+      if (taken.length) setOrderedMsgIds((prev) => { const out = new Map(prev); for (const [m] of taken) out.delete(m); return out; });
+      if (taken.length) parkedRef.current.set(ref, taken);
+      return taken.map(([m]) => m);
+    }
+    const back = parkedRef.current.get(ref) || [];
+    parkedRef.current.delete(ref);
+    if (back.length) setOrderedMsgIds((prev) => { const out = new Map(prev); for (const [m, row] of back) if (!out.has(m)) out.set(m, row); return out; });
+    return back.map(([m]) => m);
+  }, []);
+
   const pauseReason = pauseReasonOf(loadStatus, winReady, win?.sessionKnown, loadKind);
-  return { session, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId, loadStatus, canOrder, retry, pauseReason, resync };
+  return { session: visible, fullSession: session, setOrderCancelled, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId, loadStatus, canOrder, retry, pauseReason, resync };
 }

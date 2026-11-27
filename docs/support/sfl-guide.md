@@ -398,8 +398,8 @@ A reprint prints a copy of the order's sticker. **No new order is created.**
 If you see the **Not printed** tag or "Some labels didn't print — tap Reprint on those rows", fix the printer first (see "Printer not printing"), then tap **Reprint** on those rows.
 
 ## orders-search — Orders screen and search
-Last checked: 2026-11-22
-Keywords: orders, order list, search, find order, buyer, history, last 7 days, hanapin order, listahan, 订单, 訂單, 搜索, 查詢
+Last checked: 2026-11-28
+Keywords: orders, order list, search, find order, buyer, history, last 7 days, cancel order, wrong order, undo, hanapin order, listahan, i-cancel, 订单, 訂單, 搜索, 查詢, 取消订单, 取消訂單
 
 Open **Orders** in the bottom bar.
 
@@ -409,6 +409,7 @@ Open **Orders** in the bottom bar.
 - Type only a **buyer number** (for example 3) to see that buyer's card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
 - In the latest phone app, **Scan** (next to the search box) reads the QR on a buyer's sticker with the camera and opens that buyer's card for the session you have open: all their orders and the total. "No orders for @username in this session" means that buyer has no orders there. Type in the search box to search as usual again.
 - Each order has **↻ Reprint**. Tapping an order opens **Print** (**🖨 Print** / **🖨 Print all**).
+- **Cancel an order** — tap **⋯** on the order, then **Cancel order**. It shows **Cancelled** and is left out of the totals, Sales, the buyer's card, Send to TikTok and Invoicing. The buyer keeps their number. The free order it used is not given back. Pieces from Auto mode go back to the product's stock. The same comment can be ordered again. Tap **Undo** to bring it back. If you already sent this buyer an invoice or receipt, the app reminds you to tell them. Orders from before Cancel was added have no **⋯**.
 - An order made with the **Free** button shows **Free** instead of an amount, here and in the export. It counts as an order and adds nothing to the total. See "Choose price before print".
 - **⬇ Export** downloads Excel or PDF of what you see (also a past session). In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
 - The **Miners** tab shows your top buyers.

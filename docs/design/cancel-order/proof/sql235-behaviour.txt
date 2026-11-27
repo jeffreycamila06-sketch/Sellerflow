@@ -1,0 +1,6 @@
+ok   line added under Reprint
+ok   keywords added
+ok   twice = same
+ok   same words as the guide file
+ok   other rows untouched
+ok   rollback = before
