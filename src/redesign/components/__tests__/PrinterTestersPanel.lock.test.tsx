@@ -142,42 +142,7 @@ describe("overlap with a locked printer", () => {
     await openList();
     const removed = screen.getAllByTestId("pt-approved").find((r) => r.textContent!.includes("Removed"))!;
     fireEvent.click(within(removed).getByTestId("pt-approved-toggle"));
-    // "XP-470B" starts with the locked "XP-470B" row → that printer already covers it (Part 2 small fix)
-    await waitFor(() => expect(screen.getByTestId("pt-row-overlap").textContent).toBe("This printer is already covered by the locked printer “Other XP-470B”. No need to approve it."));
-  });
-  for (const [typed, by] of [["AE241-BT_C11D", "Aiyin AE241-BT_B57A-LE"], ["ct221b-D4F8", "Clabel CT221B"], ["XP-420B-ZZ", "Xprinter XP-420B"], ["B1 Pro-7", "Niimbot B1 Pro"]]) {
-    it(`approve "${typed}": starts with a locked / built-in name → "already covered by “${by}”"`, async () => {
-      answers.admin_approve_printer = { error: { message: "prefix_overlaps_locked" } };
-      render(<TProvider lang="en"><PrinterTestersPanel /></TProvider>);
-      fireEvent.click(screen.getByTestId("pt-tab-reports"));
-      fireEvent.click(await screen.findByTestId("pt-approve"));
-      fireEvent.change(screen.getByTestId("pt-prefix"), { target: { value: typed } });
-      fireEvent.click(screen.getByTestId("pt-approve-save"));
-      expect((await screen.findByTestId("pt-approve-overlap")).textContent).toBe(`This printer is already covered by the locked printer “${by}”. No need to approve it.`);
-    });
-  }
-  it("a failed read → the red line; the next action (an add that works) clears it", async () => {
-    answers.admin_printer_testers = { error: { message: "boom" } };
-    render(<TProvider lang="en"><PrinterTestersPanel /></TProvider>);
-    await screen.findByTestId("pt-error");
-    delete answers.admin_printer_testers;
-    fireEvent.change(screen.getByTestId("pt-email"), { target: { value: "new@x.com" } });
-    // a successful add → the error line is cleared by the action, the reload succeeds, no line
-    answers.admin_printer_tester_add = { data: true };
-    fireEvent.click(screen.getByTestId("pt-add"));
-    await waitFor(() => expect(screen.queryByTestId("pt-error")).toBeNull());
-  });
-  it("an action that fails: the red line stays after the list is read again (until the next action)", async () => {
-    answers.admin_printer_tester_add = { error: { message: "boom" } };
-    render(<TProvider lang="en"><PrinterTestersPanel /></TProvider>);
-    fireEvent.change(await screen.findByTestId("pt-email"), { target: { value: "new@x.com" } });
-    const before = calls("admin_printer_testers").length;
-    fireEvent.click(screen.getByTestId("pt-add"));
-    await waitFor(() => expect(calls("admin_printer_testers").length).toBeGreaterThan(before)); // the re-read after the action
-    await new Promise((r) => setTimeout(r, 20));
-    expect(screen.getByTestId("pt-error")).toBeTruthy();                                        // still shown
-    fireEvent.click(screen.getByTestId("pt-tab-reports"));                                       // the next action
-    await waitFor(() => expect(screen.queryByTestId("pt-error")).toBeNull());
+    await waitFor(() => expect(screen.getByTestId("pt-row-overlap").textContent).toBe("This name is too close to a locked printer. Use a longer name."));
   });
   it("adminRpcCode reads the database word out of the error message", () => {
     expect(adminRpcCode("prefix_overlaps_locked")).toBe("prefix_overlaps_locked");

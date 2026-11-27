@@ -49,7 +49,6 @@ export function checkTsplJob(b: Uint8Array, wMm: number, hMm: number): string[] 
   if (broken) bad.push("a BITMAP band runs past the end of the job");
   const count = (re: RegExp) => cmds.filter((c) => re.test(c)).length;
   if (count(/^SIZE /) !== 1 || !cmds.some((c) => c.replace(/\s+/g, "") === `SIZE${wMm}mm,${hMm}mm`)) bad.push(`SIZE is not exactly the ${wMm}×${hMm} mm label`);
-  if (count(/^(GAP|BLINE) /) !== 1) bad.push("not exactly one GAP / BLINE line"); // printer tuning (sql/230) may change it, never add a second
   if (count(/^CLS$/) !== 1) bad.push("not exactly one CLS");
   if (count(/^PRINT /) !== 1 || !/^PRINT 1(,1)?$/.test(cmds[cmds.length - 1] ?? "")) bad.push("not exactly one PRINT 1, as the last command");
   if (cmds.some((c) => FEEDS.test(c))) bad.push("a feed / re-sync command");

@@ -13,7 +13,6 @@ import { buildGenericStickerBytes, buildNativeStickerPayload, onPrinterLane, typ
 import { bytesToBase64 } from "./stickerRaster";
 import { setApprovedPrinters, WHITELIST, type ApprovedPrinter, type PrinterLang } from "./printerModels";
 import { chooseEncoding, decodeUpright } from "./productImages";
-import { bridgeBuildNumber } from "./nativeVersion";
 
 export const PRINTER_TEST_BUCKET = "printer-test-photos";
 export const PRINTER_TEST_PHOTO_MAX_BYTES = 2 * 1024 * 1024; // = the bucket's file_size_limit (sql/160)
@@ -137,7 +136,6 @@ export async function resizeTestPhoto(file: Blob): Promise<Blob | null> {
 export interface PrinterTestReportInput {
   printer: BluetoothPrinterDevice; lang: PrinterLang; stickerSize: string;
   send: TesterSendResult; clean: boolean; photo: Blob | null;
-  tuningVersion?: number | null; // Printer setup help (sql/230): the seller's tuning version the test sticker printed with
 }
 export type SubmitResult = { ok: true } | { ok: false; reason: "photo_required" | "no_session" | "upload_failed" | "save_failed" };
 // Photo first (own folder in the private bucket), then the row. A clean report without a photo is refused here AND by the table.
@@ -158,12 +156,9 @@ export async function submitPrinterTestReport(r: PrinterTestReportInput): Promis
   }
   try {
     const { error } = await supabase.from("printer_test_reports").insert({
-      user_id: uid, email, printer_name: String(r.printer.name || "").slice(0, 120),
-      // a Printer setup help report (tuningVersion present) also says the app build, when the app tells it
-      ble_facts: "tuningVersion" in r ? { ...bleFactsOf(r.printer), app_build: bridgeBuildNumber() } : bleFactsOf(r.printer),
+      user_id: uid, email, printer_name: String(r.printer.name || "").slice(0, 120), ble_facts: bleFactsOf(r.printer),
       lang: r.lang, sticker_size: String(r.stickerSize || "").slice(0, 40), send_ok: r.send.ok, send_code: r.send.code.slice(0, 60) || null,
       clean: r.clean, photo_path: photoPath,
-      ...(typeof r.tuningVersion === "number" && Number.isInteger(r.tuningVersion) && r.tuningVersion >= 1 ? { tuning_version: r.tuningVersion } : {}),
     });
     return error ? { ok: false, reason: "save_failed" } : { ok: true };
   } catch { return { ok: false, reason: "save_failed" }; }
@@ -207,18 +202,4 @@ export const adminLockApproved = (id: string) => rpc<boolean>("admin_lock_approv
 export async function adminPhotoUrl(path: string): Promise<string | null> {
   if (!path || !isSupabaseConfigured || !supabase) return null;
   try { const { data, error } = await supabase.storage.from(PRINTER_TEST_BUCKET).createSignedUrl(path, 600); return error ? null : data?.signedUrl ?? null; } catch { return null; }
-}
-
-// The approve / Add back refusal (sql/229 prefix_overlaps_locked): when the new name STARTS WITH a locked
-// approved printer's name or a built-in printer's name, that printer already covers it (its settings print
-// this one) → that printer's name, longest match first. null = the names only overlap the other way round.
-export function coveringPrinter(prefix: string, approved: readonly ApprovedRow[] | null, exceptId?: string): string | null {
-  const p = String(prefix || "").trim().toUpperCase();
-  if (!p) return null;
-  const taken: { k: string; name: string }[] = [
-    ...(approved || []).filter((a) => a.active && a.locked === true && a.id !== exceptId).map((a) => ({ k: String(a.prefix).trim().toUpperCase(), name: [a.brand, a.model].filter(Boolean).join(" ") || a.prefix })),
-    ...WHITELIST.map((w) => ({ k: w.prefix.toUpperCase(), name: `${w.brand} ${w.model}` })),
-  ].filter((x) => x.k);
-  const hit = taken.filter((x) => p.startsWith(x.k)).sort((a, b) => b.k.length - a.k.length)[0];
-  return hit ? hit.name : null;
 }
