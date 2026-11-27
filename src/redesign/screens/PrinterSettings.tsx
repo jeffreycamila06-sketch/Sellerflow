@@ -275,11 +275,13 @@ export default function PrinterSettings({
   // clean (a listed printer keeps its locked shift / flip — printing reads those by name).
   async function adoptTestedPrinter(p: BluetoothPrinterDevice, lang: PrinterLang) {
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang });
+    if (!r?.ok) return false; // not saved: the card stays and says so
     onPrinterSaved?.();
-    setTestPick(null); setPick(p); setTestPrinted(true);
+    setTestPick(null); setPick(p); setTestPrinted(true); // the test sticker the tester just judged clean
     setBtSaved(r?.savedPrinter || p);
     setBtPrinters([]); setBtScanned(false);
     setStage("saved");
+    return true;
   }
   const printerRow = (p: BluetoothPrinterDevice) => {
     const info = knownPrinterInfo(p);

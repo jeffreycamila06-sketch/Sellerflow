@@ -11,7 +11,7 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { btCallOutcome, buildTestBuyerV2, type BluetoothPrinterDevice } from "./printerBridge";
 import { buildGenericStickerBytes, buildNativeStickerPayload, onPrinterLane, type Settings } from "./printing";
 import { bytesToBase64 } from "./stickerRaster";
-import { setApprovedPrinters, WHITELIST, type ApprovedPrinter, type PrinterLang } from "./printerModels";
+import { approvedLayoutFor, knownTsplJob, setApprovedPrinters, WHITELIST, type ApprovedPrinter, type PrinterLang } from "./printerModels";
 import { chooseEncoding, decodeUpright } from "./productImages";
 
 export const PRINTER_TEST_BUCKET = "printer-test-photos";
@@ -101,7 +101,9 @@ export async function testPrintInLang(p: BluetoothPrinterDevice, lang: PrinterLa
   return onPrinterLane(async () => {
     try {
       const payload = buildNativeStickerPayload(buildTestBuyerV2(), cur || "NT$", storeName || "SellerFlowLive", settings);
-      const bytes = await buildGenericStickerBytes(lang, payload);
+      // the same density / flip / shift the printer will get once saved (an approved row's, by name) — so the tester
+      // judges what will really print; an unlisted printer has none = the plain sticker as before
+      const bytes = await buildGenericStickerBytes(lang, payload, undefined, false, knownTsplJob(p.name), approvedLayoutFor(p.name));
       const r = await btCallOutcome("testGenericPrinter", { address: p.address, name: p.name, transport: p.transport === "spp" ? "spp" : "ble", data: bytesToBase64(bytes) });
       return { ok: r.ok, code: r.ok ? "" : (r.code || "BT_PRINT_FAILED") };
     } catch { return { ok: false, code: "BUILD_FAILED" }; }

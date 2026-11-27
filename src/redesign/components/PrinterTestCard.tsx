@@ -25,7 +25,7 @@ const DEFAULT_DEPS: PrinterTestDeps = { testPrint: testPrintInLang, resize: resi
 
 export default function PrinterTestCard({ printer, settings, cur, storeName, stickerSize, onClose, onUse, deps = DEFAULT_DEPS }: {
   printer: BluetoothPrinterDevice; settings?: Settings; cur: string; storeName: string; stickerSize: string;
-  onClose: () => void; onUse?: (lang: PrinterLang) => Promise<void> | void; deps?: PrinterTestDeps;
+  onClose: () => void; onUse?: (lang: PrinterLang) => Promise<boolean> | boolean; // false = not saved deps?: PrinterTestDeps;
 }) {
   const t = useT();
   const [lang, setLang] = useState<PrinterLang | null>(null);
@@ -38,6 +38,7 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [cleanLang, setCleanLang] = useState<PrinterLang | null>(null); // the language of the clean report just sent
   const [using, setUsing] = useState(false);
+  const [useFailed, setUseFailed] = useState(false);
 
   async function doTest() {
     if (!lang || !settings || sending) return;
@@ -55,8 +56,11 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
   }
   async function use() {
     if (!onUse || !cleanLang || using) return;
-    setUsing(true);
-    try { await onUse(cleanLang); } finally { setUsing(false); }
+    setUsing(true); setUseFailed(false);
+    let ok = false;
+    try { ok = await onUse(cleanLang); } catch { ok = false; }
+    setUsing(false);
+    if (!ok) setUseFailed(true);
   }
   async function onPhoto(f: File | undefined) {
     setPhotoErr(false); setPhoto(null);
@@ -76,6 +80,7 @@ export default function PrinterTestCard({ printer, settings, cur, storeName, sti
         {onUse && cleanLang && (
           <button data-testid="ps-tester-use" disabled={using} onClick={() => void use()} style={{ ...primary(!using), marginTop: 10 }}>{t.rd_prt_use}</button>
         )}
+        {useFailed && <div data-testid="ps-tester-use-failed" role="alert" style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 8 }}>{t.rd_prt_use_failed}</div>}
       </>) : (<>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)", margin: "12px 0 6px" }}>{t.rd_prt_lang}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>

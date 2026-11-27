@@ -9,8 +9,9 @@ import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/re
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import * as models from "../../adapters/printerModels";
-import { printSlip, DEF_SETTINGS, type Settings } from "../../adapters/printing";
-import { buildTestBuyer, type BluetoothPrinterDevice } from "../../adapters/printerBridge";
+import { printSlip, DEF_SETTINGS, buildGenericStickerBytes, buildNativeStickerPayload, type Settings } from "../../adapters/printing";
+import { buildTestBuyer, buildTestBuyerV2, type BluetoothPrinterDevice } from "../../adapters/printerBridge";
+import { bytesToBase64 } from "../../adapters/stickerRaster";
 import { __resetSavedPrinter, savedGenericLang } from "../../adapters/savedPrinter";
 import PrinterSettings from "../PrinterSettings";
 import { TProvider, buildT } from "../../i18n";
@@ -221,6 +222,64 @@ describe("after a CLEAN report → \"Use this printer\"", () => {
     await screen.findByTestId("ps-tester-error");
     expect(screen.queryByTestId("ps-tester-use")).toBeNull();
     expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
+  });
+});
+
+describe("the test print = what the printer gets once saved", () => {
+  beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(Date.UTC(2026, 10, 27, 6, 5))); });
+  afterAll(() => { vi.useRealTimers(); });
+  const settings = { ...DEF_SETTINGS, stickerSize: "60x40" };
+  const expected = async (lang: models.PrinterLang, name: string, withRow: boolean) => {
+    const payload = buildNativeStickerPayload(buildTestBuyerV2(), "NT$", "SellerFlowLive", settings);
+    return bytesToBase64(await buildGenericStickerBytes(lang, payload, undefined, false, withRow ? models.knownTsplJob(name) : {}, withRow ? models.approvedLayoutFor(name) : undefined));
+  };
+  for (const lang of ["tspl", "escpos", "cpcl"] as const) {
+    it(`${lang}: an approved printer with flip + shift → the test sticker has that flip + shift`, async () => {
+      models.setApprovedPrinters(APPROVED);
+      const b = bridge();
+      renderPS({ tester: true });
+      await scan();
+      tap(PT210.name);
+      await screen.findByTestId("ps-tester-card");
+      fireEvent.click(screen.getByTestId(`ps-tester-lang-${lang}`));
+      fireEvent.click(screen.getByTestId("ps-tester-print"));
+      await waitFor(() => expect(b.testGenericPrinter).toHaveBeenCalledTimes(1));
+      const sent = (b.testGenericPrinter.mock.calls[0][0] as { data: string }).data;
+      expect(sent).toBe(await expected(lang, PT210.name, true));
+      expect(sent).not.toBe(await expected(lang, PT210.name, false)); // the flip / shift really changed it
+    });
+    it(`${lang}: an unlisted printer → the plain sticker (as before)`, async () => {
+      const b = bridge();
+      renderPS({ tester: true });
+      await scan();
+      fireEvent.click(screen.getByTestId("ps-v2-show-all"));
+      fireEvent.click(await screen.findByText(UNKNOWN.name));
+      await screen.findByTestId("ps-tester-card");
+      fireEvent.click(screen.getByTestId(`ps-tester-lang-${lang}`));
+      fireEvent.click(screen.getByTestId("ps-tester-print"));
+      await waitFor(() => expect(b.testGenericPrinter).toHaveBeenCalledTimes(1));
+      expect((b.testGenericPrinter.mock.calls[0][0] as { data: string }).data).toBe(await expected(lang, UNKNOWN.name, false));
+    });
+  }
+});
+
+describe("\"Use this printer\" when the save fails", () => {
+  it("the card stays, says it, nothing shows as saved; a second tap that works saves", async () => {
+    models.setApprovedPrinters(APPROVED);
+    const b = bridge();
+    b.setBluetoothLabelPrinter.mockResolvedValueOnce({ ok: false, code: "BT_SAVE_FAILED" });
+    renderPS({ tester: true });
+    await scan();
+    tap(AE241.name);
+    await screen.findByTestId("ps-tester-card");
+    await cleanReport("tspl");
+    fireEvent.click(screen.getByTestId("ps-tester-use"));
+    await screen.findByTestId("ps-tester-use-failed");
+    expect(screen.getByTestId("ps-tester-card")).toBeTruthy();
+    expect(savedCard()).toBeNull();
+    fireEvent.click(screen.getByTestId("ps-tester-use"));
+    await waitFor(() => expect(savedCard()).toBeTruthy());
+    expect(b.setBluetoothLabelPrinter).toHaveBeenCalledTimes(2);
   });
 });
 
