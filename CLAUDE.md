@@ -7025,3 +7025,18 @@ Admin → Free tier list (`components/AdminFreeTier.tsx`, logic `adapters/freeTi
   45 flagged. No help-guide change (Admin only). Not touched: free-order counting, plans, seller screens,
   server, printing, chrome-extension/, app_settings.
 - **Order:** merge (Vercel) and sql/228 in either order.
+
+## 2026-11-27 — ADMIN: LIVE PULSE IN THE PHONE APPS + LIVE-COUNT MONITOR TILE (branch `claude/pulse-tile`, NOT merged; web only — no SQL, no Render)
+- **Live Pulse is no longer web-only:** the three `!isAppShell()` gates (the tile and the panel in Admin.tsx,
+  `useBusinessPulse` in RedesignApp) are gone → admins see it in the Android and iPhone apps too. The panel has
+  counts only (no price / revenue anywhere — test-pinned for web / Android / iPhone).
+- **Tile (`components/AdminPulseTile.tsx`, `data-testid="admin-ctrl-pulse"`), FIRST in Controls:** pill "● N" +
+  "N / LIMIT live". N / LIMIT = `usage.concurrent` / `usage.concurrentLimit` of the admin-only server route
+  `/admin/tiktok-cooldown/status` (the TikTok limit card's "live now X/Y") — never written in the app.
+  Colour (`adapters/livePulseCount.ts` `liveLevel`): green < 60 %, amber ≥ 60 %, red ≥ 70 % (`USAGE_WARN_RATIO`);
+  no usable answer → grey "—", no pulse. `useLiveCount`: read on show, every 60 s while visible, paused while
+  hidden, stopped when the screen is left. Dot `.sfl-lpt-dot` obeys motion off + reduced motion.
+- Texts `rd_pulse_tile_*` (English ×8). Preview `?admin=1&pulse=1` (fake `admin_business_pulse`).
+- Proof: `Admin.pulse.test.tsx`, `livePulseCount.test.tsx`, `pulseTile.app.test.tsx`; pictures
+  `docs/design/pulse-tile/`. Not touched: server, the TikTok limit card, seller screens, printing,
+  chrome-extension/, app_settings. No help-guide change (Admin only).

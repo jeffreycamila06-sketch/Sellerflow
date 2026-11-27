@@ -1,0 +1,12 @@
+iphone390 light: level=warn line="64 / 100 live" first=true tileH=102 rowH=102 wide=false out=false errors=0
+iphone390 dark: level=warn line="64 / 100 live" first=true tileH=102 rowH=102 wide=false out=false errors=0
+android360 light: level=warn line="64 / 100 live" first=true tileH=102 rowH=102 wide=false out=false errors=0
+android360 dark: level=warn line="64 / 100 live" first=true tileH=102 rowH=102 wide=false out=false errors=0
+laptop1280 light: level=warn line="64 / 100 live" first=true tileH=102 rowH=102 wide=false out=false errors=0
+laptop1280 dark: level=warn line="64 / 100 live" first=true tileH=102 rowH=102 wide=false out=false errors=0
+panel iphone390 light: money=false ttl=true
+panel iphone390 dark: money=false ttl=true
+360: ok level=bad tile=105x102 rowH=102 wide=false out=false errors=0
+390: ok level=bad tile=115x102 rowH=102 wide=false out=false errors=0
+430: ok level=bad tile=128x102 rowH=102 wide=false out=false errors=0
+1280: ok level=bad tile=331x102 rowH=102 wide=false out=false errors=0
