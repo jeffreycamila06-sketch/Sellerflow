@@ -141,6 +141,7 @@ describe("the Save button", () => {
     expect(btn("ivc-fb-save").textContent).toBe(t.rd_rc_save);
     expect(btn("ivc-fb-save").disabled).toBe(false);
     expect(q("ivc-fb-sheet-edited")).toBeNull();
+    expect(q("ivc-fb-last-unsaved")).toBeNull();                // one red message at a time
     fireEvent.click(btn("ivc-fb-sheet-send")); await flush(); await wait(500);
     expect(starts()).toEqual([]);                                // Send never draws the old receipt
     DB.s.hangEditWrites = false;

@@ -448,7 +448,7 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, lastFailed, pending
               <span data-testid="ivc-fb-sheet-edited" style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)" }}>{t.rd_ivc_fb_edited}</span>
             </div>
           )}
-          {lastFailed && <div role="alert" data-testid="ivc-fb-last-unsaved" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_last_unsaved}</div>}
+          {lastFailed && saveState !== "failed" && !resetFailed && <div role="alert" data-testid="ivc-fb-last-unsaved" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_last_unsaved}</div>}
           {stale && <div data-testid="ivc-fb-edit-stale" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_edit_new_note}</div>}
 
           {pending && !es && fmt.state !== "error" && <div role="status" data-testid="ivc-fb-edit-waiting" style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_fb_saving}</div>}
