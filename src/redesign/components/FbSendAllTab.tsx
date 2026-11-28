@@ -24,7 +24,7 @@ import {
   type FbFilter, type FbTag,
 } from "../adapters/fbSendAll";
 import { FB_EDIT_SAVE_MS, clearReceiptEditFailed, persistReceiptEdit, rereadReceiptEdits, useReceiptEdits, type SavedReceiptEdit } from "../adapters/fbReceiptEdit";
-import { editToState, fbPictureInput, originalState, sameEdit, shownLineIds, stateToEdit, type EditorState, type PictureLabels } from "../adapters/fbReceiptEditState";
+import { editToState, fbPictureInput, fbRowTotal, originalState, sameEdit, shownLineIds, stateToEdit, type EditorState, type PictureLabels } from "../adapters/fbReceiptEditState";
 import { loadReceiptSettings } from "../adapters/receiptSettings";
 import { useReceiptPicture } from "../adapters/useReceiptPicture";
 import ReceiptEditorFields from "./ReceiptEditorFields";
@@ -80,7 +80,10 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   const tagOf = (r: InvoiceRow): FbTag => fbTagOf(data?.buyers.get(r.num), status.saved.get(r.id));
   const tags = rows.map(tagOf);
   const counts = fbCounts(tags);
-  const sum = rows.reduce((s, r, i) => s + (tags[i] === "cancelled" ? 0 : r.total), 0);
+  // each row's total = the Total on the picture the buyer gets (the saved edit, else the orders + the Invoicing
+  // shipping fee); a receipt whose total is "to be confirmed" adds nothing to the sum
+  const totals = rows.map((r) => fbRowTotal(r, edits.edits.get(r.num), fee));
+  const sum = rows.reduce((s, _r, i) => s + (tags[i] === "cancelled" ? 0 : totals[i].sum), 0);
 
   // a receipt edit still on its way / not saved: Send all and that buyer's Send wait (never the old receipt)
   // (a buyer already sent / sent by hand / cancelled never holds it; every other buyer may still be sent)
@@ -216,6 +219,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
           {shown.length === 0 && <div data-testid="ivc-fb-empty-filter" style={{ padding: "14px", fontSize: 13, color: "var(--text-muted)" }}>{t.rd_ivc_empty_filter}</div>}
           {shown.map((r, i) => {
             const tag = tagOf(r);
+            const tot = totals[rows.indexOf(r)];
             const off = tag === "cancelled";
             const canSend = fbSendable(tag) && !active && !data?.needsMessaging && !editHold(r.num);
             return (
@@ -236,7 +240,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
                   </span>
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
-                  <span data-testid="ivc-fb-row-total" style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 600, color: off ? "var(--text-muted)" : "var(--text)", whiteSpace: "nowrap", textDecoration: off ? "line-through" : "none" }}>{money(r.total)}</span>
+                  <span data-testid="ivc-fb-row-total" data-priced={tot.allPriced ? "1" : "0"} style={{ fontFamily: tot.allPriced ? mono : "var(--font-ui)", fontSize: tot.allPriced ? 13.5 : 11.5, fontWeight: 600, color: off ? "var(--text-muted)" : tot.allPriced ? "var(--text)" : "var(--text-muted)", whiteSpace: "nowrap", textDecoration: off ? "line-through" : "none" }}>{tot.allPriced ? money(tot.sum) : t.rd_rc_pic_tbc}</span>
                   <span style={{ display: "flex", gap: 6 }}>
                     <button type="button" data-testid="ivc-fb-row-view" className="sfl-tap44" aria-label={`${t.rd_ivc_view} #${r.num}`} onClick={(e) => { e.stopPropagation(); setSheetId(r.id); }}
                       style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1.5px solid var(--accent)", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "var(--font-ui)", lineHeight: 1 }}>
