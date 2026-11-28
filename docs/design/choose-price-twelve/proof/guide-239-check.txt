@@ -1,0 +1,6 @@
+sql/239 check (2026-11-28)
+live choose-price body md5 before: 5038b32bf39c071897dccc9c2a3dd8ba
+live body after the sql/239 phrase swap (computed in production, read-only replace()): 984fd4a949dc06bbafb2b9d987831bd8
+sql/116b choose-price body md5 (PGlite load of the regenerated 116b):                 984fd4a949dc06bbafb2b9d987831bd8
+keywords md5 live = 116b: 7f4c7d8f122aca219475df9ec673e0fa = 7f4c7d8f122aca219475df9ec673e0fa
+=> after sql/239 the live row equals the guide file word for word.

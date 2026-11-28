@@ -163,7 +163,7 @@ describe("the NEW app: 9 prices in two columns", () => {
     expect(result.current.active).toBe(true);
     expect(readChoiceCache("u1")!.prices).toEqual(NINE);             // the device copy keeps all 9
   });
-  it("saves 9: prices 1–6 in prices, 7–9 in prices_more; a 10th is refused", async () => {
+  it("saves 9: prices 1–6 in prices, 7–9 in prices_more (a 10th: see the 12-price test)", async () => {
     DB.row = { user_id: "u1", enabled: true, prices: NINE.slice(0, 6), prices_more: [], updated_at: "t0", show_free: false };
     const { result } = renderHook(() => useNew("u1"));
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -175,8 +175,10 @@ describe("the NEW app: 9 prices in two columns", () => {
     expect(DB.row!.prices).toEqual(NINE.slice(0, 6));
     expect(DB.row!.prices_more).toEqual([200, 250, 300]);
     expect(result.current.prices).toEqual(NINE);
-    expect(addChoicePrice(result.current.prices, "350")).toEqual({ ok: false, reason: "max" });
-    expect(MAX_CHOICE_PRICES).toBe(9);
+    // A 10th is no longer refused here: since the 12-price change it goes to prices_extra
+    // (choosePriceTwelve.oldDevice.test.tsx). The 9-price split above is unchanged.
+    expect(addChoicePrice(result.current.prices, "350").ok).toBe(true);
+    expect(MAX_CHOICE_PRICES).toBe(12);
   });
   it("a seller with 6 or fewer sends EXACTLY the request sent before (no prices_more key)", async () => {
     DB.row = { user_id: "u1", enabled: true, prices: [39, 59], prices_more: [], updated_at: "t0", show_free: false };

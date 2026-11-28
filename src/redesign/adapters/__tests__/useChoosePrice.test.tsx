@@ -33,17 +33,18 @@ beforeEach(() => {
 });
 
 describe("list rules (pure)", () => {
-  it("positive numbers only, no duplicates, max 9", () => {
-    expect(normalizePriceList([39, "59", 0, -5, "", null, "abc", 39, 59.5, 79, 99, 129, 149, 199, 249, 299, 349])).toEqual([39, 59, 59.5, 79, 99, 129, 149, 199, 249]);
+  it("positive numbers only, no duplicates, max 12", () => {
+    expect(normalizePriceList([39, "59", 0, -5, "", null, "abc", 39, 59.5, 79, 99, 129, 149, 199, 249, 299, 349, 399, 449, 499])).toEqual([39, 59, 59.5, 79, 99, 129, 149, 199, 249, 299, 349, 399]);
     expect(normalizePriceList("39")).toEqual([]);
-    expect(MAX_CHOICE_PRICES).toBe(9);
+    expect(MAX_CHOICE_PRICES).toBe(12);
   });
-  it("add: refuses zero / negative / blank, a duplicate, a 10th price; adds at the end", () => {
+  it("add: refuses zero / negative / blank, a duplicate, a 13th price; adds at the end", () => {
     expect(addChoicePrice([39], "0")).toEqual({ ok: false, reason: "bad" });
     expect(addChoicePrice([39], "-3")).toEqual({ ok: false, reason: "bad" });
     expect(addChoicePrice([39], "")).toEqual({ ok: false, reason: "bad" });
     expect(addChoicePrice([39, 59], "59")).toEqual({ ok: false, reason: "dup" });
-    expect(addChoicePrice([1, 2, 3, 4, 5, 6, 7, 8, 9], "10")).toEqual({ ok: false, reason: "max" });
+    expect(addChoicePrice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "13")).toEqual({ ok: false, reason: "max" });
+    expect(addChoicePrice([1, 2, 3, 4, 5, 6, 7, 8, 9], "10")).toEqual({ ok: true, prices: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] });
     expect(addChoicePrice([39], "59")).toEqual({ ok: true, prices: [39, 59] });
   });
   it("make default = move to first; remove; an empty list cannot be ON", () => {

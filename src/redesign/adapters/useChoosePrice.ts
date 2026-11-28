@@ -1,4 +1,4 @@
-// "Choose price before print" — a per-seller list of up to 9 prices + an ON/OFF switch.
+// "Choose price before print" — a per-seller list of up to 12 prices + an ON/OFF switch.
 // Stored the same way as "Same price for all items" (useSamePrice): ONE read of the
 // seller_price_choices row (sql/180) per signed-in user + ONE upsert per change. ZERO polling.
 //
@@ -24,21 +24,28 @@
 // prices 7–9. `prices_more` is sent only when the list has, or had, more than 6 prices → a seller
 // with 6 or fewer sends exactly the request sent before (safe before sql/196: a 7th price simply
 // fails with the normal "Couldn't save" and the list goes back).
+//
+// THIRD COLUMN (sql/238): prices 10–12 live in `prices_extra`, for the same reason — an app opened
+// before the 12-price change knows `prices` + `prices_more` (9) and can never delete prices 10–12.
+// `prices_extra` is sent only when the list has, or had, more than 9 prices → a seller with 9 or
+// fewer sends exactly today's request (safe before sql/238: a 10th price fails with "Couldn't save").
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { log } from "../../lib/log";
 import { normalizeSamePrice } from "./useSamePrice";
 
-export const MAX_CHOICE_PRICES = 9;
+export const MAX_CHOICE_PRICES = 12;
 // How many of them the `prices` column holds (its own sql/180 check: at most 6). The rest → `prices_more`.
 export const PRICES_COLUMN_MAX = 6;
+// Where `prices_more` ends (sql/196: at most 3 → prices 7–9). The rest → `prices_extra` (sql/238, prices 10–12).
+export const MORE_COLUMN_END = 9;
 
 // ── Pure helpers (unit-tested) ────────────────────────────────────────────────
 
 // Same rule as Same price: blank / 0 / negative / not a number → null.
 export const normalizeChoicePrice = normalizeSamePrice;
 
-// Any stored value → a clean list: positive numbers only, no duplicates (first kept), max 9.
+// Any stored value → a clean list: positive numbers only, no duplicates (first kept), max 12.
 export function normalizePriceList(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
   const out: number[] = [];
@@ -51,16 +58,24 @@ export function normalizePriceList(v: unknown): number[] {
   return out;
 }
 
-// The stored row → ONE list: `prices` (1–6) then `prices_more` (7–9; missing before sql/196 → none).
-export function joinStoredPrices(prices: unknown, more: unknown): number[] {
-  return normalizePriceList([...(Array.isArray(prices) ? prices : []), ...(Array.isArray(more) ? more : [])]);
+// The stored row → ONE list: `prices` (1–6), `prices_more` (7–9; missing before sql/196 → none),
+// `prices_extra` (10–12; missing before sql/238 → none).
+export function joinStoredPrices(prices: unknown, more: unknown, extra?: unknown): number[] {
+  const a = (v: unknown) => (Array.isArray(v) ? v : []);
+  return normalizePriceList([...a(prices), ...a(more), ...a(extra)]);
 }
 
-// A save → the two columns. `more` is null when the request must NOT carry `prices_more`
+// A save → the three columns. `more` is null when the request must NOT carry `prices_more`
 // (the list has 6 or fewer prices now AND had 6 or fewer before) — the request sent before sql/196.
-export function splitForSave(next: number[], prev: number[]): { prices: number[]; more: number[] | null } {
-  const send = next.length > PRICES_COLUMN_MAX || prev.length > PRICES_COLUMN_MAX;
-  return { prices: next.slice(0, PRICES_COLUMN_MAX), more: send ? next.slice(PRICES_COLUMN_MAX) : null };
+// `extra` is null when it must NOT carry `prices_extra` (9 or fewer now AND before) — today's request.
+export function splitForSave(next: number[], prev: number[]): { prices: number[]; more: number[] | null; extra: number[] | null } {
+  const sendMore = next.length > PRICES_COLUMN_MAX || prev.length > PRICES_COLUMN_MAX;
+  const sendExtra = next.length > MORE_COLUMN_END || prev.length > MORE_COLUMN_END;
+  return {
+    prices: next.slice(0, PRICES_COLUMN_MAX),
+    more: sendMore ? next.slice(PRICES_COLUMN_MAX, MORE_COLUMN_END) : null,
+    extra: sendExtra ? next.slice(MORE_COLUMN_END) : null,
+  };
 }
 
 export type AddPriceResult = { ok: true; prices: number[] } | { ok: false; reason: "bad" | "dup" | "max" };
@@ -153,7 +168,8 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
         .maybeSingle();
       if (!alive) return;
       if (error) { patch(uid, { loading: false }); return; }   // keep the saved copy
-      const list = joinStoredPrices(data?.prices, (data as { prices_more?: unknown } | null)?.prices_more);
+      const cols = data as { prices_more?: unknown; prices_extra?: unknown } | null;
+      const list = joinStoredPrices(data?.prices, cols?.prices_more, cols?.prices_extra);
       const on = !!data?.enabled && canEnableChoosePrice(list);  // never ON with no price; no row = OFF
       const free = (data as { show_free?: unknown } | null)?.show_free === true;
       writeChoiceCache(uid, on, list, free);
@@ -171,6 +187,7 @@ export function useChoosePrice(userId?: string | null): UseChoosePrice {
     const row: Record<string, unknown> = { user_id: uid, enabled: nextEnabled, prices: cols.prices, updated_at: new Date().toISOString() };
     if (free.send) row.show_free = free.next;
     if (cols.more) row.prices_more = cols.more;
+    if (cols.extra) row.prices_extra = cols.extra;
     const { error } = await supabase
       .from("seller_price_choices")
       .upsert(row);

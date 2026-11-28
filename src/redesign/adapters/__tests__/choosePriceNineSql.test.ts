@@ -64,31 +64,37 @@ describe("sql/196 rollback — refused while any seller has a 7th–9th price", 
 });
 
 describe("the app and the two columns agree", () => {
-  it("9 = 6 in prices (sql/180) + 3 in prices_more (sql/196)", () => {
+  it("9 = 6 in prices (sql/180) + 3 in prices_more (sql/196); since sql/238 + 3 in prices_extra = 12", () => {
     expect(read("180_choose_price.sql")).toContain("check (cardinality(prices) <= 6)");
     expect(PRICES_COLUMN_MAX).toBe(6);
-    expect(MAX_CHOICE_PRICES).toBe(6 + 3);
+    expect(MAX_CHOICE_PRICES).toBe(6 + 3 + 3);
   });
   it("split: 1–6 → prices only, NO prices_more key (the request sent before); 7–9 → both; 7 → 6 sends an empty prices_more", () => {
-    expect(splitForSave([39, 59], [39])).toEqual({ prices: [39, 59], more: null });
-    expect(splitForSave([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: null });
-    expect(splitForSave([1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, 5, 6])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: [7] });
-    expect(splitForSave([1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 5, 6, 7, 8, 9])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: [7, 8, 9] });
-    expect(splitForSave([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6, 7])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: [] });
+    // (the third column, prices_extra, stays out of every request of 9 or fewer: extra null)
+    expect(splitForSave([39, 59], [39])).toEqual({ prices: [39, 59], more: null, extra: null });
+    expect(splitForSave([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: null, extra: null });
+    expect(splitForSave([1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, 5, 6])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: [7], extra: null });
+    expect(splitForSave([1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 5, 6, 7, 8, 9])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: [7, 8, 9], extra: null });
+    expect(splitForSave([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6, 7])).toEqual({ prices: [1, 2, 3, 4, 5, 6], more: [], extra: null });
   });
-  it("join: prices then prices_more, cleaned (no duplicate, nothing above 9); a missing column = nothing extra", () => {
+  it("join: prices then prices_more, cleaned (no duplicate, nothing above 12); a missing column = nothing extra", () => {
     expect(joinStoredPrices([1, 2, 3, 4, 5, 6], [7, 8, 9])).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(joinStoredPrices([1, 2, 3], undefined)).toEqual([1, 2, 3]);
     expect(joinStoredPrices([1, 2, 3, 4, 5], [5, 7])).toEqual([1, 2, 3, 4, 5, 7]);
     expect(joinStoredPrices(null, [7])).toEqual([7]);
-    expect(joinStoredPrices([1, 2, 3, 4, 5, 6], [7, 8, 9, 10])).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(joinStoredPrices([1, 2, 3, 4, 5, 6], [7, 8, 9, 10])).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);   // the list rule cuts at 12, the column checks at 3
+    expect(joinStoredPrices([1, 2, 3, 4, 5, 6], [7, 8, 9], [10, 11, 12, 13])).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   });
 });
 
+// sql/197 is APPLIED; since sql/239 the guide (and sql/116b) say "up to 12". sql/197's own text is
+// unchanged; the check below compares it with the 116b row put back to its 9-price words.
 describe("sql/197 — the Choose price guide row", () => {
   const seed = readFileSync("sql/116b_guide_seed.sql", "utf8");
   const a = seed.indexOf("  ('choose-price',");
-  const row = seed.slice(a, seed.indexOf("),\n  ('", a) + 1);
+  const row = seed.slice(a, seed.indexOf("),\n  ('", a) + 1)
+    .replace("add up to 12 prices. The first one is the default. Tap ☆ to make a price the default, or × to remove it. With 12 prices saved, remove one to add a new price.", "add up to 9 prices. The first one is the default. Tap ☆ to make a price the default, or × to remove it. With 9 prices saved, remove one to add a new price.")
+    .replace("'2026-11-28'::date", "'2026-11-21'::date");
   const up = read("197_guide_choose_price_nine.sql");
   const down = read("197_guide_choose_price_nine_rollback.sql");
   it("word for word the choose-price row of sql/116b, one row only, safe to run twice", () => {

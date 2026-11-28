@@ -1,0 +1,60 @@
+ok   before 238: the new app's save of 9 prices (no prices_extra key) works — same request as today
+ok   before 238: a 10th price (the request carries prices_extra) → refused (column "prices_extra" of relation "seller_price_choices" does not exist)
+ok   before 238: the row still has its 9 prices
+ok   sql/238 applies
+ok   sql/238 applies a second time (nothing breaks)
+ok   one new column, at the end
+ok   existing row A: prices_extra empty, 9 prices / switch / Free kept
+ok   existing row C: prices_extra empty, the rest kept
+ok   default empty list, never null
+ok   every older check is still there (incl. prices_max6, more_max3, all_distinct)
+ok   the five new checks are there
+ok   exactly five checks were added
+ok   12 prices saved: 1–6 prices, 7–9 prices_more, 10–12 prices_extra
+ok   read back as one list, same order
+ok   a 13th price → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_extra_max3")
+ok   4 prices in prices_more → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_more_max3")
+ok   the 12 prices are still there after the refusals
+ok   12 → 10: prices_extra holds the 10th only
+ok   10 → 9: prices_extra is emptied, 7–9 kept
+ok   old 9-price app, switch OFF: prices 10–12 kept (prices_extra {350,400,500}), the change itself saved
+ok   old 9-price app, switch ON: prices 10–12 kept (prices_extra {350,400,500}), the change itself saved
+ok   old 9-price app, Show Free OFF: prices 10–12 kept (prices_extra {350,400,500}), the change itself saved
+ok   old 9-price app, Show Free ON: prices 10–12 kept (prices_extra {350,400,500}), the change itself saved
+ok   old 9-price app, ☆ makes 250 the default: prices 10–12 kept (prices_extra {350,400,500}), the change itself saved
+ok   old 9-price app, × removes 80: prices 10–12 kept (prices_extra {350,400,500}), the change itself saved
+ok   old 9-price app, Same price ON (Choose price saved as OFF): prices 10–12 kept (prices_extra {350,400,500}), the change itself saved
+ok   old 9-price app adds 400 — already the 11th price (hidden from it) → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all3_distinct")
+ok   old 9-price app adds a new price 90 → 12 in total, 10–12 still kept
+ok   old 6-price app, switch ON: prices 7–9 and 10–12 kept
+ok   old 6-price app, × removes a price: prices 7–9 and 10–12 kept
+ok   old 6-price app, Show Free OFF: prices 7–9 and 10–12 kept
+ok   old 6-price app adds 500 — already the 12th price → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all3_distinct")
+ok   seller B: 10 prices saved
+ok   the same price in prices and prices_extra → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all3_distinct")
+ok   the same price in prices_more and prices_extra → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all3_distinct")
+ok   the same price twice in prices_extra → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all3_distinct")
+ok   39 and 39.0 in prices_extra (the same price) → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all3_distinct")
+ok   0 in prices_extra → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_extra_positive")
+ok   a negative price in prices_extra → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_extra_positive")
+ok   an empty entry in prices_extra → refused (new row for relation "seller_price_choices" violates check constraint "seller_price_choices_all3_distinct")
+ok   a nested list in prices_extra → refused (cannot concatenate incompatible arrays)
+ok   prices_extra set to null → refused (null value in column "prices_extra" of relation "seller_price_choices" violates not-null constraint)
+ok   after every refusal seller B still has 10 prices
+ok   seller B sees no other seller's row
+ok   seller B saving a row for A → refused (new row violates row-level security policy for table "seller_price_choices")
+ok   seller B's update did not touch A's prices_extra
+ok   a visitor reading prices_extra → refused (permission denied for table seller_price_choices)
+ok   a visitor writing prices_extra → refused (permission denied for table seller_price_choices)
+ok   rollback while sellers have a 10th–12th price → refused (sql/238 rollback refused: 2 seller(s) have a 10th-12th price — nothing was changed)
+ok   the refused rollback changed nothing
+ok   rollback while ONE seller still has a 10th price → refused (sql/238 rollback refused: 1 seller(s) have a 10th-12th price — nothing was changed)
+ok   rollback runs once no seller has a 10th–12th price
+ok   rollback runs a second time
+ok   only the column is gone
+ok   the checks are exactly the ones before sql/238
+ok   seller A's 9 prices, switch and Free are untouched by the rollback
+ok   after the rollback today's 9-price save still works
+ok   sql/238 applies again after the rollback (prices_extra empty for everyone)
+
+sql/238 behaviour: 58 passed, 0 failed

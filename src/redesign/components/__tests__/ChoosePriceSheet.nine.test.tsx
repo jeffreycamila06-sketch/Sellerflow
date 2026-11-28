@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import ChoosePriceSheet from "../ChoosePriceSheet";
 import { TProvider } from "../../i18n";
-import { FREE_OWN_ROW_AT, TAP_GUARD_MS, type PickResult, type PriceChoiceItem } from "../../adapters/priceChoiceQueue";
+import { freeOwnRow, TAP_GUARD_MS, type PickResult, type PriceChoiceItem } from "../../adapters/priceChoiceQueue";
 import { MAX_CHOICE_PRICES } from "../../adapters/useChoosePrice";
 import type { Comment as ProdComment } from "../../../lib/orderTypes";
 
@@ -23,9 +23,10 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new 
 afterEach(() => { cleanup(); vi.useRealTimers(); document.body.style.overflow = ""; });
 
 describe("price window, 1–9 prices × Show Free on / off", () => {
-  it("the full-width Free row is tied to the most prices a seller can save (9)", () => {
-    expect(FREE_OWN_ROW_AT).toBe(MAX_CHOICE_PRICES);
-    expect(MAX_CHOICE_PRICES).toBe(9);
+  it("Free still takes its own row at 9 (it was the most; since the 12-price change, 12 too — see .twelve)", () => {
+    expect(freeOwnRow(9)).toBe(true);
+    expect([1, 2, 3, 4, 5, 6, 7, 8].some(freeOwnRow)).toBe(false);
+    expect(MAX_CHOICE_PRICES).toBe(12);
   });
 
   for (let n = 1; n <= 9; n++) {
