@@ -7224,6 +7224,18 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   `?ivc=0,0&fbsa=1&fbedit=1&admin=1`).
 - **Order:** sql/233 → merge (Vercel) → Render deploy (quiet time). Before sql/233 the editor works but saves fail
   ("Couldn't save"); before the Render deploy Send all ignores saved edits (sends the orders' receipt).
+- **Save fix (2026-11-28, branch `claude/fb-edit-save-fix`, web only):** Jeff's #1 edits never reached the server
+  (production logs: no write at all from his Mac; not reproduced in tests — every code path saves). Proven on main:
+  a save still on its way when the Facebook list is drawn again (tab switch / a new order re-reads the list) was
+  never shown — the new list missed it → "Edited" gone, the sheet opened on the orders again. Now:
+  `persistReceiptEdit` (adapters/fbReceiptEdit.ts) keeps each save alive outside the sheet, tells every list of the
+  session (module listeners), counts saves on their way / failed (`useReceiptEdits().saving / .failed`), and a save
+  with no answer in 15 s = failed. Sheet: **Save** button (off with nothing to save; "✓ Saved" only after the yes),
+  Close / tap outside with a change not saved → Save / Discard in the sheet, `beforeunload` while not saved, red
+  line + Save again on a failure, "Edited" only after the yes. Send all + a row's Send wait while a save is on its way
+  or failed ("#N" named); the sheet's own Send saves first. "I sent it by hand" only for other_app / cant_message /
+  unknown, with a line. Tests: `Invoicing.fbSaveFix.test.tsx` (+ fbEdit / fbSendAll updated). Guide: the View line in
+  sfl-guide.md + sql/226 (+ rollback, still NOT applied) + 116b. Pictures `docs/design/fb-edit-save-fix/`.
 
 ## 2026-11-28 — CANCEL ORDER (Orders tab only) ✅ RELEASED TO ALL SELLERS 2026-11-28 11:38 Taipei (main; sql/234 + both indexes + sql/235 APPLIED; Render deployed; switch `order_cancel_enabled` = 'true'; Jeff tested Cancel + Undo end-to-end on production)
 Jeff's decisions (2026-11-28): free order NOT given back · stock goes back (Auto mode orders) · allowed while the
