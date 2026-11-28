@@ -315,6 +315,8 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, lastFailed, pending
   if (!es && original && !pending) { const first = saved ? editToState(saved.edit) : original; setEs(first); setSavedAs(first); }
   const savedAsRef = useRef<EditorState | null>(null);
   useEffect(() => { savedAsRef.current = savedAs; }, [savedAs]);
+  const savedRef = useRef<SavedReceiptEdit | null>(saved);
+  useEffect(() => { savedRef.current = saved; }, [saved]);
   const nextLineId = useRef(1000);
   const focusLineId = useRef<number | null>(null);
 
@@ -332,7 +334,7 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, lastFailed, pending
     dirty.current = false;
     setSaveState("saving");
     const same = sameEdit(state, original);
-    const p = persistReceiptEdit(sessionId, row.num, same ? null : stateToEdit(state), row.hash).then((ok) => {
+    const p = persistReceiptEdit(sessionId, row.num, same ? null : stateToEdit(state), row.hash, undefined, savedRef.current).then((ok) => {
       if (ok) setSavedAs(state); else dirty.current = true;
       setSaveState(ok ? "saved" : "failed");
       return ok;
@@ -399,14 +401,18 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, lastFailed, pending
     setResetting(true); setResetFailed(false);
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     if (flight.current) await flight.current;
-    const ok = await persistReceiptEdit(sessionId, row.num, null, row.hash);
+    const ok = await persistReceiptEdit(sessionId, row.num, null, row.hash, undefined, savedRef.current);
     setResetting(false);
     if (!ok) { setResetFailed(true); return; }                          // the question stays: tap Reset again
     dirty.current = false; latest.current = null;
     setEs(original); setSavedAs(original); setAskReset(false); setSaveState("idle");
   };
 
-  const send = async () => { if (await saveNow()) { clearReceiptEditFailed(sessionId, row.num); onSend(); } };
+  // the server may not have what is on screen (a save given up on landed late): save what is on screen first
+  const send = async () => {
+    if (lastFailed && es) { dirty.current = true; latest.current = es; }
+    if (await saveNow()) { clearReceiptEditFailed(sessionId, row.num); onSend(); }
+  };
   // by hand / cancelled: that receipt is not sent from here any more → no need to wait for the save (it keeps going)
   const thenDo = (f: () => void) => () => { void saveNow(); f(); };
 
@@ -442,7 +448,7 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, lastFailed, pending
               <span data-testid="ivc-fb-sheet-edited" style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)" }}>{t.rd_ivc_fb_edited}</span>
             </div>
           )}
-          {lastFailed && saveState !== "saved" && <div role="alert" data-testid="ivc-fb-last-unsaved" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_last_unsaved}</div>}
+          {lastFailed && <div role="alert" data-testid="ivc-fb-last-unsaved" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_last_unsaved}</div>}
           {stale && <div data-testid="ivc-fb-edit-stale" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_edit_new_note}</div>}
 
           {pending && !es && fmt.state !== "error" && <div role="status" data-testid="ivc-fb-edit-waiting" style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_fb_saving}</div>}

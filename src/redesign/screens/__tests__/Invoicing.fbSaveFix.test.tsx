@@ -274,7 +274,7 @@ describe("audit P2 / P3: a save given up on (no answer in time)", () => {
     land(); await flush(); await flush();                       // the first write would land now
     expect(DB.s.edits).toEqual([expect.objectContaining({ lines: [{ item: "99", price: 175 }, { item: "200", price: 0 }] })]);
   });
-  it("Discard after it: the list reads the server again and shows what it really has", async () => {
+  it("Discard after it: the list reads the server again, shows what it really has, and holds #1 until looked at", async () => {
     _resetReceiptEditSaves(300, 200);
     DB.s.hangEditWrites = true;
     await open(); await view(1);
@@ -288,6 +288,12 @@ describe("audit P2 / P3: a save given up on (no answer in time)", () => {
     fireEvent.click(q("ivc-fb-close-discard")!); await flush();
     await wait(300);
     expect(editedTag(1)).not.toBeNull();
+    // not what this phone expected after its give-up → "not saved" until the seller looks
+    expect(q("ivc-fb-edits-failed")!.textContent).toBe(tpl(t.rd_ivc_fb_unsaved_n, { n: "#1" }));
+    expect(btn("ivc-fb-send-all").disabled).toBe(true);
+    await view(1);
+    expect(inSheet("rs-price").map((i) => i.value)).toEqual(["120"]);
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
     expect(btn("ivc-fb-send-all").disabled).toBe(false);
   });
 });
@@ -407,5 +413,61 @@ describe("review N4: buyers Send all may still try", () => {
     await toTikTokAndBack();
     expect(q("ivc-fb-edits-failed")!.textContent).toBe(tpl(t.rd_ivc_fb_unsaved_n, { n: "#6" }));
     expect(btn("ivc-fb-send-all").disabled).toBe(true);
+  });
+});
+
+// ── the third review (2026-11-28) ──
+describe("review S1: the late write lands while that buyer's sheet is still open", () => {
+  it("the sheet warns, and its Send saves what is on screen FIRST (never the late receipt)", async () => {
+    _resetReceiptEditSaves(300, 100000, 600);
+    DB.s.ignoreAbort = true;
+    let landFirst!: () => void;
+    DB.s.editWriteGate = new Promise<void>((r) => { landFirst = r; });
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    await wait(400);
+    DB.s.editWriteGate = null;
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "175" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    landFirst(); await flush();                                // 150 lands over 175, the sheet stays open
+    await wait(900);                                           // the later read flags #1
+    expect(q("ivc-fb-last-unsaved")).not.toBeNull();
+    fireEvent.click(btn("ivc-fb-sheet-send")); await flush(); await flush();
+    expect(DB.s.edits[0]).toMatchObject({ lines: [{ item: "99", price: 175 }, { item: "200", price: 0 }] });
+    expect(starts()).toHaveLength(1);
+    expect(q("ivc-fb-last-unsaved")).toBeNull();
+  });
+});
+describe("review S2: Discard, then the given-up write lands late", () => {
+  it("is held: Send all waits and names #1", async () => {
+    _resetReceiptEditSaves(300, 100000, 600);
+    DB.s.ignoreAbort = true;
+    let landFirst!: () => void;
+    DB.s.editWriteGate = new Promise<void>((r) => { landFirst = r; });
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    await wait(400);
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    fireEvent.click(q("ivc-fb-close-discard")!); await flush();
+    landFirst(); await flush();
+    await wait(900);
+    expect(q("ivc-fb-edits-failed")!.textContent).toBe(tpl(t.rd_ivc_fb_unsaved_n, { n: "#1" }));
+    expect(btn("ivc-fb-send-all").disabled).toBe(true);
+  });
+});
+describe("review S3: a change made from another phone", () => {
+  it("is never taken for a lost save (no warning) — only receipts with a give-up are compared", async () => {
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    await wait(FB_EDIT_SAVE_MS + 300);                         // saved fine on this phone
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    DB.s.edits = [{ ...DB.s.edits[0], lines: [{ item: "99", price: 160 }] }];   // the other phone changed it
+    await toTikTokAndBack();                                   // the list reads again
+    expect(q("ivc-fb-edits-failed")).toBeNull();
+    expect(btn("ivc-fb-send-all").disabled).toBe(false);
+    await view(1);
+    expect(inSheet("rs-price").map((i) => i.value)).toEqual(["160"]);
   });
 });

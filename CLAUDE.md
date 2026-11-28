@@ -7245,6 +7245,10 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   are put on top of it); a second read 15 s after a give-up compares the server with what this phone last saved —
   different = that buyer is "not saved" (Send all waits, the sheet warns); every buyer not sent / by hand / cancelled
   can hold Send all (the server may still try "unknown" / "can't message").
+  Third review: only receipts with a save given up on are compared (`watched`: what the server should have = last
+  confirmed, else what the list showed; until a read after the 15 s re-read) — a change from another phone is never
+  flagged; Discard then a late landing is held; with that buyer's sheet open, the warning shows and its Send saves
+  what is on screen first.
   Left (needs SQL, not done): a revision check so an old write can never land over a newer one; today a late write
   is caught by the 15 s read and flagged, not prevented.
 

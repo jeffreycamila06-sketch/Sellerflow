@@ -77,17 +77,20 @@ let saveTimeoutMs = FB_EDIT_SAVE_TIMEOUT_MS;
 const keyOf = (sessionId: string, n: number) => `${sessionId}|${n}`;
 const inFlight = new Map<string, number>();
 const failedKeys = new Set<string>();
-// what THIS phone last heard the server confirm for a receipt (JSON of the clean edit, "null" = no edit). A read
-// that finds something else there (a write given up on that landed late) marks that receipt "not saved" so Send
-// all waits and the seller looks at it.
+// what THIS phone last heard the server confirm for a receipt (JSON of the clean edit, "null" = no edit)
 const confirmed = new Map<string, string>();
+// receipts with a save given up on: what the server SHOULD have (the last confirmed, else what the list showed)
+// until a read after the late re-read. A read that finds something else there (the given-up write landed late)
+// marks that receipt "not saved" so Send all waits and the seller looks at it. Only these are compared, so a
+// change from another phone is never taken for a lost save.
+const watched = new Map<string, { fp: string; until: number }>();
 const fingerprint = (v: SavedReceiptEdit | null | undefined) => (v ? JSON.stringify(cleanReceiptEdit(v.edit)) : "null");
 type Listener = (e: { sessionId: string; buyerNumber: number; value?: SavedReceiptEdit | null; reread?: boolean }) => void;
 const listeners = new Set<Listener>();
 const tell = (e: Parameters<Listener>[0]) => { for (const f of [...listeners]) f(e); };
 
 /** Save (or remove, `edit` null) one buyer's edit. true = the server confirmed. */
-export async function persistReceiptEdit(sessionId: string, buyerNumber: number, edit: ReceiptEdit | null, basedOn: string | null, timeoutMs = saveTimeoutMs): Promise<boolean> {
+export async function persistReceiptEdit(sessionId: string, buyerNumber: number, edit: ReceiptEdit | null, basedOn: string | null, timeoutMs = saveTimeoutMs, before?: SavedReceiptEdit | null): Promise<boolean> {
   const k = keyOf(sessionId, buyerNumber);
   inFlight.set(k, (inFlight.get(k) ?? 0) + 1);
   tell({ sessionId, buyerNumber });
@@ -98,11 +101,19 @@ export async function persistReceiptEdit(sessionId: string, buyerNumber: number,
   const call = edit ? saveReceiptEdit(sessionId, buyerNumber, edit, basedOn, stop?.signal) : deleteReceiptEdit(sessionId, buyerNumber, stop?.signal);
   const ok = await Promise.race([call, late]).catch(() => false);
   if (timer) clearTimeout(timer);
-  if (timedOut) for (const ms of [rereadMs, rereadLateMs]) setTimeout(() => tell({ sessionId, buyerNumber, reread: true }), ms);
+  if (timedOut) {
+    const fp = confirmed.get(k) ?? watched.get(k)?.fp ?? fingerprint(before ?? null);
+    watched.set(k, { fp, until: Date.now() + rereadLateMs });
+    for (const ms of [rereadMs, rereadLateMs]) setTimeout(() => tell({ sessionId, buyerNumber, reread: true }), ms);
+  }
   const left = (inFlight.get(k) ?? 1) - 1;
   if (left > 0) inFlight.set(k, left); else inFlight.delete(k);
   const value: SavedReceiptEdit | null = edit ? { edit: cleanReceiptEdit(edit), basedOn: basedOn && HASH_RE.test(basedOn) ? basedOn : null } : null;
-  if (ok) { failedKeys.delete(k); confirmed.set(k, fingerprint(value)); } else failedKeys.add(k);
+  if (ok) {
+    failedKeys.delete(k); confirmed.set(k, fingerprint(value));
+    const w = watched.get(k);
+    if (w) watched.set(k, { ...w, fp: fingerprint(value) });
+  } else failedKeys.add(k);
   tell(ok ? { sessionId, buyerNumber, value } : { sessionId, buyerNumber });
   return ok;
 }
@@ -115,7 +126,7 @@ export function clearReceiptEditFailed(sessionId: string, buyerNumber: number): 
 const numsOf = (sessionId: string, from: Iterable<string>) => [...from].filter((k) => k.startsWith(`${sessionId}|`)).map((k) => Number(k.slice(sessionId.length + 1))).sort((a, b) => a - b);
 /** test helper: forget every save that is on its way / failed */
 export function _resetReceiptEditSaves(timeoutMs = FB_EDIT_SAVE_TIMEOUT_MS, rereadAfterMs = FB_EDIT_REREAD_MS, rereadLateAfterMs = FB_EDIT_REREAD_LATE_MS): void {
-  inFlight.clear(); failedKeys.clear(); confirmed.clear(); saveTimeoutMs = timeoutMs; rereadMs = rereadAfterMs; rereadLateMs = rereadLateAfterMs;
+  inFlight.clear(); failedKeys.clear(); confirmed.clear(); watched.clear(); saveTimeoutMs = timeoutMs; rereadMs = rereadAfterMs; rereadLateMs = rereadLateAfterMs;
 }
 
 /** The saved edits of the session on screen: read once per session; every save / reset of that session (from
@@ -144,11 +155,11 @@ export function useReceiptEdits(sessionId: string | null): {
       let flagged = false;
       if (m) {
         for (const [n, v] of run.arrivals) { if (v) m.set(n, v); else m.delete(n); }
-        for (const [k, fp] of confirmed) {
-          if (!k.startsWith(`${key}|`)) continue;
+        for (const [k, w] of [...watched]) {
+          if (!k.startsWith(`${key}|`) || inFlight.has(k)) continue;
           const n = Number(k.slice(key.length + 1));
-          if (inFlight.has(k) || fingerprint(m.get(n)) === fp) continue;
-          failedKeys.add(k); confirmed.delete(k); flagged = true;    // not what this phone saved last: look at it
+          if (fingerprint(m.get(n)) !== w.fp) { failedKeys.add(k); watched.delete(k); flagged = true; }   // look at it
+          else if (Date.now() >= w.until) watched.delete(k);                                               // all clear
         }
       }
       setGot({ key, edits: m, state: m ? "ready" : "error" });
