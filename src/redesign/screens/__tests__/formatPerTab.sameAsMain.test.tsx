@@ -99,6 +99,30 @@ describe("what is sent = main, for the same saved settings", () => {
     const yes = q("ivc-fb-send-all-yes"); if (yes) { fireEvent.click(yes); await flush(); }
     check("fb.sendall.start", calls.filter((c) => c.path === "/fb/sendall/start").map((c) => c.body));
   });
+  it("settings typed into the NEW Facebook receipt format sheet → the same TikTok message, ✎ View picture and Orders input as main", async () => {
+    if (DUMP) return;   // nothing to record: this compares with the cases above
+    DB.s.settings.set("u1", { user_id: "u1" });
+    invoicing(true); await flush();
+    fireEvent.click(q("ivc-tab-facebook")!); await flush();
+    fireEvent.click(q("ivc-format-btn")!); await flush();
+    const file = new File([new Uint8Array([1])], "qr.png", { type: "image/png" });
+    const rs = await import("../../adapters/receiptSettings");
+    const spy = vi.spyOn(rs, "downscaleQrFile").mockResolvedValue(QR);
+    fireEvent.change(q("ivc-fbformat-opening")!, { target: { value: "Hi {name}!" } });
+    fireEvent.change(q("ivc-fbformat-note")!, { target: { value: "Pay by GCash 0917" } });
+    fireEvent.change(q("ivc-fbformat-fee")!, { target: { value: "60" } });
+    fireEvent.change(q("ivc-fbformat-qr-file")!, { target: { files: [file] } }); await flush();
+    fireEvent.click(q("ivc-fbformat-save")!); await flush();
+    spy.mockRestore();
+    expect(DB.s.settings.get("u1")).toMatchObject({ opening: "Hi {name}!", note: "Pay by GCash 0917", qr_image: QR, invoice_shipping_fee: 60 });
+    fireEvent.click(q("ivc-fbformat-close")!); await flush();
+    fireEvent.click(q("ivc-fb-row-view")!); await settle();
+    expect(m.render.mock.calls.at(-1)?.[0]).toEqual(want["fb.view.input"]);
+    cleanup(); DB.s.sends = []; localStorage.clear();
+    invoicing(true); await flush();
+    fireEvent.click(q("ivc-send-next")!); await flush();
+    expect(copyText.mock.calls.at(-1)?.[0]).toEqual(want["tiktok.message.true"]);
+  });
   it("Orders: the Messenger receipt picture input", async () => {
     const b = buyers().find((x) => x.platform === "Facebook")!;
     const receipt = { num: b.bNum, name: "Ana Cruz", handle: "Ana Cruz", lines: [{ item: "Dress", total: 350 }, { item: "Belt", total: 50 }], count: 2, total: 400, platform: "Facebook" };
