@@ -124,8 +124,7 @@ describe("what is sent = main, for the same saved settings", () => {
     expect(copyText.mock.calls.at(-1)?.[0]).toEqual(want["tiktok.message.true"]);
   });
   it("Orders: the Messenger receipt picture input", async () => {
-    const b = buyers().find((x) => x.platform === "Facebook")!;
-    const receipt = { num: b.bNum, name: "Ana Cruz", handle: "Ana Cruz", lines: [{ item: "Dress", total: 350 }, { item: "Belt", total: 50 }], count: 2, total: 400, platform: "Facebook" };
+    const receipt = { num: 2, name: "Ana Cruz", handle: "Ana Cruz", lines: [{ item: "Dress", total: 350 }, { item: "Belt", total: 50 }], count: 2, total: 400, platform: "Facebook" };
     render(<TProvider lang="en"><ReceiptSheet receipt={receipt as never} cur="₱" onClose={() => {}} sessionId={SID} /></TProvider>);
     await settle();
     check("orders.input", m.render.mock.calls.at(-1)?.[0]);

@@ -42,6 +42,7 @@
    "note": "Pay by GCash 0917",
    "qrImage": "data:image/png;base64,iVBORw0KGgo=",
    "currency": "₱",
+   "buyerNum": 2,
    "buyerName": "Ana Cruz",
    "lines": [
     {
