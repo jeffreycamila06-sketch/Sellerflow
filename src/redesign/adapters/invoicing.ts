@@ -17,7 +17,7 @@ import { buyerReceipts, type BuyerReceipt } from "./useReadData";
 import type { Order } from "../data";
 import { matchPaidRows, orderKey } from "./ordersPaid";
 import { buildSendMessage, initialSendLines, messageTotal, priceInput, priceOf, qtyOf, type MessageLabels, type SendLine } from "./tiktokSend";
-import { NOTE_MAX } from "./receiptSettings";
+import { NOTE_MAX, OPENING_MAX, QR_DATA_URL_CAP } from "./receiptSettings";
 
 /** Who can open Invoicing: the switch (every plan), an admin, or a login on the preview list (sql/220). */
 export const invoicingVisible = (a: { isAdmin: boolean; previewKey: boolean; switchOn: boolean }): boolean => a.switchOn || a.isAdmin || a.previewKey;
@@ -434,6 +434,28 @@ export async function saveInvoiceFormat(f: InvoiceFormat): Promise<boolean> {
     const fee = f.fee.trim() === "" ? null : Math.min(INVOICE_FEE_MAX, priceOf(f.fee));
     const { error } = await supabase.from("seller_receipt_settings").upsert({
       user_id: uid, note: f.note.slice(0, NOTE_MAX), invoice_shipping_fee: fee, updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+    return !error;
+  } catch { return false; }
+}
+
+/** The Facebook receipt format sheet (Invoicing → Facebook → Format): the receipt's opening text and QR picture
+ *  plus the SAME note and Invoicing fee as the TikTok sheet — one upsert of the same row, so the two sheets can
+ *  never disagree. The columns are the ones Receipt format (sql/74) and the TikTok sheet (sql/220) already write. */
+export interface FbReceiptFormat { opening: string; note: string; qrImage: string | null; fee: string }
+export async function saveFbReceiptFormat(f: FbReceiptFormat): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  try {
+    const uid = await ownUserId();
+    if (!uid) return false;
+    const fee = f.fee.trim() === "" ? null : Math.min(INVOICE_FEE_MAX, priceOf(f.fee));
+    const { error } = await supabase.from("seller_receipt_settings").upsert({
+      user_id: uid,
+      opening: f.opening.slice(0, OPENING_MAX),
+      note: f.note.slice(0, NOTE_MAX),
+      qr_image: f.qrImage && f.qrImage.length <= QR_DATA_URL_CAP ? f.qrImage : null,
+      invoice_shipping_fee: fee,
+      updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" });
     return !error;
   } catch { return false; }

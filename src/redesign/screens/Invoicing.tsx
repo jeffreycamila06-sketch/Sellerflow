@@ -38,6 +38,7 @@ import PlatformEmblem from "../components/PlatformEmblem";
 import { LIVE_PICKER_MOTION, emblemMotionVars, emblemOutline, EMBLEM_SLUG, type PickerPlatform } from "../adapters/livePicker";
 import TikTokSendSheet from "../components/TikTokSendSheet";
 import InvoiceFormatSheet from "../components/InvoiceFormatSheet";
+import FbReceiptFormatSheet from "../components/FbReceiptFormatSheet";
 import FbSendAllTab from "../components/FbSendAllTab";
 import { fbSessionOk } from "../adapters/fbSendAll";
 import type { BlAddResult } from "../adapters/blacklist";
@@ -594,7 +595,10 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
       )}
       {formatOpen && (
-        <InvoiceFormatSheet cur={cur} format={format} sharedWithReceipt={!!onReceiptFormat} onClose={() => setFormatOpen(false)} onSaved={setFormat} />
+        tab === "facebook" && onReceiptFormat
+          ? <FbReceiptFormatSheet cur={cur} format={format} onClose={() => setFormatOpen(false)} onSaved={setFormat} />
+          : <InvoiceFormatSheet cur={cur} format={format} sharedWithReceipt={!!onReceiptFormat} title={tab === "tiktok" ? t.rd_ivc_fmt_title_tt : undefined}
+              onClose={() => setFormatOpen(false)} onSaved={setFormat} />
       )}
     </div>
   );
