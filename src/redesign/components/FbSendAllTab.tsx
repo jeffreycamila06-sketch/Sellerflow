@@ -20,7 +20,7 @@ import {
   invoiceRows, pieceCount, sentTime, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus, type InvoiceRow,
 } from "../adapters/invoicing";
 import {
-  fbCounts, fbInFilter, fbJobActive, fbSendAllStart, fbSendable, fbSessionOk, fbTagOf, useFbSendAll,
+  fbCounts, fbInFilter, fbIsSent, fbJobActive, fbSendAllStart, fbSendable, fbSessionOk, fbTagOf, useFbSendAll,
   type FbFilter, type FbTag,
 } from "../adapters/fbSendAll";
 import { FB_EDIT_SAVE_MS, clearReceiptEditFailed, persistReceiptEdit, rereadReceiptEdits, useReceiptEdits, type SavedReceiptEdit } from "../adapters/fbReceiptEdit";
@@ -83,8 +83,8 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   const sum = rows.reduce((s, r, i) => s + (tags[i] === "cancelled" ? 0 : r.total), 0);
 
   // a receipt edit still on its way / not saved: Send all and that buyer's Send wait (never the old receipt)
-  // (only buyers Send all would still send count: a buyer already sent / sent by hand / cancelled never holds it)
-  const sendableNums = new Set(rows.filter((_r, i) => fbSendable(tags[i])).map((r) => r.num));
+  // (a buyer already sent / sent by hand / cancelled never holds it; every other buyer may still be sent)
+  const sendableNums = new Set(rows.filter((_r, i) => !fbIsSent(tags[i]) && tags[i] !== "cancelled").map((r) => r.num));
   const editsSaving = edits.saving.filter((n) => sendableNums.has(n));
   const editsFailed = edits.failed.filter((n) => sendableNums.has(n));
   const editsBusy = editsSaving.length > 0;

@@ -69,11 +69,19 @@ export async function deleteReceiptEdit(sessionId: string, buyerNumber: number, 
 // session reads the edits again, so the screen shows what the server really has.
 export const FB_EDIT_SAVE_TIMEOUT_MS = 15000;
 export const FB_EDIT_REREAD_MS = 3000;
+/** a second read later still: a write the server got just before the call-off may land late */
+export const FB_EDIT_REREAD_LATE_MS = 15000;
 let rereadMs = FB_EDIT_REREAD_MS;
+let rereadLateMs = FB_EDIT_REREAD_LATE_MS;
 let saveTimeoutMs = FB_EDIT_SAVE_TIMEOUT_MS;
 const keyOf = (sessionId: string, n: number) => `${sessionId}|${n}`;
 const inFlight = new Map<string, number>();
 const failedKeys = new Set<string>();
+// what THIS phone last heard the server confirm for a receipt (JSON of the clean edit, "null" = no edit). A read
+// that finds something else there (a write given up on that landed late) marks that receipt "not saved" so Send
+// all waits and the seller looks at it.
+const confirmed = new Map<string, string>();
+const fingerprint = (v: SavedReceiptEdit | null | undefined) => (v ? JSON.stringify(cleanReceiptEdit(v.edit)) : "null");
 type Listener = (e: { sessionId: string; buyerNumber: number; value?: SavedReceiptEdit | null; reread?: boolean }) => void;
 const listeners = new Set<Listener>();
 const tell = (e: Parameters<Listener>[0]) => { for (const f of [...listeners]) f(e); };
@@ -90,11 +98,12 @@ export async function persistReceiptEdit(sessionId: string, buyerNumber: number,
   const call = edit ? saveReceiptEdit(sessionId, buyerNumber, edit, basedOn, stop?.signal) : deleteReceiptEdit(sessionId, buyerNumber, stop?.signal);
   const ok = await Promise.race([call, late]).catch(() => false);
   if (timer) clearTimeout(timer);
-  if (timedOut) setTimeout(() => tell({ sessionId, buyerNumber, reread: true }), rereadMs);
+  if (timedOut) for (const ms of [rereadMs, rereadLateMs]) setTimeout(() => tell({ sessionId, buyerNumber, reread: true }), ms);
   const left = (inFlight.get(k) ?? 1) - 1;
   if (left > 0) inFlight.set(k, left); else inFlight.delete(k);
-  if (ok) failedKeys.delete(k); else failedKeys.add(k);
-  tell(ok ? { sessionId, buyerNumber, value: edit ? { edit: cleanReceiptEdit(edit), basedOn: basedOn && HASH_RE.test(basedOn) ? basedOn : null } : null } : { sessionId, buyerNumber });
+  const value: SavedReceiptEdit | null = edit ? { edit: cleanReceiptEdit(edit), basedOn: basedOn && HASH_RE.test(basedOn) ? basedOn : null } : null;
+  if (ok) { failedKeys.delete(k); confirmed.set(k, fingerprint(value)); } else failedKeys.add(k);
+  tell(ok ? { sessionId, buyerNumber, value } : { sessionId, buyerNumber });
   return ok;
 }
 /** Read the session's edits again on every list (after a save the seller gave up on — Discard). */
@@ -105,7 +114,9 @@ export function clearReceiptEditFailed(sessionId: string, buyerNumber: number): 
 }
 const numsOf = (sessionId: string, from: Iterable<string>) => [...from].filter((k) => k.startsWith(`${sessionId}|`)).map((k) => Number(k.slice(sessionId.length + 1))).sort((a, b) => a - b);
 /** test helper: forget every save that is on its way / failed */
-export function _resetReceiptEditSaves(timeoutMs = FB_EDIT_SAVE_TIMEOUT_MS, rereadAfterMs = FB_EDIT_REREAD_MS): void { inFlight.clear(); failedKeys.clear(); saveTimeoutMs = timeoutMs; rereadMs = rereadAfterMs; }
+export function _resetReceiptEditSaves(timeoutMs = FB_EDIT_SAVE_TIMEOUT_MS, rereadAfterMs = FB_EDIT_REREAD_MS, rereadLateAfterMs = FB_EDIT_REREAD_LATE_MS): void {
+  inFlight.clear(); failedKeys.clear(); confirmed.clear(); saveTimeoutMs = timeoutMs; rereadMs = rereadAfterMs; rereadLateMs = rereadLateAfterMs;
+}
 
 /** The saved edits of the session on screen: read once per session; every save / reset of that session (from
  *  any editor, even one already closed) is applied as soon as the server confirms it. `saving` / `failed` = the
@@ -119,10 +130,30 @@ export function useReceiptEdits(sessionId: string | null): {
   const [turn, setTurn] = useState(0);
   const [, setTick] = useState(0);
   const key = sessionId || "";
+  // saves confirmed WHILE a read is on its way may not be in what it reads: they are kept and put on top of it
+  // (else the read would wipe a newer saved edit off the list and the sheet would start from the old receipt)
+  const reading = useRef<{ key: string; arrivals: Map<number, SavedReceiptEdit | null> } | null>(null);
   useEffect(() => {
     if (!key) return;
     let alive = true;
-    void loadReceiptEdits(key).then((m) => { if (alive) setGot({ key, edits: m, state: m ? "ready" : "error" }); });
+    const run = { key, arrivals: new Map<number, SavedReceiptEdit | null>() };
+    reading.current = run;
+    void loadReceiptEdits(key).then((m) => {
+      if (!alive) return;
+      if (reading.current === run) reading.current = null;
+      let flagged = false;
+      if (m) {
+        for (const [n, v] of run.arrivals) { if (v) m.set(n, v); else m.delete(n); }
+        for (const [k, fp] of confirmed) {
+          if (!k.startsWith(`${key}|`)) continue;
+          const n = Number(k.slice(key.length + 1));
+          if (inFlight.has(k) || fingerprint(m.get(n)) === fp) continue;
+          failedKeys.add(k); confirmed.delete(k); flagged = true;    // not what this phone saved last: look at it
+        }
+      }
+      setGot({ key, edits: m, state: m ? "ready" : "error" });
+      if (flagged) setTick((x) => x + 1);
+    });
     return () => { alive = false; };
   }, [key, turn]);
   const reload = useCallback(() => setTurn((n) => n + 1), []);
@@ -132,16 +163,16 @@ export function useReceiptEdits(sessionId: string | null): {
     if (v) m.set(n, v); else m.delete(n);
     return { ...g, edits: m };
   }), [key]);
-  // a save confirmed while this list is still reading may not be in what it reads → read once more
-  const readyRef = useRef(false);
-  const isReady = got.key === key && got.state === "ready";
-  useEffect(() => { readyRef.current = isReady; }, [isReady]);
   useEffect(() => {
     if (!key) return;
     const on: Listener = (e) => {
       if (e.sessionId !== key) return;
       if (e.reread) setTurn((n) => n + 1);
-      else if (e.value !== undefined) { if (readyRef.current) put(e.buyerNumber, e.value); else setTurn((n) => n + 1); }
+      else if (e.value !== undefined) {
+        const r = reading.current;
+        if (r && r.key === key) r.arrivals.set(e.buyerNumber, e.value);
+        put(e.buyerNumber, e.value);
+      }
       setTick((n) => n + 1);
     };
     listeners.add(on);

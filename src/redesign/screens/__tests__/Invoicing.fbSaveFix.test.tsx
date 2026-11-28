@@ -345,3 +345,67 @@ describe("audit nits", () => {
     expect(ask()).toBe(false);
   });
 });
+
+// ── the second review (2026-11-28) ──
+describe("review N1: a read of the list that started before a save was confirmed", () => {
+  it("does not wipe that newer save off the list (row keeps Edited, the sheet opens on it)", async () => {
+    _resetReceiptEditSaves(300, 150, 100000);
+    let landFirst!: () => void;
+    DB.s.editWriteGate = new Promise<void>((r) => { landFirst = r; });
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    let answerRead!: () => void;
+    DB.s.editReadGate = new Promise<void>((r) => { answerRead = r; });
+    await wait(500);                                           // timed out (300) + the read started (150) and waits
+    expect(q("ivc-fb-save-failed")).not.toBeNull();
+    DB.s.editWriteGate = null;
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "175" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    expect(btn("ivc-fb-save").textContent).toBe(`✓ ${t.rd_fb_saved}`);
+    answerRead(); await flush(); await flush();                // the read answers with what it saw (no 175)
+    landFirst(); await flush();
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    expect(editedTag(1)).not.toBeNull();
+    DB.s.editReadGate = null;
+    await view(1);
+    expect(inSheet("rs-price").map((i) => i.value)).toEqual(["175", "0"]);
+    expect(DB.s.edits).toEqual([expect.objectContaining({ lines: [{ item: "99", price: 175 }, { item: "200", price: 0 }] })]);
+  });
+});
+describe("review P3b: a write given up on that the server got anyway lands over a newer save", () => {
+  it("the later read sees it differs from what this phone saved → #1 is 'not saved', Send all waits", async () => {
+    _resetReceiptEditSaves(300, 100000, 600);
+    DB.s.ignoreAbort = true;
+    let landFirst!: () => void;
+    DB.s.editWriteGate = new Promise<void>((r) => { landFirst = r; });
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    await wait(400);
+    DB.s.editWriteGate = null;
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "175" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    expect(btn("ivc-fb-save").textContent).toBe(`✓ ${t.rd_fb_saved}`);
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    landFirst(); await flush();                                // the old 150 lands late, over 175
+    expect(DB.s.edits[0]).toMatchObject({ lines: [{ item: "99", price: 150 }, { item: "200", price: 0 }] });
+    await wait(900);                                           // the later read (600 ms after the give-up)
+    expect(q("ivc-fb-edits-failed")!.textContent).toBe(tpl(t.rd_ivc_fb_unsaved_n, { n: "#1" }));
+    expect(btn("ivc-fb-send-all").disabled).toBe(true);
+    await view(1);
+    expect(q("ivc-fb-last-unsaved")).not.toBeNull();
+    expect(inSheet("rs-price").map((i) => i.value)).toEqual(["150", "0"]);   // the screen shows what the server has
+  });
+});
+describe("review N4: buyers Send all may still try", () => {
+  it("a buyer tagged 'unknown' with a failed save also holds Send all", async () => {
+    await open(); await view(6);
+    DB.s.failEditWrites = true;
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "95" } });
+    await wait(FB_EDIT_SAVE_MS + 300);
+    await toTikTokAndBack();
+    expect(q("ivc-fb-edits-failed")!.textContent).toBe(tpl(t.rd_ivc_fb_unsaved_n, { n: "#6" }));
+    expect(btn("ivc-fb-send-all").disabled).toBe(true);
+  });
+});

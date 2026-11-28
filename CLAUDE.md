@@ -7241,8 +7241,12 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   called off (`.abortSignal`) and the lists read the server again 3 s later; Discard after a failed save reads
   again; a failed Reset says so in its question; Buyer cancelled / by hand never wait on a save; typed back = no
   question; only buyers Send all would still send hold it; `beforeunload` also while a closed sheet's save runs.
-  Left (needs SQL, not done): a revision check so an old write can never land over a newer one if the network
-  delivers it late despite the call-off.
+  Second review: a read that started before a save was confirmed no longer wipes it (saves confirmed during a read
+  are put on top of it); a second read 15 s after a give-up compares the server with what this phone last saved —
+  different = that buyer is "not saved" (Send all waits, the sheet warns); every buyer not sent / by hand / cancelled
+  can hold Send all (the server may still try "unknown" / "can't message").
+  Left (needs SQL, not done): a revision check so an old write can never land over a newer one; today a late write
+  is caught by the 15 s read and flagged, not prevented.
 
 ## 2026-11-28 — CANCEL ORDER (Orders tab only) ✅ RELEASED TO ALL SELLERS 2026-11-28 11:38 Taipei (main; sql/234 + both indexes + sql/235 APPLIED; Render deployed; switch `order_cancel_enabled` = 'true'; Jeff tested Cancel + Undo end-to-end on production)
 Jeff's decisions (2026-11-28): free order NOT given back · stock goes back (Auto mode orders) · allowed while the

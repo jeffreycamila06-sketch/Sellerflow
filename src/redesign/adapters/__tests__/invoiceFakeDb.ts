@@ -32,6 +32,8 @@ export function makeInvoiceDb() {
     failEditReads: false, failEditWrites: false, noEditsTable: false,
     /** a slow network: an edit write waits for this before it lands; hang = it never answers */
     editWriteGate: null as Promise<void> | null, hangEditWrites: false,
+    /** a slow read: the edits are read NOW but the answer waits for this; ignoreAbort = the server already got it */
+    editReadGate: null as Promise<void> | null, ignoreAbort: false,
   };
   const reset = () => {
     s.uid = "u1"; s.sends = []; s.settings = new Map(); s.failReads = false; s.failWrites = false; s.failFormatRead = false; s.failFormatWrite = false;
@@ -40,7 +42,7 @@ export function makeInvoiceDb() {
     s.lineCancels = []; s.failCancelReads = false; s.failCancelWrites = false; s.failIdReads = false; s.noCancelStatus = false;
     s.failPlatformReads = false;
     s.edits = []; s.failEditReads = false; s.failEditWrites = false; s.noEditsTable = false;
-    s.editWriteGate = null; s.hangEditWrites = false;
+    s.editWriteGate = null; s.hangEditWrites = false; s.editReadGate = null; s.ignoreAbort = false;
   };
   const err = { message: "boom" };
   const from = (table: string) => {
@@ -97,9 +99,11 @@ export function makeInvoiceDb() {
         const failNow = table === "live_session_orders" ? (lim !== null ? s.failPlatformReads : filters.platform !== undefined ? s.failIdReads : s.failPast)
           : table === "invoice_line_cancels" ? s.failCancelReads : table === "fb_receipt_edits" ? s.failEditReads : s.failReads;
         if (failNow) return Promise.resolve({ data: null, error: err }).then(ok);
-        const all = rows();
+        const all = rows().map((r) => ({ ...r }));
         const cut = range ? all.slice(range[0], range[1] + 1) : all;
-        return Promise.resolve({ data: lim !== null ? cut.slice(0, lim) : cut, error: null }).then(ok);
+        const answer = { data: lim !== null ? cut.slice(0, lim) : cut, error: null };
+        if (table === "fb_receipt_edits" && s.editReadGate) return s.editReadGate.then(() => answer).then(ok);
+        return Promise.resolve(answer).then(ok);
       },
     };
     return {
@@ -136,7 +140,7 @@ export function makeInvoiceDb() {
           let sig: AbortSignal | null = null;
           let wake: ((v: { error: unknown }) => void) | null = null;
           const land = () => {
-            if (sig?.aborted) return { error: { message: "aborted" } };
+            if (sig?.aborted && !s.ignoreAbort) return { error: { message: "aborted" } };
             const ok = !s.failEditWrites && !s.noEditsTable && payload.user_id === s.uid;
             if (ok) {
               const i = s.edits.findIndex((r) => r.user_id === payload.user_id && r.session_id === payload.session_id && r.buyer_number === payload.buyer_number);
