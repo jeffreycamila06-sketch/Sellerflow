@@ -529,7 +529,8 @@ export default function Invoicing({ cur, onBack, buyers, sessionKey, sellerId, s
               pastBanner={fbPast.selected ? (
                 <div data-testid="ivc-fb-past-line" style={{ display: "inline-block", marginBottom: 8, padding: "4px 9px", borderRadius: 8, fontSize: 12.5, fontWeight: 800, lineHeight: 1.35, overflowWrap: "anywhere", ...AMBER }}>{tpl(t.rd_psn_banner, { range: sessionRange(fbPast.selected) })}</div>
               ) : null}
-              buyers={fbPast.selected ? fbPast.buyers : buyers} fee={fee} money={money} lang={fbSendAll.lang} cur={cur} buyersState={fbPast.selected ? fbPast.buyersState : "ready"} fallback={soon("facebook")} />
+              buyers={fbPast.selected ? fbPast.buyers : buyers} fee={fee} money={money} lang={fbSendAll.lang} cur={cur} buyersState={fbPast.selected ? fbPast.buyersState : "ready"} fallback={soon("facebook")}
+              feeState={fmtState} onFeeRetry={retryFormat} />
           )
           : soon(tab)}
       </div>

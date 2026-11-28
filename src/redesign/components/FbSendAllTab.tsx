@@ -46,7 +46,7 @@ const TAG_LOOK: Record<FbTag, CSSProperties> = {
 };
 const portalRoot = () => (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body;
 
-export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, sessionId, buyers, fee, money, lang, cur, buyersState, fallback }: {
+export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, sessionId, buyers, fee, money, lang, cur, buyersState, fallback, feeState = "ready", onFeeRetry }: {
   /** the session picker (Invoicing's — the same list as the TikTok tab) */
   picker: ReactNode;
   /** a past session: its amber line; null = the running session */
@@ -59,6 +59,8 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   buyersState: "idle" | "loading" | "ready" | "error";
   /** the Facebook tab as before (the server says Send all is not open for this seller) */
   fallback: ReactNode;
+  /** the Invoicing shipping fee (in every total) still loading / failed: the list waits — never totals without it */
+  feeState?: "loading" | "ready" | "error"; onFeeRetry?: () => void;
 }) {
   const t = useT();
   const okSession = fbSessionOk(sessionId);
@@ -84,6 +86,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   // shipping fee); a receipt whose total is "to be confirmed" adds nothing to the sum
   const totals = rows.map((r) => fbRowTotal(r, edits.edits.get(r.num), fee));
   const sum = rows.reduce((s, _r, i) => s + (tags[i] === "cancelled" ? 0 : totals[i].sum), 0);
+  const totalOf = new Map(rows.map((r, i) => [r, totals[i]] as const));
 
   // a receipt edit still on its way / not saved: Send all and that buyer's Send wait (never the old receipt)
   // (a buyer already sent / sent by hand / cancelled never holds it; every other buyer may still be sent)
@@ -125,9 +128,9 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
 
   if (okSession && st.state === "ready" && data && (!data.access || !data.allowed)) return <>{fallback}</>;
 
-  const loading = buyersState === "loading" || buyersState === "idle" || (okSession && st.state === "loading") || status.state === "loading" || cancels.state === "loading" || (okSession && edits.state === "loading");
-  const loadErr = buyersState === "error" || (okSession && st.state === "error") || status.state === "error" || cancels.state === "error" || (okSession && edits.state === "error");
-  const retry = () => { st.reload(); status.reload(); cancels.reload(); edits.reload(); };
+  const loading = buyersState === "loading" || buyersState === "idle" || (okSession && st.state === "loading") || status.state === "loading" || cancels.state === "loading" || (okSession && edits.state === "loading") || feeState === "loading";
+  const loadErr = buyersState === "error" || (okSession && st.state === "error") || status.state === "error" || cancels.state === "error" || (okSession && edits.state === "error") || feeState === "error";
+  const retry = () => { st.reload(); status.reload(); cancels.reload(); edits.reload(); if (feeState === "error") onFeeRetry?.(); };
   const sheetRow = sheetId ? rows.find((r) => r.id === sheetId) ?? null : null;
   const shown = rows.filter((_r, i) => fbInFilter(tags[i], filter));
   const stopText = job && !active && (job.stop === "needs_messaging" || data?.needsMessaging) ? t.rd_rs_needs_messaging
@@ -219,7 +222,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
           {shown.length === 0 && <div data-testid="ivc-fb-empty-filter" style={{ padding: "14px", fontSize: 13, color: "var(--text-muted)" }}>{t.rd_ivc_empty_filter}</div>}
           {shown.map((r, i) => {
             const tag = tagOf(r);
-            const tot = totals[rows.indexOf(r)];
+            const tot = totalOf.get(r) ?? { allPriced: false, sum: 0 };
             const off = tag === "cancelled";
             const canSend = fbSendable(tag) && !active && !data?.needsMessaging && !editHold(r.num);
             return (

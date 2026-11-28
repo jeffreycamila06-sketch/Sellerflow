@@ -97,3 +97,17 @@ describe("the row total = the picture's Total", () => {
     expect(q("ivc-fb-summary-line")!.textContent).toBe("2 Facebook buyers · ₱300");   // #1 to be confirmed, #6 cancelled
   });
 });
+
+describe("review R1: the Invoicing shipping fee could not be read", () => {
+  it("the Facebook list shows the load error + Try again (never totals without shipping); Try again → totals with shipping", async () => {
+    DB.s.failFormatRead = true;
+    await open();
+    expect(q("ivc-fb-error")).not.toBeNull();
+    expect(q("ivc-fb-list")).toBeNull();
+    expect(document.querySelector("[data-testid='ivc-fb-row-total']")).toBeNull();
+    DB.s.failFormatRead = false;
+    fireEvent.click(q("ivc-fb-retry")!); await flush(); await flush();
+    expect(q("ivc-fb-error")).toBeNull();
+    expect(rowTotal(2)).toBe("₱410");
+  });
+});
