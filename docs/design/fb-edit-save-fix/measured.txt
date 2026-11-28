@@ -1,0 +1,6 @@
+390 close-ask: {"wide":false,"small":[]}
+390 failed-send: {"wide":false,"small":[]} hand=true
+390 page errors: 0
+1280 close-ask: {"wide":false,"small":[]}
+1280 failed-send: {"wide":false,"small":[]} hand=true
+1280 page errors: 0

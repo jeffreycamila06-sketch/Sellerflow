@@ -20,10 +20,10 @@ import {
   invoiceRows, pieceCount, sentTime, useInvoiceLineCancels, useInvoiceOrderIds, useInvoiceStatus, type InvoiceRow,
 } from "../adapters/invoicing";
 import {
-  fbCounts, fbInFilter, fbJobActive, fbSendAllStart, fbSendable, fbSessionOk, fbTagOf, useFbSendAll,
+  fbCounts, fbInFilter, fbIsSent, fbJobActive, fbSendAllStart, fbSendable, fbSessionOk, fbTagOf, useFbSendAll,
   type FbFilter, type FbTag,
 } from "../adapters/fbSendAll";
-import { FB_EDIT_SAVE_MS, deleteReceiptEdit, saveReceiptEdit, useReceiptEdits, type SavedReceiptEdit } from "../adapters/fbReceiptEdit";
+import { FB_EDIT_SAVE_MS, clearReceiptEditFailed, persistReceiptEdit, rereadReceiptEdits, useReceiptEdits, type SavedReceiptEdit } from "../adapters/fbReceiptEdit";
 import { editToState, fbPictureInput, originalState, sameEdit, shownLineIds, stateToEdit, type EditorState, type PictureLabels } from "../adapters/fbReceiptEditState";
 import { loadReceiptSettings } from "../adapters/receiptSettings";
 import { useReceiptPicture } from "../adapters/useReceiptPicture";
@@ -82,8 +82,24 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
   const counts = fbCounts(tags);
   const sum = rows.reduce((s, r, i) => s + (tags[i] === "cancelled" ? 0 : r.total), 0);
 
-  const start = (buyerNumber?: number) => {
-    if (!okSession || starting !== null || active) return;
+  // a receipt edit still on its way / not saved: Send all and that buyer's Send wait (never the old receipt)
+  // (a buyer already sent / sent by hand / cancelled never holds it; every other buyer may still be sent)
+  const sendableNums = new Set(rows.filter((_r, i) => !fbIsSent(tags[i]) && tags[i] !== "cancelled").map((r) => r.num));
+  const editsSaving = edits.saving.filter((n) => sendableNums.has(n));
+  const editsFailed = edits.failed.filter((n) => sendableNums.has(n));
+  const editsBusy = editsSaving.length > 0;
+  const editHold = (n?: number) => (n === undefined ? editsBusy || editsFailed.length > 0 : editsSaving.includes(n) || editsFailed.includes(n));
+  // a receipt edit still on its way (its sheet may be closed): the browser asks before the page reloads
+  const anySaving = edits.saving.length > 0;
+  useEffect(() => {
+    if (!anySaving) return;
+    const stay = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", stay);
+    return () => window.removeEventListener("beforeunload", stay);
+  }, [anySaving]);
+  // fromSheet: the buyer's own sheet saved (or checked) the receipt just before — it is the one on screen
+  const start = (buyerNumber?: number, fromSheet = false) => {
+    if (!okSession || starting !== null || active || (!fromSheet && editHold(buyerNumber))) return;
     setStarting(buyerNumber ?? "all");
     setStartErr(false);
     void fbSendAllStart(sessionId!, { buyerNumber, lang, currency: cur }).then((r) => {
@@ -160,8 +176,8 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
               {tpl(t.rd_ivc_fb_sending_all, { x: (job?.sent ?? 0) + (job?.skipped ?? 0) + (job?.failed ?? 0), n: job?.total || counts.left })}
             </button>
           ) : counts.left > 0 ? (
-            <button type="button" data-testid="ivc-fb-send-all" disabled={starting !== null || !!data?.needsMessaging} onClick={() => start()}
-              style={{ ...bigBtn, opacity: starting !== null || data?.needsMessaging ? 0.65 : 1 }}>
+            <button type="button" data-testid="ivc-fb-send-all" disabled={starting !== null || !!data?.needsMessaging || editHold()} onClick={() => start()}
+              style={{ ...bigBtn, opacity: starting !== null || data?.needsMessaging || editHold() ? 0.65 : 1 }}>
               {tpl(t.rd_ivc_fb_send_all, { k: counts.left })}
             </button>
           ) : (
@@ -170,6 +186,8 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
             </div>
           )}
           <div data-testid="ivc-fb-hint" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_ivc_fb_all_hint}</div>
+          {editsBusy && <div role="status" data-testid="ivc-fb-edits-saving" style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: "var(--text-muted)", lineHeight: 1.4 }}>{t.rd_ivc_fb_wait_save}</div>}
+          {!editsBusy && editsFailed.length > 0 && <div role="alert" data-testid="ivc-fb-edits-failed" style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: "var(--danger)", lineHeight: 1.45, overflowWrap: "anywhere" }}>{tpl(t.rd_ivc_fb_unsaved_n, { n: editsFailed.map((n) => `#${n}`).join(", ") })}</div>}
           {startErr && <div role="alert" data-testid="ivc-fb-start-error" style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: "var(--danger)", lineHeight: 1.4 }}>{t.rd_ivc_fb_start_failed}</div>}
         </div>
 
@@ -199,7 +217,7 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
           {shown.map((r, i) => {
             const tag = tagOf(r);
             const off = tag === "cancelled";
-            const canSend = fbSendable(tag) && !active && !data?.needsMessaging;
+            const canSend = fbSendable(tag) && !active && !data?.needsMessaging && !editHold(r.num);
             return (
               <div key={r.id} data-testid="ivc-fb-row" data-buyer={r.num} data-tag={tag} onClick={() => setSheetId(r.id)}
                 style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", minHeight: 56, padding: "9px 12px", borderTop: i ? "1px solid var(--border)" : "none", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
@@ -241,10 +259,10 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
 
       {sheetRow && okSession && (
         <FbViewSheet key={sheetRow.id} row={sheetRow} tag={tagOf(sheetRow)} sessionId={sessionId!} cur={cur} fee={fee}
-          saved={edits.edits.get(sheetRow.num) ?? null} onSaved={(v) => edits.put(sheetRow.num, v)}
+          saved={edits.edits.get(sheetRow.num) ?? null} lastFailed={edits.failed.includes(sheetRow.num)} pending={edits.saving.includes(sheetRow.num)}
           canSend={fbSendable(tagOf(sheetRow)) && !active && !data?.needsMessaging} sending={starting === sheetRow.num || tagOf(sheetRow) === "sending"}
           onClose={() => setSheetId(null)}
-          onSend={() => start(sheetRow.num)}
+          onSend={() => start(sheetRow.num, true)}
           onByHand={() => { status.mark(sheetRow, "sent"); track("invoice_send", { platform: "facebook", via: "hand" }); setSheetId(null); }}
           onCancelBuyer={() => { const prev = status.saved.get(sheetRow.id); status.mark(sheetRow, "cancelled", prev?.hash ?? sheetRow.hash); track("invoice_cancel", { platform: "facebook" }); setSheetId(null); }}
           onUndoCancel={() => { const prev = status.saved.get(sheetRow.id); if (prev?.status === "cancelled" && prev.sentAt) status.mark(sheetRow, "sent", prev.hash); else status.clear(sheetRow); }} />
@@ -257,14 +275,22 @@ export default function FbSendAllTab({ picker, pastBanner, isPast, sessionKey, s
 // ✎ View: the SAME receipt editor as Orders (components/ReceiptEditorFields.tsx) — opening, items, shipping fee,
 // note, the payment QR and the live picture. The picture's input is built with the same shared functions the
 // server's Send all draws with (adapters/fbReceiptEditState.ts → src/lib/receiptEdit.js), so this is the picture
-// the buyer gets. A change is saved for THIS receipt only (sql/233 fb_receipt_edits, a moment after the last
-// change; at once before Send and on close); back exactly to the orders = the saved edit goes. "Reset to
-// original" removes it. Orders, Sales, stickers and the saved receipt format are never touched.
+// the buyer gets. A change is saved for THIS receipt only (sql/233 fb_receipt_edits): a moment after the last
+// change, or at once with Save; "✓ Saved" and "Edited" only after the server said yes. Closing with a change not
+// saved asks Save / Discard (in the sheet). A save keeps going if the sheet closes some other way
+// (adapters/fbReceiptEdit.ts persistReceiptEdit) and the list waits for it before sending. Back exactly to the
+// orders = the saved edit goes. "Reset to original" removes it. Orders, Sales, stickers and the saved receipt
+// format are never touched.
 type SaveState = "idle" | "saving" | "saved" | "failed";
-function FbViewSheet({ row, tag, sessionId, cur, fee, saved, onSaved, canSend, sending, onClose, onSend, onByHand, onCancelBuyer, onUndoCancel }: {
+const FAILED_TAGS: readonly FbTag[] = ["other_app", "cant_message", "unknown"];
+function FbViewSheet({ row, tag, sessionId, cur, fee, saved, lastFailed, pending, canSend, sending, onClose, onSend, onByHand, onCancelBuyer, onUndoCancel }: {
   row: InvoiceRow; tag: FbTag; sessionId: string; cur: string; fee: string;
-  /** this buyer's saved edit (null = none) and the callback after a save / reset (null = the edit is gone) */
-  saved: SavedReceiptEdit | null; onSaved: (v: SavedReceiptEdit | null) => void;
+  /** this buyer's saved edit (null = none) */
+  saved: SavedReceiptEdit | null;
+  /** an earlier save of this receipt (from a sheet already closed) failed */
+  lastFailed: boolean;
+  /** an earlier save of this receipt is still on its way: the editor waits for it before it starts */
+  pending: boolean;
   canSend: boolean; sending: boolean;
   onClose: () => void; onSend: () => void; onByHand: () => void; onCancelBuyer: () => void; onUndoCancel: () => void;
 }) {
@@ -282,7 +308,15 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, onSaved, canSend, s
   }, [fmtTurn]);
   const original = useMemo(() => (fmt.state === "ready" ? originalState(row.receipt, row.cancelled, fmt, fee) : null), [fmt, row.receipt, row.cancelled, fee]);
   const [es, setEs] = useState<EditorState | null>(null);
-  if (!es && original) setEs(saved ? editToState(saved.edit) : original);
+  // what the server has for this receipt now (the saved edit, else the orders) — "not saved" = es differs from it
+  const [savedAs, setSavedAs] = useState<EditorState | null>(null);
+  // starts only once no earlier save of this receipt is on its way (else it would start from the old receipt and
+  // the next change would put the old receipt back over the saved edit)
+  if (!es && original && !pending) { const first = saved ? editToState(saved.edit) : original; setEs(first); setSavedAs(first); }
+  const savedAsRef = useRef<EditorState | null>(null);
+  useEffect(() => { savedAsRef.current = savedAs; }, [savedAs]);
+  const savedRef = useRef<SavedReceiptEdit | null>(saved);
+  useEffect(() => { savedRef.current = saved; }, [saved]);
   const nextLineId = useRef(1000);
   const focusLineId = useRef<number | null>(null);
 
@@ -300,45 +334,87 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, onSaved, canSend, s
     dirty.current = false;
     setSaveState("saving");
     const same = sameEdit(state, original);
-    const p = (same ? deleteReceiptEdit(sessionId, row.num) : saveReceiptEdit(sessionId, row.num, stateToEdit(state), row.hash)).then((ok) => {
-      if (ok) onSaved(same ? null : { edit: stateToEdit(state), basedOn: row.hash });
-      else dirty.current = true;
-      setSaveState(ok ? (same ? "idle" : "saved") : "failed");
+    const p = persistReceiptEdit(sessionId, row.num, same ? null : stateToEdit(state), row.hash, undefined, savedRef.current).then((ok) => {
+      if (ok) setSavedAs(state); else dirty.current = true;
+      setSaveState(ok ? "saved" : "failed");
       return ok;
     });
     flight.current = p;
     try { return await p; } finally { flight.current = null; }
-  }, [original, sessionId, row.num, row.hash, onSaved]);
+  }, [original, sessionId, row.num, row.hash]);
   const change = (next: EditorState) => {
     setEs(next);
     latest.current = next;
     dirty.current = true;
     setSaveState("idle");
+    setAskClose(false);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { void saveNow(); }, FB_EDIT_SAVE_MS);
   };
-  // the sheet closing (or the page going away) saves what is left
+  const unsaved = !!es && !!savedAs && !sameEdit(es, savedAs);
+  const busy = saveState === "saving";
+  // the sheet going away some other way (the list drawn again, another tab) saves what is left
   const saveRef = useRef(saveNow);
   useEffect(() => { saveRef.current = saveNow; }, [saveNow]);
   useEffect(() => () => { if (dirty.current) void saveRef.current(); }, []);
-  const close = () => { void saveNow(); onClose(); };
+  // the page reloading / closing with a change not saved yet: the browser asks first
+  useEffect(() => {
+    if (!unsaved && !busy) return;
+    const stay = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", stay);
+    return () => window.removeEventListener("beforeunload", stay);
+  }, [unsaved, busy]);
+
+  // ── closing: a change not saved → Save / Discard ──
+  const [askClose, setAskClose] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const leave = () => { clearReceiptEditFailed(sessionId, row.num); onClose(); };
+  const requestClose = async () => {
+    if (closing) return;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (flight.current) {             // a save on its way: wait for its answer first
+      setClosing(true);
+      await flight.current;
+      setClosing(false);
+    }
+    // ask only when what is on screen really differs from what the server has (typed back = nothing to save)
+    const now = latest.current;
+    const differs = !!now && !!savedAsRef.current && !sameEdit(now, savedAsRef.current);
+    if (dirty.current && differs) { setAskClose(true); return; }
+    if (dirty.current && !differs) dirty.current = false;
+    leave();
+  };
+  const closeSave = async () => { if (await saveNow()) leave(); };
+  const closeDiscard = () => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    dirty.current = false; latest.current = null;
+    if (saveState === "failed") rereadReceiptEdits(sessionId, row.num);   // a failed save may still have landed: show the truth
+    leave();
+  };
 
   // ── reset ──
   const [askReset, setAskReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [resetFailed, setResetFailed] = useState(false);
   const doReset = async () => {
     if (!original || resetting) return;
-    setResetting(true);
+    setResetting(true); setResetFailed(false);
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     if (flight.current) await flight.current;
-    const ok = await deleteReceiptEdit(sessionId, row.num);
+    const ok = await persistReceiptEdit(sessionId, row.num, null, row.hash, undefined, savedRef.current);
     setResetting(false);
-    if (!ok) { setSaveState("failed"); return; }
+    if (!ok) { setResetFailed(true); return; }                          // the question stays: tap Reset again
     dirty.current = false; latest.current = null;
-    onSaved(null); setEs(original); setAskReset(false); setSaveState("idle");
+    setEs(original); setSavedAs(original); setAskReset(false); setSaveState("idle");
   };
 
-  const send = async () => { if (await saveNow()) onSend(); };
+  // the server may not have what is on screen (a save given up on landed late): save what is on screen first
+  const send = async () => {
+    if (lastFailed && es) { dirty.current = true; latest.current = es; }
+    if (await saveNow()) { clearReceiptEditFailed(sessionId, row.num); onSend(); }
+  };
+  // by hand / cancelled: that receipt is not sent from here any more → no need to wait for the save (it keeps going)
+  const thenDo = (f: () => void) => () => { void saveNow(); f(); };
 
   const labels: PictureLabels = { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more, shipping: t.rd_rc_pic_shipping, howToPay: t.rd_rc_pic_howto, scanToPay: t.rd_rc_pic_scan };
   const input = es ? fbPictureInput(es, { receipt: row.receipt, qrImage: fmt.qrImage, cur, labels }) : null;
@@ -351,32 +427,32 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, onSaved, canSend, s
 
   const cancelled = tag === "cancelled";
   const done = tag === "sent" || tag === "by_hand";
+  const sendFailed = FAILED_TAGS.includes(tag);
+  // the Save button: Save (a change not saved) · Saving… · ✓ Saved (the server said yes) · Save (nothing to save, off)
+  const saveLabel = busy || closing ? t.rd_fb_saving : saveState === "saved" && !unsaved ? `✓ ${t.rd_fb_saved}` : t.rd_rc_save;
+  const canSave = !!es && !busy && !closing && (unsaved || saveState === "failed");
   return createPortal(
-    <div onClick={close} data-testid="ivc-fb-sheet-overlay" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+    <div onClick={() => void requestClose()} data-testid="ivc-fb-sheet-overlay" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`#${row.num}`} data-testid="ivc-fb-sheet"
         style={{ background: "var(--surface-2)", borderTopLeftRadius: 20, borderTopRightRadius: 20, width: "100%", maxWidth: 560, margin: "0 auto", boxSizing: "border-box", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 -14px 40px rgba(0,0,0,.35)" }}>
         <div data-testid="ivc-fb-sheet-scroll" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "10px 14px 6px" }}>
           <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border-strong)", margin: "0 auto 12px" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span data-testid="ivc-fb-sheet-title" style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere" }}><b style={{ fontFamily: "var(--font-mono)" }}>#{row.num}</b> {row.receipt.name || row.receipt.handle}</span>
-            <button type="button" data-testid="ivc-fb-sheet-close" onClick={close} style={{ flexShrink: 0, minHeight: 44, padding: "0 8px", border: "none", background: "transparent", color: "var(--accent-fg)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
+            <button type="button" data-testid="ivc-fb-sheet-close" onClick={() => void requestClose()} style={{ flexShrink: 0, minHeight: 44, padding: "0 8px", border: "none", background: "transparent", color: "var(--accent-fg)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 4px", lineHeight: 1.4 }}>{t.rd_ivc_fb_view_note}</div>
           <div data-testid="ivc-fb-edit-hint" style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>{t.rd_ivc_fb_edit_hint}</div>
-          {(edited || saveState !== "idle") && (
+          {edited && (
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 8 }}>
-              {edited && <span data-testid="ivc-fb-sheet-edited" style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)" }}>{t.rd_ivc_fb_edited}</span>}
-              {saveState === "saving" && <span data-testid="ivc-fb-save-state" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{t.rd_fb_saving}</span>}
-              {saveState === "saved" && <span data-testid="ivc-fb-save-state" style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)" }}>✓ {t.rd_fb_saved}</span>}
-              {saveState === "failed" && (
-                <button type="button" data-testid="ivc-fb-save-failed" role="alert" onClick={() => { dirty.current = true; if (!latest.current && es) latest.current = es; void saveNow(); }}
-                  style={{ minHeight: 32, padding: "0 10px", border: "1px solid var(--danger)", borderRadius: 999, background: "transparent", color: "var(--danger)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_fb_save_failed}</button>
-              )}
+              <span data-testid="ivc-fb-sheet-edited" style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)" }}>{t.rd_ivc_fb_edited}</span>
             </div>
           )}
+          {lastFailed && saveState !== "failed" && !resetFailed && <div role="alert" data-testid="ivc-fb-last-unsaved" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_last_unsaved}</div>}
           {stale && <div data-testid="ivc-fb-edit-stale" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: WARN_BG, color: "var(--warn)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_fb_edit_new_note}</div>}
 
-          {fmt.state === "loading" && !es && <div data-testid="ivc-fb-edit-loading" style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_loading}</div>}
+          {pending && !es && fmt.state !== "error" && <div role="status" data-testid="ivc-fb-edit-waiting" style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_fb_saving}</div>}
+          {fmt.state === "loading" && !es && !pending && <div data-testid="ivc-fb-edit-loading" style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>{t.rd_loading}</div>}
           {fmt.state === "error" && !es && (
             <div role="alert" data-testid="ivc-fb-edit-error" style={{ marginTop: 12, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>{t.rd_ivc_load_failed}</span>
@@ -396,8 +472,9 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, onSaved, canSend, s
               {(edited || !!(original && !sameEdit(es, original))) && (askReset ? (
                 <div data-testid="ivc-fb-reset-ask" style={{ marginTop: 12, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)" }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", lineHeight: 1.45, marginBottom: 8 }}>{t.rd_ivc_fb_reset_q}</div>
+                  {resetFailed && <div role="alert" data-testid="ivc-fb-reset-failed" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--danger)", lineHeight: 1.45, marginBottom: 8 }}>{t.rd_fb_save_failed}</div>}
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" data-testid="ivc-fb-reset-no" onClick={() => setAskReset(false)} style={{ flex: 1, minHeight: 44, borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ivc_fb_reset_no}</button>
+                    <button type="button" data-testid="ivc-fb-reset-no" onClick={() => { setAskReset(false); setResetFailed(false); }} style={{ flex: 1, minHeight: 44, borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ivc_fb_reset_no}</button>
                     <button type="button" data-testid="ivc-fb-reset-yes" disabled={resetting} onClick={() => void doReset()} style={{ flex: 1, minHeight: 44, borderRadius: 10, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", opacity: resetting ? 0.6 : 1 }}>{t.rd_ivc_fb_reset_yes}</button>
                   </div>
                 </div>
@@ -409,19 +486,36 @@ function FbViewSheet({ row, tag, sessionId, cur, fee, saved, onSaved, canSend, s
           )}
         </div>
         <div style={{ flex: "0 0 auto", padding: "0 14px calc(18px + env(safe-area-inset-bottom))" }}>
-          {cancelled ? (<>
-            <div data-testid="ivc-fb-cancelled-note" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--chip-bg)", color: "var(--text-dim)", fontSize: 13, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_cancelled_note}</div>
-            <button type="button" data-testid="ivc-fb-undo-cancel" onClick={onUndoCancel} style={{ ...sheetBtn, border: "1.5px solid var(--accent)", background: "var(--surface)", color: "var(--accent-fg)" }}>{t.rd_ivc_undo_cancel}</button>
-          </>) : (<>
-            {sending && !done && <div role="status" data-testid="ivc-fb-sheet-sending" style={{ ...sheetBtn, background: "var(--accent-soft)", color: "var(--accent-fg)", cursor: "default" }}>{t.rd_ivc_t_sending}</div>}
-            {!sending && canSend && noLines && <div data-testid="ivc-fb-no-lines" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_no_lines}</div>}
-            {!sending && canSend && !noLines && (
-              <button type="button" data-testid="ivc-fb-sheet-send" disabled={!es || saveState === "saving"} onClick={() => void send()} style={{ ...sheetBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", opacity: !es || saveState === "saving" ? 0.6 : 1 }}>{tpl(t.rd_ivc_fb_view_send, { n: row.num })}</button>
+          {askClose ? (
+            <div data-testid="ivc-fb-close-ask" style={{ marginTop: 10, padding: "12px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text)", lineHeight: 1.45 }}>{t.rd_ivc_fb_save_q}</div>
+              {saveState === "failed" && <div role="alert" data-testid="ivc-fb-save-failed" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 700, color: "var(--danger)", lineHeight: 1.45 }}>{t.rd_ivc_fb_save_err}</div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button type="button" data-testid="ivc-fb-close-discard" disabled={busy} onClick={closeDiscard} style={{ flex: 1, minHeight: 46, borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ivc_fb_discard}</button>
+                <button type="button" data-testid="ivc-fb-close-save" disabled={busy} onClick={() => void closeSave()} style={{ flex: 1, minHeight: 46, borderRadius: 10, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 13.5, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", opacity: busy ? 0.6 : 1 }}>{busy ? t.rd_fb_saving : t.rd_rc_save}</button>
+              </div>
+            </div>
+          ) : (<>
+            {es && (
+              <button type="button" data-testid="ivc-fb-save" disabled={!canSave} onClick={() => void saveNow()} aria-live="polite"
+                style={{ ...sheetBtn, border: canSave ? "1.5px solid var(--accent)" : "1px solid var(--border)", background: "var(--surface)", color: saveState === "saved" && !unsaved ? "var(--ok)" : canSave ? "var(--accent-fg)" : "var(--text-muted)", cursor: canSave ? "pointer" : "default" }}>{saveLabel}</button>
             )}
-            {!done && (
-              <button type="button" data-testid="ivc-fb-sheet-hand" onClick={() => { void saveNow(); onByHand(); }} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)" }}>{t.rd_ivc_by_hand}</button>
-            )}
-            <button type="button" data-testid="ivc-fb-sheet-cancel" onClick={() => { void saveNow(); onCancelBuyer(); }} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text-dim)" }}>{t.rd_ivc_cancel_buyer}</button>
+            {saveState === "failed" && <div role="alert" data-testid="ivc-fb-save-failed" style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: "var(--danger)", lineHeight: 1.45 }}>{t.rd_ivc_fb_save_err}</div>}
+            {cancelled ? (<>
+              <div data-testid="ivc-fb-cancelled-note" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--chip-bg)", color: "var(--text-dim)", fontSize: 13, fontWeight: 700, lineHeight: 1.45 }}>{t.rd_ivc_cancelled_note}</div>
+              <button type="button" data-testid="ivc-fb-undo-cancel" onClick={onUndoCancel} style={{ ...sheetBtn, border: "1.5px solid var(--accent)", background: "var(--surface)", color: "var(--accent-fg)" }}>{t.rd_ivc_undo_cancel}</button>
+            </>) : (<>
+              {sending && !done && <div role="status" data-testid="ivc-fb-sheet-sending" style={{ ...sheetBtn, background: "var(--accent-soft)", color: "var(--accent-fg)", cursor: "default" }}>{t.rd_ivc_t_sending}</div>}
+              {!sending && canSend && noLines && <div data-testid="ivc-fb-no-lines" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_no_lines}</div>}
+              {!sending && canSend && !noLines && (
+                <button type="button" data-testid="ivc-fb-sheet-send" disabled={!es || busy || closing} onClick={() => void send()} style={{ ...sheetBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", opacity: !es || busy || closing ? 0.6 : 1 }}>{tpl(t.rd_ivc_fb_view_send, { n: row.num })}</button>
+              )}
+              {!done && sendFailed && (<>
+                <div data-testid="ivc-fb-hand-note" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 700, color: "var(--warn)", lineHeight: 1.45 }}>{t.rd_ivc_fb_hand_note}</div>
+                <button type="button" data-testid="ivc-fb-sheet-hand" disabled={busy || closing} onClick={thenDo(onByHand)} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)" }}>{t.rd_ivc_by_hand}</button>
+              </>)}
+              <button type="button" data-testid="ivc-fb-sheet-cancel" disabled={busy || closing} onClick={thenDo(onCancelBuyer)} style={{ ...sheetBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text-dim)" }}>{t.rd_ivc_cancel_buyer}</button>
+            </>)}
           </>)}
         </div>
       </div>
