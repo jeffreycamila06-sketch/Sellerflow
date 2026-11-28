@@ -321,13 +321,13 @@ Keywords: same price, fixed price, all items, price, isang presyo, pare-pareho p
 Only one of **Same price for all items** and **Choose price before print** can be on. Turning one on turns the other off; both keep their prices.
 
 ## choose-price — Choose price before print
-Last checked: 2026-11-21
+Last checked: 2026-11-28
 Keywords: choose price, pick price, price before print, different prices, premium item, price buttons, free button, free item, freebie, giveaway, print free, libre, pumili ng presyo, ibang presyo, 选择价格, 選擇價格, 打印前选择价格, 免费, 免費, 贈品
 
 **Settings → General Settings → LIVE SETUP → Choose price before print** (under **Same price for all items**).
 
 1. Turn it on. If you have no prices yet, type one and tap **Turn on**.
-2. Under the switch, add up to 9 prices. The first one is the default. Tap ☆ to make a price the default, or × to remove it. With 9 prices saved, remove one to add a new price.
+2. Under the switch, add up to 12 prices. The first one is the default. Tap ☆ to make a price the default, or × to remove it. With 12 prices saved, remove one to add a new price.
 3. During the live, tap **1-Click** (or pin a comment with **Auto-print pinned comments** on). A window shows the buyer, the comment and your prices. Tap a price and the sticker prints.
 4. For another price, tap **Type price**, type it in the window and tap **Print**. **Back** shows your prices again.
 5. Tap **Skip** to make no order.

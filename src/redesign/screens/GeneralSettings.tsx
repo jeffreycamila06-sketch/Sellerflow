@@ -510,7 +510,7 @@ export default function GeneralSettings({
                   </div>
                 )}
                 {cppErrText && <div data-testid="cpp-add-err" style={{ marginTop: 6, fontSize: 12, color: "var(--danger)" }}>{cppErrText}</div>}
-                {/* All 9 saved: the Price + Add row is gone, one short note says how to add another. */}
+                {/* All 12 saved: the Price + Add row is gone, one short note says how to add another. */}
                 {!cppErrText && choosePrices.length >= MAX_CHOICE_PRICES && (
                   <div data-testid="cpp-full" role="status" style={{ borderRadius: 12, padding: "10px 12px", background: "var(--accent-soft)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{t.rd_cpp_full}</div>
                 )}

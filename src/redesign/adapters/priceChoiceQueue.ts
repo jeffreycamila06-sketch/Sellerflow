@@ -65,10 +65,13 @@ export function clearedCount(q: PriceChoiceQueue, sessionKey: string): number {
 export const TAP_GUARD_MS = 400;
 
 // Long price labels ("NT$12,000", "€1,234.50") get a smaller font so they never clip at 360px.
-// The price window: with exactly this many prices (= MAX_CHOICE_PRICES in useChoosePrice, a test pins
-// it) and Show Free on, the Free button takes its own full-width row under the 3 full rows of prices.
-// With fewer prices it stays the next cell, as before.
-export const FREE_OWN_ROW_AT = 9;
+// The price window (3 prices per row): with 9 or 12 prices (3 or 4 full rows) and Show Free on, the
+// Free button takes its own full-width row under the prices. With 1–8, 10 or 11 prices it stays the
+// next cell, as before. 9 is exactly as it was when 9 was the most; 12 = MAX_CHOICE_PRICES (a test pins it).
+export const FREE_OWN_ROW_FROM = 9;
+export function freeOwnRow(count: number): boolean {
+  return count >= FREE_OWN_ROW_FROM && count % 3 === 0;
+}
 
 export function priceLabelSize(label: string): number {
   const n = [...label].length;

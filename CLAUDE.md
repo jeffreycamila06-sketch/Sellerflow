@@ -7333,3 +7333,18 @@ the list scrolls in the sheet (≤ 85 % phone / 80 % laptop). Who: active Basic 
   (`docs/design/format-per-tab/proof/`). Pictures 360 / 390 / 1280 (+ 430 measured, dark): `docs/design/format-per-tab/`
   (`shoot.cjs`, preview `?ivc=6,2&fbsa=1&fbfmt=1&admin=1`).
 - **Order:** merge (Vercel) → sql/237 (guide phrase swap; any order with sql/226).
+
+## 2026-11-28 — CHOOSE PRICE: UP TO 12 PRICES (branch `claude/choose-price-twelve`, NOT merged; sql/238 + sql/239 NOT applied; web only, no Render)
+Choose price before print allows **12** prices (was 9). Price window: 3 per row; Free takes its own full-width row
+at **9 or 12** prices (`freeOwnRow` in priceChoiceQueue.ts = count ≥ 9 and a multiple of 3); 1–8, 10, 11 = next cell.
+Settings: Add row below 12; at 12 the note `rd_cpp_full` "12 of 12 prices saved…" (8 langs).
+- 🔑 **THIRD COLUMN — old devices can never delete prices 10–12:** `prices` 1–6, `prices_more` 7–9 (sql/196),
+  NEW `prices_extra numeric[] not null default '{}'` 10–12 (sql/238: max 3, flat, no null, > 0, and no price twice
+  across all three). `splitForSave` sends `prices_extra` ONLY when the list has, or had, more than 9 (`MORE_COLUMN_END`)
+  → a seller with 9 or fewer sends today's exact request. An old 9-price app never sends it (upsert = only sent columns).
+- Rollback sql/238 refuses while any row has a 10th–12th price; run it before sql/196's rollback.
+- sql/239 = the choose-price guide sentence (phrase swap; after = the 116b row). Do NOT apply 116b.
+- Proof: `scripts/sql238-behaviour.mjs` (PGlite, 58) · `choosePriceTwelve.oldDevice.test.tsx` (frozen 9-price hook
+  `fixtures/useChoosePrice.main9.ts`) · `ChoosePriceSheet.twelve.test.tsx` · `GeneralSettings.chooseTwelve.test.tsx` ·
+  `choosePriceTwelve.app.test.tsx` · 21/21 breaks · pictures `docs/design/choose-price-twelve/`.
+- **Order:** sql/238 and the web merge in either order → sql/239 last.
