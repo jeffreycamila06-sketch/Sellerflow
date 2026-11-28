@@ -7236,6 +7236,13 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   or failed ("#N" named); the sheet's own Send saves first. "I sent it by hand" only for other_app / cant_message /
   unknown, with a line. Tests: `Invoicing.fbSaveFix.test.tsx` (+ fbEdit / fbSendAll updated). Guide: the View line in
   sfl-guide.md + sql/226 (+ rollback, still NOT applied) + 116b. Pictures `docs/design/fb-edit-save-fix/`.
+  Independent audit (2026-11-28) found 6 more, all fixed + pinned in the same test file ("audit P1…P6"): reopening
+  a buyer while their save is on its way waits ("Saving…") and starts from the SAVED edit; a save given up on is
+  called off (`.abortSignal`) and the lists read the server again 3 s later; Discard after a failed save reads
+  again; a failed Reset says so in its question; Buyer cancelled / by hand never wait on a save; typed back = no
+  question; only buyers Send all would still send hold it; `beforeunload` also while a closed sheet's save runs.
+  Left (needs SQL, not done): a revision check so an old write can never land over a newer one if the network
+  delivers it late despite the call-off.
 
 ## 2026-11-28 — CANCEL ORDER (Orders tab only) ✅ RELEASED TO ALL SELLERS 2026-11-28 11:38 Taipei (main; sql/234 + both indexes + sql/235 APPLIED; Render deployed; switch `order_cancel_enabled` = 'true'; Jeff tested Cancel + Undo end-to-end on production)
 Jeff's decisions (2026-11-28): free order NOT given back · stock goes back (Auto mode orders) · allowed while the

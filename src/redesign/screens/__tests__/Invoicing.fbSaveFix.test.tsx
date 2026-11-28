@@ -236,3 +236,112 @@ describe("I sent it by hand", () => {
     expect(q("ivc-fb-sheet-cancel")).not.toBeNull();
   });
 });
+
+// ── the independent audit's findings (2026-11-28), each pinned ──
+describe("audit P1: reopening a buyer while their save is still on its way", () => {
+  it("the editor waits (Saving…) and then starts from the SAVED edit; the next change keeps it", async () => {
+    let land!: () => void;
+    DB.s.editWriteGate = new Promise<void>((r) => { land = r; });
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    await wait(FB_EDIT_SAVE_MS + 100);
+    await toTikTokAndBack();
+    await view(1);
+    expect(q("ivc-fb-edit-waiting")!.textContent).toBe(t.rd_fb_saving);
+    expect(q("ivc-fb-editor")).toBeNull();                     // not the orders' 99
+    land(); await flush(); await flush();
+    expect(inSheet("rs-price").map((i) => i.value)).toEqual(["150", "0"]);
+    DB.s.editWriteGate = null;
+    fireEvent.change(inSheet("rs-note")[0], { target: { value: "GCash only" } });
+    await wait(FB_EDIT_SAVE_MS + 300);
+    expect(DB.s.edits).toEqual([expect.objectContaining({ buyer_number: 1, note: "GCash only", lines: [{ item: "99", price: 150 }, { item: "200", price: 0 }] })]);
+  });
+});
+describe("audit P2 / P3: a save given up on (no answer in time)", () => {
+  it("is called off: it never lands later (not over a newer save, not after Discard)", async () => {
+    _resetReceiptEditSaves(300, 200);
+    let land!: () => void;
+    DB.s.editWriteGate = new Promise<void>((r) => { land = r; });
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    await wait(450);
+    expect(q("ivc-fb-save-failed")).not.toBeNull();
+    DB.s.editWriteGate = null;                                 // the network is back: a newer save goes through
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "175" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    expect(btn("ivc-fb-save").textContent).toBe(`✓ ${t.rd_fb_saved}`);
+    land(); await flush(); await flush();                       // the first write would land now
+    expect(DB.s.edits).toEqual([expect.objectContaining({ lines: [{ item: "99", price: 175 }, { item: "200", price: 0 }] })]);
+  });
+  it("Discard after it: the list reads the server again and shows what it really has", async () => {
+    _resetReceiptEditSaves(300, 200);
+    DB.s.hangEditWrites = true;
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.click(btn("ivc-fb-save")); await flush();
+    await wait(450);
+    DB.s.hangEditWrites = false;
+    // something else put an edit on the server meanwhile (e.g. another phone): the list must show it
+    DB.s.edits = [{ user_id: "u1", session_id: SID, buyer_number: 1, opening: "Hi!", note: "", shipping_fee: 60, lines: [{ item: "99", price: 120 }], based_on: null }];
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    fireEvent.click(q("ivc-fb-close-discard")!); await flush();
+    await wait(300);
+    expect(editedTag(1)).not.toBeNull();
+    expect(btn("ivc-fb-send-all").disabled).toBe(false);
+  });
+});
+describe("audit P4: Reset to original that fails", () => {
+  it("says so in the Reset question and Reset can be tapped again (Save stays off)", async () => {
+    DB.s.edits = [{ user_id: "u1", session_id: SID, buyer_number: 1, opening: "Hi!", note: "Pay by GCash", shipping_fee: 60, lines: [{ item: "99", price: 150 }, { item: "200", price: 0 }], based_on: null }];
+    await open(); await view(1);
+    fireEvent.click(q("ivc-fb-reset")!); await flush();
+    DB.s.failEditWrites = true;
+    fireEvent.click(q("ivc-fb-reset-yes")!); await flush(); await flush();
+    expect(q("ivc-fb-reset-failed")!.textContent).toBe(t.rd_fb_save_failed);
+    expect(q("ivc-fb-save-failed")).toBeNull();
+    expect(btn("ivc-fb-save").disabled).toBe(true);
+    DB.s.failEditWrites = false;
+    fireEvent.click(q("ivc-fb-reset-yes")!); await flush(); await flush();
+    expect(DB.s.edits).toEqual([]);
+    expect(inSheet("rs-price").map((i) => i.value)).toEqual(["99", "0"]);
+  });
+});
+describe("audit P5: Buyer cancelled while saves fail", () => {
+  it("still cancels (that receipt is not sent any more) and never holds Send all", async () => {
+    await open(); await view(1);
+    DB.s.failEditWrites = true;
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.click(q("ivc-fb-sheet-cancel")!); await flush(); await flush();
+    expect(q("ivc-fb-sheet")).toBeNull();
+    expect(rowOf(1).getAttribute("data-tag")).toBe("cancelled");
+    expect(q("ivc-fb-edits-failed")).toBeNull();
+    expect(btn("ivc-fb-send-all").disabled).toBe(false);
+  });
+});
+describe("audit P6: a change typed back", () => {
+  it("Close does not ask (nothing to save)", async () => {
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "99" } });
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    expect(q("ivc-fb-close-ask")).toBeNull();
+    expect(q("ivc-fb-sheet")).toBeNull();
+    await wait(FB_EDIT_SAVE_MS + 300);
+    expect(writes()).toEqual([]);
+  });
+});
+describe("audit nits", () => {
+  it("a save still on its way from a closed sheet: the browser asks before the page reloads", async () => {
+    let land!: () => void;
+    DB.s.editWriteGate = new Promise<void>((r) => { land = r; });
+    await open(); await view(1);
+    fireEvent.change(inSheet("rs-price")[0], { target: { value: "150" } });
+    await wait(FB_EDIT_SAVE_MS + 100);
+    await toTikTokAndBack();
+    const ask = () => { const e = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent; window.dispatchEvent(e); return e.defaultPrevented; };
+    expect(ask()).toBe(true);
+    land(); await flush(); await flush();
+    expect(ask()).toBe(false);
+  });
+});

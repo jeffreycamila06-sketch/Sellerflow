@@ -132,7 +132,11 @@ export function makeInvoiceDb() {
           return Promise.resolve({ error: ok ? null : err });
         }
         if (table === "fb_receipt_edits") {
+          // .abortSignal(signal) like supabase-js: a write called off before it lands never lands (an error instead)
+          let sig: AbortSignal | null = null;
+          let wake: ((v: { error: unknown }) => void) | null = null;
           const land = () => {
+            if (sig?.aborted) return { error: { message: "aborted" } };
             const ok = !s.failEditWrites && !s.noEditsTable && payload.user_id === s.uid;
             if (ok) {
               const i = s.edits.findIndex((r) => r.user_id === payload.user_id && r.session_id === payload.session_id && r.buyer_number === payload.buyer_number);
@@ -141,8 +145,11 @@ export function makeInvoiceDb() {
             }
             return { error: ok ? null : err };
           };
-          if (s.hangEditWrites) return new Promise<{ error: null }>(() => { /* never answers */ });
-          return s.editWriteGate ? s.editWriteGate.then(land) : Promise.resolve(land());
+          const p: Promise<{ error: unknown }> = s.hangEditWrites ? new Promise((r) => { wake = r; })   // never answers (unless called off)
+            : s.editWriteGate ? s.editWriteGate.then(land) : Promise.resolve().then(land);
+          return Object.assign(p, {
+            abortSignal: (x: AbortSignal) => { sig = x; x.addEventListener("abort", () => wake?.({ error: { message: "aborted" } })); return p; },
+          });
         }
         if (table === "invoice_sends") {
           let saved: FakeSend | null = null;
