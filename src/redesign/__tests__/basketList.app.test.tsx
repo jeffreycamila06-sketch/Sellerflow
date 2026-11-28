@@ -5,7 +5,10 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { render, act, screen, fireEvent, within } from "@testing-library/react";
 import type { Comment as ProdComment, LiveOrder, Buyer } from "../../lib/orderTypes";
 
-beforeAll(() => { (HTMLElement.prototype as unknown as { scrollTo: () => void }).scrollTo = () => {}; });
+beforeAll(() => {
+  (HTMLElement.prototype as unknown as { scrollTo: () => void }).scrollTo = () => {};
+  (HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
+});
 
 const H = vi.hoisted(() => ({
   plan: { v: "pro", role: "seller", status: "active" },
@@ -18,6 +21,7 @@ const H = vi.hoisted(() => ({
   undoCancelOrder: { fn: null as null | ((ref: string) => Promise<string>) },
   checkOrderCancel: { fn: null as null | ((ref: string) => Promise<unknown>) },
   createOrder: { fn: null as null | ((...a: unknown[]) => unknown) },
+  fail: { fn: null as null | ((e: { code: string; message: string; via: string }) => boolean) },
 }));
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 
@@ -74,6 +78,10 @@ vi.mock("../adapters/orderCancel", async (orig) => ({
   cancelOrder: (ref: string) => H.cancelOrder.fn!(ref),
   undoCancelOrder: (ref: string) => H.undoCancelOrder.fn!(ref),
 }));
+vi.mock("../adapters/printing", async (orig) => {
+  const a = await orig() as { setNativePrintFailureHandler: (h: unknown) => void };
+  return { ...a, setNativePrintFailureHandler: (h: unknown) => { H.fail.fn = h as typeof H.fail.fn; a.setNativePrintFailureHandler(h); } };
+});
 vi.mock("../adapters/reprint", async (orig) => ({
   ...(await orig() as object),
   performReprint: (...a: unknown[]) => H.performReprint.fn!(...a),
@@ -182,6 +190,40 @@ describe("paid plan — 🛒 opens this buyer's list", () => {
     fireEvent.click(screen.getByTestId("nav-sales")); await flush();
     expect(screen.queryByTestId("bk-sheet")).toBeNull();
     fireEvent.click(screen.getByText("Live").closest("button")!); await flush();
+    expect(screen.queryByTestId("bk-sheet")).toBeNull();
+  });
+  it("no printer: the 'No printer connected' pop-up shows ON TOP (the sheet steps aside); Dismiss → back to the list", async () => {
+    // the real app's failure path: the Reprint reaches the phone's printer code, which answers "no printer set"
+    H.performReprint.fn = vi.fn(() => { H.fail.fn?.({ code: "BT_NOT_SET", message: "no printer", via: "sticker" }); return { via: "native" }; });
+    await mount();
+    fireEvent.click(badgeOf("Buyer 1")); await flush();
+    fireEvent.click(screen.getAllByTestId("bk-reprint")[0]); await flush();
+    expect(screen.getByTestId("printer-modal")).toBeTruthy();
+    expect(screen.getByTestId("bk-sheet").style.display).toBe("none");
+    expect(screen.getAllByTestId("bk-reprint")[0].textContent ?? "").not.toMatch(/printed/i);
+    fireEvent.click(screen.getByTestId("printer-close")); await flush();
+    expect(screen.queryByTestId("printer-modal")).toBeNull();
+    expect(screen.getByTestId("bk-sheet").style.display).toBe("flex");
+    expect(screen.getAllByTestId("bk-line")).toHaveLength(3);
+  });
+  it("Bluetooth off: the 'Bluetooth is off' pop-up shows ON TOP; OK → back to the list", async () => {
+    H.performReprint.fn = vi.fn(() => { H.fail.fn?.({ code: "", message: "Bluetooth is off", via: "sticker" }); return { via: "native" }; });
+    await mount();
+    fireEvent.click(badgeOf("Buyer 1")); await flush();
+    fireEvent.click(screen.getAllByTestId("bk-reprint")[0]); await flush();
+    expect(screen.getByTestId("bt-off-modal")).toBeTruthy();
+    expect(screen.getByTestId("bk-sheet").style.display).toBe("none");
+    fireEvent.click(screen.getByTestId("bt-off-ok")); await flush();
+    expect(screen.queryByTestId("bt-off-modal")).toBeNull();
+    expect(screen.getByTestId("bk-sheet").style.display).toBe("flex");
+  });
+  it("no printer → Go to Printer Settings leaves the Live screen; the sheet is closed", async () => {
+    H.performReprint.fn = vi.fn(() => { H.fail.fn?.({ code: "PRINTER_NOT_SET", message: "no printer", via: "slip" }); return { via: "native" }; });
+    await mount();
+    fireEvent.click(badgeOf("Buyer 1")); await flush();
+    fireEvent.click(screen.getAllByTestId("bk-reprint")[0]); await flush();
+    fireEvent.click(screen.getByTestId("printer-go")); await flush();
+    expect(screen.queryByTestId("printer-modal")).toBeNull();
     expect(screen.queryByTestId("bk-sheet")).toBeNull();
   });
   it("an admin gets it too", async () => {

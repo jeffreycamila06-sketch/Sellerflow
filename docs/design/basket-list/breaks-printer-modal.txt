@@ -1,0 +1,5 @@
+CAUGHT | app does not hide the sheet | Tests  2 failed | 41 passed (43)
+CAUGHT | Bluetooth pop-up not counted | Tests  1 failed | 42 passed (43)
+CAUGHT | sheet ignores hidden | Tests  3 failed | 40 passed (43)
+CAUGHT | Escape closes while hidden | Tests  1 failed | 42 passed (43)
+CAUGHT | says Printed again | Tests  2 failed | 41 passed (43)

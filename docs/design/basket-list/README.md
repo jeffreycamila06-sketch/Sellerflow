@@ -19,3 +19,9 @@ Master with an active plan, and admins. Free plan / ended plan: the badge is the
 
 Known, small: close and reopen the sheet within 2 s → its 2 s Reprint rest starts again (an extra copy at most,
 never a wrong sticker). The basket list shows the current session only (as the 🛒 count does).
+
+## Fix 2026-11-28 (Jeff's phone test, no printer)
+- "No printer connected" opened UNDER the basket list (visible only after ✕). Now the list steps aside while that
+  pop-up or "Bluetooth is off" is open, and comes back after Dismiss / OK; Go to Printer Settings leaves Live.
+- The list said "✓ Printed" even when nothing printed. Now "Printing…" for 2 s, then Reprint (as in Orders).
+- Breaks: `breaks-printer-modal.txt` (5/5 caught).
