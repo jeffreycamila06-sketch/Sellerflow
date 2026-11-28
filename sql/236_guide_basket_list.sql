@@ -6,7 +6,7 @@
 -- anchor line is found and the new line is not (live rows read 2026-11-28: one-click-orders body md5
 -- 0dfddd0547f1f46c94a50fa730ea6411, reprint body md5 6d9e644d61a9c6cada85edc47d9004a2), so running it
 -- twice changes nothing the second time. No Render deploy (the help bot re-reads the table every 5 minutes).
--- NOT APPLIED. Apply AFTER the web merge (Vercel) is live.
+-- APPLIED in production 2026-11-28 (after the web merge was live).
 -- Rollback: sql/236_guide_basket_list_rollback.sql
 -- ============================================================================
 begin;

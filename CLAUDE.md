@@ -7275,7 +7275,7 @@ the list scrolls in the sheet (≤ 85 % phone / 80 % laptop). Who: active Basic 
   guardian PASS, PRINTING_MAP P13 row added. Cancel / Undo = `orderCancelUi` (absent → no Cancel button).
 - Jeff tested 2026-11-28 on a real live: print, basket Reprint, Cancel, Undo (TikTok), then Facebook (name-only).
 - Guide: one-click-orders + reprint sections, 116b regenerated (do NOT apply 116b); `sql/236_guide_basket_list.sql`
-  = those two rows only — NOT applied yet. Preview `?bk=1` (`&bkmany=1`, `&bkfree=1`); proof `docs/design/basket-list/`.
+  = those two rows only — ✅ APPLIED 2026-11-28 14:10 Taipei (live rows = 116b, md5 checked). Preview `?bk=1` (`&bkmany=1`, `&bkfree=1`); proof `docs/design/basket-list/`.
 - Known, small: reopening the sheet within 2 s restarts its 2 s Reprint rest (an extra copy at most).
 - Fix (same day): the sheet steps aside while "No printer connected" / "Bluetooth is off" is open (prop `hidden`;
   was hidden UNDER the sheet), and never says "Printed" (only "Printing…" for 2 s).
