@@ -292,8 +292,8 @@ If you see "Couldn't load this session's buyers", check your internet and tap **
 If numbers look wrong, fully close the app on every device and open it again, then tap Connect once.
 
 ## one-click-orders — 1-Click and Type price orders
-Last checked: 2026-11-19
-Keywords: 1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, 一键, 一鍵下單, 输入价格
+Last checked: 2026-11-28
+Keywords: 1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, basket, cart, 🛒, buyer list, 一键, 一鍵下單, 输入价格
 
 Every comment on the **Live** screen has two buttons:
 
@@ -301,6 +301,8 @@ Every comment on the **Live** screen has two buttons:
 - **Type price** — type the price, then tap ✓ (or press Enter) to **Print this order**.
 
 After an order, the row shows **Printed** and a **Reprint** button.
+
+The **🛒 number** on a comment shows how many orders that buyer has in this session. On a paid plan, tap it to see the buyer's list: each item, price and time. From the list you can **↻ Reprint** a sticker or **Cancel** an order (then **↺ Undo** if needed).
 
 If the comment is a sold-out Auto mode code, the app asks "{code} is sold out. Continue anyway?" You can still sell it.
 
@@ -387,12 +389,13 @@ Some accounts also have **Restock** ("How many pieces arrived?"), **History** of
 **Photos: X / limit** (above the list) shows how many product photos you have and how many your plan allows. At the limit you will see "Picture limit reached" — delete photos you no longer need (like sold-out items) to upload new ones. Deleting a product also deletes its photos.
 
 ## reprint — Reprint a sticker
-Last checked: 2026-10-28
+Last checked: 2026-11-28
 Keywords: reprint, print again, sticker, copy, missed print, i-print ulit, ulitin print, 重印, 補印, 重新打印
 
 A reprint prints a copy of the order's sticker. **No new order is created.**
 
 - On **Live**: tap **Reprint** on the ordered comment row.
+- On **Live** (paid plans): tap the **🛒 number** on a comment, then **↻ Reprint** on the item.
 - On **Orders**: find the order (use search) and tap **↻ Reprint**. Tapping an order opens **Print**, with **🖨 Print** for each buyer and **🖨 Print all**.
 
 If you see the **Not printed** tag or "Some labels didn't print — tap Reprint on those rows", fix the printer first (see "Printer not printing"), then tap **Reprint** on those rows.

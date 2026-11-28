@@ -1,0 +1,27 @@
+iphone-390 live | no sideways scroll | badge 30×14 drawn, tap area 36×44
+iphone-390 list | no sideways scroll | badge 30×14 drawn, tap area 36×44 | sheet 390×473 (screen 844), bottom 844 | list scrolls=false | buttons bk-close:34 bk-reprint:32 bk-cancel:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+iphone-390 question | no sideways scroll | badge 30×14 drawn, tap area 36×44 | sheet 390×292 (screen 844), bottom 844 | buttons bk-cx-keep:46 bk-cx-yes:46 | nothing sticks out | panel on top at its bottom edge
+iphone-390 after cancel | no sideways scroll | badge 30×14 drawn, tap area 36×44 | sheet 390×498 (screen 844), bottom 844 | list scrolls=false | buttons bk-close:34 bk-undo:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+iphone-390 chips=2 undo=2 errors=none
+android-412 live | no sideways scroll | badge 41×21 drawn, tap area 47×44
+android-412 list | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 412×459 (screen 915), bottom 915 | list scrolls=false | buttons bk-close:34 bk-reprint:32 bk-cancel:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+android-412 question | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 412×292 (screen 915), bottom 915 | buttons bk-cx-keep:46 bk-cx-yes:46 | nothing sticks out | panel on top at its bottom edge
+android-412 after cancel | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 412×484 (screen 915), bottom 915 | list scrolls=false | buttons bk-close:34 bk-undo:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+android-412 chips=2 undo=2 errors=none
+phone-360 live | no sideways scroll | badge 41×21 drawn, tap area 47×44
+phone-360 list | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 360×473 (screen 640), bottom 640 | list scrolls=false | buttons bk-close:34 bk-reprint:32 bk-cancel:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+phone-360 question | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 360×292 (screen 640), bottom 640 | buttons bk-cx-keep:46 bk-cx-yes:46 | nothing sticks out | panel on top at its bottom edge
+phone-360 after cancel | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 360×498 (screen 640), bottom 640 | list scrolls=false | buttons bk-close:34 bk-undo:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+phone-360 chips=2 undo=2 errors=none
+laptop-1280 live | no sideways scroll | badge 41×21 drawn, tap area 47×44
+laptop-1280 list | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 460×443 (screen 820), bottom 631 | list scrolls=false | buttons bk-close:34 bk-reprint:32 bk-cancel:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+laptop-1280 question | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 460×276 (screen 820), bottom 548 | buttons bk-cx-keep:46 bk-cx-yes:46 | nothing sticks out | panel on top at its bottom edge
+laptop-1280 after cancel | no sideways scroll | badge 41×21 drawn, tap area 47×44 | sheet 460×468 (screen 820), bottom 644 | list scrolls=false | buttons bk-close:34 bk-undo:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+laptop-1280 chips=2 undo=2 errors=none
+iphone-390-dark live | no sideways scroll | badge 30×14 drawn, tap area 36×44
+iphone-390-dark list | no sideways scroll | badge 30×14 drawn, tap area 36×44 | sheet 390×473 (screen 844), bottom 844 | list scrolls=false | buttons bk-close:34 bk-reprint:32 bk-cancel:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+iphone-390-dark question | no sideways scroll | badge 30×14 drawn, tap area 36×44 | sheet 390×292 (screen 844), bottom 844 | buttons bk-cx-keep:46 bk-cx-yes:46 | nothing sticks out | panel on top at its bottom edge
+iphone-390-dark after cancel | no sideways scroll | badge 30×14 drawn, tap area 36×44 | sheet 390×498 (screen 844), bottom 844 | list scrolls=false | buttons bk-close:34 bk-undo:32 bk-reprint:32 bk-cancel:32 bk-undo:32 bk-reprint:32 bk-cancel:32 | nothing sticks out | panel on top at its bottom edge
+iphone-390-dark chips=2 undo=2 errors=none
+free plan | no sideways scroll | plain badges=3
+free plan: sheet after tap=0 errors=none

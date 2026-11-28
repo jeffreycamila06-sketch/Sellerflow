@@ -215,12 +215,14 @@ Switching to another live platform asks "Switch live source?". Tap **Switch** to
 If you see "Couldn''t load this session''s buyers", check your internet and tap **Retry**. If you see "Session still loading — that order wasn''t created", wait a moment and try again.
 
 If numbers look wrong, fully close the app on every device and open it again, then tap Connect once.'),
-  ('one-click-orders', '1-Click and Type price orders', '2026-11-19'::date, '1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, 一键, 一鍵下單, 输入价格', 'Every comment on the **Live** screen has two buttons:
+  ('one-click-orders', '1-Click and Type price orders', '2026-11-28'::date, '1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, basket, cart, 🛒, buyer list, 一键, 一鍵下單, 输入价格', 'Every comment on the **Live** screen has two buttons:
 
 - **1-Click** — creates the order and prints the sticker right away with the comment text. The price is 0 unless **Same price for all items** is on. With **Choose price before print** on, you tap the price first.
 - **Type price** — type the price, then tap ✓ (or press Enter) to **Print this order**.
 
 After an order, the row shows **Printed** and a **Reprint** button.
+
+The **🛒 number** on a comment shows how many orders that buyer has in this session. On a paid plan, tap it to see the buyer''s list: each item, price and time. From the list you can **↻ Reprint** a sticker or **Cancel** an order (then **↺ Undo** if needed).
 
 If the comment is a sold-out Auto mode code, the app asks "{code} is sold out. Continue anyway?" You can still sell it.
 
@@ -280,9 +282,10 @@ Some accounts also have **Restock** ("How many pieces arrived?"), **History** of
 **Product picture**: in **Edit**, tap **Add picture** and take a photo or pick one from your gallery (iPhone photos work too). The app turns it the right way up and makes it smaller for you — no need to crop or resize. The product list shows each picture as a square; tap a picture (⤢) to see the whole picture, then tap ✕ or outside it to close.
 
 **Photos: X / limit** (above the list) shows how many product photos you have and how many your plan allows. At the limit you will see "Picture limit reached" — delete photos you no longer need (like sold-out items) to upload new ones. Deleting a product also deletes its photos.'),
-  ('reprint', 'Reprint a sticker', '2026-10-28'::date, 'reprint, print again, sticker, copy, missed print, i-print ulit, ulitin print, 重印, 補印, 重新打印', 'A reprint prints a copy of the order''s sticker. **No new order is created.**
+  ('reprint', 'Reprint a sticker', '2026-11-28'::date, 'reprint, print again, sticker, copy, missed print, i-print ulit, ulitin print, 重印, 補印, 重新打印', 'A reprint prints a copy of the order''s sticker. **No new order is created.**
 
 - On **Live**: tap **Reprint** on the ordered comment row.
+- On **Live** (paid plans): tap the **🛒 number** on a comment, then **↻ Reprint** on the item.
 - On **Orders**: find the order (use search) and tap **↻ Reprint**. Tapping an order opens **Print**, with **🖨 Print** for each buyer and **🖨 Print all**.
 
 If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint on those rows", fix the printer first (see "Printer not printing"), then tap **Reprint** on those rows.'),

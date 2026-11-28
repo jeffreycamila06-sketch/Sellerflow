@@ -428,6 +428,36 @@ if (IVC.length === 2) {
     ];
   };
 }
+// ?bk=1 (docs/design/basket-list): the BASKET LIST on the Live screen — a running 1-day session whose buyers use the
+// preview comment handles (inject them with __sflInject() four times: jojo_tw, chen.xiaomei, meidolltw, lin_zhihao).
+// jojo_tw has 4 orders (one Free, one already cancelled), chen.xiaomei 1, lin_zhihao 2. &bkfree=1 = a free plan.
+// &bkmany=1 = jojo_tw gets 12 more orders (the list scrolls).
+if (/[?&]bk=1\b/.test(Q)) {
+  const BK = "5e5510bb-0000-4000-8000-0000000000bb";
+  const at = (min: number) => new Date(now - min * 60_000).toISOString();
+  const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
+  const list: [number, string, string, string, number, number][] = [
+    [1, "jojo_tw", "Aileen Go", "Red lipstick", 150, 52], [2, "chen.xiaomei", "陳小美", "Blue tumbler", 280, 47],
+    [1, "jojo_tw", "Aileen Go", "FREE", 0, 40], [3, "lin_zhihao", "林志豪", "Black jacket", 650, 33],
+    [1, "jojo_tw", "Aileen Go", "White tee size M", 220, 21], [3, "lin_zhihao", "林志豪", "Sneakers blue 39", 990, 12],
+    [1, "jojo_tw", "Aileen Go", "Skincare set — rose, big bottle with pump", 480, 4],
+  ];
+  list.forEach(([n, h, name, item, price, min], i) => tables.live_session_orders.push({
+    id: 9600 + i, user_id: UID, session_id: BK, session_date: today, created_at: at(min), buyer_number: n, handle: h, customer_name: name,
+    platform: "TikTok", product: item, price, qty: 1, comment_msg_id: null, auto_code: null,
+    order_ref: `0cd3bb00-0000-4000-8000-${String(i).padStart(12, "0")}`, cancelled_at: i === 4 ? at(15) : null,
+  }));
+  if (/[?&]bkmany=1\b/.test(Q)) for (let k = 0; k < 12; k++) tables.live_session_orders.push({
+    id: 9650 + k, user_id: UID, session_id: BK, session_date: today, created_at: at(3 - k * 0.2), buyer_number: 1, handle: "jojo_tw", customer_name: "Aileen Go",
+    platform: "TikTok", product: `A${k + 1} dress`, price: 100 + k * 10, qty: 1, comment_msg_id: null, auto_code: null,
+    order_ref: `0cd3bb00-0000-4000-8000-${String(50 + k).padStart(12, "0")}`, cancelled_at: null,
+  });
+  tables.seller_session_config = [{ user_id: UID, current_session_id: BK, session_started_at: at(60), session_window_days: 1, session_ended_at: null, window_days: 1, window_start: null }];
+  RPC.session_status = { running: true, session_id: BK, session_platform: "TikTok" };
+  tables.app_settings.push({ key: "order_cancel_enabled", value: "true" }, { key: "order_ref_enabled", value: "true" });
+  Object.assign(RPC, { order_cancel_check: { result: "ok", sent: false }, cancel_order: { result: "cancelled", ledger: 1, stock_back: false }, uncancel_order: { result: "restored", comment_back: true } });
+  if (/[?&]bkfree=1\b/.test(Q)) Object.assign(tables.seller_profiles[0], { plan: "free", plan_expiry: null });
+}
 
 type Filter = (r: Row) => boolean;
 const cmp = (a: unknown, b: unknown): number => (a == null && b == null ? 0 : a == null ? 1 : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0);
