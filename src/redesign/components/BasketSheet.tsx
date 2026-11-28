@@ -36,13 +36,16 @@ function useWide(): boolean {
   return wide;
 }
 
-export function BasketSheet({ orders, handle, cur, onClose, onReprint, cancel }: {
+export function BasketSheet({ orders, handle, cur, onClose, onReprint, cancel, hidden = false }: {
   orders: Order[];            // this buyer's orders, oldest first (cancelled ones included)
   handle: string;             // the comment's display handle ("@maria88")
   cur: string;
   onClose: () => void;
   onReprint?: (o: Order) => void;
   cancel?: BasketCancelUi;
+  // A printer pop-up ("No printer connected" / "Bluetooth is off") is open on top: the sheet steps aside
+  // (kept, not closed) so the pop-up can be seen and tapped; it comes back when the pop-up closes.
+  hidden?: boolean;
 }) {
   const t = useT();
   const later = useScreenTimers();
@@ -56,17 +59,17 @@ export function BasketSheet({ orders, handle, cur, onClose, onReprint, cancel }:
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
-  const [printing, setPrinting] = useState<{ key: string; done: boolean } | null>(null);
+  const [printing, setPrinting] = useState<string | null>(null);
 
   // Escape closes the question first, then the sheet (never while a call is on its way).
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || busy) return;
+      if (e.key !== "Escape" || busy || hidden) return;
       if (ask) setAsk(null); else onClose();
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [ask, busy, onClose]);
+  }, [ask, busy, hidden, onClose]);
 
   const newest = orders[orders.length - 1];
   const name = newest?.buyer || "";
@@ -81,9 +84,10 @@ export function BasketSheet({ orders, handle, cur, onClose, onReprint, cancel }:
   const reprint = (o: Order) => {
     if (!onReprint || printing) return;
     const key = keyOf(o);
-    setPrinting({ key, done: false });
+    // The sheet cannot know whether the printer really printed (a missing printer shows its own pop-up),
+    // so it never says "Printed" — "Printing…" for the 2 s rest, then Reprint again (the Orders tab's way).
+    setPrinting(key);
     onReprint(o);
-    later(() => setPrinting({ key, done: true }), 700);
     later(() => setPrinting(null), REPRINT_REST_MS);
   };
 
@@ -170,8 +174,8 @@ export function BasketSheet({ orders, handle, cur, onClose, onReprint, cancel }:
               {!cx && onReprint && o.orderNum != null && (
                 <button type="button" data-testid="bk-reprint" className="sfl-tap44" disabled={!!printing} onClick={() => reprint(o)}
                   title={t.rd_dash_reprint_title}
-                  style={{ ...smallBtn, color: "var(--ok)", background: "transparent", border: "1.5px solid var(--ok)", cursor: printing ? "default" : "pointer", opacity: printing && printing.key !== k ? 0.55 : 1 }}>
-                  {printing?.key === k ? (printing.done ? `✓ ${t.rd_bk_printed}` : t.rd_dash_reprinting) : `↻ ${t.rd_dash_reprint}`}
+                  style={{ ...smallBtn, color: "var(--ok)", background: "transparent", border: "1.5px solid var(--ok)", cursor: printing ? "default" : "pointer", opacity: printing && printing !== k ? 0.55 : 1 }}>
+                  {printing === k ? t.rd_dash_reprinting : `↻ ${t.rd_dash_reprint}`}
                 </button>
               )}
               {cancel && o.ref && (cx
@@ -211,7 +215,7 @@ export function BasketSheet({ orders, handle, cur, onClose, onReprint, cancel }:
   const host = (typeof document !== "undefined" && (document.querySelector("[data-redesign]") as HTMLElement)) || document.body;
   return createPortal(
     <div data-testid="bk-sheet" onClick={() => { if (busy) return; if (ask) setAsk(null); else onClose(); }}
-      style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(15,23,42,.45)", display: "flex", alignItems: wide ? "center" : "flex-end", justifyContent: "center" }}>
+      style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(15,23,42,.45)", display: hidden ? "none" : "flex", alignItems: wide ? "center" : "flex-end", justifyContent: "center" }}>
       <div role="dialog" aria-modal="true" aria-label={ask ? t.rd_oc_title : `${bNum} ${name}`} data-testid="bk-panel" onClick={(e) => e.stopPropagation()}
         style={{ width: "100%", maxWidth: wide ? 460 : 520, boxSizing: "border-box", maxHeight: wide ? "80vh" : "85vh", display: "flex", flexDirection: "column", background: "var(--surface)", borderRadius: wide ? 18 : "20px 20px 0 0", padding: "14px 16px calc(16px + env(safe-area-inset-bottom))", boxShadow: "0 -10px 40px rgba(0,0,0,.25)", fontFamily: "var(--font-ui)" }}>
         {!wide && <div style={{ width: 40, height: 4, borderRadius: 99, background: "var(--border-strong)", margin: "0 auto 12px", flexShrink: 0 }} />}

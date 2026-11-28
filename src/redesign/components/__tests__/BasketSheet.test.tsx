@@ -129,9 +129,10 @@ describe("Reprint", () => {
     fireEvent.click(btns[0]); fireEvent.click(btns[1]);
     expect(onReprint).toHaveBeenCalledTimes(1);
     expect(btns[1].textContent).toContain(t.rd_dash_reprinting);
-    act(() => { vi.advanceTimersByTime(700); });
-    expect(btns[1].textContent).toContain(t.rd_bk_printed);
-    act(() => { vi.advanceTimersByTime(1400); });
+    act(() => { vi.advanceTimersByTime(1900); });
+    expect(btns[1].textContent).toContain(t.rd_dash_reprinting); // never "Printed" — the sheet can't know
+    expect(btns[1].textContent).not.toMatch(/printed/i);
+    act(() => { vi.advanceTimersByTime(200); });
     expect(btns[1].textContent).toContain(t.rd_dash_reprint);
     fireEvent.click(btns[0]);
     expect(onReprint).toHaveBeenCalledTimes(2);
@@ -139,6 +140,21 @@ describe("Reprint", () => {
   it("no Reprint without onReprint, on a cancelled order, or without orderNum", () => {
     mount([o(1, { cancelled: true }), o(2, { orderNum: undefined })], { onReprint: vi.fn() });
     expect(screen.queryAllByTestId("bk-reprint")).toHaveLength(0);
+  });
+});
+
+describe("a printer pop-up on top (No printer connected / Bluetooth is off)", () => {
+  it("hidden → the sheet is kept but not shown, Escape is left to the pop-up; shown again after", () => {
+    const onClose = vi.fn();
+    const props = { orders: [o(1)], handle: "@maria88", cur: "NT$", onClose };
+    const r = render(<TProvider lang="en"><BasketSheet {...props} hidden /></TProvider>);
+    const sheet = screen.getByTestId("bk-sheet");
+    expect(sheet.style.display).toBe("none");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    r.rerender(<TProvider lang="en"><BasketSheet {...props} /></TProvider>);
+    expect(screen.getByTestId("bk-sheet").style.display).toBe("flex");
+    expect(screen.getAllByTestId("bk-line")).toHaveLength(1);
   });
 });
 

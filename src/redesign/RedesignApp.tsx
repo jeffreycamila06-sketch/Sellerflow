@@ -3224,6 +3224,7 @@ export default function RedesignApp() {
             <BasketSheet
               orders={basketOrdersFor(ordersList, basketFor.handle, basketFor.platform)} handle={basketFor.handle} cur={cur}
               onClose={() => setBasketFor(null)} onReprint={onReprintOrder} {...(orderCancelUi ? { cancel: orderCancelUi } : {})}
+              hidden={!!printerModal || btOff.open}
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}

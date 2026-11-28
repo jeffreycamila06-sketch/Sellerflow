@@ -907,7 +907,6 @@ const RAW: Record<string, Row> = {
   rd_bk_close: { en: "Close", fil: "Isara", zh: "关闭", "zh-TW": "關閉", vi: "Đóng", th: "ปิด", id: "Tutup", bg: "Затвори" },
   rd_bk_empty: { en: "No orders for this buyer in this session.", fil: "Walang order ang buyer na ito sa session na ito.", zh: "这位买家本场没有订单。", "zh-TW": "這位買家本場沒有訂單。", vi: "Người mua này chưa có đơn trong phiên này.", th: "ผู้ซื้อคนนี้ไม่มีออเดอร์ในเซสชันนี้", id: "Pembeli ini belum punya pesanan di sesi ini.", bg: "Този купувач няма поръчки в тази сесия." },
   rd_bk_cancel: { en: "Cancel", fil: "Cancel", zh: "取消", "zh-TW": "取消", vi: "Hủy", th: "ยกเลิก", id: "Batalkan", bg: "Откажи" },
-  rd_bk_printed: { en: "Printed", fil: "Na-print na", zh: "已打印", "zh-TW": "已列印", vi: "Đã in", th: "พิมพ์แล้ว", id: "Tercetak", bg: "Отпечатано" },
   rd_dash_restored_note: { en: "— Earlier comments —", fil: "— Mga naunang komento —", zh: "— 之前的留言 —", "zh-TW": "— 之前的留言 —", vi: "— Bình luận trước đó —", th: "— ความคิดเห็นก่อนหน้า —", id: "— Komentar sebelumnya —", bg: "— По-ранни коментари —" },
   rd_dash_ordered_prior: { en: "Ordered ✓", fil: "Na-order na ✓", zh: "已下单 ✓", "zh-TW": "已下單 ✓", vi: "Đã đặt ✓", th: "สั่งแล้ว ✓", id: "Sudah dipesan ✓", bg: "Поръчано ✓" },
   rd_dash_reprint: { en: "Reprint", fil: "I-print ulit", zh: "重新打印", "zh-TW": "重新列印", vi: "In lại", th: "พิมพ์ซ้ำ", id: "Cetak ulang", bg: "Печатай пак" },

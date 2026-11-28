@@ -7277,4 +7277,6 @@ the list scrolls in the sheet (≤ 85 % phone / 80 % laptop). Who: active Basic 
 - Guide: one-click-orders + reprint sections, 116b regenerated (do NOT apply 116b); `sql/236_guide_basket_list.sql`
   = those two rows only — NOT applied yet. Preview `?bk=1` (`&bkmany=1`, `&bkfree=1`); proof `docs/design/basket-list/`.
 - Known, small: reopening the sheet within 2 s restarts its 2 s Reprint rest (an extra copy at most).
+- Fix (same day): the sheet steps aside while "No printer connected" / "Bluetooth is off" is open (prop `hidden`;
+  was hidden UNDER the sheet), and never says "Printed" (only "Printing…" for 2 s).
 - Left: free-plan account check on production; delete the `preview/basket-list` branch on GitHub.
