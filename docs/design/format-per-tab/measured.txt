@@ -1,0 +1,8 @@
+360 tiktok: title="TikTok invoice format" {"W":360,"pageScroll":false,"wide":0,"small":[]}
+360 facebook: title="Facebook receipt format" sample=1 {"W":360,"pageScroll":false,"wide":0,"small":[]}
+390 tiktok: title="TikTok invoice format" {"W":390,"pageScroll":false,"wide":0,"small":[]}
+390 facebook: title="Facebook receipt format" sample=1 {"W":390,"pageScroll":false,"wide":0,"small":[]}
+430 tiktok: title="TikTok invoice format" {"W":430,"pageScroll":false,"wide":0,"small":[]}
+430 facebook: title="Facebook receipt format" sample=1 {"W":430,"pageScroll":false,"wide":0,"small":[]}
+1280 tiktok: title="TikTok invoice format" {"W":1280,"pageScroll":false,"wide":0,"small":[]}
+1280 facebook: title="Facebook receipt format" sample=1 {"W":1280,"pageScroll":false,"wide":0,"small":[]}
