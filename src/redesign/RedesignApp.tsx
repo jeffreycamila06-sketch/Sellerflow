@@ -3,7 +3,7 @@
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type Order as RDOrder } from "./data";
+import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type Order as RDOrder, type Comment as RDComment } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
@@ -107,7 +107,8 @@ import EndSessionConfirm from "./components/EndSessionConfirm";
 import { sessionV2Enabled, SESSION_V2_DAYS } from "./adapters/sessionV2";
 import { sessionNumberingGate } from "./adapters/sessionNumberingGate";
 import { useSessionPauseLog } from "./adapters/sessionPauseLog";
-import { buildBasketCounts } from "./adapters/basketCounts";
+import { buildBasketCounts, basketOrdersFor, basketListAllowed } from "./adapters/basketCounts";
+import { BasketSheet } from "./components/BasketSheet";
 import { buildMinerRiskMap } from "./adapters/minerRisk";
 import { useMinersReport } from "./adapters/minersReport";
 import { useSalesTab } from "./adapters/salesTab";
@@ -1088,6 +1089,11 @@ export default function RedesignApp() {
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
   const [screen, setScreenRaw] = useState<Screen>(anonScreen());
+  // BASKET LIST (paid plans, 2026-11-28): the buyer whose 🛒 list is open on the Live screen.
+  // Leaving the Live screen closes it (adjust-during-render, no effect).
+  const [basketFor, setBasketFor] = useState<{ handle: string; platform: string } | null>(null);
+  const [basketScreen, setBasketScreen] = useState<Screen>(screen);
+  if (basketScreen !== screen) { setBasketScreen(screen); if (basketFor) setBasketFor(null); }
   // ‹ Back (Jeff 2026-11-11): every open records where the screen came from (adapters/backNav.ts);
   // Back returns there; a bottom-nav tab clears the record; the Parcel Scan ⇄ never adds a step.
   // navRef is the synchronous truth (handlers read it); navOrigins mirrors it for rendering.
@@ -3104,6 +3110,7 @@ export default function RedesignApp() {
           {screen === "dashboard" && (
             <Dashboard
               comments={sessionIdleEnded ? ENDED_NO_COMMENTS : comments} cur={cur} basketCounts={basketCounts} minerRisk={minerRisk}
+              {...(basketListAllowed(auth.profile) ? { onBasketTap: (c: RDComment) => setBasketFor({ handle: c.handle, platform: c.platform || "" }) } : {})}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setShopeeOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setShopeeOpen(false); }}
@@ -3212,6 +3219,12 @@ export default function RedesignApp() {
           )}
           {screen === "dashboard" && blacklistTap && blacklist.map?.get(blMapKey(blacklistTap.platform, blacklistTap.key)) && (
             <BlacklistSheet entry={blacklist.map.get(blMapKey(blacklistTap.platform, blacklistTap.key))!} onClose={() => setBlacklistTap(null)} />
+          )}
+          {screen === "dashboard" && basketFor && basketListAllowed(auth.profile) && (
+            <BasketSheet
+              orders={basketOrdersFor(ordersList, basketFor.handle, basketFor.platform)} handle={basketFor.handle} cur={cur}
+              onClose={() => setBasketFor(null)} onReprint={onReprintOrder} {...(orderCancelUi ? { cancel: orderCancelUi } : {})}
+            />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post", saleId?: number | null) => { if (source === "post") return postItemStock(postSales?.sales ?? [], code, saleId ?? null); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote, postLabel: (sid: number) => postLabel(postSales?.sales.find((x) => x.id === sid)), postGiveOff: postAccess !== "full" } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}

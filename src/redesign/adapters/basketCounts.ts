@@ -14,6 +14,8 @@
 //   • Performance: ONE Map built per session change (memoized by the caller);
 //     each feed row does an O(1) lookup — never a per-row scan of the order list.
 import type { Buyer } from "../../lib/orderTypes";
+import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
+import { isAdminRole } from "../../lib/roles";
 
 // Same composite key format the session rebuild uses (orderLogic.ts:94).
 export const buyerBasketKey = (handle: string, platform: string): string => `${handle} ${platform}`;
@@ -33,4 +35,27 @@ export function basketCountFor(counts: Map<string, number>, displayHandle: strin
   const handle = String(displayHandle || "").replace(/^@+/, "").trim();
   if (!handle || !platform) return 0;
   return counts.get(buyerBasketKey(handle, platform)) || 0;
+}
+
+// BASKET LIST (paid plans, 2026-11-28) — the orders behind a 🛒N badge: the SAME identity
+// rule as basketCountFor (handle without the leading @, exact platform), read from the
+// Orders-tab list (cancelled orders included, so they can be undone from the list).
+// Oldest first = the order the buyer mined them.
+export interface BasketOrderLike { handle: string; platform: string; orderNum?: number }
+export function basketOrdersFor<T extends BasketOrderLike>(orders: T[], displayHandle: string, platform: string | undefined): T[] {
+  const handle = String(displayHandle || "").replace(/^@+/, "").trim();
+  if (!handle || !platform) return [];
+  const hit = orders.filter((o) => String(o.handle || "").replace(/^@+/, "").trim() === handle && o.platform === platform);
+  return hit
+    .map((o, i) => ({ o, i }))
+    .sort((a, b) => (a.o.orderNum ?? 0) - (b.o.orderNum ?? 0) || b.i - a.i)
+    .map((x) => x.o);
+}
+
+// Who gets the tappable badge: an admin, or an ACTIVE paid plan (Basic / Plus / Pro / Master,
+// not past its end date). Free plan → the badge stays a plain number (today).
+export function basketListAllowed(a: { plan?: string; planStatus?: string; planExpiry?: string; role?: string } | null | undefined): boolean {
+  if (!a) return false;
+  if (isAdminRole(a.role)) return true;
+  return isActivePaid({ plan: a.plan || "", planStatus: a.planStatus || "", daysLeft: planDaysLeft(a.planExpiry, Date.now()) });
 }

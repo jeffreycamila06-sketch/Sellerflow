@@ -200,7 +200,7 @@ export default function Dashboard({
   canInject = false, onInjectSynthetic,
   announcement = null, annDismissedId = "", onDismissAnn, annUnread = false, onOpenAnn,
   onPrintWinner,
-  basketCounts,
+  basketCounts, onBasketTap,
   minerRisk,
   buyerAlerts, onBuyerTap, buyerTags, fbPolish = false,
   blacklist, onBlacklistTap,
@@ -209,6 +209,9 @@ export default function Dashboard({
   // 🛒 per-buyer order count for the current session window (key: "handle platform").
   // Display-only lookup map built upstream (RedesignApp memo) — O(1) per row.
   basketCounts?: Map<string, number>;
+  // BASKET LIST (paid plans): when passed, the 🛒N badge is a button that opens this
+  // buyer's list. Absent = the badge stays a plain <span> (today's markup).
+  onBasketTap?: (c: Comment) => void;
   // Real-time miner-risk badge level per miner (key: "handle platform"). Display-
   // only; built upstream from the comment event's followerCount/createTime. O(1)/row.
   minerRisk?: Map<string, RiskLevel>;
@@ -1072,8 +1075,11 @@ export default function Dashboard({
                         default = slightly larger (Android APK + web/desktop); the iOS
                         shell keeps the compact pill via html.sfl-ios-shell (same proven
                         scoping as the iOS 16px input fix). */}
-                    {basketN > 0 && (
+                    {basketN > 0 && !onBasketTap && (
                       <span className="sfl-basket-badge" title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 999, flexShrink: 0 }}>🛒{basketN}</span>
+                    )}
+                    {basketN > 0 && onBasketTap && (
+                      <button type="button" className="sfl-basket-badge sfl-tap44" data-testid="basket-badge-btn" aria-label={tpl(t.rd_bk_open_aria, { n: basketN })} onClick={() => onBasketTap(c)} style={{ display: "inline-flex", alignItems: "center", fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 999, flexShrink: 0, border: "none", margin: 0, fontFamily: "inherit", lineHeight: "inherit", cursor: "pointer" }}>🛒{basketN}</button>
                     )}
                     {/* REPRINT — the ONE button for every already-ordered row
                         (FLive style, Jeff 2026-07-12): replaces both the
