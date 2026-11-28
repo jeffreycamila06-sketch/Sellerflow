@@ -7263,3 +7263,18 @@ comment can be ordered again · a new column on the `orders` ledger is OK. Nothi
   The two indexes are built CONCURRENTLY after the commit (sql/234 step 7) — never inside the transaction
   (orders ≈ 630k rows).
 - Proof: `docs/design/cancel-order/` (pictures 360/390/412/1280 + dark, measured, 14/14 breaks, PGlite 67 + 6).
+
+## 2026-11-28 — BASKET LIST (tap 🛒N on Live, paid plans) ✅ MERGED `035a4d8` + LIVE-TESTED by Jeff (TikTok + Facebook)
+Option C: tap the 🛒N badge on a Live comment → that buyer's orders of the session (item, price or Free, time),
+each with **↻ Reprint** and a **Cancel** button (the Orders tab's question → Cancelled + **↺ Undo**). No "See all" —
+the list scrolls in the sheet (≤ 85 % phone / 80 % laptop). Who: active Basic / Plus / Pro / Master + admins
+(`basketListAllowed`, adapters/basketCounts.ts); free / ended plan = main's plain `<span>` badge (test-pinned).
+- `components/BasketSheet.tsx` (portal into `[data-redesign]`), `basketOrdersFor` (same identity as the 🛒 count,
+  from the Orders-tab list `ordersList` = fullSession, cancelled included, oldest first), Dashboard `onBasketTap`.
+- Reprint = RedesignApp `onReprintOrder` (the Orders tab ↻, zero-write) — same arguments, test-pinned; printer
+  guardian PASS, PRINTING_MAP P13 row added. Cancel / Undo = `orderCancelUi` (absent → no Cancel button).
+- Jeff tested 2026-11-28 on a real live: print, basket Reprint, Cancel, Undo (TikTok), then Facebook (name-only).
+- Guide: one-click-orders + reprint sections, 116b regenerated (do NOT apply 116b); `sql/236_guide_basket_list.sql`
+  = those two rows only — NOT applied yet. Preview `?bk=1` (`&bkmany=1`, `&bkfree=1`); proof `docs/design/basket-list/`.
+- Known, small: reopening the sheet within 2 s restarts its 2 s Reprint rest (an extra copy at most).
+- Left: free-plan account check on production; delete the `preview/basket-list` branch on GitHub.
