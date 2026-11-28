@@ -248,8 +248,8 @@ describe("✎ View", () => {
     expect(tagOfRow(4)).toBe("other_app");
   });
   it("the receipt format could not be read → a line + Try again (no editor, nothing saved)", async () => {
-    DB.s.failFormatRead = true;
     await open();
+    DB.s.failFormatRead = true;                                 // the list read it; the sheet's own read fails
     fireEvent.click(rowOf(2)); await flush();
     expect(q("ivc-fb-edit-error")).not.toBeNull();
     expect(q("ivc-fb-editor")).toBeNull();

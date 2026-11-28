@@ -3,7 +3,7 @@
 // functions the server's Send all uses (src/lib/receiptEdit.js), so the editor's live picture and the picture
 // the buyer gets are drawn from the same input (only the fonts differ: the phone's own, the server's Noto).
 // Tested against the server in fbSendAllEdit.server.test.ts.
-import { applyReceiptEdit, cleanReceiptEdit, noEmoji, type ReceiptEdit } from "../../lib/receiptEdit.js";
+import { applyReceiptEdit, cleanReceiptEdit, editPictureLines, noEmoji, type ReceiptEdit } from "../../lib/receiptEdit.js";
 import type { ReceiptInput } from "../../lib/receiptLayout.js";
 import type { BuyerReceipt } from "./useReadData";
 
@@ -57,4 +57,19 @@ export function fbPictureInput(state: EditorState, ctx: { receipt: BuyerReceipt;
 /** The lines that show on the picture (numbered 1..n) — the editor numbers its rows with this. */
 export function shownLineIds(state: EditorState): Set<number> {
   return new Set(state.lines.filter((l) => noEmoji(l.item).trim() !== "").map((l) => l.id));
+}
+/** The Total the buyer's picture shows, for the Facebook list (row + summary): the SAME rule as the picture
+ *  (src/lib/receiptLayout.js receiptTotalText) — the lines that show (an item, price > 0) plus the shipping fee
+ *  when > 0; any shown line without a price (or no line) = "to be confirmed" (allPriced false, sum 0). */
+export function fbReceiptTotal(state: EditorState): { allPriced: boolean; sum: number } {
+  const e = stateToEdit(state);
+  const lines = editPictureLines(e.lines);
+  const allPriced = lines.length > 0 && lines.every((l) => l.total > 0);
+  if (!allPriced) return { allPriced, sum: 0 };
+  const ship = e.shippingFee !== null && e.shippingFee > 0 ? e.shippingFee : 0;
+  return { allPriced, sum: lines.reduce((t, l) => t + l.total, 0) + ship };
+}
+/** That Total for one row of the list: from its saved edit, else from the orders (what Send all draws). */
+export function fbRowTotal(row: { receipt: BuyerReceipt; cancelled: readonly boolean[] }, saved: { edit: ReceiptEdit } | null | undefined, fee: string): { allPriced: boolean; sum: number } {
+  return fbReceiptTotal(saved ? editToState(saved.edit) : originalState(row.receipt, row.cancelled, { opening: "", note: "" }, fee));
 }
