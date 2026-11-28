@@ -7249,7 +7249,7 @@ comment can be ordered again · a new column on the `orders` ledger is OK. Nothi
 - **App:** `useLiveSession` → `session` (cancelled left out — every reader) + `fullSession` (the Orders tab list);
   `getBuyers` = FULL session (a cancelled buyer's number is never reused). `setOrderCancelled(ref, on)` + the
   comment's msgId leaves / re-enters the ordered map; `useOrders.releaseMsgId / holdMsgId`. Orders tab:
-  ⋯ → portal sheet (check → `sent` warning) → Cancelled chip + ↶ Undo; totals / badge / export / Unpaid leave it out;
+  ⋯ → portal sheet (check → `sent` warning) → Cancelled chip + ↺ Undo (↶ is not in the app font — Nov 28 fix); totals / badge / export / Unpaid leave it out;
   a past session is re-read after a cancel (`usePastSessions().reload`). Invoicing line ids + the Paid flag read
   without cancelled rows. Server (Render): Send all + after-live receipt readers `readWithoutCancelled`
   (`server/orderCancelFilter.js`, missing column → today's read).

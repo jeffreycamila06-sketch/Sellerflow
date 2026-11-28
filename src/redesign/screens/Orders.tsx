@@ -423,7 +423,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         {paidUi && !isCx(o) && paidControls(o)}
         {cancel && o.ref && (isCx(o)
           ? <button type="button" data-testid="ord-cx-undo" disabled={!!cxBusy} onClick={(e) => { e.stopPropagation(); void undoCx(o); }}
-              style={{ fontSize: 11.5, fontWeight: 800, color: "var(--accent-fg)", background: "transparent", border: "1.5px solid var(--accent)", padding: "4px 10px", borderRadius: 8, cursor: cxBusy ? "default" : "pointer", fontFamily: "var(--font-ui)", whiteSpace: "nowrap", flexShrink: 0, opacity: cxBusy && cxBusy !== o.ref ? 0.55 : 1 }}>↶ {t.rd_oc_undo}</button>
+              style={{ fontSize: 11.5, fontWeight: 800, color: "var(--accent-fg)", background: "transparent", border: "1.5px solid var(--accent)", padding: "4px 10px", borderRadius: 8, cursor: cxBusy ? "default" : "pointer", fontFamily: "var(--font-ui)", whiteSpace: "nowrap", flexShrink: 0, opacity: cxBusy && cxBusy !== o.ref ? 0.55 : 1 }}>↺ {t.rd_oc_undo}</button>
           : <button type="button" data-testid="ord-more" className="sfl-tap44" aria-label={t.rd_oc_more} title={t.rd_oc_more} disabled={!!cxBusy} onClick={(e) => { e.stopPropagation(); openCx(o); }}
               style={{ width: 38, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, lineHeight: 1, fontWeight: 900, color: "var(--text-muted)", background: "transparent", border: "1.5px solid var(--border)", borderRadius: 8, cursor: cxBusy ? "default" : "pointer", flexShrink: 0, padding: 0, fontFamily: "var(--font-ui)" }}>⋯</button>)}
       </div>
