@@ -7224,7 +7224,7 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
   `?ivc=0,0&fbsa=1&fbedit=1&admin=1`).
 - **Order:** sql/233 → merge (Vercel) → Render deploy (quiet time). Before sql/233 the editor works but saves fail
   ("Couldn't save"); before the Render deploy Send all ignores saved edits (sends the orders' receipt).
-- **Save fix (2026-11-28, branch `claude/fb-edit-save-fix`, web only):** Jeff's #1 edits never reached the server
+- **Save fix (2026-11-28, ✅ merged a040f16e ~18:10 Taipei, Vercel READY; web only):** Jeff's #1 edits never reached the server
   (production logs: no write at all from his Mac; not reproduced in tests — every code path saves). Proven on main:
   a save still on its way when the Facebook list is drawn again (tab switch / a new order re-reads the list) was
   never shown — the new list missed it → "Edited" gone, the sheet opened on the orders again. Now:
@@ -7308,7 +7308,7 @@ the list scrolls in the sheet (≤ 85 % phone / 80 % laptop). Who: active Basic 
   was hidden UNDER the sheet), and never says "Printed" (only "Printing…" for 2 s).
 - Left: free-plan account check on production; delete the `preview/basket-list` branch on GitHub.
 
-## 2026-11-28 — INVOICING: "FORMAT" FOLLOWS THE OPEN TAB (branch `claude/format-per-tab`, NOT merged; web only; sql/237 = guide row, NOT applied)
+## 2026-11-28 — INVOICING: "FORMAT" FOLLOWS THE OPEN TAB ✅ LIVE (merged dacb17fb 2026-11-28 ~14:58 Taipei; Vercel READY; sql/237 APPLIED 18:2x Taipei — live invoicing row md5 74087651…)
 - **Format button (Invoicing header) opens the sheet of the open tab:** TikTok → **"TikTok invoice format"**
   (`InvoiceFormatSheet` + `title`); Instagram / Shopee / Facebook WITHOUT the Receipt add-on → today's "Invoice format";
   Facebook WITH the add-on (`onReceiptFormat`, = `fbReceiptUi`) → **"Facebook receipt format"**
