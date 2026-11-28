@@ -1,0 +1,12 @@
+caught Facebook tab opens the TikTok sheet
+caught Facebook sheet for sellers WITHOUT the add-on
+caught TikTok title not set
+caught Message type row back
+caught Facebook sheet saves the fee elsewhere
+caught Facebook sheet does not tell the screen (TikTok keeps the old note)
+caught Facebook sheet drops the QR
+caught shared hint swapped
+caught sample without the shipping fee
+caught Receipt format screen QR buttons changed
+caught sample input changed for the screen
+caught TikTok message changed

@@ -96,6 +96,15 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
 - **Phone:** `ReceiptSheet.tsx:96` → `renderReceiptPng` (receiptImage.ts:23, browser canvas, system fonts). Preview via `useReceiptPicture.ts`.
 - **Server automatic receipt:** `server/fbAutoReceipt.js:18,79` → `drawReceiptPng` (server/receiptDraw.js:95, @napi-rs/canvas, bundled Noto Sans / TC / SC / Thai). It uses the raw `live_session_orders` rows, so **edits made in the manual sheet are not used** (receiptDraw.js:9-10).
 - **Shared pure layout:** `src/lib/receiptLayout.js` (`layoutReceipt`, caps 400 lines and 12000 px).
+- **Invoicing → Facebook → Format ("Facebook receipt format", 2026-11-28, branch `claude/format-per-tab`) — no new
+  drawer, no change to what is drawn:** a sheet that edits the SAME saved values the receipt pictures read —
+  `seller_receipt_settings.opening / note / qr_image` (as the Receipt format screen) + `invoice_shipping_fee` (as the
+  TikTok invoice format) — in ONE upsert (`saveFbReceiptFormat`, adapters/invoicing.ts). Its sample = the Receipt
+  format screen's sample (`adapters/receiptSample.ts` `sampleReceiptInput`, moved out of ReceiptFormat.tsx) +
+  the Invoicing shipping fee. The Receipt format screen's QR field + sample now live in
+  `components/ReceiptFormatParts.tsx`; the screen's DOM, sample input and save are **equal to main**
+  (`formatPerTab.sameAsMain.test.tsx`, fixture taken on main b6d5d417), as are the Orders sheet's picture input, the
+  Facebook ✎ View picture input, the Send all start request and the TikTok message for the same saved settings.
 - **Send endpoints:** `POST /fb/receipt/info` and `/fb/receipt/send` (server/fbReceipt.js:462-464).
 - **Invoicing → Facebook "Send all in Messenger" (FB-2, 2026-11-26, branch `claude/fb-send-all`) — a THIRD user of the
   server drawing, no new drawer:** `server/fbSendAll.js` draws each buyer with the SAME `drawReceiptPng` (from the raw
@@ -388,7 +397,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | Name | Kind | Default | Read at | Effect |
 |---|---|---|---|---|
 | `fb_send_all_enabled` (sql/225, NOT applied) | app_settings | OFF (admins see Send all) | server/fbSendAll.js `allowed` (cached 60 s); RedesignApp `featureSw.fbSendAll` | P10 Send all only: who may start the server job / see the Invoicing → Facebook Send all. Never the automatic receipt. |
-| `seller_receipt_settings.invoice_shipping_fee` (sql/220) | DB column (Invoicing → Format) | empty = none | server.js `getSendAllSettings` → fbSendAll `picture()` | P10 Send all picture only: a shipping row + added to the total. The automatic receipt and the Orders sheet do not read it. |
+| `seller_receipt_settings.invoice_shipping_fee` (sql/220) | DB column (Invoicing → Format: the TikTok invoice format AND the Facebook receipt format — one value) | empty = none | server.js `getSendAllSettings` → fbSendAll `picture()` | P10 Send all picture only: a shipping row + added to the total. The automatic receipt and the Orders sheet do not read it. |
 | `STICKER_LAYOUT_V2_PUBLIC` | code const | **true** | printing.ts:143, 146, 151 | `printCommentFullWidth` on image paths. Allowlist feature `sticker_v2` when false. |
 | `STICKER_SPACING_PUBLIC` | code const | **true** | printing.ts:164, 166 | half gaps + compact. Feature `sticker_spacing` when false. |
 | `STICKER_SPACING_CHOICE_VISIBLE` / `STICKER_SPACING_FIXED` | code const | false / "compact" | printing.ts:177-183 | the stored `pp.spacing` is ignored |

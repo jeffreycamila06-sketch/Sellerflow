@@ -3,30 +3,24 @@
 // payment QR picture, saved to seller_receipt_settings (sql/74). Below the form: a sample
 // receipt picture from the same renderer the Orders sheet uses. Nothing is sent anywhere.
 // A missing table / failed read shows a note on THIS screen only.
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import { BackButton } from "../components/BackButton";
 import {
-  loadReceiptSettings, saveReceiptSettings, downscaleQrFile,
+  loadReceiptSettings, saveReceiptSettings,
   OPENING_MAX, NOTE_MAX, EMPTY_RECEIPT_SETTINGS, type ReceiptSettings,
 } from "../adapters/receiptSettings";
 import { useReceiptPicture } from "../adapters/useReceiptPicture";
 import { loadSoldoutSettings, saveSoldoutSettings, SOLDOUT_TEXT_MAX } from "../adapters/fbSoldout";
 import { loadAutoReceipt, saveAutoReceipt } from "../adapters/fbAutoReceipt";
-import type { ReceiptInput } from "../adapters/receiptImage";
+import { sampleReceiptInput } from "../adapters/receiptSample";
+import { QrPictureField, SamplePicture } from "../components/ReceiptFormatParts";
+import { rcBtn as btn } from "../components/receiptFormatStyle";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 const label: CSSProperties = { display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--text)", margin: "0 0 6px" };
 const area: CSSProperties = { width: "100%", boxSizing: "border-box", minHeight: 76, resize: "vertical", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", padding: "9px 11px", fontSize: 14, fontFamily: "var(--font-ui)", lineHeight: 1.4 };
 const counter: CSSProperties = { fontSize: 11, color: "var(--text-muted)", textAlign: "right", marginTop: 3 };
-const btn = (primary: boolean): CSSProperties => ({ padding: "9px 15px", borderRadius: 10, border: primary ? "none" : "1px solid var(--border-strong)", background: primary ? "var(--accent)" : "var(--surface-2)", color: primary ? "var(--accent-text)" : "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" });
-
-function sampleReceiptInput(s: ReceiptSettings, cur: string, buyerName: string, labels: ReceiptInput["labels"]): ReceiptInput {
-  return {
-    opening: s.opening, note: s.note, qrImage: s.qrImage, currency: cur, buyerNum: 12, buyerName, labels,
-    lines: [{ item: "A1", total: 350 }, { item: "B2", total: 280 }, { item: "C3 ×2", total: 500 }],
-  };
-}
 
 export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polish = false }: {
   cur: string; onBack: () => void;
@@ -45,7 +39,6 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const [soOn, setSoOn] = useState(false);     // fb_polish_v2: what the toggles below report
   const [autoOn, setAutoOn] = useState(false);
 
@@ -60,15 +53,6 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
 
   const picture = useReceiptPicture(status === "loading" ? null : sampleReceiptInput(s, cur, t.rd_rc_sample_buyer, { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more, howToPay: t.rd_rc_pic_howto, scanToPay: t.rd_rc_pic_scan }));
 
-  const pickQr = async (f: File | undefined) => {
-    if (!f) return;
-    setMsg(null);
-    try {
-      const url = await downscaleQrFile(f);
-      if (url) setS((x) => ({ ...x, qrImage: url })); else setMsg({ text: t.rd_rc_qr_failed, ok: false });
-    } catch { setMsg({ text: t.rd_rc_qr_failed, ok: false }); }
-    if (fileRef.current) fileRef.current.value = "";
-  };
   const save = async () => {
     if (saving) return;
     setSaving(true); setMsg(null);
@@ -104,22 +88,8 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
             <div style={card}>
               <span style={label}>{t.rd_rc_qr}</span>
               <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }}>{t.rd_rc_qr_hint}</div>
-              {/* 160 × 160 (= the product edit dialog picture). The WHOLE QR is shown (contain, never
-                  cover/crop — a cut QR can't be scanned) on white. The buttons sit to the right and
-                  wrap below the box on a narrow phone. Tapping the box = "Choose picture". */}
-              <div data-testid="rc-qr-row" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                {s.qrImage && (
-                  <button type="button" data-testid="rc-qr-box" onClick={() => fileRef.current?.click()}
-                    style={{ width: 160, height: 160, flexShrink: 0, padding: 0, margin: 0, boxSizing: "border-box", borderRadius: 14, border: "1px solid var(--border)", background: "#fff", overflow: "hidden", cursor: "pointer", display: "block" }}>
-                    <img src={s.qrImage} alt={t.rd_rc_qr} data-testid="rc-qr-thumb" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
-                  </button>
-                )}
-                <div data-testid="rc-qr-actions" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
-                  <button type="button" style={btn(false)} onClick={() => fileRef.current?.click()}>{t.rd_rc_qr_pick}</button>
-                  {s.qrImage && <button type="button" data-testid="rc-qr-remove" style={{ ...btn(false), color: "var(--danger)" }} onClick={() => setS((x) => ({ ...x, qrImage: null }))}>{t.rd_rc_qr_remove}</button>}
-                </div>
-                <input ref={fileRef} type="file" accept="image/*" hidden data-testid="rc-qr-file" onChange={(e) => void pickQr(e.target.files?.[0])} />
-              </div>
+              <QrPictureField qrImage={s.qrImage} onPicked={(url) => setS((x) => ({ ...x, qrImage: url }))} onRemove={() => setS((x) => ({ ...x, qrImage: null }))}
+                onPickStart={() => setMsg(null)} onFailed={() => setMsg({ text: t.rd_rc_qr_failed, ok: false })} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 2px 16px" }}>
               <button type="button" data-testid="rc-save" style={{ ...btn(true), opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={() => void save()}>{saving ? t.rd_rc_saving : t.rd_rc_save}</button>
@@ -132,9 +102,7 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
         {status !== "loading" && (
           <div style={card}>
             <span style={label}>{t.rd_rc_sample}</span>
-            {picture.url
-              ? <img src={picture.url} alt={t.rd_rc_sample} data-testid="rc-sample-img" className="sfl-no-hover" style={{ display: "block", width: "100%", maxWidth: 360, margin: "0 auto", boxSizing: "border-box", borderRadius: 10, border: "1px solid var(--border)" }} />
-              : picture.failed && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_rc_no_preview}</div>}
+            <SamplePicture picture={picture} />
           </div>
         )}
       </div>

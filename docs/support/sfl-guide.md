@@ -430,8 +430,8 @@ Keywords: send to tiktok, send message, message buyer, copy message, edit item, 
 - Some accounts only — if you don't see **Send**, ask Admin.
 
 ## invoicing — Invoicing (send invoices on TikTok)
-Last checked: 2026-11-27
-Keywords: invoicing, invoice, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can't message, new item, past session, facebook sessions, tiktok sessions, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, facebook invoicing, messenger invoice, ask admin, send all, messenger, other chat app, conversation routing, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單
+Last checked: 2026-11-28
+Keywords: invoicing, invoice, invoice format, facebook format, opening, payment qr, qr picture, send invoice, send next, bill, total, payment note, how to pay, shipping fee, sent, not sent, can't message, new item, past session, facebook sessions, tiktok sessions, copy failed, copy again, view, sent it by hand, items, pieces, pcs, cancel, cancelled, buyer cancelled, remove item, facebook invoicing, messenger invoice, ask admin, send all, messenger, other chat app, conversation routing, ipadala ang invoice, singil, 账单, 帳單, 发账单, 傳帳單
 
 Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of your current session, one row per buyer number, with each buyer's total.
 
@@ -453,9 +453,10 @@ Open **Settings → Invoicing**. The **TikTok** tab lists the TikTok buyers of y
 - Each session keeps its own Sent marks. A new session starts with every buyer **Not sent**.
 - Nothing here changes an order.
 
-**Format** (top right)
-- **Payment note** — how the buyer pays you. It is added at the end of every invoice.
-- **Shipping fee** — added to every invoice. Leave it empty for none.
+**Format** (top right) — shows the format of the tab you are on.
+- On the **TikTok** tab: **Payment note** (how the buyer pays you, added at the end of every invoice) and **Shipping fee** (added to every invoice; leave it empty for none).
+- On the **Facebook** tab, if you send Messenger receipts: **Opening**, **Payment note**, **Shipping fee**, **Payment QR picture** (**Change picture** or **Remove**) and a **Sample** receipt.
+- The payment note and shipping fee are the same on both tabs. Change them on one and the other changes too.
 
 **Facebook tab** — sending invoices to Facebook buyers in Messenger is turned on by Admin. If it isn't on for you, tap **Ask Admin to turn it on**: Telegram opens with a ready message.
 

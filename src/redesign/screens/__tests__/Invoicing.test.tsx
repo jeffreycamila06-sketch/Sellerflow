@@ -362,15 +362,16 @@ describe("the saved status", () => {
 });
 
 describe("Format (one for all platforms)", () => {
-  it("the sheet: payment note, shipping fee, and a Message type row that cannot be changed", async () => {
+  it("the sheet: \"TikTok invoice format\" with the payment note and the shipping fee (no Message type row)", async () => {
     DB.s.settings.set("u1", { user_id: "u1", note: "GCash 0917", invoice_shipping_fee: 38 });
     await open();
     fireEvent.click(q("ivc-format-btn")!);
+    expect(q("ivc-format-title")!.textContent).toBe("TikTok invoice format");
     expect((q("ivc-format-note") as HTMLTextAreaElement).value).toBe("GCash 0917");
     expect((q("ivc-format-fee") as HTMLInputElement).value).toBe("38");
-    expect(q("ivc-format-type")!.textContent).toBe("Message typeText (Picture soon)");
-    expect(q("ivc-format-type")!.getAttribute("aria-disabled")).toBe("true");
-    expect(q("ivc-format-type")!.querySelector("button, input, select")).toBeNull();
+    expect(q("ivc-format-type")).toBeNull();
+    expect(q("ivc-format-sheet")!.textContent).not.toContain("Message type");
+    expect(q("ivc-format-sheet")!.textContent).not.toContain("Picture soon");
     expect(q("ivc-format-shared")).toBeNull();           // not a Messenger-receipt seller
   });
   it("Save writes ONLY the note and the invoice fee — the Messenger receipt's opening text and QR stay as they are", async () => {
@@ -414,10 +415,10 @@ describe("Format (one for all platforms)", () => {
     fireEvent.click(q("ivc-format-retry")!); await flush();
     expect(q("ivc-send-next")).not.toBeNull();
   });
-  it("a seller with the Messenger receipt is told the note is shared", async () => {
+  it("a seller with the Messenger receipt is told the note is also on the Facebook receipt", async () => {
     await open(buyersOf(BASE), { onReceiptFormat: () => {} });
     fireEvent.click(q("ivc-format-btn")!);
-    expect(q("ivc-format-shared")!.textContent).toBe(t.rd_ivc_fmt_shared);
+    expect(q("ivc-format-shared")!.textContent).toBe("Also on your Facebook receipt.");
   });
 });
 

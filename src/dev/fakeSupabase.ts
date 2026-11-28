@@ -401,6 +401,8 @@ if (IVC.length === 2) {
   tables.app_settings.push({ key: "invoicing_enabled", value: "true" });
   tables.seller_session_config = [{ user_id: UID, current_session_id: IVC_SESSION, session_started_at: new Date(now - 26 * 3_600_000).toISOString(), session_window_days: 2, session_ended_at: null, window_days: 1, window_start: null }];
   tables.seller_receipt_settings = [{ user_id: UID, opening: "", note: "Pay by bank transfer within 24 hours.\nBank 012 · 0000-1234-5678", qr_image: null, invoice_shipping_fee: 38, updated_at: iso(3) }];
+  // &fbfmt=1 (docs/design/format-per-tab): an opening text and a payment QR picture (a made-up pattern, not a real QR)
+  if (/[?&]fbfmt=1/.test(Q)) Object.assign(tables.seller_receipt_settings[0], { opening: "Thank you for joining our live!", qr_image: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAK4AAACuCAAAAACKZ2kyAAABh0lEQVR42u3aQRKDMAgFUO9/6fYAHfUT2iR2XpYdK88NQ4Dj9ahz4OLi4uLi4m7APeKTPP/5TCcWLi7uWu5NKrnknhHPfslj4eLi7sC9puQBTgMPxcLFxX0Kt1rc4OLi/jc3KVM2SmS4uLhtbvXyk7c8trir4eLiFrnVJuZZmKTEmdrfxcXFHeK2xp8xa4uZMC4ubnGfIUlPSYskRxfarLi4uNO5SaMzb5uOjWNvPgAXF3cRdwxRTUxjRQ8uLu58bp68OksYrYYLLi7uBtx8OJpck5KR7U2bFRcXdzp3rPWZtDySd0bP4+LiLuJeFzSd5JUvZJSHrLi4uD/jVlPSdYB8QJK0YHBxcddyC1eRxiJXnvJwcXHXcqtnbOkqX+MoT35wcXF/wP3WMnf+zuS/uLi4O3DzVyQNjmrKG6zIcHFxp3CrlM4H4OLi/h93rNmRj1VwcXGfy+2PUaMCCBcXdym3upZRXcLIVz1wcXF34FYLkf6oNR/u4uLizufuf3BxcXFxcXEXnTcUxHRytEWGIAAAAABJRU5ErkJggg==" });
   // &fbedit=1 (docs/design/fb-invoice-edit): Lea Santos (2 lines) has a saved receipt edit (sql/233) → "✎ Edited"
   // on her row. With ?ivc=0,0&fbsa=1 the running session has Facebook buyers only (#1–#6; Lea = #3).
   if (FBSA && /[?&]fbedit=1/.test(Q)) {

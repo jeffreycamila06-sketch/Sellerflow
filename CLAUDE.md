@@ -7280,3 +7280,29 @@ the list scrolls in the sheet (≤ 85 % phone / 80 % laptop). Who: active Basic 
 - Fix (same day): the sheet steps aside while "No printer connected" / "Bluetooth is off" is open (prop `hidden`;
   was hidden UNDER the sheet), and never says "Printed" (only "Printing…" for 2 s).
 - Left: free-plan account check on production; delete the `preview/basket-list` branch on GitHub.
+
+## 2026-11-28 — INVOICING: "FORMAT" FOLLOWS THE OPEN TAB (branch `claude/format-per-tab`, NOT merged; web only; sql/237 = guide row, NOT applied)
+- **Format button (Invoicing header) opens the sheet of the open tab:** TikTok → **"TikTok invoice format"**
+  (`InvoiceFormatSheet` + `title`); Instagram / Shopee / Facebook WITHOUT the Receipt add-on → today's "Invoice format";
+  Facebook WITH the add-on (`onReceiptFormat`, = `fbReceiptUi`) → **"Facebook receipt format"**
+  (`components/FbReceiptFormatSheet.tsx`): Opening, Payment note, Shipping fee, Payment QR picture (Change picture /
+  Remove), Sample. The "Message type · Text (Picture soon)" row is gone (keys removed). Both sheets share
+  `components/FormatSheetFrame.tsx` (+ `formatSheetStyle.ts`). The "Receipt format ›" button on the Facebook "Soon"
+  card is unchanged.
+- **One note, one shipping fee:** both sheets write `seller_receipt_settings.note` + `invoice_shipping_fee`; the
+  Facebook sheet writes opening / note / qr_image / invoice_shipping_fee in ONE upsert (`saveFbReceiptFormat`,
+  adapters/invoicing.ts) and reads the opening + QR fresh when it opens. Hints: "Also on your Facebook receipt." (TikTok
+  sheet, add-on only) / "Also on your TikTok invoice." (Facebook sheet). No server / SQL schema change.
+- **Shared parts (moved, not copied):** the Receipt format screen's QR field + sample → `components/ReceiptFormatParts.tsx`
+  (`QrPictureField` — `tall` = 44 px buttons for the sheet only; `SamplePicture`), `adapters/receiptSample.ts`
+  (`sampleReceiptInput`, optional shipping fee — the sheet passes the Invoicing fee), `components/receiptFormatStyle.ts`.
+  ⚠️ `ReceiptFormat.tsx` is on the printing list: its DOM / sample input / save are pinned to main in
+  `formatPerTab.sameAsMain.test.tsx` (fixture taken on main b6d5d417), with the TikTok message, the Facebook ✎ View
+  picture input, the Send all start request and the Orders receipt input. Retake the fixture only for a deliberate
+  change (`SFL_FPT_DUMP=<file>`). PRINTING_MAP P10 bullet added; printer-guardian PASS.
+- Known (guardian note): the Facebook sheet's sample shows the shipping row; the Orders receipt sheet and the automatic
+  receipt don't use the Invoicing fee (the hint under the fee says "receipts you send from Invoicing").
+- Tests: `Invoicing.formatPerTab.test.tsx` (23), `formatPerTab.sameAsMain.test.tsx` (5), 12/12 on-purpose breaks
+  (`docs/design/format-per-tab/proof/`). Pictures 360 / 390 / 1280 (+ 430 measured, dark): `docs/design/format-per-tab/`
+  (`shoot.cjs`, preview `?ivc=6,2&fbsa=1&fbfmt=1&admin=1`).
+- **Order:** merge (Vercel) → sql/237 (guide phrase swap; any order with sql/226).
