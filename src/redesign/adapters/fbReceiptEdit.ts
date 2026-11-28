@@ -3,7 +3,7 @@
 // moment after the last change), one delete for "Reset to original". RLS: own rows only. The server's Send all
 // reads the same rows (service role) and draws them (server/fbSendAll.js). Nothing here touches an order,
 // Sales, a sticker or the saved receipt format.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { cleanReceiptEdit, type ReceiptEdit } from "../../lib/receiptEdit.js";
 
@@ -57,13 +57,56 @@ export async function deleteReceiptEdit(sessionId: string, buyerNumber: number):
   } catch { return false; }
 }
 
-/** The saved edits of the session on screen: read once per session; the editor tells it what it saved / reset. */
+// ── saves that outlive the editor (2026-11-28 save fix) ──────────────────────────────────────────────
+// A save keeps going when the editor closes or the Facebook list is drawn again (a new order, a tab switch):
+// its result is told to EVERY list of that session on screen (put), and while it is on its way — or after it
+// failed — the list knows that buyer's receipt is not saved yet, so Send all / Send wait instead of drawing the
+// old receipt. A save that gets no answer in FB_EDIT_SAVE_TIMEOUT_MS counts as failed (the seller sees it and
+// can save again) instead of waiting forever.
+export const FB_EDIT_SAVE_TIMEOUT_MS = 15000;
+let saveTimeoutMs = FB_EDIT_SAVE_TIMEOUT_MS;
+const keyOf = (sessionId: string, n: number) => `${sessionId}|${n}`;
+const inFlight = new Map<string, number>();
+const failedKeys = new Set<string>();
+type Listener = (e: { sessionId: string; buyerNumber: number; value?: SavedReceiptEdit | null }) => void;
+const listeners = new Set<Listener>();
+const tell = (e: Parameters<Listener>[0]) => { for (const f of [...listeners]) f(e); };
+
+/** Save (or remove, `edit` null) one buyer's edit. true = the server confirmed. */
+export async function persistReceiptEdit(sessionId: string, buyerNumber: number, edit: ReceiptEdit | null, basedOn: string | null, timeoutMs = saveTimeoutMs): Promise<boolean> {
+  const k = keyOf(sessionId, buyerNumber);
+  inFlight.set(k, (inFlight.get(k) ?? 0) + 1);
+  tell({ sessionId, buyerNumber });
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const late = new Promise<boolean>((r) => { timer = setTimeout(() => r(false), timeoutMs); });
+  const call = edit ? saveReceiptEdit(sessionId, buyerNumber, edit, basedOn) : deleteReceiptEdit(sessionId, buyerNumber);
+  const ok = await Promise.race([call, late]).catch(() => false);
+  if (timer) clearTimeout(timer);
+  const left = (inFlight.get(k) ?? 1) - 1;
+  if (left > 0) inFlight.set(k, left); else inFlight.delete(k);
+  if (ok) failedKeys.delete(k); else failedKeys.add(k);
+  tell(ok ? { sessionId, buyerNumber, value: edit ? { edit: cleanReceiptEdit(edit), basedOn: basedOn && HASH_RE.test(basedOn) ? basedOn : null } : null } : { sessionId, buyerNumber });
+  return ok;
+}
+/** The seller looked at that buyer's receipt again (saved it, put it back, or chose Discard): no warning. */
+export function clearReceiptEditFailed(sessionId: string, buyerNumber: number): void {
+  if (failedKeys.delete(keyOf(sessionId, buyerNumber))) tell({ sessionId, buyerNumber });
+}
+const numsOf = (sessionId: string, from: Iterable<string>) => [...from].filter((k) => k.startsWith(`${sessionId}|`)).map((k) => Number(k.slice(sessionId.length + 1))).sort((a, b) => a - b);
+/** test helper: forget every save that is on its way / failed */
+export function _resetReceiptEditSaves(timeoutMs = FB_EDIT_SAVE_TIMEOUT_MS): void { inFlight.clear(); failedKeys.clear(); saveTimeoutMs = timeoutMs; }
+
+/** The saved edits of the session on screen: read once per session; every save / reset of that session (from
+ *  any editor, even one already closed) is applied as soon as the server confirms it. `saving` / `failed` = the
+ *  buyer numbers whose receipt is not saved yet. */
 export function useReceiptEdits(sessionId: string | null): {
   state: "loading" | "ready" | "error"; edits: Map<number, SavedReceiptEdit>; reload: () => void;
   put: (buyerNumber: number, v: SavedReceiptEdit | null) => void;
+  saving: number[]; failed: number[];
 } {
   const [got, setGot] = useState<{ key: string; edits: Map<number, SavedReceiptEdit> | null; state: "loading" | "ready" | "error" }>({ key: "", edits: null, state: "loading" });
   const [turn, setTurn] = useState(0);
+  const [, setTick] = useState(0);
   const key = sessionId || "";
   useEffect(() => {
     if (!key) return;
@@ -78,6 +121,23 @@ export function useReceiptEdits(sessionId: string | null): {
     if (v) m.set(n, v); else m.delete(n);
     return { ...g, edits: m };
   }), [key]);
+  // a save confirmed while this list is still reading may not be in what it reads → read once more
+  const readyRef = useRef(false);
+  const isReady = got.key === key && got.state === "ready";
+  useEffect(() => { readyRef.current = isReady; }, [isReady]);
+  useEffect(() => {
+    if (!key) return;
+    const on: Listener = (e) => {
+      if (e.sessionId !== key) return;
+      if (e.value !== undefined) { if (readyRef.current) put(e.buyerNumber, e.value); else setTurn((n) => n + 1); }
+      setTick((n) => n + 1);
+    };
+    listeners.add(on);
+    return () => { listeners.delete(on); };
+  }, [key, put]);
   const mine = got.key === key ? got : null;
-  return { state: !key ? "ready" : mine ? mine.state : "loading", edits: mine?.edits ?? new Map(), reload, put };
+  return {
+    state: !key ? "ready" : mine ? mine.state : "loading", edits: mine?.edits ?? new Map(), reload, put,
+    saving: key ? numsOf(key, inFlight.keys()) : [], failed: key ? numsOf(key, failedKeys) : [],
+  };
 }
