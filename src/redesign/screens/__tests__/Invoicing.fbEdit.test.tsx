@@ -23,7 +23,7 @@ import { rebuildSessionFromRows } from "../../../lib/orderLogic";
 import { buyerReceipt } from "../../adapters/useReadData";
 import { fbPictureInput, originalState } from "../../adapters/fbReceiptEditState";
 import { invoiceRows } from "../../adapters/invoicing";
-import { FB_EDIT_SAVE_MS } from "../../adapters/fbReceiptEdit";
+import { FB_EDIT_SAVE_MS, _resetReceiptEditSaves } from "../../adapters/fbReceiptEdit";
 
 const SID = "11111111-2222-3333-4444-555555555555";
 const t = buildT("en") as unknown as Record<string, string>;
@@ -67,7 +67,7 @@ const writesOtherThanEdits = () => DB.s.calls.filter((c) => (c.op === "upsert" |
 const hashOf2 = () => invoiceRows(buyers(), "facebook", "60").find((r) => r.num === 2)!.hash;
 
 beforeEach(() => {
-  DB.reset(); localStorage.clear();
+  DB.reset(); localStorage.clear(); _resetReceiptEditSaves();
   DB.s.settings.set("u1", { user_id: "u1", opening: "Hi!", note: "Pay by GCash", qr_image: QR, invoice_shipping_fee: 60 });
   S.calls = []; S.order = [];
   m.render.mockReset();
@@ -109,7 +109,8 @@ describe("the editor in the Facebook ✎ View", () => {
       lines: [{ item: "Dress", price: 350 }, { item: "Belt", price: 45 }, { item: "Gift", price: null }],
     })]);
     expect(q("ivc-fb-sheet-edited")!.textContent).toBe(t.rd_ivc_fb_edited);
-    expect(q("ivc-fb-save-state")!.textContent).toContain(t.rd_fb_saved);
+    expect(q("ivc-fb-save")!.textContent).toBe(`✓ ${t.rd_fb_saved}`);
+    expect((q("ivc-fb-save") as HTMLButtonElement).disabled).toBe(true);
     expect(rowOf(2).querySelector("[data-testid='ivc-fb-row-edited']")!.textContent).toBe(`✎ ${t.rd_ivc_fb_edited}`);
     expect(rowOf(3).querySelector("[data-testid='ivc-fb-row-edited']")).toBeNull();
     const last = m.render.mock.calls.at(-1)![0];
@@ -164,18 +165,48 @@ describe("the editor in the Facebook ✎ View", () => {
     DB.s.failEditWrites = true;
     fireEvent.change(inSheet("rs-item")[0], { target: { value: "Dress XL" } });
     fireEvent.click(q("ivc-fb-sheet-send")!); await flush(); await flush();
-    expect(q("ivc-fb-save-failed")!.textContent).toBe(t.rd_fb_save_failed);
+    expect(q("ivc-fb-save-failed")!.textContent).toBe(t.rd_ivc_fb_save_err);
     expect(S.calls.filter((c) => c.path === "/fb/sendall/start")).toEqual([]);
+    expect(q("ivc-fb-sheet-edited")).toBeNull();                 // never "Edited" without the server's yes
+    expect(rowOf(2).querySelector("[data-testid='ivc-fb-row-edited']")).toBeNull();
     DB.s.failEditWrites = false;
-    fireEvent.click(q("ivc-fb-save-failed")!); await flush();
+    expect(q("ivc-fb-save")!.textContent).toBe(t.rd_rc_save);    // Save is on again
+    fireEvent.click(q("ivc-fb-save")!); await flush();
     expect(DB.s.edits).toHaveLength(1);
+    expect(q("ivc-fb-save-failed")).toBeNull();
+    expect(q("ivc-fb-save")!.textContent).toBe(`✓ ${t.rd_fb_saved}`);
   });
-  it("closing the sheet saves what is left (no wait)", async () => {
+  it("closing with a change not saved asks Save / Discard in the sheet; Save saves, THEN closes", async () => {
     await open(); await view(2);
     fireEvent.change(inSheet("rs-note")[0], { target: { value: "Closed fast" } });
     fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    expect(q("ivc-fb-sheet")).not.toBeNull();                    // still open: it asks
+    expect(q("ivc-fb-close-ask")!.textContent).toContain(t.rd_ivc_fb_save_q);
+    expect(DB.s.edits).toEqual([]);
+    fireEvent.click(q("ivc-fb-close-save")!); await flush();
     expect(q("ivc-fb-sheet")).toBeNull();
     expect(DB.s.edits[0]).toMatchObject({ note: "Closed fast" });
+    expect(rowOf(2).querySelector("[data-testid='ivc-fb-row-edited']")!.textContent).toBe(`✎ ${t.rd_ivc_fb_edited}`);
+  });
+  it("closing with a change not saved → Discard: closes, nothing saved, the next open shows the orders", async () => {
+    await open(); await view(2);
+    fireEvent.change(inSheet("rs-note")[0], { target: { value: "Not this" } });
+    fireEvent.click(q("ivc-fb-sheet-overlay")!); await flush();  // a tap outside asks too
+    fireEvent.click(q("ivc-fb-close-discard")!); await flush();
+    expect(q("ivc-fb-sheet")).toBeNull();
+    await wait(FB_EDIT_SAVE_MS + 300);
+    expect(DB.s.calls.filter((c) => c.table === "fb_receipt_edits" && (c.op === "upsert" || c.op === "delete"))).toEqual([]);
+    await view(2);
+    expect(inSheet("rs-note")[0].value).toBe("Pay by GCash");
+  });
+  it("closing after the auto-save already went through: no question", async () => {
+    await open(); await view(2);
+    fireEvent.change(inSheet("rs-note")[0], { target: { value: "Saved first" } });
+    await wait(FB_EDIT_SAVE_MS + 300);
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    expect(q("ivc-fb-close-ask")).toBeNull();
+    expect(q("ivc-fb-sheet")).toBeNull();
+    expect(DB.s.edits[0]).toMatchObject({ note: "Saved first" });
   });
   it("a new order after the edit → 'Edited · new order' on the row and a line in the sheet", async () => {
     DB.s.edits = [{ user_id: "u1", session_id: SID, buyer_number: 2, opening: "Hi!", note: "", shipping_fee: null, lines: [{ item: "Dress", price: 350 }], based_on: "oldhash1" }];

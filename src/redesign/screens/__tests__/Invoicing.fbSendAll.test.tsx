@@ -20,6 +20,7 @@ import { DB } from "../../adapters/__tests__/invoiceFakeDb";
 import { rebuildSessionFromRows } from "../../../lib/orderLogic";
 import { FB_POLL_MS } from "../../adapters/fbSendAll";
 import { buyerKeyOf } from "../../adapters/invoicing";
+import { _resetReceiptEditSaves } from "../../adapters/fbReceiptEdit";
 
 const SID = "11111111-2222-3333-4444-555555555555";
 const LANGS = ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as const;
@@ -70,6 +71,7 @@ const rowOf = (n: number) => qa("ivc-fb-row").find((r) => r.getAttribute("data-b
 const tagOfRow = (n: number) => rowOf(n).getAttribute("data-tag");
 
 beforeEach(() => {
+  _resetReceiptEditSaves();
   DB.reset(); localStorage.clear();
   S.status = { ok: true, access: true, allowed: true, job: null, needsMessaging: false, buyers: [{ n: 2, tag: "not_sent" }, { n: 3, tag: "sent", at: "2026-11-26T06:05:00.000Z" }, { n: 4, tag: "other_app" }, { n: 5, tag: "cant_message" }] };
   S.calls = []; S.startAnswer = { ok: true, already: false }; S.startStatus = 200; S.previewOk = true;
@@ -209,13 +211,28 @@ describe("✎ View", () => {
     fireEvent.click(q("ivc-fb-sheet-send")!); await flush();
     expect(callsTo("start").at(-1)!.body).toEqual({ sessionId: SID, buyerNumber: 2, lang: "en", currency: "₱" });
   });
-  it("I sent it by hand → saved Sent (platform facebook) → 'Sent by hand'", async () => {
+  it("I sent it by hand: ONLY after Messenger could not send (with its line) → saved Sent (platform facebook) → 'Sent by hand'", async () => {
     await open();
-    fireEvent.click(rowOf(2).querySelector("[data-testid='ivc-fb-row-view']")!); await flush();
+    fireEvent.click(rowOf(2).querySelector("[data-testid='ivc-fb-row-view']")!); await flush();   // not sent yet
+    expect(q("ivc-fb-sheet-send")).not.toBeNull();
+    expect(q("ivc-fb-sheet-cancel")).not.toBeNull();
+    expect(q("ivc-fb-sheet-hand")).toBeNull();
+    expect(q("ivc-fb-hand-note")).toBeNull();
+    fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    for (const n of [4, 5]) {                                   // "another app" / can't message: failed sends
+      fireEvent.click(rowOf(n).querySelector("[data-testid='ivc-fb-row-view']")!); await flush();
+      expect(q("ivc-fb-hand-note")!.textContent).toBe(buildT("en").rd_ivc_fb_hand_note);
+      expect(q("ivc-fb-sheet-hand")).not.toBeNull();
+      expect(q("ivc-fb-sheet-cancel")).not.toBeNull();
+      fireEvent.click(q("ivc-fb-sheet-close")!); await flush();
+    }
+    fireEvent.click(rowOf(4).querySelector("[data-testid='ivc-fb-row-view']")!); await flush();
+    expect(q("ivc-fb-sheet-send")).not.toBeNull();              // Send again is still there
     fireEvent.click(q("ivc-fb-sheet-hand")!); await flush();
-    expect(DB.s.sends).toEqual([expect.objectContaining({ platform: "facebook", buyer_number: 2, status: "sent" })]);
-    expect(tagOfRow(2)).toBe("by_hand");
+    expect(DB.s.sends).toEqual([expect.objectContaining({ platform: "facebook", buyer_number: 4, status: "sent" })]);
+    expect(tagOfRow(4)).toBe("by_hand");
     expect(q("ivc-fb-sheet")).toBeNull();
+    expect(qa("ivc-fb-row-send").map((b) => b.closest("[data-testid='ivc-fb-row']")!.getAttribute("data-buyer"))).toEqual(["2"]); // Send all skips it
   });
   it("Buyer cancelled → Cancelled (dimmed, out of 'X of N' and K), Undo cancel → back", async () => {
     await open();
