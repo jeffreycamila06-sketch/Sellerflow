@@ -30,6 +30,8 @@ export function makeInvoiceDb() {
     /** sql/233 fb_receipt_edits: one row per seller + session + buyer number */
     edits: [] as Record<string, unknown>[],
     failEditReads: false, failEditWrites: false, noEditsTable: false,
+    /** a slow network: an edit write waits for this before it lands; hang = it never answers */
+    editWriteGate: null as Promise<void> | null, hangEditWrites: false,
   };
   const reset = () => {
     s.uid = "u1"; s.sends = []; s.settings = new Map(); s.failReads = false; s.failWrites = false; s.failFormatRead = false; s.failFormatWrite = false;
@@ -38,6 +40,7 @@ export function makeInvoiceDb() {
     s.lineCancels = []; s.failCancelReads = false; s.failCancelWrites = false; s.failIdReads = false; s.noCancelStatus = false;
     s.failPlatformReads = false;
     s.edits = []; s.failEditReads = false; s.failEditWrites = false; s.noEditsTable = false;
+    s.editWriteGate = null; s.hangEditWrites = false;
   };
   const err = { message: "boom" };
   const from = (table: string) => {
@@ -129,13 +132,17 @@ export function makeInvoiceDb() {
           return Promise.resolve({ error: ok ? null : err });
         }
         if (table === "fb_receipt_edits") {
-          const ok = !s.failEditWrites && !s.noEditsTable && payload.user_id === s.uid;
-          if (ok) {
-            const i = s.edits.findIndex((r) => r.user_id === payload.user_id && r.session_id === payload.session_id && r.buyer_number === payload.buyer_number);
-            const row = { ...payload, updated_at: s.now };
-            if (i >= 0) s.edits[i] = row; else s.edits.push(row);
-          }
-          return Promise.resolve({ error: ok ? null : err });
+          const land = () => {
+            const ok = !s.failEditWrites && !s.noEditsTable && payload.user_id === s.uid;
+            if (ok) {
+              const i = s.edits.findIndex((r) => r.user_id === payload.user_id && r.session_id === payload.session_id && r.buyer_number === payload.buyer_number);
+              const row = { ...payload, updated_at: s.now };
+              if (i >= 0) s.edits[i] = row; else s.edits.push(row);
+            }
+            return { error: ok ? null : err };
+          };
+          if (s.hangEditWrites) return new Promise<{ error: null }>(() => { /* never answers */ });
+          return s.editWriteGate ? s.editWriteGate.then(land) : Promise.resolve(land());
         }
         if (table === "invoice_sends") {
           let saved: FakeSend | null = null;
