@@ -1,0 +1,135 @@
+{
+ "_note": "What is sent for the same saved settings, taken on main b6d5d417. formatPerTab.sameAsMain.test.tsx",
+ "cases": {
+  "tiktok.message.false": "Hi ANA! 😊\nHere's your invoice (11/26):\n1. A1 dress — ₱350\n2. C3 bag — ₱120\nShipping fee: ₱60\nTotal: ₱530\n\nPay by GCash 0917",
+  "tiktok.message.true": "Hi ANA! 😊\nHere's your invoice (11/26):\n1. A1 dress — ₱350\n2. C3 bag — ₱120\nShipping fee: ₱60\nTotal: ₱530\n\nPay by GCash 0917",
+  "fb.view.input": {
+   "opening": "Hi {name}!",
+   "note": "Pay by GCash 0917",
+   "lines": [
+    {
+     "item": "Dress",
+     "total": 350
+    },
+    {
+     "item": "Belt",
+     "total": 50
+    }
+   ],
+   "qrImage": "data:image/png;base64,iVBORw0KGgo=",
+   "currency": "₱",
+   "buyerNum": 2,
+   "buyerName": "Ana Cruz",
+   "labels": {
+    "total": "Total",
+    "toBeConfirmed": "to be confirmed",
+    "more": "…and {n} more",
+    "shipping": "Shipping fee",
+    "howToPay": "How to pay",
+    "scanToPay": "Scan to pay"
+   },
+   "shippingFee": 60
+  },
+  "fb.sendall.start": [
+   {
+    "sessionId": "11111111-2222-3333-4444-555555555555",
+    "lang": "en",
+    "currency": "₱"
+   }
+  ],
+  "orders.input": {
+   "opening": "Hi {name}!",
+   "note": "Pay by GCash 0917",
+   "qrImage": "data:image/png;base64,iVBORw0KGgo=",
+   "currency": "₱",
+   "buyerName": "Ana Cruz",
+   "lines": [
+    {
+     "item": "Dress",
+     "total": 350
+    },
+    {
+     "item": "Belt",
+     "total": 50
+    }
+   ],
+   "shippingFee": 0,
+   "labels": {
+    "total": "Total",
+    "toBeConfirmed": "to be confirmed",
+    "more": "…and {n} more",
+    "shipping": "Shipping fee",
+    "howToPay": "How to pay",
+    "scanToPay": "Scan to pay"
+   }
+  },
+  "rf.dom": "<div data-testid=\"receipt-format\"><div style=\"position: sticky; top: 0px; z-index: 5; background: var(--header-bg); backdrop-filter: saturate(1.5) blur(14px); color: var(--on-header); padding: 14px 16px; display: flex; align-items: center; gap: 12px;\"><button type=\"button\" style=\"display: flex; align-items: center; gap: 5px; background: rgba(255, 255, 255, 0.18); border: medium; padding: 9px 12px 9px 9px; min-height: 44px; border-radius: 9px; color: rgb(255, 255, 255); font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-ui); flex-shrink: 0;\" data-testid=\"back-btn\">‹ Back</button><div style=\"font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -0.01em;\">Receipt format</div></div><div style=\"padding: 16px 14px 24px;\"><div data-testid=\"rc-sub\" style=\"font-size: 12.5px; color: var(--text-muted); line-height: 1.5; margin: 0px 2px 14px;\">The Messenger receipt picture your Facebook buyers get after the live. Nothing is sent yet.</div><div style=\"background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 12px; box-shadow: var(--shadow);\"><label style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 0px 0px 6px;\" for=\"rc-opening\">Opening</label><textarea id=\"rc-opening\" data-testid=\"rc-opening\" style=\"width: 100%; box-sizing: border-box; min-height: 76px; resize: vertical; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-2); color: var(--text); padding: 9px 11px; font-size: 14px; font-family: var(--font-ui); line-height: 1.4;\" maxlength=\"300\" placeholder=\"e.g. Thank you for joining our live!\">Hi {name}!</textarea><div style=\"font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 3px;\">10/300</div><label style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 10px 0px 6px;\" for=\"rc-note\">Note — how to pay</label><textarea id=\"rc-note\" data-testid=\"rc-note\" style=\"width: 100%; box-sizing: border-box; min-height: 110px; resize: vertical; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-2); color: var(--text); padding: 9px 11px; font-size: 14px; font-family: var(--font-ui); line-height: 1.4;\" maxlength=\"1000\" placeholder=\"e.g. Please pay within 3 days and send a screenshot after paying.\">Pay by GCash 0917</textarea><div style=\"font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 3px;\">17/1000</div></div><div style=\"background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 12px; box-shadow: var(--shadow);\"><span style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 0px 0px 6px;\">Payment QR picture</span><div style=\"font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px;\">Upload your own payment QR. It appears at the bottom of the receipt.</div><div data-testid=\"rc-qr-row\" style=\"display: flex; align-items: center; gap: 12px; flex-wrap: wrap;\"><button type=\"button\" data-testid=\"rc-qr-box\" style=\"width: 160px; height: 160px; flex-shrink: 0; padding: 0px; margin: 0px; box-sizing: border-box; border-radius: 14px; border: 1px solid var(--border); background: rgb(255, 255, 255); overflow: hidden; cursor: pointer; display: block;\"><img alt=\"Payment QR picture\" data-testid=\"rc-qr-thumb\" style=\"display: block; width: 100%; height: 100%; object-fit: contain;\" src=\"data:image/png;base64,iVBORw0KGgo=\"></button><div data-testid=\"rc-qr-actions\" style=\"display: flex; flex-direction: column; align-items: flex-start; gap: 8px;\"><button type=\"button\" style=\"padding: 9px 15px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-ui);\">Choose picture</button><button type=\"button\" data-testid=\"rc-qr-remove\" style=\"padding: 9px 15px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--danger); font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-ui);\">Remove</button></div><input accept=\"image/*\" hidden=\"\" data-testid=\"rc-qr-file\" type=\"file\"></div></div><div style=\"display: flex; align-items: center; gap: 12px; margin: 0px 2px 16px;\"><button type=\"button\" data-testid=\"rc-save\" style=\"padding: 9px 15px; border-radius: 10px; border: medium; background: var(--accent); color: var(--accent-text); font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-ui); opacity: 1;\">Save</button></div><div style=\"background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 12px; box-shadow: var(--shadow);\"><span style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 0px 0px 6px;\">Sample receipt</span><img alt=\"Sample receipt\" data-testid=\"rc-sample-img\" class=\"sfl-no-hover\" style=\"display: block; width: 100%; max-width: 360px; margin: 0px auto; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--border);\" src=\"blob:X\"></div></div></div>",
+  "rf.sample": {
+   "opening": "Hi {name}!",
+   "note": "Pay by GCash 0917",
+   "qrImage": "data:image/png;base64,iVBORw0KGgo=",
+   "currency": "₱",
+   "buyerNum": 12,
+   "buyerName": "Sample buyer",
+   "labels": {
+    "total": "Total",
+    "toBeConfirmed": "to be confirmed",
+    "more": "…and {n} more",
+    "howToPay": "How to pay",
+    "scanToPay": "Scan to pay"
+   },
+   "lines": [
+    {
+     "item": "A1",
+     "total": 350
+    },
+    {
+     "item": "B2",
+     "total": 280
+    },
+    {
+     "item": "C3 ×2",
+     "total": 500
+    }
+   ]
+  },
+  "rf.dom.noqr": "<div data-testid=\"receipt-format\"><div style=\"position: sticky; top: 0px; z-index: 5; background: var(--header-bg); backdrop-filter: saturate(1.5) blur(14px); color: var(--on-header); padding: 14px 16px; display: flex; align-items: center; gap: 12px;\"><button type=\"button\" style=\"display: flex; align-items: center; gap: 5px; background: rgba(255, 255, 255, 0.18); border: medium; padding: 9px 12px 9px 9px; min-height: 44px; border-radius: 9px; color: rgb(255, 255, 255); font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-ui); flex-shrink: 0;\" data-testid=\"back-btn\">‹ Back</button><div style=\"font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -0.01em;\">Receipt format</div></div><div style=\"padding: 16px 14px 24px;\"><div data-testid=\"rc-sub\" style=\"font-size: 12.5px; color: var(--text-muted); line-height: 1.5; margin: 0px 2px 14px;\">The Messenger receipt picture your Facebook buyers get after the live. Nothing is sent yet.</div><div style=\"background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 12px; box-shadow: var(--shadow);\"><label style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 0px 0px 6px;\" for=\"rc-opening\">Opening</label><textarea id=\"rc-opening\" data-testid=\"rc-opening\" style=\"width: 100%; box-sizing: border-box; min-height: 76px; resize: vertical; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-2); color: var(--text); padding: 9px 11px; font-size: 14px; font-family: var(--font-ui); line-height: 1.4;\" maxlength=\"300\" placeholder=\"e.g. Thank you for joining our live!\">Hi {name}!</textarea><div style=\"font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 3px;\">10/300</div><label style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 10px 0px 6px;\" for=\"rc-note\">Note — how to pay</label><textarea id=\"rc-note\" data-testid=\"rc-note\" style=\"width: 100%; box-sizing: border-box; min-height: 110px; resize: vertical; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-2); color: var(--text); padding: 9px 11px; font-size: 14px; font-family: var(--font-ui); line-height: 1.4;\" maxlength=\"1000\" placeholder=\"e.g. Please pay within 3 days and send a screenshot after paying.\">Pay by GCash 0917</textarea><div style=\"font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 3px;\">17/1000</div></div><div style=\"background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 12px; box-shadow: var(--shadow);\"><span style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 0px 0px 6px;\">Payment QR picture</span><div style=\"font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px;\">Upload your own payment QR. It appears at the bottom of the receipt.</div><div data-testid=\"rc-qr-row\" style=\"display: flex; align-items: center; gap: 12px; flex-wrap: wrap;\"><div data-testid=\"rc-qr-actions\" style=\"display: flex; flex-direction: column; align-items: flex-start; gap: 8px;\"><button type=\"button\" style=\"padding: 9px 15px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-ui);\">Choose picture</button></div><input accept=\"image/*\" hidden=\"\" data-testid=\"rc-qr-file\" type=\"file\"></div></div><div style=\"display: flex; align-items: center; gap: 12px; margin: 0px 2px 16px;\"><button type=\"button\" data-testid=\"rc-save\" style=\"padding: 9px 15px; border-radius: 10px; border: medium; background: var(--accent); color: var(--accent-text); font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-ui); opacity: 1;\">Save</button></div><div style=\"background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 12px; box-shadow: var(--shadow);\"><span style=\"display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin: 0px 0px 6px;\">Sample receipt</span><img alt=\"Sample receipt\" data-testid=\"rc-sample-img\" class=\"sfl-no-hover\" style=\"display: block; width: 100%; max-width: 360px; margin: 0px auto; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--border);\" src=\"blob:X\"></div></div></div>",
+  "rf.sample.noqr": {
+   "opening": "Hi {name}!",
+   "note": "Pay by GCash 0917",
+   "qrImage": null,
+   "currency": "₱",
+   "buyerNum": 12,
+   "buyerName": "Sample buyer",
+   "labels": {
+    "total": "Total",
+    "toBeConfirmed": "to be confirmed",
+    "more": "…and {n} more",
+    "howToPay": "How to pay",
+    "scanToPay": "Scan to pay"
+   },
+   "lines": [
+    {
+     "item": "A1",
+     "total": 350
+    },
+    {
+     "item": "B2",
+     "total": 280
+    },
+    {
+     "item": "C3 ×2",
+     "total": 500
+    }
+   ]
+  },
+  "rf.save": [
+   {
+    "user_id": "u1",
+    "opening": "Hi {name}!",
+    "note": "Pay by GCash 0917",
+    "qr_image": null
+   }
+  ]
+ }
+}
