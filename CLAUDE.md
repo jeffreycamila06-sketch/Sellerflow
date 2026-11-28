@@ -7225,7 +7225,7 @@ Jeff: Printer Tuning (merge f8b90114) is not useful. Its switch `printer_tuning_
 - **Order:** sql/233 → merge (Vercel) → Render deploy (quiet time). Before sql/233 the editor works but saves fail
   ("Couldn't save"); before the Render deploy Send all ignores saved edits (sends the orders' receipt).
 
-## 2026-11-28 — CANCEL ORDER (Orders tab only) (merged to main; sql/234 APPLIED 2026-11-28 + both indexes; sql/235 NOT applied; server half needs a Render deploy)
+## 2026-11-28 — CANCEL ORDER (Orders tab only) ✅ RELEASED TO ALL SELLERS 2026-11-28 11:38 Taipei (main; sql/234 + both indexes + sql/235 APPLIED; Render deployed; switch `order_cancel_enabled` = 'true'; Jeff tested Cancel + Undo end-to-end on production)
 Jeff's decisions (2026-11-28): free order NOT given back · stock goes back (Auto mode orders) · allowed while the
 order is shown in the Orders tab · allowed after an invoice / receipt was sent (amber warning) · the same Live
 comment can be ordered again · a new column on the `orders` ledger is OK. Nothing in the Live tab.

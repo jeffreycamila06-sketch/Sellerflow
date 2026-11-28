@@ -4,7 +4,7 @@
 --   A PHRASE SWAP. It runs only where the Reprint line is found and the Cancel line is not (live body md5
 --   fd873964054e915504804bbe987fa24e, read 2026-11-28), so running it twice changes nothing the second time.
 -- Every other row stays as it is. No Render deploy (the help bot re-reads the table every 5 minutes).
--- NOT APPLIED. Apply LAST — after sql/234, the Render deploy, the web merge AND the switch
+-- APPLIED in production 2026-11-28 11:38 Taipei (with the switch). Was: apply LAST — after sql/234, the Render deploy, the web merge AND the switch
 -- order_cancel_enabled = 'true' (before that sellers have no ⋯ button).
 -- Rollback: sql/235_guide_order_cancel_rollback.sql
 -- ============================================================================
