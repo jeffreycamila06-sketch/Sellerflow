@@ -95,16 +95,16 @@ describe("sql/221 — the help guide when Invoicing opens", () => {
     expect(once.split("**Invoicing**").length - 1).toBe(1);
     expect(run(up221, after219.replace(`${LINE}\n`, ""))).toBe(after219.replace(`${LINE}\n`, ""));   // no old line → nothing is touched
   });
-  it("the new row + sql/224 (the Facebook tab line) + sql/226 (Send all) + sql/227 (sessions per platform) is word for word the row of sql/116b = the guide file's section", () => {
+  it("the new row + sql/224 (the Facebook tab line) + sql/226 (Send all) + sql/227 (sessions per platform) + sql/237 (Format per tab) is word for word the row of sql/116b = the guide file's section", () => {
     expect(up221.split("('invoicing',").length - 1).toBe(1);
     const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
     expect(md5(unq(r221[3]))).toBe("2dbd54d0909f9b6eb341745efb48a0d7");   // = the live row's body (read 2026-11-26)
     expect(r221[1]).toBe(seedRow[1]);
-    expect(run224(up227, run224(up226, run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) })))).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
+    expect(run224(up237, run224(up227, run224(up226, run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) }))))).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
     const a = guide.indexOf("## invoicing — ");
     const section = guide.slice(a, guide.indexOf("\n## ", a + 5));
     expect(section.split("\n")[0]).toBe(`## invoicing — ${unq(seedRow[1])}`);
-    expect(section).toContain("Last checked: 2026-11-27");
+    expect(section).toContain("Last checked: 2026-11-28");
     expect(section.split("\n")[2]).toBe(`Keywords: ${unq(seedRow[2])}`);
     expect(section.replace(/^.*\n.*\n.*\n\n/, "")).toBe(`${unq(seedRow[3])}\n`);
   });
@@ -138,6 +138,7 @@ describe("sql/221 — the help guide when Invoicing opens", () => {
 const up224 = read("sql/224_guide_fb_invoicing_lock.sql"), down224 = read("sql/224_guide_fb_invoicing_lock_rollback.sql");
 const up226 = read("sql/226_guide_fb_send_all.sql"), down226 = read("sql/226_guide_fb_send_all_rollback.sql");
 const up227 = read("sql/227_guide_invoicing_sessions.sql"), down227 = read("sql/227_guide_invoicing_sessions_rollback.sql");
+const up237 = read("sql/237_guide_invoicing_format.sql"), down237 = read("sql/237_guide_invoicing_format_rollback.sql");
 function run224(sql: string, row: { body: string; keywords: string }): { body: string; keywords: string } {
   const rb = sql.match(new RegExp(`replace\\(body, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
   const rk = sql.match(new RegExp(`replace\\(keywords, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
@@ -154,9 +155,9 @@ describe("sql/224 — the Facebook tab line in the invoicing row", () => {
   })();
   const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
   const live = { body: unq(r221[3]), keywords: unq(r221[2]) };
-  it("live row + sql/224 (+ sql/226 + sql/227) = sql/116b; twice = no change; the old line is gone and the new one is there once", () => {
+  it("live row + sql/224 (+ sql/226 + sql/227 + sql/237) = sql/116b; twice = no change; the old line is gone and the new one is there once", () => {
     const once = run224(up224, live);
-    expect(run224(up227, run224(up226, once))).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
+    expect(run224(up237, run224(up227, run224(up226, once)))).toEqual({ body: unq(seedRow[3]), keywords: unq(seedRow[2]) });
     expect(run224(up224, once)).toEqual(once);
     expect(once.body).not.toContain("Facebook, Instagram and Shopee invoices are coming soon.");
     expect(once.body.split("**Ask Admin to turn it on**").length - 1).toBe(1);
@@ -221,10 +222,10 @@ describe("sql/227 — each tab lists its own platform's sessions", () => {
   const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
   const live = run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) });   // = the live row now (md5 read 2026-11-27)
   const target = { body: unq(seedRow[3]), keywords: unq(seedRow[2]) };
-  it("the live row is the one read on production; 227 then 226, or 226 then 227, both = sql/116b; twice = no change", () => {
+  it("the live row is the one read on production; 227 then 226, or 226 then 227 (then 237), both = sql/116b; twice = no change", () => {
     expect(md5(live.body)).toBe("359055643d01d94a59600f80440f3211");
-    expect(run224(up226, run224(up227, live))).toEqual(target);
-    expect(run224(up227, run224(up226, live))).toEqual(target);
+    expect(run224(up237, run224(up226, run224(up227, live)))).toEqual(target);
+    expect(run224(up237, run224(up227, run224(up226, live)))).toEqual(target);
     const once = run224(up227, live);
     expect(run224(up227, once)).toEqual(once);
     expect(once.body).toContain("Each tab lists only that platform's sessions");
@@ -244,5 +245,44 @@ describe("sql/227 — each tab lists its own platform's sessions", () => {
       expect(sql).not.toMatch(/\b(drop|alter|insert|delete|app_settings|feature_access_emails)\b/i);
     }
     expect(up227).toContain("NOT APPLIED");
+  });
+});
+
+// sql/237 (2026-11-28): Invoicing → Format follows the open tab — the "Format" lines only.
+describe("sql/237 — Format follows the open tab", () => {
+  const seedRow = (() => {
+    const a = seed.indexOf("  ('invoicing',");
+    return seed.slice(a).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+  })();
+  const r221 = up221.slice(up221.indexOf("  ('invoicing',")).match(new RegExp(`^  \\('invoicing', ${SQL_TEXT}, '\\d{4}-\\d{2}-\\d{2}'::date, ${SQL_TEXT}, ${SQL_TEXT}\\)`, "s"))!;
+  const live = run224(up227, run224(up224, { body: unq(r221[3]), keywords: unq(r221[2]) }));   // sql/224 + sql/227 applied
+  const target = { body: unq(seedRow[3]), keywords: unq(seedRow[2]) };
+  it("the live row is the one read on production (md5, 2026-11-28); + sql/237 (+ sql/226, either order) = sql/116b; twice = no change", () => {
+    expect(md5(live.body)).toBe("d9369455ae23f87b2374fde8e6332c8f");
+    expect(run224(up226, run224(up237, live))).toEqual(target);
+    expect(run224(up237, run224(up226, live))).toEqual(target);
+    const once = run224(up237, live);
+    expect(run224(up237, once)).toEqual(once);
+    expect(once.body).toContain("**Format** (top right) — shows the format of the tab you are on.");
+    expect(once.body.split("**Format** (top right)").length - 1).toBe(1);
+    expect(once.body).toContain("**Payment QR picture** (**Change picture** or **Remove**)");
+    expect(once.keywords).toContain("invoice format, facebook format, opening, payment qr, qr picture");
+  });
+  it("the rollback gives the live row back (also after sql/226); twice = no change", () => {
+    expect(run224(down237, run224(up237, live))).toEqual(live);
+    expect(run224(down237, live)).toEqual(live);
+    expect(run224(down226, run224(down237, run224(up237, run224(up226, live))))).toEqual(live);
+  });
+  it("only the invoicing row; one statement in one transaction; user words only", () => {
+    for (const sql of [up237, down237]) {
+      expect([...new Set(sql.match(/where id = '([\w-]+)'/g))]).toEqual(["where id = 'invoicing'"]);
+      expect(sql.split("update public.support_guide").length - 1).toBe(1);
+      expect(sql).toMatch(/^begin;$/m);
+      expect(sql).toMatch(/^commit;$/m);
+      expect(sql).not.toMatch(/\b(drop|alter|insert|delete|app_settings|feature_access_emails|fb_receipt_access|seller_receipt_settings)\b/i);
+    }
+    expect(up237).toContain("NOT APPLIED");
+    const block = run224(up237, live).body.split("\n").filter((l) => l.startsWith("- On the") || l.startsWith("- The payment note") || l.startsWith("**Format**")).join("\n");
+    expect(block).not.toMatch(/\b(plan|upgrade|subscri\w*|price|add-on|database|table)\b|NT\$/i);
   });
 });
