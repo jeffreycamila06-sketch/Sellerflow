@@ -8,7 +8,7 @@ import { rcBtn } from "./receiptFormatStyle";
 
 /** The payment QR picture: the whole picture on white (never cropped — a cut QR can't be scanned), tap it to
  *  choose another, plus Choose / Remove. A picked photo is turned upright and made small enough to save. */
-export function QrPictureField({ qrImage, onPicked, onRemove, onPickStart, onFailed, idPrefix = "rc", pickLabel, pickTestId }: {
+export function QrPictureField({ qrImage, onPicked, onRemove, onPickStart, onFailed, idPrefix = "rc", pickLabel, pickTestId, tall = false }: {
   qrImage: string | null;
   onPicked: (dataUrl: string) => void; onRemove: () => void;
   onPickStart?: () => void; onFailed: () => void;
@@ -17,9 +17,12 @@ export function QrPictureField({ qrImage, onPicked, onRemove, onPickStart, onFai
   /** the pick button's words (default "Choose picture") */
   pickLabel?: string;
   pickTestId?: string;
+  /** buttons at least 44 px tall (the Invoicing sheet); off = the Receipt format screen as it was */
+  tall?: boolean;
 }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
+  const b = tall ? { ...rcBtn(false), minHeight: 44 } : rcBtn(false);
   const pickQr = async (f: File | undefined) => {
     if (!f) return;
     onPickStart?.();
@@ -41,8 +44,8 @@ export function QrPictureField({ qrImage, onPicked, onRemove, onPickStart, onFai
         </button>
       )}
       <div data-testid={`${idPrefix}-qr-actions`} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
-        <button type="button" {...(pickTestId ? { "data-testid": pickTestId } : {})} style={rcBtn(false)} onClick={() => fileRef.current?.click()}>{pickLabel ?? t.rd_rc_qr_pick}</button>
-        {qrImage && <button type="button" data-testid={`${idPrefix}-qr-remove`} style={{ ...rcBtn(false), color: "var(--danger)" }} onClick={onRemove}>{t.rd_rc_qr_remove}</button>}
+        <button type="button" {...(pickTestId ? { "data-testid": pickTestId } : {})} style={b} onClick={() => fileRef.current?.click()}>{pickLabel ?? t.rd_rc_qr_pick}</button>
+        {qrImage && <button type="button" data-testid={`${idPrefix}-qr-remove`} style={{ ...b, color: "var(--danger)" }} onClick={onRemove}>{t.rd_rc_qr_remove}</button>}
       </div>
       <input ref={fileRef} type="file" accept="image/*" hidden data-testid={`${idPrefix}-qr-file`} onChange={(e) => void pickQr(e.target.files?.[0])} />
     </div>

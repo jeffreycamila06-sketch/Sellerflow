@@ -88,7 +88,7 @@ export default function FbReceiptFormatSheet({ cur, format, onSaved, onClose }: 
 
           <span style={label}>{t.rd_rc_qr}</span>
           <div style={{ ...hint, margin: "0 2px 10px" }}>{t.rd_rc_qr_hint}</div>
-          <QrPictureField qrImage={f.qrImage} idPrefix="ivc-fbformat" pickTestId="ivc-fbformat-qr-pick" pickLabel={f.qrImage ? t.rd_ivc_fbf_qr_change : t.rd_rc_qr_pick}
+          <QrPictureField qrImage={f.qrImage} idPrefix="ivc-fbformat" tall pickTestId="ivc-fbformat-qr-pick" pickLabel={f.qrImage ? t.rd_ivc_fbf_qr_change : t.rd_rc_qr_pick}
             onPicked={(url) => { setQrFailed(false); setF((x) => ({ ...x, qrImage: url })); }} onRemove={() => setF((x) => ({ ...x, qrImage: null }))}
             onPickStart={() => setQrFailed(false)} onFailed={() => setQrFailed(true)} />
           {qrFailed && <div role="alert" data-testid="ivc-fbformat-qr-failed" style={{ ...hint, color: "var(--danger)", fontWeight: 600 }}>{t.rd_rc_qr_failed}</div>}
